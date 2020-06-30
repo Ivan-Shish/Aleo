@@ -2,10 +2,10 @@
 
 rm -f challenge* response* new_challenge* processed*
 
-POWER=26
-NUM_VALIDATORS=100
-NUM_EPOCHS=30
-BATCH=1000000
+POWER=16
+NUM_VALIDATORS=1
+NUM_EPOCHS=1
+BATCH=10000
 CURVE="bw6"
 
 powersoftau="cargo run --release --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
