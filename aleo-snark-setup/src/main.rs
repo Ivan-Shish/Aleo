@@ -26,24 +26,20 @@ fn main() {
 
     let now = Instant::now();
     let res = match command {
-        Command::Constraints(ref opt) => {
-            println!("Circuit requires {} constraints", empty_circuit(&opt).1);
-            Ok(())
-        }
-        Command::New(ref opt) => new(&opt),
+        Command::New(ref opt) => new(&opt).unwrap(),
         Command::Contribute(ref opt) => {
             // contribute to the randomness
             let mut rng = get_rng(&user_system_randomness());
-            contribute(&opt, &mut rng)
+            contribute(&opt, &mut rng).unwrap()
         }
         Command::Beacon(ref opt) => {
             // use the beacon's randomness
             let beacon_hash =
                 hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
             let mut rng = get_rng(&beacon_randomness(from_slice(&beacon_hash)));
-            contribute(&opt, &mut rng)
+            contribute(&opt, &mut rng).unwrap()
         }
-        Command::Verify(ref opt) => verify(&opt),
+        Command::Verify(ref opt) => verify(&opt).unwrap(),
     };
 
     let new_now = Instant::now();

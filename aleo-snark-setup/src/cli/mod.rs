@@ -1,6 +1,6 @@
 use gumdrop::Options;
 
-pub use new::{empty_circuit, new, NewOpts};
+pub use new::{new, NewOpts};
 mod new;
 
 mod contribute;
@@ -12,10 +12,6 @@ pub use verify::{verify, VerifyOpts};
 // The supported commands
 #[derive(Debug, Options, Clone)]
 pub enum Command {
-    #[options(
-        help = "prints the number of constraints required for the provided circuit parameters"
-    )]
-    Constraints(NewOpts),
     #[options(help = "creates new parameters for the ceremony which MUST be built upon")]
     New(NewOpts),
     #[options(help = "contribute to ceremony by transforming the circuit parameters")]
