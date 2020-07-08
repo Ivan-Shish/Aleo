@@ -3,11 +3,18 @@ use std::fmt;
 use std::io::{self, Read, Write};
 
 use zexe_algebra::{
-    AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, One, PairingEngine,
-    ProjectiveCurve, Zero,
+    AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, PairingEngine, ProjectiveCurve,
+    Zero,
 };
-use zexe_groth16::{KeypairAssembly, Parameters, VerifyingKey};
-use zexe_r1cs_core::{ConstraintSynthesizer, ConstraintSystem, Index, SynthesisError, Variable};
+use zexe_groth16::{Parameters, VerifyingKey};
+use zexe_r1cs_core::SynthesisError;
+
+use snarkos_algorithms::groth16::KeypairAssembly;
+use snarkos_models::{
+    curves::{One, PairingEngine as AleoPairingEngine},
+    gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
+};
+use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
 
 use rand::Rng;
 
@@ -44,7 +51,7 @@ impl<E: PairingEngine + PartialEq> PartialEq for MPCParameters<E> {
 }
 
 impl<E: PairingEngine> MPCParameters<E> {
-    pub fn new_from_buffer<C>(
+    pub fn new_from_buffer<Aleo, C>(
         circuit: C,
         transcript: &mut [u8],
         compressed: UseCompression,
@@ -52,17 +59,21 @@ impl<E: PairingEngine> MPCParameters<E> {
         phase2_size: usize,
     ) -> Result<MPCParameters<E>>
     where
-        C: ConstraintSynthesizer<E::Fr>,
+        C: AleoR1CS<Aleo::Fr>,
+        Aleo: AleoPairingEngine,
     {
-        let assembly = circuit_to_qap::<E, _>(circuit)?;
+        let assembly = circuit_to_qap::<Aleo, E, _>(circuit)?;
         let params = Groth16Params::<E>::read(transcript, compressed, phase1_size, phase2_size)?;
         Self::new(assembly, params)
     }
 
-    /// Create new Groth16 parameters (compatible with Zexe) for a
-    /// given circuit. The resulting parameters are unsafe to use
-    /// until there are contributions (see `contribute()`).
-    pub fn new(assembly: KeypairAssembly<E>, params: Groth16Params<E>) -> Result<MPCParameters<E>> {
+    /// Create new Groth16 parameters (compatible with Zexe and snarkOS) for a
+    /// given QAP which has been produced from a circuit. The resulting parameters
+    /// are unsafe to use until there are contributions (see `contribute()`).
+    pub fn new(
+        assembly: zexe_groth16::KeypairAssembly<E>,
+        params: Groth16Params<E>,
+    ) -> Result<MPCParameters<E>> {
         // Evaluate the QAP against the coefficients created from phase 1
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
             // Lagrange coeffs for Tau, read in from Phase 1
@@ -390,9 +401,10 @@ fn hash_params<E: PairingEngine>(params: &Parameters<E>) -> Result<[u8; 64]> {
 }
 
 /// Converts an R1CS circuit to QAP form
-pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(
+pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::Fr>>(
     circuit: C,
-) -> Result<KeypairAssembly<E>> {
+) -> Result<zexe_groth16::KeypairAssembly<Zexe>> {
+    // This is a snarkOS keypair assembly
     let mut assembly = KeypairAssembly::<E> {
         num_inputs: 0,
         num_aux: 0,
@@ -403,9 +415,13 @@ pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(
     };
 
     // Allocate the "one" input variable
-    assembly.alloc_input(|| "", || Ok(E::Fr::one()))?;
+    assembly
+        .alloc_input(|| "", || Ok(E::Fr::one()))
+        .expect("One allocation should not fail");
     // Synthesize the circuit.
-    circuit.generate_constraints(&mut assembly)?;
+    circuit
+        .generate_constraints(&mut assembly)
+        .expect("constraint generation should not fail");
     // Input constraints to ensure full density of IC query
     // x * 0 = 0
     for i in 0..assembly.num_inputs {
@@ -417,6 +433,16 @@ pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(
         );
     }
 
+    // We now serialize it as a vector and deserialize it as a Zexe keypair assembly
+    // (we do uncompressed because it is faster)
+    // (This could alternatively be done with unsafe memory swapping, but we
+    // prefer to err on the side of caution)
+    let mut serialized = Vec::new();
+    assembly
+        .serialize(&mut serialized)
+        .expect("serializing the KeypairAssembly should not fail");
+    let assembly = zexe_groth16::KeypairAssembly::<Zexe>::deserialize(&mut &serialized[..])?;
+
     Ok(assembly)
 }
 
@@ -427,17 +453,18 @@ mod tests {
     use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
     use rand::thread_rng;
     use snark_utils::{Groth16Params, UseCompression};
+    use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
     use test_helpers::{setup_verify, TestCircuit};
     use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
-    use zexe_algebra::Bls12_381;
+    use zexe_algebra::Bls12_377;
 
     #[test]
     fn serialize_ceremony() {
-        serialize_ceremony_curve::<Bls12_381>()
+        serialize_ceremony_curve::<AleoBls12_377, Bls12_377>()
     }
 
-    fn serialize_ceremony_curve<E: PairingEngine + PartialEq>() {
-        let mpc = generate_ceremony::<E>();
+    fn serialize_ceremony_curve<Aleo: AleoPairingEngine, E: PairingEngine + PartialEq>() {
+        let mpc = generate_ceremony::<Aleo, E>();
 
         let mut writer = vec![];
         mpc.write(&mut writer).unwrap();
@@ -449,13 +476,13 @@ mod tests {
 
     #[test]
     fn verify_with_self_fails() {
-        verify_with_self_fails_curve::<Bls12_381>()
+        verify_with_self_fails_curve::<AleoBls12_377, Bls12_377>()
     }
 
     // if there has been no contribution
     // then checking with itself should fail
-    fn verify_with_self_fails_curve<E: PairingEngine>() {
-        let mpc = generate_ceremony::<E>();
+    fn verify_with_self_fails_curve<Aleo: AleoPairingEngine, E: PairingEngine>() {
+        let mpc = generate_ceremony::<Aleo, E>();
         let err = mpc.verify(&mpc);
         // we handle the error like this because [u8; 64] does not implement
         // debug, meaning we cannot call `assert` on it
@@ -470,11 +497,11 @@ mod tests {
     }
     #[test]
     fn verify_contribution() {
-        verify_curve::<Bls12_381>()
+        verify_curve::<AleoBls12_377, Bls12_377>()
     }
 
     // contributing once and comparing with the previous step passes
-    fn verify_curve<E: PairingEngine>() {
+    fn verify_curve<Aleo: AleoPairingEngine, E: PairingEngine>() {
         Subscriber::builder()
             .with_target(false)
             .with_env_filter(EnvFilter::from_default_env())
@@ -482,7 +509,7 @@ mod tests {
 
         let rng = &mut thread_rng();
         // original
-        let mpc = generate_ceremony::<E>();
+        let mpc = generate_ceremony::<Aleo, E>();
         let mut mpc_serialized = vec![];
         mpc.write(&mut mpc_serialized).unwrap();
         let mut mpc_cursor = std::io::Cursor::new(mpc_serialized.clone());
@@ -537,7 +564,7 @@ mod tests {
 
     // helper which generates the initial phase 2 params
     // for the TestCircuit
-    fn generate_ceremony<E: PairingEngine>() -> MPCParameters<E> {
+    fn generate_ceremony<Aleo: AleoPairingEngine, E: PairingEngine>() -> MPCParameters<E> {
         // the phase2 params are generated correctly,
         // even though the powers of tau are >> the circuit size
         let powers = 5;
@@ -561,8 +588,8 @@ mod tests {
         .unwrap();
 
         // this circuit requires 7 constraints, so a ceremony with size 8 is sufficient
-        let c = TestCircuit::<E>(None);
-        let assembly = circuit_to_qap::<E, _>(c).unwrap();
+        let c = TestCircuit::<Aleo>(None);
+        let assembly = circuit_to_qap::<Aleo, E, _>(c).unwrap();
 
         MPCParameters::new(assembly, groth_params).unwrap()
     }
