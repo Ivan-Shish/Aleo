@@ -1,9 +1,9 @@
-use snarkos_utilities::serialize::*;
-use snarkos_models::curves::PairingEngine as AleoPairingEngine;
-use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
-use test_helpers::setup_verify;
-use snark_utils::UseCompression;
 use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
+use snark_utils::UseCompression;
+use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
+use snarkos_models::curves::PairingEngine as AleoPairingEngine;
+use snarkos_utilities::serialize::*;
+use test_helpers::setup_verify;
 use zexe_algebra::{Bls12_377 as CeloBls12_377, PairingEngine};
 
 #[test]
@@ -12,7 +12,8 @@ fn interop_test() {
     // aleo_interoperable_powersoftau::<AleoBW6, CeloBW6>();
 }
 
-fn aleo_interoperable_powersoftau<Aleo: AleoPairingEngine, Celo: PairingEngine>() -> anyhow::Result<()> {
+fn aleo_interoperable_powersoftau<Aleo: AleoPairingEngine, Celo: PairingEngine>(
+) -> anyhow::Result<()> {
     // Generate an accumulator via Celo's trusted setup:
     let (powers, batch) = (6, 4);
     let params = CeremonyParams::<Celo>::new(powers, batch);

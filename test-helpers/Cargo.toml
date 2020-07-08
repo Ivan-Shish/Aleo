@@ -12,6 +12,11 @@ zexe_algebra = { package = "algebra", git = "https://github.com/scipr-lab/zexe",
 zexe_groth16 = { package = "groth16", git = "https://github.com/scipr-lab/zexe", version = "0.1.0", features = ["parallel"] }
 zexe_r1cs_core = { package = "r1cs-core", git = "https://github.com/scipr-lab/zexe", version = "0.1.0" }
 
+snarkos-models = { path = "../../snarkOS/models" } 
+snarkos-errors = { path = "../../snarkOS/errors" } 
+snarkos-curves = { path = "../../snarkOS/curves" } 
+snarkos-algorithms = { path = "../../snarkOS/algorithms" } 
+
 rand = "0.7.3"
 typenum = "1.11.2"
 rust-crypto = "0.2"
