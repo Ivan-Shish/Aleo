@@ -18,6 +18,9 @@ zexe_algebra = { git = "https://github.com/scipr-lab/zexe", package = "algebra",
 zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", package = "groth16", version = "0.1.0", features = ["parallel"] }
 zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", package = "r1cs-core", version = "0.1.0" }
 
+snarkos-algorithms = { path = "../../snarkOS/algorithms" }
+snarkos-models = { path = "../../snarkOS/models" }
+snarkos-utilities = { path = "../../snarkOS/utilities" }
 
 rand = "0.7.3"
 cfg-if = "0.1.10"
@@ -32,3 +35,5 @@ powersoftau = { path = "../powersoftau" }
 test-helpers = { path = "../test-helpers" }
 zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", package = "r1cs-std", version = "0.1.0" }
 tracing-subscriber = "0.2.3"
+
+snarkos-curves = { path = "../../snarkOS/curves" }

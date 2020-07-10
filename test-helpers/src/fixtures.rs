@@ -1,5 +1,8 @@
-use zexe_algebra::{Field, PairingEngine};
-use zexe_r1cs_core::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
+use snarkos_errors::gadgets::SynthesisError;
+use snarkos_models::{
+    curves::{Field, PairingEngine},
+    gadgets::r1cs::{ConstraintSynthesizer, ConstraintSystem},
+};
 
 // circuit proving knowledge of a square root
 // when generating the Setup, the element inside is None
@@ -48,16 +51,16 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zexe_algebra::{Bls12_381, PrimeField};
-    use zexe_groth16::{
+    use snarkos_algorithms::groth16::{
         create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
     };
+    use snarkos_curves::bls12_377::Bls12_377;
 
     // no need to run these tests, they're just added as a guideline for how to
     // consume the circuit
     #[test]
     fn test_square_root() {
-        test_square_root_curve::<Bls12_381>()
+        test_square_root_curve::<Bls12_377>()
     }
 
     fn test_square_root_curve<E: PairingEngine>() {
@@ -72,8 +75,8 @@ mod tests {
         let pvk = prepare_verifying_key(&params.vk);
 
         // we know the square root of 25 -> 5
-        let out = <E::Fr as PrimeField>::BigInt::from(25u64).into();
-        let input = <E::Fr as PrimeField>::BigInt::from(5u64).into();
+        let out = E::Fr::from(25);
+        let input = E::Fr::from(5);
 
         // Prover instantiates the circuit and creates a proof
         // with his RNG
