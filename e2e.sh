@@ -2,15 +2,13 @@
 
 rm -f challenge* response* new_challenge* processed*
 
-POWER=26
-NUM_VALIDATORS=100
-NUM_EPOCHS=30
-BATCH=1000000
-CURVE="bw6"
+POWER=16
+BATCH=10000
+CURVE="bls12_377"
 
-powersoftau="cargo run --release --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
+powersoftau="cargo run --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
 phase2="cargo run --release --bin prepare_phase2 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
-snark="cargo run --release --bin bls-snark-setup --"
+snark="cargo run --release --bin aleo-snark-setup --"
 
 ####### Phase 1
 
@@ -24,7 +22,7 @@ $phase2 --response-fname response --phase2-fname processed --phase2-size $POWER
 
 ###### Phase 2
 
-$snark new --phase1 processed --output initial_ceremony --num-epochs $NUM_EPOCHS --num-validators $NUM_VALIDATORS --phase1-size $POWER
+$snark new --phase1 processed --output initial_ceremony --phase1-size $POWER --is-inner
 
 cp initial_ceremony contribution1
 yes | $snark contribute --data contribution1
