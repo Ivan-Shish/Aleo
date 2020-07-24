@@ -37,7 +37,7 @@ dependencies = [
 [[package]]
 name = "algebra"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra-core",
 ]
@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "algebra-core"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra-core-derive",
  "derivative",
@@ -60,7 +60,7 @@ dependencies = [
 [[package]]
 name = "algebra-core-derive"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "proc-macro2 1.0.18",
  "quote 1.0.7",
@@ -114,7 +114,7 @@ checksum = "58946044516aa9dc922182e0d6e9d124a31aafe6b421614654eb27cf90cec09c"
 [[package]]
 name = "bench-utils"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 
 [[package]]
 name = "bincode"
@@ -505,7 +505,7 @@ dependencies = [
 [[package]]
 name = "ff-fft"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra-core",
  "rand 0.7.3",
@@ -515,7 +515,7 @@ dependencies = [
 [[package]]
 name = "field-assembly"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "mince",
 ]
@@ -577,7 +577,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "groth16"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra-core",
  "bench-utils",
@@ -815,7 +815,7 @@ dependencies = [
 [[package]]
 name = "mince"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "quote 1.0.7",
  "syn 1.0.33",
@@ -1040,7 +1040,7 @@ dependencies = [
 [[package]]
 name = "r1cs-core"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra-core",
  "smallvec",
@@ -1049,7 +1049,7 @@ dependencies = [
 [[package]]
 name = "r1cs-std"
 version = "0.1.0"
-source = "git+https://github.com/gakonst/zexe?branch=groth16-serialize-keypair#9232babf0b2a582935d4068aca227ee4f18e88f6"
+source = "git+https://github.com/scipr-lab/zexe#77eabd2191b379fc1dcd151bbbc15396e8c2bba4"
 dependencies = [
  "algebra",
  "derivative",
@@ -1406,6 +1406,7 @@ dependencies = [
  "blake2",
  "derivative",
  "digest 0.8.1",
+ "itertools 0.9.0",
  "rand 0.7.3",
  "rand_chacha",
  "rayon",
@@ -1446,6 +1447,7 @@ dependencies = [
  "blake2",
  "derivative",
  "hex",
+ "itertools 0.9.0",
  "rand 0.7.3",
  "snarkos-algorithms",
  "snarkos-curves",
@@ -1478,6 +1480,7 @@ version = "0.8.0"
 dependencies = [
  "derivative",
  "digest 0.8.1",
+ "itertools 0.9.0",
  "snarkos-algorithms",
  "snarkos-curves",
  "snarkos-errors",
@@ -1491,6 +1494,7 @@ version = "0.8.0"
 dependencies = [
  "bincode",
  "derivative",
+ "itertools 0.9.0",
  "rand 0.7.3",
  "rand_xorshift",
  "serde",
