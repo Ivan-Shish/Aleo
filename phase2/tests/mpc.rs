@@ -8,7 +8,7 @@ use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine, BW6_
 use zexe_groth16::Parameters;
 
 // SnarkOS data types
-use snarkos_algorithms::groth16::{
+use snarkos_algorithms::snark::groth16::{
     create_random_proof, prepare_verifying_key, verify_proof, Parameters as AleoGroth16Params,
 };
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
@@ -49,7 +49,7 @@ where
     // perform the MPC on only the amount of constraints required for the circuit
     let mut counter = ConstraintCounter::new();
     c.clone().generate_constraints(&mut counter).unwrap();
-    let phase2_size = counter.num_aux + counter.num_inputs + counter.num_constraints;
+    let phase2_size = counter.num_constraints;
 
     let mut mpc = MPCParameters::<E>::new_from_buffer::<Aleo, _>(
         c,

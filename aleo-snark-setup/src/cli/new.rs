@@ -91,7 +91,7 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
         .clone()
         .generate_constraints(&mut counter)
         .expect("could not calculate number of required constraints");
-    let phase2_size = counter.num_aux + counter.num_inputs + counter.num_constraints;
+    let phase2_size = counter.num_constraints;
     let power = log_2(phase2_size) as u32;
 
     // get the nearest power of 2

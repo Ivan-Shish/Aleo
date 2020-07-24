@@ -31,7 +31,9 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
             )
             .unwrap();
         // x * x = x^2
-        cs.enforce(|| "x * x = x^2", |lc| lc + x, |lc| lc + x, |lc| lc + out);
+        for _ in 0..4 {
+            cs.enforce(|| "x * x = x^2", |lc| lc + x, |lc| lc + x, |lc| lc + out);
+        }
 
         // add some dummy constraints to make the circuit a bit bigger
         // we do this so that we can write a failing test for our MPC
@@ -51,7 +53,7 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snarkos_algorithms::groth16::{
+    use snarkos_algorithms::snark::groth16::{
         create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
     };
     use snarkos_curves::bls12_377::Bls12_377;
