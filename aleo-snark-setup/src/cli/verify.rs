@@ -20,6 +20,7 @@ pub struct VerifyOpts {
 pub fn verify(opts: &VerifyOpts) -> Result<()> {
     let before = OpenOptions::new()
         .read(true)
+        .write(true)
         .open(&opts.before)
         .expect("could not read the previous participant's MPC transcript file");
     let mut before = unsafe {
@@ -29,6 +30,7 @@ pub fn verify(opts: &VerifyOpts) -> Result<()> {
     };
     let after = OpenOptions::new()
         .read(true)
+        .write(true)
         .open(&opts.after)
         .expect("could not read the previous participant's MPC transcript file");
     let mut after = unsafe {

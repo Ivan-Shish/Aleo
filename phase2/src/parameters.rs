@@ -9,7 +9,7 @@ use zexe_algebra::{
 use zexe_groth16::{Parameters, VerifyingKey};
 use zexe_r1cs_core::SynthesisError;
 
-use snarkos_algorithms::groth16::KeypairAssembly;
+use snarkos_algorithms::snark::groth16::KeypairAssembly;
 use snarkos_models::{
     curves::{One, PairingEngine as AleoPairingEngine},
     gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
