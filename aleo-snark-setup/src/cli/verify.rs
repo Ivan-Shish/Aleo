@@ -3,7 +3,7 @@ use memmap::MmapOptions;
 use phase2::chunked_groth16::verify as chunked_verify;
 use snark_utils::Result;
 use std::fs::OpenOptions;
-use zexe_algebra::BW6_761;
+use zexe_algebra::{Bls12_377, BW6_761};
 
 // Options for the Contribute command
 #[derive(Debug, Options, Clone)]
@@ -15,6 +15,8 @@ pub struct VerifyOpts {
     pub after: String,
     #[options(help = "the batches which can be loaded in memory", default = "50000")]
     pub batch: usize,
+    #[options(help = "setup the inner or the outer circuit?")]
+    pub is_inner: bool,
 }
 
 pub fn verify(opts: &VerifyOpts) -> Result<()> {
@@ -38,6 +40,10 @@ pub fn verify(opts: &VerifyOpts) -> Result<()> {
             .map_mut(&after)
             .expect("unable to create a memory map for input")
     };
-    chunked_verify::<BW6_761>(&mut before, &mut after, opts.batch)?;
+    if opts.is_inner {
+        chunked_verify::<Bls12_377>(&mut before, &mut after, opts.batch)?;
+    } else {
+        chunked_verify::<BW6_761>(&mut before, &mut after, opts.batch)?;
+    }
     Ok(())
 }

@@ -1,13 +1,14 @@
 use gumdrop::Options;
 
-use zexe_algebra::{Bls12_377, PairingEngine};
+use zexe_algebra::{Bls12_377, BW6_761, PairingEngine};
 
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use snark_utils::{log_2, Groth16Params, UseCompression};
 
 use snarkos_dpc::base_dpc::{
     inner_circuit::InnerCircuit,
-    instantiated::{CommitmentMerkleParameters, Components, InnerPairing, MerkleTreeCRH},
+    outer_circuit::OuterCircuit,
+    instantiated::{CommitmentMerkleParameters, Components, InnerPairing, OuterPairing, MerkleTreeCRH, InstantiatedDPC},
     parameters::CircuitParameters,
 };
 use snarkos_models::{
@@ -21,9 +22,17 @@ use snarkos_utilities::bytes::FromBytes;
 
 use memmap::MmapOptions;
 use std::fs::OpenOptions;
+use snarkos_models::algorithms::SNARK;
+use snarkos_dpc::dpc::base_dpc::predicate_circuit::PredicateCircuit;
+use snarkos_dpc::dpc::base_dpc::predicate::PrivatePredicateInput;
+use snarkos_dpc::dpc::base_dpc::BaseDPCComponents;
+use rand_xorshift::XorShiftRng;
+use rand::SeedableRng;
 
 type AleoInner = InnerPairing;
+type AleoOuter = OuterPairing;
 type ZexeInner = Bls12_377;
+type ZexeOuter = BW6_761;
 
 const COMPRESSION: UseCompression = UseCompression::No;
 
@@ -79,7 +88,38 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         let circuit = InnerCircuit::blank(&circuit_parameters, &merkle_params);
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
-        todo!("How should we load the outer circuit's params?")
+        let rng = &mut XorShiftRng::from_seed([0u8; 16]);
+        let predicate_snark_parameters = InstantiatedDPC::generate_predicate_snark_parameters(&circuit_parameters, rng)?;
+        let predicate_snark_proof = <Components as BaseDPCComponents>::PredicateSNARK::prove(
+            &predicate_snark_parameters.proving_key,
+            PredicateCircuit::<Components>::blank(&circuit_parameters),
+            rng,
+        )?;
+
+        let private_pred_input = PrivatePredicateInput {
+            verification_key: predicate_snark_parameters.verification_key.clone(),
+            proof: predicate_snark_proof,
+        };
+
+        let inner_snark_parameters =
+            <Components as BaseDPCComponents>::InnerSNARK::setup(InnerCircuit::blank(&circuit_parameters, &merkle_params), rng)?;
+
+        let inner_snark_vk: <<Components as BaseDPCComponents>::InnerSNARK as SNARK>::VerificationParameters =
+            inner_snark_parameters.1.clone().into();
+        let inner_snark_proof = <Components as BaseDPCComponents>::InnerSNARK::prove(
+            &inner_snark_parameters.0,
+            InnerCircuit::blank(&circuit_parameters, &merkle_params),
+            rng,
+        )?;
+
+        let circuit = OuterCircuit::blank(
+            &circuit_parameters,
+            &merkle_params,
+            &inner_snark_vk,
+            &inner_snark_proof,
+            &private_pred_input,
+        );
+        generate_params::<AleoOuter, ZexeOuter, _>(opt, circuit)
     }
 }
 

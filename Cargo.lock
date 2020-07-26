@@ -24,6 +24,7 @@ dependencies = [
  "r1cs-core",
  "r1cs-std",
  "rand 0.7.3",
+ "rand_xorshift",
  "snark-utils",
  "snarkos-curves",
  "snarkos-dpc",

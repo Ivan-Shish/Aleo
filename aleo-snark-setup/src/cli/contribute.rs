@@ -4,7 +4,7 @@ use phase2::{chunked_groth16::contribute as chunked_contribute, keypair::PublicK
 use rand::Rng;
 use snark_utils::Result;
 use std::fs::OpenOptions;
-use zexe_algebra::BW6_761;
+use zexe_algebra::{Bls12_377, BW6_761};
 
 #[derive(Debug, Options, Clone)]
 pub struct ContributeOpts {
@@ -21,6 +21,9 @@ pub struct ContributeOpts {
         default = "0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620"
     )]
     pub beacon_hash: String,
+
+    #[options(help = "setup the inner or the outer circuit?")]
+    pub is_inner: bool,
 }
 
 pub fn contribute<R: Rng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
@@ -31,14 +34,22 @@ pub fn contribute<R: Rng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
         .expect("could not open file for writing the new MPC parameters ");
     let metadata = file.metadata()?;
     // extend the file by 1 pubkey
-    file.set_len(metadata.len() + PublicKey::<BW6_761>::size() as u64)?;
+    if opts.is_inner {
+        file.set_len(metadata.len() + PublicKey::<Bls12_377>::size() as u64)?;
+    } else {
+        file.set_len(metadata.len() + PublicKey::<BW6_761>::size() as u64)?;
+    }
     let mut file = unsafe {
         MmapOptions::new()
             .map_mut(&file)
             .expect("unable to create a memory map for input")
     };
 
-    chunked_contribute::<BW6_761, _>(&mut file, rng, opts.batch)?;
+    if opts.is_inner {
+        chunked_contribute::<Bls12_377, _>(&mut file, rng, opts.batch)?;
+    } else {
+        chunked_contribute::<BW6_761, _>(&mut file, rng, opts.batch)?;
+    }
 
     Ok(())
 }
