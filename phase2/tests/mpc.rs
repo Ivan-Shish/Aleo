@@ -49,7 +49,7 @@ where
     // perform the MPC on only the amount of constraints required for the circuit
     let mut counter = ConstraintCounter::new();
     c.clone().generate_constraints(&mut counter).unwrap();
-    let phase2_size = counter.num_constraints;
+    let phase2_size = std::cmp::max(counter.num_constraints, counter.num_aux + counter.num_inputs + 1);
 
     let mut mpc = MPCParameters::<E>::new_from_buffer::<Aleo, _>(
         c,
