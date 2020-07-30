@@ -4,8 +4,7 @@ use powersoftau::{
     BatchedAccumulator,
 };
 use rand::thread_rng;
-use snark_utils::UseCompression;
-use snark_utils::*;
+use snark_utils::{UseCompression, *};
 use zexe_algebra::PairingEngine;
 
 // helper for testing verification of a transformation
@@ -22,8 +21,7 @@ pub fn setup_verify<E: PairingEngine>(
     // Construct our keypair
     let current_accumulator_hash = blank_hash();
     let mut rng = thread_rng();
-    let (pubkey, privkey) =
-        keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+    let (pubkey, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
     // transform the accumulator
     BatchedAccumulator::contribute(
@@ -57,10 +55,7 @@ pub fn generate_input<E: PairingEngine>(
 }
 
 /// helper to initialize an empty output accumulator, to be used for contributions
-pub fn generate_output<E: PairingEngine>(
-    parameters: &CeremonyParams<E>,
-    compressed: UseCompression,
-) -> Vec<u8> {
+pub fn generate_output<E: PairingEngine>(parameters: &CeremonyParams<E>, compressed: UseCompression) -> Vec<u8> {
     let expected_response_length = parameters.get_length(compressed);
     vec![0; expected_response_length]
 }

@@ -34,8 +34,7 @@ fn main() {
         }
         Command::Beacon(ref opt) => {
             // use the beacon's randomness
-            let beacon_hash =
-                hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
+            let beacon_hash = hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
             let mut rng = get_rng(&beacon_randomness(from_slice(&beacon_hash)));
             contribute(&opt, &mut rng).unwrap()
         }
