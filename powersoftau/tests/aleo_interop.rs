@@ -9,7 +9,7 @@ use zexe_algebra::{Bls12_377 as ZexeBls12_377, BW6_761 as ZexeBW6, PairingEngine
 #[test]
 fn interop_test() {
     aleo_interoperable_powersoftau::<AleoBls12_377, ZexeBls12_377>().unwrap();
-    aleo_interoperable_powersoftau::<AleoBW6, ZexeBW6>();
+    aleo_interoperable_powersoftau::<AleoBW6, ZexeBW6>().unwrap();
 }
 
 fn aleo_interoperable_powersoftau<Aleo: AleoPairingEngine, Zexe: PairingEngine>(
