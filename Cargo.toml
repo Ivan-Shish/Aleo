@@ -1,3 +1,17 @@
+[package]
+name = "snark-setup"
+version = "0.1.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+edition = "2018"
+
+[[bin]]
+name = "powersoftau"
+path = "./powersoftau/bin/powersoftau.rs"
+
+[[bin]]
+name = "prepare_phase2"
+path = "./powersoftau/bin/prepare_phase2.rs"
+
 [workspace]
 members = [
     "./aleo-snark-setup",
@@ -7,3 +21,26 @@ members = [
     "./test-helpers",
 ]
 
+[dev-dependencies]
+rusty-hook = { version = "0.11.2" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+incremental = true
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = "thin"
+incremental = true
+debug-assertions = false
+
+[profile.dev]
+opt-level = 0
+
+[profile.test]
+opt-level = 0
+debug-assertions = true
+debug = true
