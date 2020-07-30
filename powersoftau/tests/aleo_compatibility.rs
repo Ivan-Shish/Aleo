@@ -1,20 +1,25 @@
-use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
+use powersoftau::parameters::CeremonyParams;
 use snark_utils::UseCompression;
 use test_helpers::setup_verify;
 
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
 use snarkos_models::curves::PairingEngine as AleoPairingEngine;
-use snarkos_utilities::{ToBytes as AleoToBytes, serialize::CanonicalDeserialize as AleoCanonicalDeserialize};
+use snarkos_utilities::{serialize::CanonicalDeserialize as AleoCanonicalDeserialize, ToBytes as AleoToBytes};
 
-use zexe_algebra::{Bls12_377 as ZexeBls12_377, BW6_761 as ZexeBW6, PairingEngine as ZexePairingEngine, ToBytes as ZexeToBytes};
+use zexe_algebra::{
+    Bls12_377 as ZexeBls12_377,
+    PairingEngine as ZexePairingEngine,
+    ToBytes as ZexeToBytes,
+    BW6_761 as ZexeBW6,
+};
 use zexe_algebra_core::serialize::CanonicalDeserialize as ZexeCanonicalDeserialize;
 
 fn assert_eq_g1_affine<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>(a: &Aleo::G1Affine, b: &Zexe::G1Affine) {
     let mut a_vec = vec![];
-    a.write(&mut a_vec);
+    a.write(&mut a_vec).unwrap();
 
     let mut b_vec = vec![];
-    b.write(&mut b_vec);
+    b.write(&mut b_vec).unwrap();
 
     assert_eq!(a_vec.len(), b_vec.len());
     for (a_byte, b_byte) in a_vec.iter().zip(b_vec.iter()) {
@@ -24,10 +29,10 @@ fn assert_eq_g1_affine<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>(a: &Ale
 
 fn assert_eq_g2_affine<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>(a: &Aleo::G2Affine, b: &Zexe::G2Affine) {
     let mut a_vec = vec![];
-    a.write(&mut a_vec);
+    a.write(&mut a_vec).unwrap();
 
     let mut b_vec = vec![];
-    b.write(&mut b_vec);
+    b.write(&mut b_vec).unwrap();
 
     assert_eq!(a_vec.len(), b_vec.len());
     for (a_byte, b_byte) in a_vec.iter().zip(b_vec.iter()) {
@@ -107,10 +112,10 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
 
 #[test]
 fn test_aleo_zexe_bls12_377_compatibility() {
-    compatible_powersoftau::<AleoBls12_377, ZexeBls12_377>();
+    compatible_powersoftau::<AleoBls12_377, ZexeBls12_377>().unwrap();
 }
 
 #[test]
 fn test_aleo_zexe_bw6_761_compatibility() {
-    compatible_powersoftau::<AleoBW6, ZexeBW6>();
+    compatible_powersoftau::<AleoBW6, ZexeBW6>().unwrap();
 }

@@ -116,18 +116,12 @@ pub fn transform<T: Engine + Sync>(
     print_hash(&response_hash);
 
     // get the contributor's public key
-    let public_key = PublicKey::read(
-        &response_readable_map,
-        CONTRIBUTION_IS_COMPRESSED,
-        &parameters,
-    )
-    .expect("wasn't able to deserialize the response file's public key");
+    let public_key = PublicKey::read(&response_readable_map, CONTRIBUTION_IS_COMPRESSED, &parameters)
+        .expect("wasn't able to deserialize the response file's public key");
 
     // check that it follows the protocol
 
-    println!(
-        "Verifying a contribution to contain proper powers and correspond to the public key..."
-    );
+    println!("Verifying a contribution to contain proper powers and correspond to the public key...");
 
     let res = BatchedAccumulator::verify_transformation(
         &challenge_readable_map,
@@ -149,9 +143,7 @@ pub fn transform<T: Engine + Sync>(
     }
 
     if COMPRESS_NEW_CHALLENGE == UseCompression::Yes {
-        println!(
-            "Don't need to recompress the contribution, please copy response file as new challenge"
-        );
+        println!("Don't need to recompress the contribution, please copy response file as new challenge");
     } else {
         println!("Verification succeeded! Writing to new challenge file...");
 
@@ -194,9 +186,7 @@ pub fn transform<T: Engine + Sync>(
 
         writable_map.flush().expect("must flush the memory map");
 
-        let new_challenge_readable_map = writable_map
-            .make_read_only()
-            .expect("must make a map readonly");
+        let new_challenge_readable_map = writable_map.make_read_only().expect("must make a map readonly");
 
         let recompressed_hash = calculate_hash(&new_challenge_readable_map);
 

@@ -1,12 +1,11 @@
 use gumdrop::Options;
-use powersoftau::cli_common::{
-    contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts,
+use powersoftau::{
+    cli_common::{contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts},
+    parameters::CeremonyParams,
 };
-use powersoftau::parameters::CeremonyParams;
 use snark_utils::{beacon_randomness, get_rng, user_system_randomness};
 
-use std::process;
-use std::time::Instant;
+use std::{process, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
@@ -54,8 +53,7 @@ fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
         Command::Beacon(opt) => {
             // use the beacon's randomness
             // Place block hash here (block number #564321)
-            let beacon_hash: [u8; 32] =
-                hex!("0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620");
+            let beacon_hash: [u8; 32] = hex!("0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620");
             let rng = get_rng(&beacon_randomness(beacon_hash));
             contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
         }
@@ -71,9 +69,5 @@ fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
     };
 
     let new_now = Instant::now();
-    println!(
-        "Executing {:?} took: {:?}",
-        opts,
-        new_now.duration_since(now)
-    );
+    println!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
 }

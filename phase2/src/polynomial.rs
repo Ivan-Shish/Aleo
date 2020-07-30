@@ -30,12 +30,7 @@ pub fn eval<E: PairingEngine>(
     let a_g1 = dot_product_vec(at, coeffs_g1, num_inputs);
     let b_g1 = dot_product_vec(bt, coeffs_g1, num_inputs);
     let b_g2 = dot_product_vec(bt, coeffs_g2, num_inputs);
-    let ext = dot_product_ext::<E>(
-        (at, beta_coeffs_g1),
-        (bt, alpha_coeffs_g1),
-        (ct, coeffs_g1),
-        num_inputs,
-    );
+    let ext = dot_product_ext::<E>((at, beta_coeffs_g1), (bt, alpha_coeffs_g1), (ct, coeffs_g1), num_inputs);
 
     // break to `gamma_abc_g1` and `l` coeffs
     let (gamma_abc_g1, l) = ext.split_at(num_inputs);
@@ -92,11 +87,7 @@ fn dot_product_vec<C: AffineCurve>(
 /// If the Index of the input is an Auxiliary index it uses the
 /// `coeffs` vector offset by `num_inputs`
 #[allow(clippy::redundant_closure)]
-fn dot_product<C: AffineCurve>(
-    input: &[(C::ScalarField, Index)],
-    coeffs: &[C],
-    num_inputs: usize,
-) -> C::Projective {
+fn dot_product<C: AffineCurve>(input: &[(C::ScalarField, Index)], coeffs: &[C], num_inputs: usize) -> C::Projective {
     input
         .into_par_iter()
         .fold(

@@ -1,8 +1,7 @@
 /// Utilities to read/write and convert the Powers of Tau from Phase 1
 /// to Phase 2-compatible Lagrange Coefficients.
 use crate::{buffer_size, Deserializer, Result, Serializer, UseCompression};
-use std::fmt::Debug;
-use std::io::Write;
+use std::{fmt::Debug, io::Write};
 use tracing::{debug, info, info_span};
 use zexe_algebra::{AffineCurve, PairingEngine, PrimeField, ProjectiveCurve};
 use zexe_fft::domain::{radix2::Radix2EvaluationDomain, EvaluationDomain};
@@ -46,12 +45,7 @@ where
     C: AffineCurve,
     C::Projective: std::ops::MulAssign<F>,
 {
-    let mut coeffs = domain.ifft(
-        &coeffs
-            .iter()
-            .map(|e| e.into_projective())
-            .collect::<Vec<_>>(),
-    );
+    let mut coeffs = domain.ifft(&coeffs.iter().map(|e| e.into_projective()).collect::<Vec<_>>());
     C::Projective::batch_normalization(&mut coeffs);
     cfg_iter!(coeffs).map(|p| p.into_affine()).collect()
 }
@@ -85,8 +79,7 @@ impl<E: PairingEngine> Groth16Params<E> {
         let _enter = span.enter();
 
         // Create the evaluation domain
-        let domain =
-            Radix2EvaluationDomain::<E::Fr>::new(phase2_size).expect("could not create domain");
+        let domain = Radix2EvaluationDomain::<E::Fr>::new(phase2_size).expect("could not create domain");
 
         info!("converting powers of tau to lagrange coefficients");
 
@@ -94,10 +87,8 @@ impl<E: PairingEngine> Groth16Params<E> {
             // Convert the accumulated powers to Lagrange coefficients
             let coeffs_g1 = s.spawn(|_| to_coeffs(&domain, &tau_powers_g1[0..phase2_size]));
             let coeffs_g2 = s.spawn(|_| to_coeffs(&domain, &tau_powers_g2[0..phase2_size]));
-            let alpha_coeffs_g1 =
-                s.spawn(|_| to_coeffs(&domain, &alpha_tau_powers_g1[0..phase2_size]));
-            let beta_coeffs_g1 =
-                s.spawn(|_| to_coeffs(&domain, &beta_tau_powers_g1[0..phase2_size]));
+            let alpha_coeffs_g1 = s.spawn(|_| to_coeffs(&domain, &alpha_tau_powers_g1[0..phase2_size]));
+            let beta_coeffs_g1 = s.spawn(|_| to_coeffs(&domain, &beta_tau_powers_g1[0..phase2_size]));
             // Calculate the query for the Groth16 proving system
             let h_g1 = s.spawn(|_| h_query_groth16(&tau_powers_g1, phase2_size));
 
@@ -195,10 +186,8 @@ impl<E: PairingEngine> Groth16Params<E> {
         Ok(crossbeam::scope(|s| -> Result<_> {
             let coeffs_g1 = s.spawn(|_| in_coeffs_g1.read_batch::<E::G1Affine>(compressed));
             let coeffs_g2 = s.spawn(|_| in_coeffs_g2.read_batch::<E::G2Affine>(compressed));
-            let alpha_coeffs_g1 =
-                s.spawn(|_| in_alpha_coeffs_g1.read_batch::<E::G1Affine>(compressed));
-            let beta_coeffs_g1 =
-                s.spawn(|_| in_beta_coeffs_g1.read_batch::<E::G1Affine>(compressed));
+            let alpha_coeffs_g1 = s.spawn(|_| in_alpha_coeffs_g1.read_batch::<E::G1Affine>(compressed));
+            let beta_coeffs_g1 = s.spawn(|_| in_beta_coeffs_g1.read_batch::<E::G1Affine>(compressed));
             let h_g1 = s.spawn(|_| in_h_g1.read_batch::<E::G1Affine>(compressed));
 
             let coeffs_g1 = coeffs_g1.join()??;
@@ -259,13 +248,7 @@ fn split_transcript<E: PairingEngine>(
     // N-1 for the h coeffs
     let (h_coeffs, _) = others.split_at(g1_size * (size - 1));
 
-    (
-        coeffs_g1,
-        coeffs_g2,
-        alpha_coeffs_g1,
-        beta_coeffs_g1,
-        h_coeffs,
-    )
+    (coeffs_g1, coeffs_g2, alpha_coeffs_g1, beta_coeffs_g1, h_coeffs)
 }
 
 #[cfg(test)]
@@ -304,11 +287,7 @@ mod tests {
         read_write_curve::<Bls12_377>(3, 9, UseCompression::No);
     }
 
-    fn read_write_curve<E: PairingEngine>(
-        powers: usize,
-        prepared_phase1_size: usize,
-        compressed: UseCompression,
-    ) {
+    fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
         let batch = 2;
         let params = CeremonyParams::<E>::new(powers, batch);
         let (_, output, _, _) = setup_verify(compressed, compressed, &params);
@@ -345,14 +324,8 @@ mod tests {
             subset, // phase2 size is smaller than the prepared phase1 size
         )
         .unwrap();
-        assert_eq!(
-            &deserialized_subset.coeffs_g1[..],
-            &groth_params.coeffs_g1[..subset]
-        );
-        assert_eq!(
-            &deserialized_subset.coeffs_g2[..],
-            &groth_params.coeffs_g2[..subset]
-        );
+        assert_eq!(&deserialized_subset.coeffs_g1[..], &groth_params.coeffs_g1[..subset]);
+        assert_eq!(&deserialized_subset.coeffs_g2[..], &groth_params.coeffs_g2[..subset]);
         assert_eq!(
             &deserialized_subset.alpha_coeffs_g1[..],
             &groth_params.alpha_coeffs_g1[..subset]
@@ -361,10 +334,7 @@ mod tests {
             &deserialized_subset.beta_coeffs_g1[..],
             &groth_params.beta_coeffs_g1[..subset]
         );
-        assert_eq!(
-            &deserialized_subset.h_g1[..],
-            &groth_params.h_g1[..subset - 1]
-        ); // h_query is 1 less element
+        assert_eq!(&deserialized_subset.h_g1[..], &groth_params.h_g1[..subset - 1]); // h_query is 1 less element
     }
 
     // helper

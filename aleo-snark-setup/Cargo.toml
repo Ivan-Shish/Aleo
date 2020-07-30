@@ -30,5 +30,27 @@ hex-literal = { version = "0.1.4" }
 memmap = { version = "0.7.0" }
 rand = { version = "0.7.3" }
 rand_xorshift = { version = "0.2.0" }
+rusty-hook = { version = "0.11.2" }
 thiserror = { version = "1.0.11" }
 tracing-subscriber = { version = "0.2.3" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+incremental = true
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = "thin"
+incremental = true
+debug-assertions = false
+
+[profile.dev]
+opt-level = 0
+
+[profile.test]
+opt-level = 0
+debug-assertions = true
+debug = true

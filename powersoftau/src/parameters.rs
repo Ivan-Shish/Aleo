@@ -51,9 +51,7 @@ impl<E> CurveParams<E> {
 
     pub fn get_size(&self, element_type: ElementType, compression: UseCompression) -> usize {
         match element_type {
-            ElementType::AlphaG1 | ElementType::BetaG1 | ElementType::TauG1 => {
-                self.g1_size(compression)
-            }
+            ElementType::AlphaG1 | ElementType::BetaG1 | ElementType::TauG1 => self.g1_size(compression),
             ElementType::BetaG2 | ElementType::TauG2 => self.g2_size(compression),
         }
     }
@@ -175,12 +173,7 @@ mod tests {
         curve_params_test::<BW6_761>(192, 192, 96, 96);
     }
 
-    fn curve_params_test<E: PairingEngine>(
-        g1: usize,
-        g2: usize,
-        g1_compressed: usize,
-        g2_compressed: usize,
-    ) {
+    fn curve_params_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
         let p = CurveParams::<E>::new();
         assert_eq!(p.g1, g1);
         assert_eq!(p.g2, g2);
