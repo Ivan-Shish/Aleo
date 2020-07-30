@@ -5,10 +5,16 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::Rng;
 use snark_utils::{hash_to_g2, Deserializer, HashWriter, Result, Serializer, UseCompression};
-use std::fmt;
-use std::io::{self, Read, Write};
+use std::{
+    fmt,
+    io::{self, Read, Write},
+};
 use zexe_algebra::{
-    AffineCurve, CanonicalSerialize, ConstantSerializedSize, PairingEngine, ProjectiveCurve,
+    AffineCurve,
+    CanonicalSerialize,
+    ConstantSerializedSize,
+    PairingEngine,
+    ProjectiveCurve,
     UniformRand,
 };
 
@@ -117,12 +123,7 @@ impl<E: PairingEngine> Keypair<E> {
     /// Compute a keypair, given the current parameters. Keypairs
     /// cannot be reused for multiple contributions or contributions
     /// in different parameters.
-    pub fn new(
-        delta_g1: E::G1Affine,
-        cs_hash: [u8; 64],
-        contributions: &[PublicKey<E>],
-        rng: &mut impl Rng,
-    ) -> Self {
+    pub fn new(delta_g1: E::G1Affine, cs_hash: [u8; 64], contributions: &[PublicKey<E>], rng: &mut impl Rng) -> Self {
         // Sample random delta -- THIS MUST BE DESTROYED
         let delta: E::Fr = E::Fr::rand(rng);
         let delta_after = delta_g1.mul(delta).into_affine();
@@ -181,7 +182,15 @@ pub fn hash_cs_pubkeys<E: PairingEngine>(
 
 impl<E: PairingEngine> fmt::Debug for PublicKey<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "PublicKey {{ delta_after: {}, s: {:?}, s_delta: {:?} r_delta: {:?}, transcript : {:?}}}", self.delta_after, self.s, self.s_delta, self.r_delta, &self.transcript[..])
+        write!(
+            f,
+            "PublicKey {{ delta_after: {}, s: {:?}, s_delta: {:?} r_delta: {:?}, transcript : {:?}}}",
+            self.delta_after,
+            self.s,
+            self.s_delta,
+            self.r_delta,
+            &self.transcript[..]
+        )
     }
 }
 

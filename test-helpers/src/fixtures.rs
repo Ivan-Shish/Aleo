@@ -9,10 +9,7 @@ use snarkos_models::{
 #[derive(Clone, Debug)]
 pub struct TestCircuit<E: PairingEngine>(pub Option<E::Fr>);
 impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
-    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(
-        self,
-        cs: &mut CS,
-    ) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(self, cs: &mut CS) -> std::result::Result<(), SynthesisError> {
         // allocate a private input `x`
         // this can be made public with `alloc_input`, which would then require
         // that the verifier provides it
@@ -23,11 +20,7 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
         let out = cs
             .alloc_input(
                 || "square",
-                || {
-                    self.0
-                        .map(|x| x.square())
-                        .ok_or(SynthesisError::AssignmentMissing)
-                },
+                || self.0.map(|x| x.square()).ok_or(SynthesisError::AssignmentMissing),
             )
             .unwrap();
         // x * x = x^2
@@ -40,11 +33,8 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
         // where the params are smaller than the circuit size
         // (7 in this case, since we allocated 3 constraints, plus 4 below)
         for _ in 0..4 {
-            cs.alloc(
-                || "dummy",
-                || self.0.ok_or(SynthesisError::AssignmentMissing),
-            )
-            .unwrap();
+            cs.alloc(|| "dummy", || self.0.ok_or(SynthesisError::AssignmentMissing))
+                .unwrap();
         }
         Ok(())
     }
@@ -54,7 +44,10 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
 mod tests {
     use super::*;
     use snarkos_algorithms::snark::groth16::{
-        create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
+        create_random_proof,
+        generate_random_parameters,
+        prepare_verifying_key,
+        verify_proof,
     };
     use snarkos_curves::bls12_377::Bls12_377;
 

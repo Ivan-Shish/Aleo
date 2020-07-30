@@ -3,19 +3,29 @@ use crate::{
     Result,
 };
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
-use crypto::digest::Digest as CryptoDigest;
-use crypto::sha2::Sha256;
+use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
 use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use std::convert::TryInto;
-use std::io::{self, Write};
-use std::ops::{AddAssign, Mul};
+use std::{
+    convert::TryInto,
+    io::{self, Write},
+    ops::{AddAssign, Mul},
+};
 
 use std::sync::Arc;
 use typenum::consts::U64;
 use zexe_algebra::{
-    AffineCurve, BigInteger, CanonicalSerialize, ConstantSerializedSize, Field, One, PairingEngine,
-    PrimeField, ProjectiveCurve, UniformRand, Zero,
+    AffineCurve,
+    BigInteger,
+    CanonicalSerialize,
+    ConstantSerializedSize,
+    Field,
+    One,
+    PairingEngine,
+    PrimeField,
+    ProjectiveCurve,
+    UniformRand,
+    Zero,
 };
 
 #[cfg(feature = "parallel")]
@@ -24,11 +34,7 @@ use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
 
 /// Generate the powers by raising the key's `tau` to all powers
 /// belonging to this chunk
-pub fn generate_powers_of_tau<E: PairingEngine>(
-    tau: &E::Fr,
-    start: usize,
-    end: usize,
-) -> Vec<E::Fr> {
+pub fn generate_powers_of_tau<E: PairingEngine>(tau: &E::Fr, start: usize, end: usize) -> Vec<E::Fr> {
     // Uh no better way to do this, this should never fail
     let start: u64 = start.try_into().expect("could not convert to u64");
     let end: u64 = end.try_into().expect("could not convert to u64");
@@ -80,11 +86,7 @@ pub fn batch_exp<C: AffineCurve>(
         .map(|(base, exp)| {
             // If a coefficient was provided, multiply the exponent
             // by that coefficient
-            let exp = if let Some(coeff) = coeff {
-                exp.mul(coeff)
-            } else {
-                *exp
-            };
+            let exp = if let Some(coeff) = coeff { exp.mul(coeff) } else { *exp };
 
             // Raise the base to the exponent (additive notation so it is executed
             // via a multiplication)
@@ -264,21 +266,21 @@ mod tests {
     fn test_hash_to_g2_curve<E: PairingEngine>() {
         assert!(
             hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30, 31, 32, 33
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32, 33
             ]) == hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30, 31, 32, 34
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32, 34
             ])
         );
 
         assert!(
             hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30, 31, 32
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32
             ]) != hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30, 31, 33
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 33
             ])
         );
     }
@@ -330,9 +332,8 @@ pub fn merge_pairs<G: AffineCurve>(v1: &[G], v2: &[G]) -> (G, G) {
     assert_eq!(v1.len(), v2.len());
     let rng = &mut thread_rng();
 
-    let randomness: Vec<<G::ScalarField as PrimeField>::BigInt> = (0..v1.len())
-        .map(|_| G::ScalarField::rand(rng).into_repr())
-        .collect();
+    let randomness: Vec<<G::ScalarField as PrimeField>::BigInt> =
+        (0..v1.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect();
 
     let s = dense_multiexp(&v1, &randomness[..]).into_affine();
     let sx = dense_multiexp(&v2, &randomness[..]).into_affine();
@@ -360,10 +361,7 @@ pub fn reduced_hash(old_power: u8, new_power: u8) -> GenericArray<u8, U64> {
 /// Checks if pairs have the same ratio.
 /// Under the hood uses pairing to check
 /// x1/x2 = y1/y2 => x1*y2 = x2*y1
-pub fn same_ratio<E: PairingEngine>(
-    g1: &(E::G1Affine, E::G1Affine),
-    g2: &(E::G2Affine, E::G2Affine),
-) -> bool {
+pub fn same_ratio<E: PairingEngine>(g1: &(E::G1Affine, E::G1Affine), g2: &(E::G2Affine, E::G2Affine)) -> bool {
     E::pairing(g1.0, g2.1) == E::pairing(g1.1, g2.0)
 }
 

@@ -4,18 +4,19 @@ use snark_utils::{batch_exp, dense_multiexp, generate_powers_of_tau};
 use std::ops::MulAssign;
 use zexe_algebra::{
     bls12_377::{Bls12_377, G1Affine},
-    AffineCurve, Field, PairingEngine, PrimeField, UniformRand, Zero,
+    AffineCurve,
+    Field,
+    PairingEngine,
+    PrimeField,
+    UniformRand,
+    Zero,
 };
 
 use test_helpers::random_point_vec;
 
 // This was the previous implementation using chunks, we keep it here to compare performance
 // against the Rayon implementation
-pub fn generate_powers_of_tau_crossbeam<E: PairingEngine>(
-    tau: &E::Fr,
-    start: usize,
-    size: usize,
-) -> Vec<E::Fr> {
+pub fn generate_powers_of_tau_crossbeam<E: PairingEngine>(tau: &E::Fr, start: usize, size: usize) -> Vec<E::Fr> {
     // Construct the powers of tau
     let mut taupowers = vec![E::Fr::zero(); size];
     let chunk_size = size / num_cpus::get();
@@ -83,25 +84,13 @@ fn multiexp_benchmark(c: &mut Criterion) {
         let v1: Vec<G1Affine> = random_point_vec(len as usize, &mut rng);
         let randomness = randomness(&v1, &mut rng);
 
-        group.bench_with_input("dense", &len, |b, _len| {
-            b.iter(|| dense_multiexp(&v1, &randomness))
-        });
+        group.bench_with_input("dense", &len, |b, _len| b.iter(|| dense_multiexp(&v1, &randomness)));
     }
 }
 
-fn randomness<G: AffineCurve>(
-    v: &[G],
-    rng: &mut impl Rng,
-) -> Vec<<G::ScalarField as PrimeField>::BigInt> {
-    (0..v.len())
-        .map(|_| G::ScalarField::rand(rng).into_repr())
-        .collect()
+fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInt> {
+    (0..v.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect()
 }
 
-criterion_group!(
-    benches,
-    powersoftau_benchmark,
-    batchexp_benchmark,
-    multiexp_benchmark
-);
+criterion_group!(benches, powersoftau_benchmark, batchexp_benchmark, multiexp_benchmark);
 criterion_main!(benches);
