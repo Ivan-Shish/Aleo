@@ -1,7 +1,12 @@
 use rand::Rng;
 use zexe_algebra::{
-    AffineCurve, CanonicalDeserialize, CanonicalSerialize, PairingEngine, ProjectiveCurve,
-    SerializationError, UniformRand,
+    AffineCurve,
+    CanonicalDeserialize,
+    CanonicalSerialize,
+    PairingEngine,
+    ProjectiveCurve,
+    SerializationError,
+    UniformRand,
 };
 
 use super::parameters::CeremonyParams;
@@ -48,10 +53,7 @@ pub struct PrivateKey<E: PairingEngine> {
 }
 
 /// Constructs a keypair given an RNG and a 64-byte transcript `digest`.
-pub fn keypair<E: PairingEngine, R: Rng>(
-    rng: &mut R,
-    digest: &[u8],
-) -> Result<(PublicKey<E>, PrivateKey<E>), Error> {
+pub fn keypair<E: PairingEngine, R: Rng>(rng: &mut R, digest: &[u8]) -> Result<(PublicKey<E>, PrivateKey<E>), Error> {
     if digest.len() != 64 {
         return Err(Error::InvalidLength {
             expected: 64,

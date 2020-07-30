@@ -20,13 +20,9 @@ use tracing_subscriber::{
 #[derive(Debug, Options, Clone)]
 struct PreparePhase2Opts {
     help: bool,
-    #[options(
-        help = "the file which will contain the FFT coefficients processed for Phase 2 of the setup"
-    )]
+    #[options(help = "the file which will contain the FFT coefficients processed for Phase 2 of the setup")]
     phase2_fname: String,
-    #[options(
-        help = "the response file which will be processed for the specialization (phase 2) of the setup"
-    )]
+    #[options(help = "the response file which will be processed for the specialization (phase 2) of the setup")]
     response_fname: String,
     #[options(
         help = "the elliptic curve to use",
@@ -61,11 +57,7 @@ fn main() -> Result<()> {
     }
 
     let new_now = Instant::now();
-    println!(
-        "Executing {:?} took: {:?}",
-        opts,
-        new_now.duration_since(now)
-    );
+    println!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
 
     Ok(())
 }
@@ -92,9 +84,8 @@ fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<(
         .expect("unable to create parameter file in this directory");
 
     // Deserialize the accumulator
-    let current_accumulator =
-        BatchedAccumulator::deserialize(&response_readable_map, UseCompression::Yes, &parameters)
-            .expect("unable to read uncompressed accumulator");
+    let current_accumulator = BatchedAccumulator::deserialize(&response_readable_map, UseCompression::Yes, &parameters)
+        .expect("unable to read uncompressed accumulator");
 
     // Load the elements to the Groth16 utility
     let groth16_params = Groth16Params::<E>::new(

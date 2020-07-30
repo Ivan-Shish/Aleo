@@ -1,15 +1,22 @@
 use snark_utils::*;
-use std::fmt;
-use std::io::{self, Read, Write};
+use std::{
+    fmt,
+    io::{self, Read, Write},
+};
 
 use zexe_algebra::{
-    AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, PairingEngine, ProjectiveCurve,
+    AffineCurve,
+    CanonicalDeserialize,
+    CanonicalSerialize,
+    Field,
+    PairingEngine,
+    ProjectiveCurve,
     Zero,
 };
 use zexe_groth16::{Parameters, VerifyingKey};
 use zexe_r1cs_core::SynthesisError;
 
-use snarkos_algorithms::groth16::KeypairAssembly;
+use snarkos_algorithms::snark::groth16::KeypairAssembly;
 use snarkos_models::{
     curves::{One, PairingEngine as AleoPairingEngine},
     gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
@@ -18,8 +25,10 @@ use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
 
 use rand::Rng;
 
-use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
-use super::polynomial::eval;
+use super::{
+    keypair::{hash_cs_pubkeys, Keypair, PublicKey},
+    polynomial::eval,
+};
 
 /// MPC parameters are just like Zexe's `Parameters` except, when serialized,
 /// they contain a transcript of contributions at the end, which can be verified.
@@ -70,10 +79,7 @@ impl<E: PairingEngine> MPCParameters<E> {
     /// Create new Groth16 parameters (compatible with Zexe and snarkOS) for a
     /// given QAP which has been produced from a circuit. The resulting parameters
     /// are unsafe to use until there are contributions (see `contribute()`).
-    pub fn new(
-        assembly: zexe_groth16::KeypairAssembly<E>,
-        params: Groth16Params<E>,
-    ) -> Result<MPCParameters<E>> {
+    pub fn new(assembly: zexe_groth16::KeypairAssembly<E>, params: Groth16Params<E>) -> Result<MPCParameters<E>> {
         // Evaluate the QAP against the coefficients created from phase 1
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
             // Lagrange coeffs for Tau, read in from Phase 1
@@ -177,18 +183,11 @@ impl<E: PairingEngine> MPCParameters<E> {
             return Err(Phase2Error::NoContributions.into());
         };
         // Current parameters should have consistent delta in G1
-        ensure_unchanged(
-            pubkey.delta_after,
-            after.params.delta_g1,
-            InvariantKind::DeltaG1,
-        )?;
+        ensure_unchanged(pubkey.delta_after, after.params.delta_g1, InvariantKind::DeltaG1)?;
         // Current parameters should have consistent delta in G2
         check_same_ratio::<E>(
             &(E::G1Affine::prime_subgroup_generator(), pubkey.delta_after),
-            &(
-                E::G2Affine::prime_subgroup_generator(),
-                after.params.vk.delta_g2,
-            ),
+            &(E::G2Affine::prime_subgroup_generator(), after.params.vk.delta_g2),
             "Inconsistent G2 Delta",
         )?;
 
@@ -200,11 +199,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         )?;
 
         // cs_hash should be the same
-        ensure_unchanged(
-            &before.cs_hash[..],
-            &after.cs_hash[..],
-            InvariantKind::CsHash,
-        )?;
+        ensure_unchanged(&before.cs_hash[..], &after.cs_hash[..], InvariantKind::CsHash)?;
 
         // H/L will change, but should have same length
         ensure_same_length(&before.params.h_query, &after.params.h_query)?;
@@ -216,16 +211,8 @@ impl<E: PairingEngine> MPCParameters<E> {
             after.params.vk.alpha_g1,
             InvariantKind::AlphaG1,
         )?;
-        ensure_unchanged(
-            before.params.beta_g1,
-            after.params.beta_g1,
-            InvariantKind::BetaG1,
-        )?;
-        ensure_unchanged(
-            before.params.vk.beta_g2,
-            after.params.vk.beta_g2,
-            InvariantKind::BetaG2,
-        )?;
+        ensure_unchanged(before.params.beta_g1, after.params.beta_g1, InvariantKind::BetaG1)?;
+        ensure_unchanged(before.params.vk.beta_g2, after.params.vk.beta_g2, InvariantKind::BetaG2)?;
         ensure_unchanged(
             before.params.vk.gamma_g2,
             after.params.vk.gamma_g2,
@@ -329,11 +316,7 @@ pub fn ensure_same_length<T, U>(a: &[T], b: &[U]) -> Result<()> {
     Ok(())
 }
 
-pub fn ensure_unchanged_vec<T: PartialEq>(
-    before: &[T],
-    after: &[T],
-    kind: &InvariantKind,
-) -> Result<()> {
+pub fn ensure_unchanged_vec<T: PartialEq>(before: &[T], after: &[T], kind: &InvariantKind) -> Result<()> {
     if before.len() != after.len() {
         return Err(Phase2Error::InvalidLength.into());
     }
@@ -351,19 +334,12 @@ pub fn ensure_unchanged<T: PartialEq>(before: T, after: T, kind: InvariantKind) 
     Ok(())
 }
 
-pub fn verify_transcript<E: PairingEngine>(
-    cs_hash: [u8; 64],
-    contributions: &[PublicKey<E>],
-) -> Result<Vec<[u8; 64]>> {
+pub fn verify_transcript<E: PairingEngine>(cs_hash: [u8; 64], contributions: &[PublicKey<E>]) -> Result<Vec<[u8; 64]>> {
     let mut result = vec![];
     let mut old_delta = E::G1Affine::prime_subgroup_generator();
     for (i, pubkey) in contributions.iter().enumerate() {
         let hash = hash_cs_pubkeys(cs_hash, &contributions[0..i], pubkey.s, pubkey.s_delta);
-        ensure_unchanged(
-            &pubkey.transcript[..],
-            &hash.as_ref()[..],
-            InvariantKind::Transcript,
-        )?;
+        ensure_unchanged(&pubkey.transcript[..], &hash.as_ref()[..], InvariantKind::Transcript)?;
 
         // generate the G2 point from the hash
         let r = hash_to_g2::<E>(hash.as_ref()).into_affine();
@@ -487,10 +463,7 @@ mod tests {
         // we handle the error like this because [u8; 64] does not implement
         // debug, meaning we cannot call `assert` on it
         if let Err(e) = err {
-            assert_eq!(
-                e.to_string(),
-                "Phase 2 Error: There were no contributions found"
-            );
+            assert_eq!(e.to_string(), "Phase 2 Error: There were no contributions found");
         } else {
             panic!("Verifying with self must fail")
         }

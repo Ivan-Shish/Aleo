@@ -7,10 +7,23 @@ members = [
     "./test-helpers",
 ]
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+incremental = true
 
-[patch."https://github.com/scipr-lab/zexe"]
-algebra = { version = "0.1.0", package = "algebra", git = "https://github.com/gakonst/zexe", branch = "groth16-serialize-keypair" }
-ff-fft = { package = "ff-fft", git = "https://github.com/gakonst/zexe", branch = "groth16-serialize-keypair" }
-groth16 = { package = "groth16", git = "https://github.com/gakonst/zexe", branch = "groth16-serialize-keypair" }
-r1cs-core = { package = "r1cs-core", git = "https://github.com/gakonst/zexe", branch = "groth16-serialize-keypair" } 
-r1cs-std = { package = "r1cs-std", git = "https://github.com/gakonst/zexe", branch = "groth16-serialize-keypair" } 
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = "thin"
+incremental = true
+debug-assertions = false
+
+[profile.dev]
+opt-level = 0
+
+[profile.test]
+opt-level = 0
+debug-assertions = true
+debug = true
