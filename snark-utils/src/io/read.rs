@@ -12,20 +12,12 @@ pub trait Deserializer {
     fn read_element<G: AffineCurve>(&mut self, compression: UseCompression) -> Result<G>;
 
     /// Reads exact number of elements
-    fn read_elements_exact<G: AffineCurve>(
-        &mut self,
-        num: usize,
-        compression: UseCompression,
-    ) -> Result<Vec<G>> {
+    fn read_elements_exact<G: AffineCurve>(&mut self, num: usize, compression: UseCompression) -> Result<Vec<G>> {
         (0..num).map(|_| self.read_element(compression)).collect()
     }
 
     /// Reads 1 compressed or uncompressed element to a pre-allocated element
-    fn read_element_preallocated<G: AffineCurve>(
-        &mut self,
-        el: &mut G,
-        compression: UseCompression,
-    ) -> Result<()>;
+    fn read_element_preallocated<G: AffineCurve>(&mut self, el: &mut G, compression: UseCompression) -> Result<()>;
 }
 
 pub trait BatchDeserializer {
@@ -33,11 +25,7 @@ pub trait BatchDeserializer {
     fn read_batch<G: AffineCurve>(&self, compression: UseCompression) -> Result<Vec<G>>;
 
     /// Reads multiple elements from the buffer to a preallocated array of Group elements
-    fn read_batch_preallocated<G: AffineCurve>(
-        &self,
-        elements: &mut [G],
-        compression: UseCompression,
-    ) -> Result<()>;
+    fn read_batch_preallocated<G: AffineCurve>(&self, elements: &mut [G], compression: UseCompression) -> Result<()>;
 }
 
 impl<R: Read> Deserializer for R {
@@ -48,11 +36,7 @@ impl<R: Read> Deserializer for R {
         })
     }
 
-    fn read_element_preallocated<G: AffineCurve>(
-        &mut self,
-        el: &mut G,
-        compression: UseCompression,
-    ) -> Result<()> {
+    fn read_element_preallocated<G: AffineCurve>(&mut self, el: &mut G, compression: UseCompression) -> Result<()> {
         *el = self.read_element(compression)?;
         Ok(())
     }
@@ -65,11 +49,7 @@ impl Deserializer for [u8] {
         (&*self).read_element(compression)
     }
 
-    fn read_element_preallocated<G: AffineCurve>(
-        &mut self,
-        el: &mut G,
-        compression: UseCompression,
-    ) -> Result<()> {
+    fn read_element_preallocated<G: AffineCurve>(&mut self, el: &mut G, compression: UseCompression) -> Result<()> {
         *el = self.read_element(compression)?;
         Ok(())
     }
@@ -85,11 +65,7 @@ impl BatchDeserializer for [u8] {
             .collect::<Result<Vec<_>>>()
     }
 
-    fn read_batch_preallocated<G: AffineCurve>(
-        &self,
-        elements: &mut [G],
-        compression: UseCompression,
-    ) -> Result<()> {
+    fn read_batch_preallocated<G: AffineCurve>(&self, elements: &mut [G], compression: UseCompression) -> Result<()> {
         let size = buffer_size::<G>(compression);
         cfg_chunks!(&*self, size)
             .zip(elements)

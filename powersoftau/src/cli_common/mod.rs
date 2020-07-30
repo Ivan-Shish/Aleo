@@ -39,10 +39,7 @@ pub struct PowersOfTauOpts {
     pub proving_system: ProvingSystem,
     #[options(help = "the size of batches to process", default = "256")]
     pub batch_size: usize,
-    #[options(
-        help = "the circuit power (circuit size will be 2^{power})",
-        default = "21"
-    )]
+    #[options(help = "the circuit power (circuit size will be 2^{power})", default = "21")]
     pub power: usize,
     #[options(command)]
     pub command: Option<Command>,
@@ -58,9 +55,7 @@ pub enum Command {
         help = "contribute to ceremony by producing a response to a challenge (or create a new challenge if this is the first contribution)"
     )]
     Contribute(ContributeOpts),
-    #[options(
-        help = "contribute randomness via a random beacon (e.g. a bitcoin block header hash)"
-    )]
+    #[options(help = "contribute randomness via a random beacon (e.g. a bitcoin block header hash)")]
     Beacon(ContributeOpts),
     // this receives a challenge + response file, verifies it and generates a new challenge
     #[options(help = "verify the contributions so far and generate a new challenge")]
@@ -90,10 +85,7 @@ pub struct VerifyAndTransformOpts {
     help: bool,
     #[options(help = "the provided challenge file", default = "challenge")]
     pub challenge_fname: String,
-    #[options(
-        help = "the provided response file which will be verified",
-        default = "response"
-    )]
+    #[options(help = "the provided response file which will be verified", default = "response")]
     pub response_fname: String,
     #[options(
         help = "the new challenge file which will be generated in response",

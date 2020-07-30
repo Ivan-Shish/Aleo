@@ -1,10 +1,8 @@
-use crate::batched_accumulator::BatchedAccumulator;
-use crate::parameters::CeremonyParams;
+use crate::{batched_accumulator::BatchedAccumulator, parameters::CeremonyParams};
 use snark_utils::{blank_hash, calculate_hash, print_hash, UseCompression};
 
 use memmap::*;
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::{fs::OpenOptions, io::Write};
 use zexe_algebra::PairingEngine as Engine;
 
 const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
@@ -14,10 +12,7 @@ pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Ce
         "Will generate an empty accumulator for 2^{} powers of tau",
         parameters.size
     );
-    println!(
-        "In total will generate up to {} powers",
-        parameters.powers_g1_length
-    );
+    println!("In total will generate up to {} powers", parameters.powers_g1_length);
 
     let file = OpenOptions::new()
         .read(true)
@@ -54,14 +49,10 @@ pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Ce
 
     BatchedAccumulator::generate_initial(&mut writable_map, COMPRESS_NEW_CHALLENGE, &parameters)
         .expect("generation of initial accumulator is successful");
-    writable_map
-        .flush()
-        .expect("unable to flush memmap to disk");
+    writable_map.flush().expect("unable to flush memmap to disk");
 
     // Get the hash of the contribution, so the user can compare later
-    let output_readonly = writable_map
-        .make_read_only()
-        .expect("must make a map readonly");
+    let output_readonly = writable_map.make_read_only().expect("must make a map readonly");
     let contribution_hash = calculate_hash(&output_readonly);
 
     println!("Empty contribution is formed with a hash:");

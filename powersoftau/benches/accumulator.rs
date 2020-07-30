@@ -45,27 +45,22 @@ fn contribute_benchmark(c: &mut Criterion) {
         let current_accumulator_hash = blank_hash();
         let mut rng = thread_rng();
         // generate the private key
-        let (_, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref())
-            .expect("could not generate keypair");
+        let (_, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
-        group.bench_with_input(
-            format!("{}_{}", in_compressed, out_compressed),
-            &size,
-            |b, _size| {
-                b.iter(|| {
-                    RawAccumulator::contribute(
-                        &input,
-                        &mut output,
-                        in_compressed,
-                        out_compressed,
-                        CheckForCorrectness::Yes,
-                        &privkey,
-                        &parameters,
-                    )
-                    .unwrap()
-                })
-            },
-        );
+        group.bench_with_input(format!("{}_{}", in_compressed, out_compressed), &size, |b, _size| {
+            b.iter(|| {
+                RawAccumulator::contribute(
+                    &input,
+                    &mut output,
+                    in_compressed,
+                    out_compressed,
+                    CheckForCorrectness::Yes,
+                    &privkey,
+                    &parameters,
+                )
+                .unwrap()
+            })
+        });
     }
 }
 

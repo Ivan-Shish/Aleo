@@ -1,14 +1,21 @@
 use gumdrop::Options;
 
-use zexe_algebra::{Bls12_377, BW6_761, PairingEngine};
+use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use snark_utils::{log_2, Groth16Params, UseCompression};
 
 use snarkos_dpc::base_dpc::{
     inner_circuit::InnerCircuit,
+    instantiated::{
+        CommitmentMerkleParameters,
+        Components,
+        InnerPairing,
+        InstantiatedDPC,
+        MerkleTreeCRH,
+        OuterPairing,
+    },
     outer_circuit::OuterCircuit,
-    instantiated::{CommitmentMerkleParameters, Components, InnerPairing, OuterPairing, MerkleTreeCRH, InstantiatedDPC},
     parameters::CircuitParameters,
 };
 use snarkos_models::{
@@ -21,13 +28,15 @@ use snarkos_parameters::LedgerMerkleTreeParameters;
 use snarkos_utilities::bytes::FromBytes;
 
 use memmap::MmapOptions;
-use std::fs::OpenOptions;
-use snarkos_models::algorithms::SNARK;
-use snarkos_dpc::dpc::base_dpc::predicate_circuit::PredicateCircuit;
-use snarkos_dpc::dpc::base_dpc::predicate::PrivatePredicateInput;
-use snarkos_dpc::dpc::base_dpc::BaseDPCComponents;
-use rand_xorshift::XorShiftRng;
 use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
+use snarkos_dpc::dpc::base_dpc::{
+    predicate::PrivatePredicateInput,
+    predicate_circuit::PredicateCircuit,
+    BaseDPCComponents,
+};
+use snarkos_models::algorithms::SNARK;
+use std::fs::OpenOptions;
 
 type AleoInner = InnerPairing;
 type AleoOuter = OuterPairing;
@@ -56,9 +65,7 @@ pub struct NewOpts {
     help: bool,
     #[options(help = "the path to the phase1 parameters", default = "phase1")]
     pub phase1: String,
-    #[options(
-        help = "the total number of coefficients (in powers of 2) which were created after processing phase 1"
-    )]
+    #[options(help = "the total number of coefficients (in powers of 2) which were created after processing phase 1")]
     pub phase1_size: u32,
     #[options(help = "the challenge file name to be created", default = "challenge")]
     pub output: String,
@@ -80,8 +87,7 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
     // Load the inner circuit & merkle params
     let params_bytes = LedgerMerkleTreeParameters::load_bytes()?;
     let params = <MerkleTreeCRH as CRH>::Parameters::read(&params_bytes[..])?;
-    let merkle_tree_hash_parameters =
-        <CommitmentMerkleParameters as MerkleParameters>::H::from(params);
+    let merkle_tree_hash_parameters = <CommitmentMerkleParameters as MerkleParameters>::H::from(params);
     let merkle_params = From::from(merkle_tree_hash_parameters);
 
     if opt.is_inner {
@@ -89,7 +95,8 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
         let rng = &mut XorShiftRng::from_seed([0u8; 16]);
-        let predicate_snark_parameters = InstantiatedDPC::generate_predicate_snark_parameters(&circuit_parameters, rng)?;
+        let predicate_snark_parameters =
+            InstantiatedDPC::generate_predicate_snark_parameters(&circuit_parameters, rng)?;
         let predicate_snark_proof = <Components as BaseDPCComponents>::PredicateSNARK::prove(
             &predicate_snark_parameters.proving_key,
             PredicateCircuit::<Components>::blank(&circuit_parameters),
@@ -101,8 +108,10 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
             proof: predicate_snark_proof,
         };
 
-        let inner_snark_parameters =
-            <Components as BaseDPCComponents>::InnerSNARK::setup(InnerCircuit::blank(&circuit_parameters, &merkle_params), rng)?;
+        let inner_snark_parameters = <Components as BaseDPCComponents>::InnerSNARK::setup(
+            InnerCircuit::blank(&circuit_parameters, &merkle_params),
+            rng,
+        )?;
 
         let inner_snark_vk: <<Components as BaseDPCComponents>::InnerSNARK as SNARK>::VerificationParameters =
             inner_snark_parameters.1.clone().into();
@@ -142,11 +151,7 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
     }
 }
 
-pub fn generate_params<
-    Aleo: AleoPairingengine,
-    Zexe: PairingEngine,
-    C: Clone + ConstraintSynthesizer<Aleo::Fr>,
->(
+pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + ConstraintSynthesizer<Aleo::Fr>>(
     opt: &NewOpts,
     circuit: C,
 ) -> anyhow::Result<()> {
