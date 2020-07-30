@@ -38,4 +38,5 @@ zexe_algebra_core = { git = "https://github.com/scipr-lab/zexe", package = "alge
 
 anyhow = { version = "1.0.31" }
 criterion = { version = "0.3" }
+num-traits = "0.2.12"
 rusty-hook = { version = "0.11.2" }
