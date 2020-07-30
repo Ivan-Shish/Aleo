@@ -12,11 +12,11 @@ edition = "2018"
 phase2 = { path = "../phase2" }
 snark-utils = { path = "../snark-utils" }
 
-snarkos-curves = { path = "../../snarkOS/curves" }
-snarkos-dpc = { path = "../../snarkOS/dpc" }
-snarkos-models = { path = "../../snarkOS/models" }
-snarkos-parameters = { path = "../../snarkOS/parameters" }
-snarkos-utilities = { path = "../../snarkOS/utilities" }
+snarkos-curves = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-curves", default-features = false }
+snarkos-dpc = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-dpc", default-features = false }
+snarkos-models = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-models", default-features = false }
+snarkos-parameters = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-parameters", default-features = false }
+snarkos-utilities = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-utilities" }
 
 zexe_algebra = { package = "algebra", git = "https://github.com/scipr-lab/zexe", version = "0.1.0", features = ["parallel", "full"] }
 zexe_groth16 = { package = "groth16", git = "https://github.com/scipr-lab/zexe", version = "0.1.0", features = ["parallel"] }
@@ -33,24 +33,3 @@ rand_xorshift = { version = "0.2.0" }
 rusty-hook = { version = "0.11.2" }
 thiserror = { version = "1.0.11" }
 tracing-subscriber = { version = "0.2.3" }
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-incremental = true
-
-[profile.bench]
-opt-level = 3
-debug = false
-rpath = false
-lto = "thin"
-incremental = true
-debug-assertions = false
-
-[profile.dev]
-opt-level = 0
-
-[profile.test]
-opt-level = 0
-debug-assertions = true
-debug = true

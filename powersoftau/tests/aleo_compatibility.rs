@@ -54,7 +54,7 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
     };
 
     // Deserialize into the group elements using Aleo's infrastructure
-    let (aleo_tau_g1, aleo_tau_g2, aleo_alpha_g1, aleo_beta_g1, aleo_beta_g2) = {
+    let (aleo_tau_g1, aleo_tau_g2, aleo_alpha_g1, aleo_beta_g1) = {
         let mut aleo_reader = std::io::BufReader::new(output_for_aleo);
 
         // The accumulator is structured as:
@@ -64,13 +64,13 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
         let tau_g2: Vec<Aleo::G2Affine> = AleoCanonicalDeserialize::deserialize(&mut aleo_reader)?;
         let alpha_g1: Vec<Aleo::G1Affine> = AleoCanonicalDeserialize::deserialize(&mut aleo_reader)?;
         let beta_g1: Vec<Aleo::G1Affine> = AleoCanonicalDeserialize::deserialize(&mut aleo_reader)?;
-        let beta_g2: Aleo::G2Affine = AleoCanonicalDeserialize::deserialize(&mut aleo_reader)?;
+        // let beta_g2: Aleo::G2Affine = AleoCanonicalDeserialize::deserialize(&mut aleo_reader)?;
 
-        (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2)
+        (tau_g1, tau_g2, alpha_g1, beta_g1)
     };
 
     // Deserialize into the group elements using Zexe's infrastructure
-    let (zexe_tau_g1, zexe_tau_g2, zexe_alpha_g1, zexe_beta_g1, zexe_beta_g2) = {
+    let (zexe_tau_g1, zexe_tau_g2, zexe_alpha_g1, zexe_beta_g1) = {
         let mut zexe_reader = std::io::BufReader::new(output_for_zexe);
 
         // The accumulator is structured as:
@@ -80,9 +80,9 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
         let tau_g2: Vec<Zexe::G2Affine> = ZexeCanonicalDeserialize::deserialize(&mut zexe_reader)?;
         let alpha_g1: Vec<Zexe::G1Affine> = ZexeCanonicalDeserialize::deserialize(&mut zexe_reader)?;
         let beta_g1: Vec<Zexe::G1Affine> = ZexeCanonicalDeserialize::deserialize(&mut zexe_reader)?;
-        let beta_g2: Zexe::G2Affine = ZexeCanonicalDeserialize::deserialize(&mut zexe_reader)?;
+        // let beta_g2: Zexe::G2Affine = ZexeCanonicalDeserialize::deserialize(&mut zexe_reader)?;
 
-        (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2)
+        (tau_g1, tau_g2, alpha_g1, beta_g1)
     };
 
     // Verify that the outputs are equivalent.
@@ -105,7 +105,7 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
         assert_eq_g1_affine::<Aleo, Zexe>(a, b);
     }
 
-    assert_eq_g2_affine::<Aleo, Zexe>(&aleo_beta_g2, &zexe_beta_g2);
+    // assert_eq_g2_affine::<Aleo, Zexe>(&aleo_beta_g2, &zexe_beta_g2);
 
     Ok(())
 }
