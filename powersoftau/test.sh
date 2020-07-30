@@ -9,7 +9,7 @@ set -e
 
 SIZE=8
 BATCH=256
-CURVE="bls12_381"
+CURVE="bls12_377"
 
 cargo run --release --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $SIZE new --challenge-fname challenge1
 yes | cargo run --release --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $SIZE contribute --challenge-fname challenge1 --response-fname response1
