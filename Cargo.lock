@@ -821,6 +821,7 @@ dependencies = [
  "hex-literal",
  "itertools 0.8.2",
  "memmap",
+ "num-traits",
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
