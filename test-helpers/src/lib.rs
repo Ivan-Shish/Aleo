@@ -23,10 +23,7 @@ pub fn random_point_vec<C: AffineCurve>(size: usize, rng: &mut impl Rng) -> Vec<
 
 /// returns a random affine curve point vector and serializes it
 /// to a buffer with the provided compression format
-pub fn random_vec_buf<C: AffineCurve>(
-    size: usize,
-    compression: UseCompression,
-) -> (Vec<C>, Vec<u8>) {
+pub fn random_vec_buf<C: AffineCurve>(size: usize, compression: UseCompression) -> (Vec<C>, Vec<u8>) {
     let mut rng = thread_rng();
     let elements: Vec<C> = random_point_vec(size, &mut rng);
     let len = buffer_size::<C>(compression) * size;
@@ -38,10 +35,7 @@ pub fn random_vec_buf<C: AffineCurve>(
 /// returns a random affine curve point vector and
 /// returns an empty buffer with sufficient size
 /// to write that vector to it
-pub fn random_vec_empty_buf<C: AffineCurve>(
-    size: usize,
-    compression: UseCompression,
-) -> (Vec<C>, Vec<u8>) {
+pub fn random_vec_empty_buf<C: AffineCurve>(size: usize, compression: UseCompression) -> (Vec<C>, Vec<u8>) {
     let mut rng = thread_rng();
     let elements: Vec<C> = random_point_vec(size, &mut rng);
     let len = buffer_size::<C>(compression) * size;

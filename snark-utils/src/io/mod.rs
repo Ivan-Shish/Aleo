@@ -72,8 +72,7 @@ mod tests {
         let mut buf = vec![];
         // assert that the deserialized version is the same as the serialized
         buf.write_element(&el, compression).unwrap();
-        buf.read_element_preallocated(&mut prealloc, compression)
-            .unwrap();
+        buf.read_element_preallocated(&mut prealloc, compression).unwrap();
         assert_eq!(el, prealloc);
     }
 
@@ -104,10 +103,8 @@ mod tests {
         buf.write_batch(&elements, compression).unwrap();
         let mut prealloc: Vec<E> = random_point_vec(num_els, &mut rng);
         let mut prealloc2: Vec<E> = random_point_vec(num_els, &mut rng);
-        buf.read_batch_preallocated(&mut prealloc, compression)
-            .unwrap();
-        buf.read_batch_preallocated(&mut prealloc2, compression)
-            .unwrap();
+        buf.read_batch_preallocated(&mut prealloc, compression).unwrap();
+        buf.read_batch_preallocated(&mut prealloc2, compression).unwrap();
         assert_eq!(elements, prealloc);
         assert_eq!(elements, prealloc2);
     }

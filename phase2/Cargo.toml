@@ -38,4 +38,26 @@ snarkos-curves = { path = "../../snarkOS/curves" }
 
 zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", package = "r1cs-std", version = "0.1.0" }
 
+rusty-hook = { version = "0.11.2" }
 tracing-subscriber = { version = "0.2.3" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+incremental = true
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = "thin"
+incremental = true
+debug-assertions = false
+
+[profile.dev]
+opt-level = 0
+
+[profile.test]
+opt-level = 0
+debug-assertions = true
+debug = true

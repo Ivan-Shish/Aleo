@@ -215,8 +215,8 @@ mod tests {
         // Construct our keypair using the RNG we created above
         let current_accumulator_hash = blank_hash();
         let mut rng = thread_rng();
-        let (_, privkey) = crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref())
-            .expect("could not generate keypair");
+        let (_, privkey) =
+            crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
         BatchedAccumulator::contribute(
             &input,
@@ -229,8 +229,7 @@ mod tests {
         )
         .unwrap();
 
-        let deserialized =
-            BatchedAccumulator::deserialize(&output, compressed_output, &parameters).unwrap();
+        let deserialized = BatchedAccumulator::deserialize(&output, compressed_output, &parameters).unwrap();
 
         let taupowers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
         batch_exp(
@@ -239,12 +238,7 @@ mod tests {
             None,
         )
         .unwrap();
-        batch_exp(
-            &mut before.tau_powers_g2,
-            &taupowers[0..parameters.powers_length],
-            None,
-        )
-        .unwrap();
+        batch_exp(&mut before.tau_powers_g2, &taupowers[0..parameters.powers_length], None).unwrap();
         batch_exp(
             &mut before.alpha_tau_powers_g1,
             &taupowers[0..parameters.powers_length],
@@ -264,25 +258,10 @@ mod tests {
 
     #[test]
     fn test_verify_transformation() {
-        test_verify_transformation_curve::<Bls12_377>(
-            2,
-            2,
-            UseCompression::Yes,
-            UseCompression::Yes,
-        );
+        test_verify_transformation_curve::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::Yes);
         test_verify_transformation_curve::<Bls12_377>(2, 2, UseCompression::No, UseCompression::No);
-        test_verify_transformation_curve::<Bls12_377>(
-            2,
-            2,
-            UseCompression::Yes,
-            UseCompression::No,
-        );
-        test_verify_transformation_curve::<Bls12_381>(
-            2,
-            2,
-            UseCompression::No,
-            UseCompression::Yes,
-        );
+        test_verify_transformation_curve::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::No);
+        test_verify_transformation_curve::<Bls12_381>(2, 2, UseCompression::No, UseCompression::Yes);
     }
 
     fn test_verify_transformation_curve<E: Engine>(
@@ -302,8 +281,7 @@ mod tests {
         let current_accumulator_hash = blank_hash();
         let mut rng = thread_rng();
         let (pubkey, privkey) =
-            crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref())
-                .expect("could not generate keypair");
+            crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
         // transform the accumulator
         BatchedAccumulator::contribute(
@@ -336,8 +314,7 @@ mod tests {
         let current_accumulator_hash = calculate_hash(&output);
 
         let (pubkey, privkey) =
-            crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref())
-                .expect("could not generate keypair");
+            crate::keypair::keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
         // generate a new output vector for the 2nd participant's contribution
         let mut output_2 = generate_output(&parameters, compressed_output);
@@ -410,23 +387,17 @@ mod tests {
         let mut output = generate_output(&parameters, UseCompression::No);
 
         // decompress the input to the output
-        BatchedAccumulator::decompress(&input, &mut output, CheckForCorrectness::Yes, &parameters)
-            .unwrap();
+        BatchedAccumulator::decompress(&input, &mut output, CheckForCorrectness::Yes, &parameters).unwrap();
 
         // deserializes the decompressed output
-        let deserialized =
-            BatchedAccumulator::deserialize(&output, UseCompression::No, &parameters).unwrap();
+        let deserialized = BatchedAccumulator::deserialize(&output, UseCompression::No, &parameters).unwrap();
         assert_eq!(deserialized, before);
 
         // trying to deserialize it as compressed should obviously fail
         BatchedAccumulator::deserialize(&output, UseCompression::Yes, &parameters).unwrap_err();
     }
 
-    fn generate_initial_test_curve<E: Engine>(
-        powers: usize,
-        batch: usize,
-        compression: UseCompression,
-    ) {
+    fn generate_initial_test_curve<E: Engine>(powers: usize, batch: usize, compression: UseCompression) {
         let parameters = CeremonyParams::<E>::new(powers, batch);
         let expected_challenge_length = match compression {
             UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
@@ -436,36 +407,22 @@ mod tests {
         let mut output = vec![0; expected_challenge_length];
         BatchedAccumulator::generate_initial(&mut output, compression, &parameters).unwrap();
 
-        let deserialized =
-            BatchedAccumulator::deserialize(&output, compression, &parameters).unwrap();
+        let deserialized = BatchedAccumulator::deserialize(&output, compression, &parameters).unwrap();
 
         let g1_zero = E::G1Affine::prime_subgroup_generator();
         let g2_zero = E::G2Affine::prime_subgroup_generator();
 
-        assert_eq!(
-            deserialized.tau_powers_g1,
-            vec![g1_zero; parameters.powers_g1_length]
-        );
-        assert_eq!(
-            deserialized.tau_powers_g2,
-            vec![g2_zero; parameters.powers_length]
-        );
-        assert_eq!(
-            deserialized.alpha_tau_powers_g1,
-            vec![g1_zero; parameters.powers_length]
-        );
-        assert_eq!(
-            deserialized.beta_tau_powers_g1,
-            vec![g1_zero; parameters.powers_length]
-        );
+        assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_g1_length]);
+        assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.powers_length]);
+        assert_eq!(deserialized.alpha_tau_powers_g1, vec![
+            g1_zero;
+            parameters.powers_length
+        ]);
+        assert_eq!(deserialized.beta_tau_powers_g1, vec![g1_zero; parameters.powers_length]);
         assert_eq!(deserialized.beta_g2, g2_zero);
     }
 
-    fn serialize_accumulator_curve<E: Engine + Sync>(
-        compress: UseCompression,
-        size: usize,
-        batch: usize,
-    ) {
+    fn serialize_accumulator_curve<E: Engine + Sync>(compress: UseCompression, size: usize, batch: usize) {
         // create a small accumulator with some random state
         let parameters = CeremonyParams::<E>::new(size, batch);
         let (buffer, accumulator) = generate_random_accumulator(&parameters, compress);
@@ -509,10 +466,7 @@ mod tests {
         (input, before)
     }
 
-    fn generate_output<E: Engine>(
-        parameters: &CeremonyParams<E>,
-        compressed: UseCompression,
-    ) -> Vec<u8> {
+    fn generate_output<E: Engine>(parameters: &CeremonyParams<E>, compressed: UseCompression) -> Vec<u8> {
         let expected_response_length = parameters.get_length(compressed);
         vec![0; expected_response_length]
     }

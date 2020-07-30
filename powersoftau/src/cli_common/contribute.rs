@@ -6,8 +6,10 @@ use crate::{
 use memmap::*;
 use rand::Rng;
 use snark_utils::{calculate_hash, print_hash, UseCompression};
-use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::{
+    fs::OpenOptions,
+    io::{Read, Write},
+};
 use zexe_algebra::PairingEngine as Engine;
 
 const INPUT_IS_COMPRESSED: UseCompression = UseCompression::No;
@@ -88,27 +90,24 @@ pub fn contribute<T: Engine + Sync>(
             .write_all(current_accumulator_hash.as_slice())
             .expect("unable to write a challenge hash to mmap");
 
-        writable_map
-            .flush()
-            .expect("unable to write hash to response file");
+        writable_map.flush().expect("unable to write hash to response file");
     }
 
     {
         let mut challenge_hash = [0; 64];
-        let mut memory_slice = readable_map
-            .get(0..64)
-            .expect("must read point data from file");
+        let mut memory_slice = readable_map.get(0..64).expect("must read point data from file");
         memory_slice
             .read_exact(&mut challenge_hash)
             .expect("couldn't read hash of challenge file from response file");
 
-        println!("`challenge` file claims (!!! Must not be blindly trusted) that it was based on the original contribution with a hash:");
+        println!(
+            "`challenge` file claims (!!! Must not be blindly trusted) that it was based on the original contribution with a hash:"
+        );
         print_hash(&challenge_hash);
     }
 
     // Construct our keypair using the RNG we created above
-    let (pubkey, privkey) =
-        keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+    let (pubkey, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
     // Perform the transformation
     println!("Computing and writing your contribution, this could take a while...");
@@ -135,9 +134,7 @@ pub fn contribute<T: Engine + Sync>(
     writable_map.flush().expect("must flush a memory map");
 
     // Get the hash of the contribution, so the user can compare later
-    let output_readonly = writable_map
-        .make_read_only()
-        .expect("must make a map readonly");
+    let output_readonly = writable_map.make_read_only().expect("must make a map readonly");
     let contribution_hash = calculate_hash(&output_readonly);
 
     print!(

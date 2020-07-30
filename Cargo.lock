@@ -25,6 +25,7 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift",
+ "rusty-hook",
  "snark-utils",
  "snarkos-curves",
  "snarkos-dpc",
@@ -984,6 +985,7 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rayon",
+ "rusty-hook",
  "snark-utils",
  "snarkos-algorithms",
  "snarkos-curves",
@@ -1026,6 +1028,7 @@ dependencies = [
  "memmap",
  "rand 0.7.3",
  "rayon",
+ "rusty-hook",
  "snark-utils",
  "snarkos-curves",
  "snarkos-models",
@@ -1451,13 +1454,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3757cb9d89161a2f24e1cf78efa0c1fcff485d18e3f55e0aa3480824ddaa0f3f"
 
 [[package]]
-name = "snark-setup"
-version = "0.1.0"
-dependencies = [
- "rusty-hook",
-]
-
-[[package]]
 name = "snark-utils"
 version = "0.1.0"
 dependencies = [
@@ -1473,6 +1469,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "rust-crypto",
+ "rusty-hook",
  "test-helpers",
  "thiserror",
  "tracing",
@@ -1695,6 +1692,7 @@ dependencies = [
  "r1cs-core",
  "rand 0.7.3",
  "rust-crypto",
+ "rusty-hook",
  "snark-utils",
  "snarkos-algorithms",
  "snarkos-curves",
