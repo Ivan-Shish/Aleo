@@ -1,15 +1,15 @@
 use powersoftau::parameters::CeremonyParams;
 use snark_utils::UseCompression;
-use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
+use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
 use snarkos_models::curves::{PairingEngine as AleoPairingEngine, AffineCurve as AleoAffineCurve};
 use snarkos_utilities::serialize::*;
 use test_helpers::setup_verify;
-use zexe_algebra::{Bls12_377 as ZexeBls12_377, PairingEngine, AffineCurve, CanonicalDeserialize as ZexeCanonicalDeserialize};
+use zexe_algebra::{Bls12_377 as ZexeBls12_377, BW6_761 as ZexeBW6, PairingEngine, AffineCurve, CanonicalDeserialize as ZexeCanonicalDeserialize};
 
 #[test]
 fn interop_test() {
     aleo_interoperable_powersoftau::<AleoBls12_377, ZexeBls12_377>().unwrap();
-    // aleo_interoperable_powersoftau::<AleoBW6, ZexeBW6>();
+    aleo_interoperable_powersoftau::<AleoBW6, ZexeBW6>();
 }
 
 fn aleo_interoperable_powersoftau<Aleo: AleoPairingEngine, Zexe: PairingEngine>(
