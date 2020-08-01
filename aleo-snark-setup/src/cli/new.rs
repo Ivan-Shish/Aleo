@@ -16,7 +16,7 @@ use snarkos_dpc::base_dpc::{
         OuterPairing,
     },
     outer_circuit::OuterCircuit,
-    parameters::CircuitParameters,
+    parameters::SystemParameters,
 };
 use snarkos_models::{
     algorithms::{MerkleParameters, CRH},
@@ -30,11 +30,7 @@ use snarkos_utilities::bytes::FromBytes;
 use memmap::MmapOptions;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use snarkos_dpc::dpc::base_dpc::{
-    predicate::PrivatePredicateInput,
-    predicate_circuit::PredicateCircuit,
-    BaseDPCComponents,
-};
+use snarkos_dpc::dpc::base_dpc::{program::PrivateProgramInput, program_circuit::ProgramCircuit, BaseDPCComponents};
 use snarkos_models::algorithms::SNARK;
 use std::fs::OpenOptions;
 
@@ -82,7 +78,7 @@ pub struct NewOpts {
 }
 
 pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
-    let circuit_parameters = CircuitParameters::<Components>::load()?;
+    let circuit_parameters = SystemParameters::<Components>::load()?;
 
     // Load the inner circuit & merkle params
     let params_bytes = LedgerMerkleTreeParameters::load_bytes()?;
@@ -95,17 +91,16 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
         let rng = &mut XorShiftRng::from_seed([0u8; 16]);
-        let predicate_snark_parameters =
-            InstantiatedDPC::generate_predicate_snark_parameters(&circuit_parameters, rng)?;
-        let predicate_snark_proof = <Components as BaseDPCComponents>::PredicateSNARK::prove(
-            &predicate_snark_parameters.proving_key,
-            PredicateCircuit::<Components>::blank(&circuit_parameters),
+        let program_snark_parameters = InstantiatedDPC::generate_program_snark_parameters(&circuit_parameters, rng)?;
+        let program_snark_proof = <Components as BaseDPCComponents>::ProgramSNARK::prove(
+            &program_snark_parameters.proving_key,
+            ProgramCircuit::<Components>::blank(&circuit_parameters),
             rng,
         )?;
 
-        let private_pred_input = PrivatePredicateInput {
-            verification_key: predicate_snark_parameters.verification_key.clone(),
-            proof: predicate_snark_proof,
+        let private_pred_input = PrivateProgramInput {
+            verification_key: program_snark_parameters.verification_key.clone(),
+            proof: program_snark_proof,
         };
 
         let inner_snark_parameters = <Components as BaseDPCComponents>::InnerSNARK::setup(
