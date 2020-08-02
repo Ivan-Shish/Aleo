@@ -238,6 +238,7 @@ pub fn verify<E: PairingEngine>(
         debug!("verifying chunk from {} to {}", start, end);
         let span = info_span!("batch", start, end);
         let _enter = span.enter();
+
         rayon::scope(|t| {
             let _enter = span.enter();
             t.spawn(|_| {
@@ -407,6 +408,7 @@ pub fn contribute<E: PairingEngine>(
     let _enter = span.enter();
 
     info!("starting...");
+    report_progress_starting();
 
     let (input, compressed_input) = (input.0, input.1);
     let (output, compressed_output) = (output.0, output.1);
@@ -511,10 +513,12 @@ pub fn contribute<E: PairingEngine>(
         });
 
         debug!("chunk contribution successful");
+        report_progress_processing(start, end, parameters.powers_g1_length);
         Ok(())
     })?;
 
     info!("done");
+    report_progress_ending();
 
     Ok(())
 }
