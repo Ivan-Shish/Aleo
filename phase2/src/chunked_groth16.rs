@@ -9,7 +9,7 @@ use crate::{
 };
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::Rng;
-use snark_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
+use snark_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result, *};
 use std::{
     io::{Read, Seek, SeekFrom, Write},
     ops::Neg,
@@ -214,6 +214,7 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
     let _enter = span.enter();
 
     info!("starting...");
+    report_progress_starting();
 
     let buffer = &mut std::io::Cursor::new(buffer);
     // The VK is small so we read it directly from the start
@@ -283,20 +284,25 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
             let _enter1 = span.enter();
             let span = info_span!("h_query");
             let _enter = span.enter();
-            chunked_mul_queries::<E::G1Affine>(h, h_query_len, &delta_inv, batch_size)
+            chunked_mul_queries::<E::G1Affine, _>(h, h_query_len, &delta_inv, batch_size, |start, end| {
+                report_progress_processing(start, end, h_query_len + l_query_len);
+            })
         }));
 
         threads.push(s.spawn(|_| {
             let _enter1 = span.enter();
             let span = info_span!("l_query");
             let _enter = span.enter();
-            chunked_mul_queries::<E::G1Affine>(
+            chunked_mul_queries::<E::G1Affine, _>(
                 // since we read the l_query length we will pass the buffer
                 // after it
                 &mut l[u64::SERIALIZED_SIZE..],
                 l_query_len,
                 &delta_inv,
                 batch_size,
+                |start, end| {
+                    report_progress_processing(h_query_len + start, h_query_len + end, h_query_len + l_query_len);
+                }
             )
         }));
 
@@ -324,6 +330,7 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
     public_key.write(buffer)?;
 
     info!("done.");
+    report_progress_ending();
 
     Ok(hash)
 }
@@ -340,11 +347,12 @@ fn skip_vec<C: AffineCurve, B: Read + Seek>(buffer: &mut B) -> Result<()> {
 /// The first 8 bytes read from the buffer are the vector's length. The result
 /// is written back to the buffer in place
 #[allow(clippy::cognitive_complexity)]
-fn chunked_mul_queries<C: AffineCurve>(
+fn chunked_mul_queries<C: AffineCurve, PF: Fn(usize, usize)>(
     buffer: &mut [u8],
     query_len: usize,
     element: &C::ScalarField,
     batch_size: usize,
+    report_progress: PF,
 ) -> Result<()> {
     let span = info_span!("multiply_query");
     let _enter = span.enter();
@@ -359,6 +367,7 @@ fn chunked_mul_queries<C: AffineCurve>(
         let _enter = span.enter();
 
         mul_query::<C, _>(buffer, element, batch_size)?;
+        report_progress(i*batch_size, (i+1)*batch_size);
 
         trace!("ok");
     }
@@ -368,6 +377,7 @@ fn chunked_mul_queries<C: AffineCurve>(
         let _enter = span.enter();
 
         mul_query::<C, _>(buffer, element, leftovers)?;
+        report_progress(iters*batch_size, iters*batch_size + leftovers);
 
         trace!("ok");
     }

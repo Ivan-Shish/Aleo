@@ -164,6 +164,7 @@ pub fn verify<E: PairingEngine>(
     let _enter = span.enter();
 
     info!("starting...");
+    report_progress_starting();
 
     // Ensure the key ratios are correctly produced
     let [tau_g2_s, alpha_g2_s, beta_g2_s] = compute_g2_s_key(&key, &digest)?;
@@ -289,11 +290,13 @@ pub fn verify<E: PairingEngine>(
         });
 
         debug!("chunk verification successful");
+        report_progress_processing(start, end, parameters.powers_g1_length);
 
         Ok(())
     })?;
 
     info!("verification complete");
+    report_progress_ending();
     Ok(())
 }
 
