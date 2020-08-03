@@ -13,6 +13,7 @@ use snark_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase
 use std::{
     io::{Read, Seek, SeekFrom, Write},
     ops::Neg,
+    sync::{Arc, Mutex},
 };
 use tracing::{debug, info, info_span, trace};
 use zexe_algebra::{
@@ -276,6 +277,8 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
     let (h, l) = remaining.split_at_mut(h_query_len * E::G1Affine::SERIALIZED_SIZE);
     let l_query_len = u64::deserialize(&mut &*l)? as usize;
 
+    let current_num_points = Arc::new(Mutex::new(0));
+
     // spawn 2 scoped threads to perform the contribution
     crossbeam::scope(|s| -> Result<_> {
         let mut threads = Vec::with_capacity(2);
@@ -285,7 +288,10 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
             let span = info_span!("h_query");
             let _enter = span.enter();
             chunked_mul_queries::<E::G1Affine, _>(h, h_query_len, &delta_inv, batch_size, |start, end| {
-                report_progress_processing(start, end, h_query_len + l_query_len);
+                let mut current_num_points = current_num_points.lock().unwrap();
+                let previous_num_points = *current_num_points;
+                *current_num_points += end - start;
+                report_progress_processing(previous_num_points, *current_num_points, h_query_len + l_query_len);
             })
         }));
 
@@ -301,7 +307,10 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
                 &delta_inv,
                 batch_size,
                 |start, end| {
-                    report_progress_processing(h_query_len + start, h_query_len + end, h_query_len + l_query_len);
+                    let mut current_num_points = current_num_points.lock().unwrap();
+                    let previous_num_points = *current_num_points;
+                    *current_num_points += end - start;
+                    report_progress_processing(previous_num_points, *current_num_points, h_query_len + l_query_len);
                 }
             )
         }));
