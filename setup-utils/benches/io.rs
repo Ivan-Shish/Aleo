@@ -1,9 +1,8 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use zexe_algebra::{AffineCurve, Bls12_377, PairingEngine};
-
 use setup_utils::{BatchDeserializer, BatchSerializer, UseCompression};
 
-use test_helpers::*;
+use zexe_algebra::{AffineCurve, Bls12_377, PairingEngine};
+
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 /// Benchmark comparing reading compressed/uncompressed points
 /// with preallocated vectors and allocating new vectors each time.
