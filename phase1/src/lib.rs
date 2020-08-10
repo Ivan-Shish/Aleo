@@ -34,7 +34,7 @@ use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand, Zer
 use rand::Rng;
 use tracing::{debug, info, info_span, trace};
 
-/// The `BatchedAccumulator` is an object that participants of the ceremony contribute
+/// `Phase1` is an object that participants of the ceremony contribute
 /// randomness to. This object contains powers of trapdoor `tau` in G1 and in G2 over
 /// fixed generators, and additionally in G1 over two other generators of exponents
 /// `alpha` and `beta` over those fixed generators. In other words:

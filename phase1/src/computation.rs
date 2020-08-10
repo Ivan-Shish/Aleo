@@ -22,21 +22,21 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
         info!("starting...");
 
-        // get an immutable reference to the input chunks
+        // Get immutable references of the input chunks.
         let (tau_g1_inputs, tau_g2_inputs, alpha_g1_inputs, beta_g1_inputs, mut beta_g2_inputs) =
             split(&input, parameters, compressed_input);
 
-        // get mutable refs to the outputs
+        // Get mutable references of the outputs.
         let (tau_g1_outputs, tau_g2_outputs, alpha_g1_outputs, beta_g1_outputs, beta_g2_outputs) =
             split_mut(output, parameters, compressed_output);
 
-        // write beta_g2 for the first chunk
+        // Write beta_g2 (0th index element) to beta_g2_outputs.
         {
-            // get the element
+            // Fetch the element.
             let mut beta_g2_el = beta_g2_inputs.read_element::<E::G2Affine>(compressed_input)?;
-            // multiply it by the key's beta
+            // Multiply it by the key's beta element.
             beta_g2_el = beta_g2_el.mul(key.beta).into_affine();
-            // write it back
+            // Write it back.
             beta_g2_outputs.write_element(&beta_g2_el, compressed_output)?;
         }
 

@@ -1,8 +1,7 @@
-use powersoftau::{
+use phase1::{
     helpers::testing::{generate_input, setup_verify},
-    key_generation::*,
-    parameters::*,
     Phase1,
+    Phase1Parameters,
 };
 use snark_utils::*;
 
@@ -13,8 +12,9 @@ use rand::thread_rng;
 
 // Benchmark comparing the generation of the iterator in parallel chunks
 // Parallel generation is strictly better
-fn generate_initial_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("generate_initial");
+fn benchmark_initialization(c: &mut Criterion) {
+    let mut group = c.benchmark_group("initialization");
+
     for compression in &[UseCompression::Yes, UseCompression::No] {
         for power in 10..14 {
             // large powers take too long
@@ -35,44 +35,50 @@ fn generate_initial_benchmark(c: &mut Criterion) {
 }
 
 // Benchmark comparing contributing to the ceremony
-fn contribute_benchmark(c: &mut Criterion) {
+fn benchmark_computation(c: &mut Criterion) {
     let batch = 256;
-    let mut group = c.benchmark_group(format!("contribute_{}", batch));
+    let mut group = c.benchmark_group(format!("computation_{}", batch));
     group.sample_size(10);
-    let in_compressed = UseCompression::No;
-    let out_compressed = UseCompression::Yes;
 
-    // we gather data on various sizes
-    for size in 4..8 {
-        let parameters = Phase1Parameters::<Bls12_377>::new(size, batch);
-        let (input, _) = generate_input(&parameters, in_compressed);
-        let mut output = vec![0; parameters.get_length(out_compressed)];
+    let compressed_input = UseCompression::No;
+    let compressed_output = UseCompression::Yes;
+
+    // We gather data on various sizes.
+    for power in 4..8 {
+        let parameters = Phase1Parameters::<Bls12_377>::new(power, batch);
+        let (input, _) = generate_input(&parameters, compressed_input);
+        let mut output = vec![0; parameters.get_length(compressed_output)];
         let current_accumulator_hash = blank_hash();
         let mut rng = thread_rng();
-        // generate the private key
-        let (_, privkey) =
+        // Generate the private key.
+        let (_, private_key) =
             Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
-        group.bench_with_input(format!("{}_{}", in_compressed, out_compressed), &size, |b, _size| {
-            b.iter(|| {
-                Phase1::computation(
-                    &input,
-                    &mut output,
-                    in_compressed,
-                    out_compressed,
-                    &privkey,
-                    &parameters,
-                )
-                .unwrap()
-            })
-        });
+        group.throughput(Throughput::Elements(power as u64));
+        group.bench_with_input(
+            format!("{}_{}", compressed_input, compressed_output),
+            &power,
+            |b, _size| {
+                b.iter(|| {
+                    Phase1::computation(
+                        &input,
+                        &mut output,
+                        compressed_input,
+                        compressed_output,
+                        &private_key,
+                        &parameters,
+                    )
+                    .unwrap()
+                })
+            },
+        );
     }
 }
 
 // Benchmark comparing contributing to the ceremony for various sizes and input/output
 // compressed situations. Parallel verification is consistently faster by 10-15% in all
 // modes of operation
-fn verify_benchmark(c: &mut Criterion) {
+fn benchmark_verification(c: &mut Criterion) {
     // Iterate over all combinations of the following parameters
     let compression = &[
         (UseCompression::Yes, UseCompression::Yes),
@@ -83,7 +89,7 @@ fn verify_benchmark(c: &mut Criterion) {
     let powers = (4..12).map(|i| 2u32.pow(i) as usize);
     let batch = 256;
 
-    let mut group = c.benchmark_group(format!("verify_{}", batch));
+    let mut group = c.benchmark_group(format!("verification_{}", batch));
     group.sample_size(10); // these would take way too long otherwise
 
     // Test the benchmark for everything in the parameter space
@@ -94,6 +100,7 @@ fn verify_benchmark(c: &mut Criterion) {
             let (input, output, pubkey, current_accumulator_hash) =
                 setup_verify(*compressed_input, *compressed_output, &parameters);
 
+            group.throughput(Throughput::Elements(power as u64));
             group.bench_with_input(
                 format!("{}_{}", compressed_input, compressed_output),
                 &power,
@@ -118,8 +125,8 @@ fn verify_benchmark(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    generate_initial_benchmark,
-    contribute_benchmark,
-    verify_benchmark
+    benchmark_initialization,
+    benchmark_computation,
+    benchmark_verification
 );
 criterion_main!(benches);

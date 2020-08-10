@@ -426,7 +426,7 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
 mod tests {
     use super::*;
     use crate::chunked_groth16::{contribute, verify};
-    use powersoftau::{Phase1, Phase1Parameters};
+    use phase1::{Phase1, Phase1Parameters};
     use rand::thread_rng;
     use snark_utils::{Groth16Params, UseCompression};
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;

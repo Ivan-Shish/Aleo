@@ -1,4 +1,4 @@
-use powersoftau::{
+use phase1::{
     cli_common::{curve_from_str, CurveKind},
     parameters::*,
     Phase1,
@@ -39,27 +39,6 @@ struct PreparePhase2Opts {
     pub phase2_size: u32,
 }
 
-fn main() -> Result<()> {
-    Subscriber::builder()
-        .with_timer(ChronoUtc::rfc3339())
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-
-    let opts = PreparePhase2Opts::parse_args_default_or_exit();
-
-    let now = Instant::now();
-    match opts.curve_kind {
-        CurveKind::Bls12_381 => prepare_phase2::<Bls12_381>(&opts)?,
-        CurveKind::Bls12_377 => prepare_phase2::<Bls12_377>(&opts)?,
-        CurveKind::BW6 => prepare_phase2::<BW6_761>(&opts)?,
-    }
-
-    let new_now = Instant::now();
-    println!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
-
-    Ok(())
-}
-
 fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
     let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
     // Try to load response file from disk.
@@ -98,6 +77,27 @@ fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<(
 
     // Write the parameters
     groth16_params.write(&mut writer, UseCompression::No)?;
+
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    Subscriber::builder()
+        .with_timer(ChronoUtc::rfc3339())
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
+    let opts = PreparePhase2Opts::parse_args_default_or_exit();
+
+    let now = Instant::now();
+    match opts.curve_kind {
+        CurveKind::Bls12_381 => prepare_phase2::<Bls12_381>(&opts)?,
+        CurveKind::Bls12_377 => prepare_phase2::<Bls12_377>(&opts)?,
+        CurveKind::BW6 => prepare_phase2::<BW6_761>(&opts)?,
+    }
+
+    let new_now = Instant::now();
+    println!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
 
     Ok(())
 }

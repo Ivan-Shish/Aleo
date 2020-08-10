@@ -104,7 +104,7 @@ pub fn contribute<T: Engine + Sync>(
     }
 
     // Construct our keypair using the RNG we created above
-    let (pubkey, privkey) =
+    let (public_key, private_key) =
         Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
     // Perform the transformation
@@ -116,7 +116,7 @@ pub fn contribute<T: Engine + Sync>(
         &mut writable_map,
         COMPRESSED_INPUT,
         COMPRESSED_OUTPUT,
-        &privkey,
+        &private_key,
         &parameters,
     )
     .expect("must contribute with the key");
@@ -124,7 +124,7 @@ pub fn contribute<T: Engine + Sync>(
     println!("Finishing writing your contribution to response file...");
 
     // Write the public key
-    pubkey
+    public_key
         .write(&mut writable_map, COMPRESSED_OUTPUT, &parameters)
         .expect("unable to write public key");
 

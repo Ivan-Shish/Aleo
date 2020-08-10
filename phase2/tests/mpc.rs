@@ -1,5 +1,5 @@
+use phase1::{Phase1, Phase1Parameters};
 use phase2::parameters::MPCParameters;
-use powersoftau::{Phase1, Phase1Parameters};
 use snark_utils::{Groth16Params, UseCompression};
 use test_helpers::{setup_verify, TestCircuit};
 

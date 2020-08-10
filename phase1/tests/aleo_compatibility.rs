@@ -1,4 +1,4 @@
-use powersoftau::{helpers::testing::setup_verify, Phase1Parameters};
+use phase1::{helpers::testing::setup_verify, Phase1Parameters};
 use snark_utils::UseCompression;
 
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
@@ -21,7 +21,7 @@ use zexe_algebra_core::serialize::{
 
 use std::io::Read;
 
-fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() -> anyhow::Result<()> {
+fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() -> anyhow::Result<()> {
     // Generate an accumulator via Zexe's trusted setup.
     let (powers, batch) = (6, 4);
     let params = Phase1Parameters::<Zexe>::new(powers, batch);
@@ -76,10 +76,10 @@ fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
 
 #[test]
 fn test_aleo_zexe_bls12_377_compatibility() {
-    compatible_powersoftau::<AleoBls12_377, ZexeBls12_377>().unwrap();
+    compatible_phase1_test::<AleoBls12_377, ZexeBls12_377>().unwrap();
 }
 
 #[test]
 fn test_aleo_zexe_bw6_761_compatibility() {
-    compatible_powersoftau::<AleoBW6, ZexeBW6>().unwrap();
+    compatible_phase1_test::<AleoBW6, ZexeBW6>().unwrap();
 }

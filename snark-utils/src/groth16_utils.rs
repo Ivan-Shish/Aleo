@@ -255,7 +255,7 @@ fn split_transcript<E: PairingEngine>(
 mod tests {
     use super::*;
     use crate::UseCompression as UseCompressionV1;
-    use powersoftau::{Phase1, Phase1Parameters};
+    use phase1::{Phase1, Phase1Parameters};
     use test_helpers::{setup_verify, UseCompression};
     use zexe_algebra::Bls12_377;
 
