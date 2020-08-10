@@ -1,6 +1,6 @@
 [package]
-name = "powersoftau"
-version = "0.2.0"
+name = "phase1"
+version = "0.3.0"
 authors = ["Sean Bowe", "Alex Vlasov", "The Aleo Team <hello@aleo.org>"]
 description = "Communal zk-SNARK MPC for Public Parameters"
 homepage = "https://github.com/AleoHQ/snark-setup"
@@ -9,7 +9,7 @@ license = "MIT/Apache-2.0"
 edition = "2018"
 
 [[bench]]
-name = "accumulator"
+name = "phase1"
 harness = false
 
 [dependencies]
@@ -36,5 +36,5 @@ zexe_algebra_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5"
 
 anyhow = { version = "1.0.31" }
 criterion = { version = "0.3" }
-num-traits = "0.2.12"
+num-traits = { version = "0.2.12" }
 rusty-hook = { version = "0.11.2" }

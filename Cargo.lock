@@ -772,6 +772,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "phase1"
+version = "0.3.0"
+dependencies = [
+ "algebra",
+ "algebra-core",
+ "anyhow",
+ "criterion",
+ "gumdrop",
+ "hex-literal",
+ "itertools 0.8.2",
+ "memmap",
+ "num-traits",
+ "rand 0.7.3",
+ "rayon",
+ "rusty-hook",
+ "snark-utils",
+ "snarkos-curves",
+ "snarkos-models",
+ "snarkos-utilities",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "phase2"
 version = "0.2.2"
 dependencies = [
@@ -781,7 +805,7 @@ dependencies = [
  "crossbeam",
  "groth16",
  "num_cpus",
- "powersoftau",
+ "phase1",
  "r1cs-core",
  "r1cs-std",
  "rand 0.7.3",
@@ -807,30 +831,6 @@ dependencies = [
  "num-traits",
  "wasm-bindgen",
  "web-sys",
-]
-
-[[package]]
-name = "powersoftau"
-version = "0.2.0"
-dependencies = [
- "algebra",
- "algebra-core",
- "anyhow",
- "criterion",
- "gumdrop",
- "hex-literal",
- "itertools 0.8.2",
- "memmap",
- "num-traits",
- "rand 0.7.3",
- "rayon",
- "rusty-hook",
- "snark-utils",
- "snarkos-curves",
- "snarkos-models",
- "snarkos-utilities",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1214,7 +1214,7 @@ dependencies = [
  "crossbeam",
  "ff-fft",
  "num_cpus",
- "powersoftau",
+ "phase1",
  "r1cs-core",
  "rand 0.7.3",
  "rand_chacha",
@@ -1420,7 +1420,7 @@ version = "0.1.0"
 dependencies = [
  "algebra",
  "groth16",
- "powersoftau",
+ "phase1",
  "r1cs-core",
  "rand 0.7.3",
  "rust-crypto",

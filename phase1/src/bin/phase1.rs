@@ -1,4 +1,7 @@
-use powersoftau::{
+#[macro_use]
+extern crate hex_literal;
+
+use phase1::{
     cli_common::{contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts},
     Phase1Parameters,
 };
@@ -12,25 +15,6 @@ use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
 };
-
-#[macro_use]
-extern crate hex_literal;
-
-fn main() {
-    Subscriber::builder()
-        .with_target(false)
-        .with_timer(ChronoUtc::rfc3339())
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-
-    let opts: PowersOfTauOpts = PowersOfTauOpts::parse_args_default_or_exit();
-
-    match opts.curve_kind {
-        CurveKind::Bls12_381 => execute_cmd::<Bls12_381>(opts),
-        CurveKind::Bls12_377 => execute_cmd::<Bls12_377>(opts),
-        CurveKind::BW6 => execute_cmd::<BW6_761>(opts),
-    };
-}
 
 fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
     let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
@@ -71,4 +55,20 @@ fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
 
     let new_now = Instant::now();
     println!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
+}
+
+fn main() {
+    Subscriber::builder()
+        .with_target(false)
+        .with_timer(ChronoUtc::rfc3339())
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
+    let opts: PowersOfTauOpts = PowersOfTauOpts::parse_args_default_or_exit();
+
+    match opts.curve_kind {
+        CurveKind::Bls12_381 => execute_cmd::<Bls12_381>(opts),
+        CurveKind::Bls12_377 => execute_cmd::<Bls12_377>(opts),
+        CurveKind::BW6 => execute_cmd::<BW6_761>(opts),
+    };
 }
