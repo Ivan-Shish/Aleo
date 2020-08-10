@@ -1,13 +1,12 @@
-# Powers of Tau
+# Phase 1
 
 Distributed generation of powers of tau for Phase 1 of [BGM17](https://eprint.iacr.org/2017/1050). 
 
 Also contains a binary which converts the Powers of Tau to Lagrange Coefficients and produces the H query for the Groth16 SNARK.
 
 - Utilizes [Zexe's algebra crate](https://github.com/scipr-lab/zexe), meaning we support all available curves:
+    - Bls12-377
     - BW6-761
-    - Bls 12-381
-    - Bls 12-377
     - ...
 - Memory footprint can be configured by adjusting `batch-size` via CLI and via environment variable [`RAYON_NUM_THREADS`](https://github.com/rayon-rs/rayon/blob/master/FAQ.md#how-many-threads-will-rayon-spawn).
 
@@ -15,7 +14,7 @@ You can see an E2E demo with 3 participants and the beacon at the end by running
 
 ## CLI Guide
 
-### Powers of Tau
+### Phase 1
 
 Coordinators run:
 1. `new` to create a new accumulator

@@ -29,7 +29,7 @@ tracing = { version = "0.1.17" }
 typenum = { version = "1.11.2" }
 
 [dev-dependencies]
-powersoftau = { path = "../powersoftau" }
+powersoftau = { path = "../phase1" }
 test-helpers = { path = "../test-helpers" }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "full"] }
