@@ -15,7 +15,7 @@ harness = false
 [dependencies]
 snark-utils = { path = "../snark-utils", features = ["parallel"] }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", package = "algebra", version = "0.1.0", features = ["parallel", "bw6_761", "derive"] }
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "bw6_761", "derive"] }
 
 gumdrop = { version = "0.7.0" }
 hex-literal = { version = "0.1.4" }
@@ -33,8 +33,8 @@ snarkos-curves = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "s
 snarkos-models = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-models", default-features = false }
 snarkos-utilities = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-utilities" }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", package = "algebra", version = "0.1.0", features = ["parallel", "full", "derive"] }
-zexe_algebra_core = { git = "https://github.com/scipr-lab/zexe", package = "algebra-core", version = "0.1.0", features = ["parallel", "derive"] }
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "full", "derive"] }
+zexe_algebra_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra-core", version = "0.1.0", features = ["parallel", "derive"] }
 
 anyhow = { version = "1.0.31" }
 criterion = { version = "0.3" }
