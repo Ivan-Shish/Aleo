@@ -18,11 +18,8 @@ use zexe_algebra::{
 use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
 
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
-use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
 use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use std::{
     convert::TryInto,
     io::{self, Write},
@@ -30,6 +27,12 @@ use std::{
     sync::Arc,
 };
 use typenum::consts::U64;
+
+#[cfg(not(feature = "wasm"))]
+use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Generate the powers by raising the key's `tau` to all powers
 /// belonging to this chunk
@@ -127,6 +130,7 @@ pub fn user_system_randomness() -> Vec<u8> {
 }
 
 #[allow(clippy::modulo_one)]
+#[cfg(not(feature = "wasm"))]
 pub fn beacon_randomness(mut beacon_hash: [u8; 32]) -> [u8; 32] {
     // Performs 2^n hash iterations over it
     const N: u64 = 10;

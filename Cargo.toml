@@ -1,8 +1,8 @@
 [workspace]
 members = [
+    "aleo-setup1",
     "aleo-setup2",
     "phase1",
-    "aleo-setup1",
     "phase2",
     "setup-utils",
 ]

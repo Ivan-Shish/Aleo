@@ -1,10 +1,12 @@
+use phase2::{chunked_groth16::contribute as chunked_contribute, keypair::PublicKey};
+use setup_utils::Result;
+
+use zexe_algebra::{Bls12_377, BW6_761};
+
 use gumdrop::Options;
 use memmap::MmapOptions;
-use phase2::{chunked_groth16::contribute as chunked_contribute, keypair::PublicKey};
 use rand::Rng;
-use setup_utils::Result;
 use std::fs::OpenOptions;
-use zexe_algebra::{Bls12_377, BW6_761};
 
 #[derive(Debug, Options, Clone)]
 pub struct ContributeOpts {

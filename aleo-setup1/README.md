@@ -13,7 +13,7 @@ Coordinators run:
 
 Users should only care about the `contribute` option.
 
-```
+```ignore
 $ ./phase1 --help
 Usage: ./phase1 [OPTIONS]
 
@@ -40,7 +40,7 @@ Available commands:
 This binary will only be run by the coordinator after Phase 1 has been executed.
 Note that the parameters produced are **only for the Groth16 SNARK**.
 
-```
+```ignore
 ./prepare_phase2 --help
 Usage: ./prepare_phase2 [OPTIONS]
 
