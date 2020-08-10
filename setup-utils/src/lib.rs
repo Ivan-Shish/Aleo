@@ -1,8 +1,7 @@
-//! # SNARK MPC Utils
+//! # setup-utils
 //!
-//! Utilities for building MPC Ceremonies for large SNARKs with Zexe.
-//! Provides traits for batched writing and reading Group Elements
-//! to buffers.
+//! Utilities for building MPC Ceremonies for large SNARKs.
+//! Provides traits for batched writing and reading group elements to buffers.
 pub mod errors;
 pub use errors::{Error, InvariantKind, Phase2Error, VerificationError};
 

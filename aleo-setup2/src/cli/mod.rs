@@ -1,5 +1,3 @@
-use gumdrop::Options;
-
 pub use new::{new, NewOpts};
 mod new;
 
@@ -8,6 +6,8 @@ pub use contribute::{contribute, ContributeOpts};
 
 mod verify;
 pub use verify::{verify, VerifyOpts};
+
+use gumdrop::Options;
 
 // The supported commands
 #[derive(Debug, Options, Clone)]

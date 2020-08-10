@@ -7,14 +7,10 @@ pub use contribute::contribute;
 mod transform;
 pub use transform::transform;
 
+use crate::{curve_from_str, CurveKind};
+
 use gumdrop::Options;
 use std::default::Default;
-
-#[derive(Debug, Clone)]
-pub enum CurveKind {
-    Bls12_377,
-    BW6,
-}
 
 #[derive(Debug, Clone)]
 pub enum ProvingSystem {
@@ -91,15 +87,6 @@ pub struct VerifyAndTransformOpts {
         default = "new_challenge"
     )]
     pub new_challenge_fname: String,
-}
-
-pub fn curve_from_str(src: &str) -> Result<CurveKind, String> {
-    let curve = match src.to_lowercase().as_str() {
-        "bls12_377" => CurveKind::Bls12_377,
-        "bw6" => CurveKind::BW6,
-        _ => return Err("unsupported curve".to_string()),
-    };
-    Ok(curve)
 }
 
 pub fn proving_system_from_str(src: &str) -> Result<ProvingSystem, String> {

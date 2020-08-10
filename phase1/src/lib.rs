@@ -1,34 +1,28 @@
+use cfg_if::cfg_if;
+
 pub mod helpers;
 
 pub mod objects;
 pub use objects::*;
 
 mod computation;
-mod initialization;
 mod key_generation;
-mod serialization;
-mod verification;
 
-use crate::helpers::accumulator::{self, *};
-use setup_utils::{
-    blank_hash,
-    check_same_ratio,
-    compute_g2_s,
-    generate_powers_of_tau,
-    BatchDeserializer,
-    BatchSerializer,
-    Deserializer,
-    ElementType,
-    Error,
-    GenericArray,
-    Result,
-    Serializer,
-    UseCompression,
-    VerificationError,
-    U64,
-};
+cfg_if! {
+    if #[cfg(not(feature = "wasm"))] {
+        mod initialization;
+        mod serialization;
+        mod verification;
 
-use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand, Zero};
+        use crate::helpers::accumulator::{self, *};
+        use zexe_algebra::Zero;
+    }
+}
+
+use crate::helpers::buffers::*;
+use setup_utils::*;
+
+use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand};
 
 use rand::Rng;
 use tracing::{debug, info, info_span, trace};

@@ -14,24 +14,27 @@ name = "aleo-setup1"
 version = "0.3.0"
 dependencies = [
  "algebra",
- "criterion",
+ "cfg-if",
+ "console_error_panic_hook",
  "gumdrop",
  "hex-literal",
  "memmap",
  "phase1",
  "rand 0.7.3",
- "rand_chacha",
  "rustc_version",
+ "serde",
+ "serde_derive",
  "setup-utils",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
  "wasm-bindgen-test",
+ "wee_alloc",
 ]
 
 [[package]]
 name = "aleo-setup2"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "algebra",
  "anyhow",
@@ -532,6 +535,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -734,6 +738,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "memory_units"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8452105ba047068f40ff7093dd1d9da90898e63dd61736462e9cdda6a90ad3c3"
+
+[[package]]
 name = "mince"
 version = "0.1.0"
 source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
@@ -808,6 +818,7 @@ dependencies = [
  "algebra",
  "algebra-core",
  "anyhow",
+ "cfg-if",
  "criterion",
  "itertools 0.8.2",
  "num-traits",
@@ -825,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "phase2"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "algebra",
  "byteorder",
@@ -1213,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "setup-utils"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "algebra",
  "blake2",
@@ -1651,6 +1662,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0563a9a4b071746dd5aedbc3a28c6fe9be4586fb3fbadb67c400d4f53c6b16c"
 dependencies = [
  "cfg-if",
+ "serde",
+ "serde_json",
  "wasm-bindgen-macro",
 ]
 
@@ -1742,6 +1755,18 @@ checksum = "863539788676619aac1a23e2df3655e96b32b0e05eb72ca34ba045ad573c625d"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "wee_alloc"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbb3b5a6b2bb17cb6ad44a2e68a43e8d2722c997da10e928665c72ec6c0a0b8e"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "memory_units",
+ "winapi",
 ]
 
 [[package]]
