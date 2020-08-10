@@ -1,8 +1,8 @@
-use snark_utils::*;
-use std::{
-    fmt,
-    io::{self, Read, Write},
+use super::{
+    keypair::{hash_cs_pubkeys, Keypair, PublicKey},
+    polynomial::eval,
 };
+use snark_utils::*;
 
 use zexe_algebra::{
     AffineCurve,
@@ -24,10 +24,9 @@ use snarkos_models::{
 use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
 
 use rand::Rng;
-
-use super::{
-    keypair::{hash_cs_pubkeys, Keypair, PublicKey},
-    polynomial::eval,
+use std::{
+    fmt,
+    io::{self, Read, Write},
 };
 
 /// MPC parameters are just like Zexe's `Parameters` except, when serialized,
@@ -425,10 +424,12 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunked_groth16::{contribute, verify};
+    use crate::{
+        chunked_groth16::{contribute, verify},
+        helpers::testing::TestCircuit,
+    };
     use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
     use snark_utils::{Groth16Params, UseCompression};
-    use test_helpers::TestCircuit;
 
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
 

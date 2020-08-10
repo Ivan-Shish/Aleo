@@ -2,13 +2,8 @@
 //!
 //! A Groth16 keypair. Generate one with the Keypair::new method.
 //! Dispose of the private key ASAP once it's been used.
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use rand::Rng;
 use snark_utils::{hash_to_g2, Deserializer, HashWriter, Result, Serializer, UseCompression};
-use std::{
-    fmt,
-    io::{self, Read, Write},
-};
+
 use zexe_algebra::{
     AffineCurve,
     CanonicalSerialize,
@@ -16,6 +11,13 @@ use zexe_algebra::{
     PairingEngine,
     ProjectiveCurve,
     UniformRand,
+};
+
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use rand::Rng;
+use std::{
+    fmt,
+    io::{self, Read, Write},
 };
 
 /// This needs to be destroyed by at least one participant

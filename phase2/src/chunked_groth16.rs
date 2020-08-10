@@ -7,14 +7,8 @@ use crate::{
     keypair::{Keypair, PublicKey},
     parameters::*,
 };
-use byteorder::{BigEndian, WriteBytesExt};
-use rand::Rng;
 use snark_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
-use std::{
-    io::{Read, Seek, SeekFrom, Write},
-    ops::Neg,
-};
-use tracing::{debug, info, info_span, trace};
+
 use zexe_algebra::{
     AffineCurve,
     CanonicalDeserialize,
@@ -25,6 +19,14 @@ use zexe_algebra::{
     ProjectiveCurve,
 };
 use zexe_groth16::VerifyingKey;
+
+use byteorder::{BigEndian, WriteBytesExt};
+use rand::Rng;
+use std::{
+    io::{Read, Seek, SeekFrom, Write},
+    ops::Neg,
+};
+use tracing::{debug, info, info_span, trace};
 
 /// Given two serialized contributions to the ceremony, this will check that `after`
 /// has been correctly calculated from `before`. Large vectors will be read in
