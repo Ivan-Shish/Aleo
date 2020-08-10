@@ -1,13 +1,11 @@
 #[macro_use]
 extern crate hex_literal;
 
-use phase1::{
-    cli_common::{contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts},
-    Phase1Parameters,
-};
+use aleo_setup1::cli::{contribute, new_challenge, transform, Command, CurveKind, Phase1Opts};
+use phase1::Phase1Parameters;
 use snark_utils::{beacon_randomness, get_rng, user_system_randomness};
 
-use zexe_algebra::{Bls12_377, Bls12_381, PairingEngine as Engine, BW6_761};
+use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 use gumdrop::Options;
 use std::{process, time::Instant};
@@ -16,12 +14,12 @@ use tracing_subscriber::{
     fmt::{time::ChronoUtc, Subscriber},
 };
 
-fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
+fn execute_cmd<E: Engine>(opts: Phase1Opts) {
     let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
 
     let command = opts.clone().command.unwrap_or_else(|| {
         eprintln!("No command was provided.");
-        eprintln!("{}", PowersOfTauOpts::usage());
+        eprintln!("{}", Phase1Opts::usage());
         process::exit(2)
     });
 
@@ -64,10 +62,9 @@ fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let opts: PowersOfTauOpts = PowersOfTauOpts::parse_args_default_or_exit();
+    let opts: Phase1Opts = Phase1Opts::parse_args_default_or_exit();
 
     match opts.curve_kind {
-        CurveKind::Bls12_381 => execute_cmd::<Bls12_381>(opts),
         CurveKind::Bls12_377 => execute_cmd::<Bls12_377>(opts),
         CurveKind::BW6 => execute_cmd::<BW6_761>(opts),
     };

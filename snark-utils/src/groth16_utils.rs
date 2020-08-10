@@ -1,14 +1,18 @@
 /// Utilities to read/write and convert the Powers of Tau from Phase 1
 /// to Phase 2-compatible Lagrange Coefficients.
 use crate::{buffer_size, Deserializer, Result, Serializer, UseCompression};
-use std::{fmt::Debug, io::Write};
-use tracing::{debug, info, info_span};
+
 use zexe_algebra::{AffineCurve, PairingEngine, PrimeField, ProjectiveCurve};
-use zexe_fft::domain::{radix2::Radix2EvaluationDomain, EvaluationDomain};
+use zexe_fft::{
+    cfg_into_iter,
+    cfg_iter,
+    domain::{radix2::Radix2EvaluationDomain, EvaluationDomain},
+};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use zexe_fft::{cfg_into_iter, cfg_iter};
+use std::{fmt::Debug, io::Write};
+use tracing::{debug, info, info_span};
 
 #[derive(Debug)]
 pub struct Groth16Params<E: PairingEngine> {
@@ -254,10 +258,71 @@ fn split_transcript<E: PairingEngine>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::UseCompression as UseCompressionV1;
-    use phase1::{Phase1, Phase1Parameters};
-    use test_helpers::{setup_verify, UseCompression};
+    use crate::UseCompression;
+    use phase1::{
+        helpers::testing::{setup_verify, UseCompression as UseCompressionPhase1},
+        Phase1,
+        Phase1Parameters,
+    };
+
     use zexe_algebra::Bls12_377;
+
+    fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
+        fn compat(compression: UseCompression) -> UseCompressionPhase1 {
+            match compression {
+                UseCompression::Yes => UseCompressionPhase1::Yes,
+                UseCompression::No => UseCompressionPhase1::No,
+            }
+        }
+
+        let batch = 2;
+        let params = Phase1Parameters::<E>::new(powers, batch);
+        let (_, output, _, _) = setup_verify(compat(compressed), compat(compressed), &params);
+        let accumulator = Phase1::deserialize(&output, compat(compressed), &params).unwrap();
+
+        let groth_params = Groth16Params::<E>::new(
+            prepared_phase1_size,
+            accumulator.tau_powers_g1,
+            accumulator.tau_powers_g2,
+            accumulator.alpha_tau_powers_g1,
+            accumulator.beta_tau_powers_g1,
+            accumulator.beta_g2,
+        )
+        .unwrap();
+
+        let mut writer = vec![];
+        groth_params.write(&mut writer, compressed).unwrap();
+        let mut reader = std::io::Cursor::new(writer);
+        let deserialized = Groth16Params::<E>::read(
+            &mut reader.get_mut(),
+            compressed,
+            prepared_phase1_size,
+            prepared_phase1_size, // phase2_size == prepared phase1 size
+        )
+        .unwrap();
+        reader.set_position(0);
+        assert_eq!(deserialized, groth_params);
+
+        let subset = prepared_phase1_size / 2;
+        let deserialized_subset = Groth16Params::<E>::read(
+            &mut reader.get_mut(),
+            compressed,
+            prepared_phase1_size,
+            subset, // phase2 size is smaller than the prepared phase1 size
+        )
+        .unwrap();
+        assert_eq!(&deserialized_subset.coeffs_g1[..], &groth_params.coeffs_g1[..subset]);
+        assert_eq!(&deserialized_subset.coeffs_g2[..], &groth_params.coeffs_g2[..subset]);
+        assert_eq!(
+            &deserialized_subset.alpha_coeffs_g1[..],
+            &groth_params.alpha_coeffs_g1[..subset]
+        );
+        assert_eq!(
+            &deserialized_subset.beta_coeffs_g1[..],
+            &groth_params.beta_coeffs_g1[..subset]
+        );
+        assert_eq!(&deserialized_subset.h_g1[..], &groth_params.h_g1[..subset - 1]); // h_query is 1 less element
+    }
 
     #[test]
     fn first_half_powers() {
@@ -285,63 +350,5 @@ mod tests {
     #[should_panic]
     fn large_phase2_uncompressed_fails() {
         read_write_curve::<Bls12_377>(3, 9, UseCompression::No);
-    }
-
-    fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
-        let batch = 2;
-        let params = Phase1Parameters::<E>::new(powers, batch);
-        let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-        let accumulator = Phase1::deserialize(&output, compressed, &params).unwrap();
-
-        let groth_params = Groth16Params::<E>::new(
-            prepared_phase1_size,
-            accumulator.tau_powers_g1,
-            accumulator.tau_powers_g2,
-            accumulator.alpha_tau_powers_g1,
-            accumulator.beta_tau_powers_g1,
-            accumulator.beta_g2,
-        )
-        .unwrap();
-
-        let mut writer = vec![];
-        groth_params.write(&mut writer, compat(compressed)).unwrap();
-        let mut reader = std::io::Cursor::new(writer);
-        let deserialized = Groth16Params::<E>::read(
-            &mut reader.get_mut(),
-            compat(compressed),
-            prepared_phase1_size,
-            prepared_phase1_size, // phase2_size == prepared phase1 size
-        )
-        .unwrap();
-        reader.set_position(0);
-        assert_eq!(deserialized, groth_params);
-
-        let subset = prepared_phase1_size / 2;
-        let deserialized_subset = Groth16Params::<E>::read(
-            &mut reader.get_mut(),
-            compat(compressed),
-            prepared_phase1_size,
-            subset, // phase2 size is smaller than the prepared phase1 size
-        )
-        .unwrap();
-        assert_eq!(&deserialized_subset.coeffs_g1[..], &groth_params.coeffs_g1[..subset]);
-        assert_eq!(&deserialized_subset.coeffs_g2[..], &groth_params.coeffs_g2[..subset]);
-        assert_eq!(
-            &deserialized_subset.alpha_coeffs_g1[..],
-            &groth_params.alpha_coeffs_g1[..subset]
-        );
-        assert_eq!(
-            &deserialized_subset.beta_coeffs_g1[..],
-            &groth_params.beta_coeffs_g1[..subset]
-        );
-        assert_eq!(&deserialized_subset.h_g1[..], &groth_params.h_g1[..subset - 1]); // h_query is 1 less element
-    }
-
-    // helper
-    fn compat(compression: UseCompression) -> UseCompressionV1 {
-        match compression {
-            UseCompression::Yes => UseCompressionV1::Yes,
-            UseCompression::No => UseCompressionV1::No,
-        }
     }
 }

@@ -1,11 +1,8 @@
-use phase1::{
-    cli_common::{curve_from_str, CurveKind},
-    parameters::*,
-    Phase1,
-};
+use aleo_setup1::cli::{curve_from_str, CurveKind};
+use phase1::{parameters::*, Phase1};
 use snark_utils::{Groth16Params, Result, UseCompression};
 
-use zexe_algebra::{Bls12_377, Bls12_381, PairingEngine, BW6_761};
+use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use gumdrop::Options;
 use memmap::*;
@@ -91,7 +88,6 @@ fn main() -> Result<()> {
 
     let now = Instant::now();
     match opts.curve_kind {
-        CurveKind::Bls12_381 => prepare_phase2::<Bls12_381>(&opts)?,
         CurveKind::Bls12_377 => prepare_phase2::<Bls12_377>(&opts)?,
         CurveKind::BW6 => prepare_phase2::<BW6_761>(&opts)?,
     }

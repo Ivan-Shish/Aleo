@@ -2,18 +2,6 @@ use crate::{
     errors::{Error, VerificationError},
     Result,
 };
-use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
-use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
-use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
-use rand_chacha::ChaChaRng;
-use std::{
-    convert::TryInto,
-    io::{self, Write},
-    ops::{AddAssign, Mul},
-};
-
-use std::sync::Arc;
-use typenum::consts::U64;
 use zexe_algebra::{
     AffineCurve,
     BigInteger,
@@ -27,10 +15,21 @@ use zexe_algebra::{
     UniformRand,
     Zero,
 };
+use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
 
+use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
+use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
+use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+use std::{
+    convert::TryInto,
+    io::{self, Write},
+    ops::{AddAssign, Mul},
+    sync::Arc,
+};
+use typenum::consts::U64;
 
 /// Generate the powers by raising the key's `tau` to all powers
 /// belonging to this chunk

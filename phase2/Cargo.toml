@@ -3,8 +3,8 @@ name = "phase2"
 version = "0.2.2"
 authors = ["Sean Bowe <ewillbefull@gmail.com>", "The Aleo Team <hello@aleo.org>"]
 description = "Library for performing MPCs for creating zk-SNARK public parameters"
-homepage = "https://github.com/AleoHQ/snark-setup"
-repository = "https://github.com/AleoHQ/snark-setup"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
 license = "MIT/Apache-2.0"
 edition = "2018"
 

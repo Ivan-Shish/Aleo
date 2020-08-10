@@ -1,4 +1,3 @@
-pub mod cli_common;
 pub mod helpers;
 
 pub mod objects;
@@ -10,7 +9,7 @@ mod key_generation;
 mod serialization;
 mod verification;
 
-use crate::helpers::raw_accumulator::{self, *};
+use crate::helpers::accumulator::{self, *};
 use snark_utils::{
     blank_hash,
     check_same_ratio,

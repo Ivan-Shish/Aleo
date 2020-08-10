@@ -1,9 +1,11 @@
-use gumdrop::Options;
-use memmap::MmapOptions;
 use phase2::chunked_groth16::verify as chunked_verify;
 use snark_utils::Result;
-use std::fs::OpenOptions;
+
 use zexe_algebra::{Bls12_377, BW6_761};
+
+use gumdrop::Options;
+use memmap::MmapOptions;
+use std::fs::OpenOptions;
 
 // Options for the Contribute command
 #[derive(Debug, Options, Clone)]

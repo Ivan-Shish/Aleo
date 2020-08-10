@@ -1,4 +1,5 @@
-pub mod raw_accumulator;
-pub use raw_accumulator::*;
+pub mod accumulator;
+pub use accumulator::*;
 
+#[cfg(feature = "testing")]
 pub mod testing;

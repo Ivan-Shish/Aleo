@@ -15,7 +15,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             &self.beta_g2,
         );
 
-        raw_accumulator::serialize(elements, output, compression, parameters)?;
+        accumulator::serialize(elements, output, compression, parameters)?;
 
         Ok(())
     }
@@ -26,7 +26,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         parameters: &'a Phase1Parameters<E>,
     ) -> Result<Phase1<'a, E>> {
         let (tau_powers_g1, tau_powers_g2, alpha_tau_powers_g1, beta_tau_powers_g1, beta_g2) =
-            raw_accumulator::deserialize(input, compression, parameters)?;
+            accumulator::deserialize(input, compression, parameters)?;
         Ok(Phase1 {
             tau_powers_g1,
             tau_powers_g2,
@@ -39,7 +39,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     }
 
     pub fn decompress(input: &[u8], output: &mut [u8], parameters: &'a Phase1Parameters<E>) -> Result<()> {
-        raw_accumulator::decompress(input, output, parameters)?;
+        accumulator::decompress(input, output, parameters)?;
         Ok(())
     }
 }

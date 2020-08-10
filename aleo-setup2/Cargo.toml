@@ -1,11 +1,11 @@
 [package]
-name = "aleo-snark-setup"
+name = "aleo-setup2"
 version = "0.1.0"
 authors = ["Georgios Konstantopoulos <me@gakonst.com>", "The Aleo Team <hello@aleo.org>"]
-description = "MPC for the Aleo Inner and Outer SNARK"
-homepage = "https://github.com/AleoHQ/snark-setup"
-repository = "https://github.com/AleoHQ/snark-setup"
-license = "MIT/Apache-2.0"
+description = "Aleo Setup II"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]

@@ -19,9 +19,11 @@ pub fn buffer_size<C: AffineCurve>(compression: UseCompression) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::thread_rng;
-    use test_helpers::random_point_vec;
+    use phase1::helpers::testing::random_point_vec;
+
     use zexe_algebra::bls12_377::{G1Affine, G2Affine};
+
+    use rand::thread_rng;
 
     #[test]
     fn read_write_single() {

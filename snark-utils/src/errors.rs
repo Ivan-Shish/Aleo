@@ -1,9 +1,10 @@
+use crate::ElementType;
+
+use zexe_algebra::SerializationError;
+use zexe_r1cs_core::SynthesisError;
+
 use std::io;
 use thiserror::Error;
-use zexe_algebra::SerializationError;
-
-use crate::ElementType;
-use zexe_r1cs_core::SynthesisError;
 
 /// Errors that might occur during deserialization.
 #[derive(Debug, Error)]

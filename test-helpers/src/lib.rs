@@ -1,6 +1,4 @@
 //! Helpers crate to be consumed in tests and benchmarks
-mod accumulator_helpers;
-pub use accumulator_helpers::{generate_input, generate_output, setup_verify};
 
 mod fixtures;
 pub use fixtures::TestCircuit;
