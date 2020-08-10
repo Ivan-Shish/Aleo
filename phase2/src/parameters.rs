@@ -1,7 +1,7 @@
-use super::{
-    keypair::{hash_cs_pubkeys, Keypair, PublicKey},
-    polynomial::eval,
-};
+use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
+#[cfg(not(feature = "wasm"))]
+use super::polynomial::eval;
+
 use setup_utils::*;
 
 use zexe_algebra::{
@@ -59,6 +59,7 @@ impl<E: PairingEngine + PartialEq> PartialEq for MPCParameters<E> {
 }
 
 impl<E: PairingEngine> MPCParameters<E> {
+    #[cfg(not(feature = "wasm"))]
     pub fn new_from_buffer<Aleo, C>(
         circuit: C,
         transcript: &mut [u8],
@@ -78,6 +79,7 @@ impl<E: PairingEngine> MPCParameters<E> {
     /// Create new Groth16 parameters (compatible with Zexe and snarkOS) for a
     /// given QAP which has been produced from a circuit. The resulting parameters
     /// are unsafe to use until there are contributions (see `contribute()`).
+    #[cfg(not(feature = "wasm"))]
     pub fn new(assembly: zexe_groth16::KeypairAssembly<E>, params: Groth16Params<E>) -> Result<MPCParameters<E>> {
         // Evaluate the QAP against the coefficients created from phase 1
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
