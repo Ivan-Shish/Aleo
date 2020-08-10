@@ -12,7 +12,6 @@ use std::default::Default;
 
 #[derive(Debug, Clone)]
 pub enum CurveKind {
-    Bls12_381,
     Bls12_377,
     BW6,
 }
@@ -23,11 +22,11 @@ pub enum ProvingSystem {
 }
 
 #[derive(Debug, Options, Clone)]
-pub struct PowersOfTauOpts {
+pub struct Phase1Opts {
     help: bool,
     #[options(
         help = "the elliptic curve to use",
-        default = "bls12_381",
+        default = "bls12_377",
         parse(try_from_str = "curve_from_str")
     )]
     pub curve_kind: CurveKind,
@@ -96,10 +95,9 @@ pub struct VerifyAndTransformOpts {
 
 pub fn curve_from_str(src: &str) -> Result<CurveKind, String> {
     let curve = match src.to_lowercase().as_str() {
-        "bls12_381" => CurveKind::Bls12_381,
         "bls12_377" => CurveKind::Bls12_377,
         "bw6" => CurveKind::BW6,
-        _ => return Err("unsupported curve.".to_string()),
+        _ => return Err("unsupported curve".to_string()),
     };
     Ok(curve)
 }

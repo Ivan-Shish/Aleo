@@ -1,10 +1,11 @@
 [workspace]
 members = [
-    "./aleo-snark-setup",
+    "aleo-setup2",
     "phase1",
-    "./phase2",
-    "./snark-utils",
-    "./test-helpers",
+    "aleo-setup1",
+    "phase2",
+    "snark-utils",
+    "test-helpers",
 ]
 
 [profile.release]

@@ -1,0 +1,36 @@
+[package]
+name = "aleo-setup1"
+version = "0.3.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "Aleo Setup I"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "GPL-3.0"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+phase1 = { path = "../phase1" }
+snark-utils = { path = "../snark-utils", features = ["parallel"] }
+
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "bls12_377", "bw6_761", "derive"] }
+
+gumdrop = { version = "0.7.0" }
+hex-literal = { version = "0.1.4" }
+memmap = { version = "0.7.0" }
+rand = { version = "0.7" }
+tracing = { version = "0.1.17" }
+tracing-subscriber = { version = "0.2.3" }
+wasm-bindgen = { version = "0.2.67" }
+
+#rand = { version = "0.7", default-features = false, features = ["wasm-bindgen"] }
+
+[dev-dependencies]
+criterion = { version = "0.3.1" }
+rand_chacha = { version = "0.2", default-features = false }
+wasm-bindgen-test = { version = "0.3.15" }
+
+[build-dependencies]
+rustc_version = "0.2"

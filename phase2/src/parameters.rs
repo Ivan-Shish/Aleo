@@ -426,13 +426,16 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
 mod tests {
     use super::*;
     use crate::chunked_groth16::{contribute, verify};
-    use phase1::{Phase1, Phase1Parameters};
-    use rand::thread_rng;
+    use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
     use snark_utils::{Groth16Params, UseCompression};
+    use test_helpers::TestCircuit;
+
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
-    use test_helpers::{setup_verify, TestCircuit};
-    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
+
     use zexe_algebra::Bls12_377;
+
+    use rand::thread_rng;
+    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
 
     #[test]
     fn serialize_ceremony() {

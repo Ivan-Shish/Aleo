@@ -1,11 +1,12 @@
 //! Utilities for writing and reading group elements to buffers in parallel
 use crate::{buffer_size, Result, UseCompression};
-use std::io::Write;
+
 use zexe_algebra::AffineCurve;
+use zexe_fft::cfg_chunks_mut;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use zexe_fft::cfg_chunks_mut;
+use std::io::Write;
 
 /// Used for writing elements to a buffer directly
 pub trait Serializer {

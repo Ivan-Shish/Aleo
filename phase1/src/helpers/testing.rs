@@ -1,24 +1,19 @@
 use crate::{Phase1, Phase1Parameters, PublicKey};
-use snark_utils::{UseCompression, *};
+use snark_utils::*;
 
-use zexe_algebra::PairingEngine;
-#[cfg(test)]
-use zexe_algebra::{AffineCurve, ProjectiveCurve};
-#[cfg(test)]
+use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve};
 use zexe_algebra_core::UniformRand;
 
-use rand::thread_rng;
-#[cfg(test)]
-use rand::Rng;
+use rand::{thread_rng, Rng};
+
+pub use snark_utils::UseCompression;
 
 /// Returns a random affine curve point from the provided RNG.
-#[cfg(test)]
 pub fn random_point<C: AffineCurve>(rng: &mut impl Rng) -> C {
     C::Projective::rand(rng).into_affine()
 }
 
 /// Returns a random affine curve point vector from the provided RNG.
-#[cfg(test)]
 pub fn random_point_vec<C: AffineCurve>(size: usize, rng: &mut impl Rng) -> Vec<C> {
     (0..size).map(|_| random_point(rng)).collect()
 }

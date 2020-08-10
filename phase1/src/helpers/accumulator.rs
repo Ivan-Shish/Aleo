@@ -7,10 +7,11 @@ use zexe_algebra::{AffineCurve, PairingEngine};
 
 use itertools::{Itertools, MinMaxResult};
 
-/// Mutable buffer, compression
-type Output<'a> = (&'a mut [u8], UseCompression);
 /// Buffer, compression
 type Input<'a> = (&'a [u8], UseCompression);
+
+/// Mutable buffer, compression
+type Output<'a> = (&'a mut [u8], UseCompression);
 
 /// Mutable slices with format [TauG1, TauG2, AlphaG1, BetaG1, BetaG2]
 type SplitBufMut<'a> = (&'a mut [u8], &'a mut [u8], &'a mut [u8], &'a mut [u8], &'a mut [u8]);
@@ -301,22 +302,22 @@ mod tests {
     use rand::thread_rng;
 
     fn decompress_buffer_curve_test<C: AffineCurve>() {
-        // generate some random points
+        // Generate some random points.
         let mut rng = thread_rng();
         let num_els = 10;
         let elements: Vec<C> = random_point_vec(num_els, &mut rng);
-        // write them as compressed
+        // Write them as compressed elements.
         let len = num_els * buffer_size::<C>(UseCompression::Yes);
         let mut input = vec![0; len];
         input.write_batch(&elements, UseCompression::Yes).unwrap();
 
-        // allocate the decompressed buffer
+        // Allocate the decompressed buffer.
         let len = num_els * buffer_size::<C>(UseCompression::No);
         let mut out = vec![0; len];
-        // perform the decompression
+        // Perform the decompression.
         decompress_buffer::<C>(&mut out, &input, (0, num_els)).unwrap();
         let deserialized = out.read_batch::<C>(UseCompression::No).unwrap();
-        // ensure they match
+        // Ensure they match.
         assert_eq!(deserialized, elements);
     }
 

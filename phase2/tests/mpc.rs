@@ -1,7 +1,7 @@
-use phase1::{Phase1, Phase1Parameters};
+use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
 use phase2::parameters::MPCParameters;
 use snark_utils::{Groth16Params, UseCompression};
-use test_helpers::{setup_verify, TestCircuit};
+use test_helpers::TestCircuit;
 
 use rand::{thread_rng, Rng};
 use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine, BW6_761};

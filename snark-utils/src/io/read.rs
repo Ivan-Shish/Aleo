@@ -1,10 +1,11 @@
 use crate::{buffer_size, Result, UseCompression};
-use std::io::Read;
+
 use zexe_algebra::AffineCurve;
+use zexe_fft::cfg_chunks;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use zexe_fft::cfg_chunks;
+use std::io::Read;
 
 /// Used for reading 1 group element from a serialized buffer
 pub trait Deserializer {
