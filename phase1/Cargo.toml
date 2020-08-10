@@ -13,7 +13,7 @@ name = "phase1"
 harness = false
 
 [dependencies]
-snark-utils = { path = "../snark-utils", features = ["parallel"] }
+setup-utils = { path = "../setup-utils", features = ["parallel"] }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "derive"] }
 zexe_algebra_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra-core", version = "0.1.0", optional = true, features = ["parallel", "derive"] }

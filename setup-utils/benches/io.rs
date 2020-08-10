@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use zexe_algebra::{AffineCurve, Bls12_377, PairingEngine};
 
-use snark_utils::{BatchDeserializer, BatchSerializer, UseCompression};
+use setup_utils::{BatchDeserializer, BatchSerializer, UseCompression};
 
 use test_helpers::*;
 

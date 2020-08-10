@@ -1,5 +1,5 @@
 use phase1::{helpers::testing::setup_verify, Phase1Parameters};
-use snark_utils::UseCompression;
+use setup_utils::UseCompression;
 
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
 use snarkos_models::curves::{AffineCurve as AleoAffineCurve, PairingEngine as AleoPairingEngine};

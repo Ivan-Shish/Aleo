@@ -1,5 +1,5 @@
 use crate::Phase1Parameters;
-use snark_utils::{Error, UseCompression};
+use setup_utils::{Error, UseCompression};
 
 use zexe_algebra::{CanonicalDeserialize, CanonicalSerialize, PairingEngine, SerializationError};
 

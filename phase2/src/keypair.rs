@@ -2,7 +2,7 @@
 //!
 //! A Groth16 keypair. Generate one with the Keypair::new method.
 //! Dispose of the private key ASAP once it's been used.
-use snark_utils::{hash_to_g2, Deserializer, HashWriter, Result, Serializer, UseCompression};
+use setup_utils::{hash_to_g2, Deserializer, HashWriter, Result, Serializer, UseCompression};
 
 use zexe_algebra::{
     AffineCurve,

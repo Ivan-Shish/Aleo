@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rand::Rng;
-use snark_utils::{batch_exp, dense_multiexp, generate_powers_of_tau};
+use setup_utils::{batch_exp, dense_multiexp, generate_powers_of_tau};
 use std::ops::MulAssign;
 use zexe_algebra::{
     bls12_377::{Bls12_377, G1Affine},

@@ -1,6 +1,6 @@
 use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
 use phase2::{helpers::testing::TestCircuit, parameters::MPCParameters};
-use snark_utils::{Groth16Params, UseCompression};
+use setup_utils::{Groth16Params, UseCompression};
 
 use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine as ZexePairingEngine, BW6_761};
 use zexe_groth16::Parameters;

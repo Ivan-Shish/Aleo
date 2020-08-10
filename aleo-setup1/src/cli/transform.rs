@@ -1,5 +1,5 @@
 use phase1::{Phase1, Phase1Parameters, PublicKey};
-use snark_utils::{calculate_hash, print_hash, UseCompression};
+use setup_utils::{calculate_hash, print_hash, UseCompression};
 
 use zexe_algebra::PairingEngine as Engine;
 

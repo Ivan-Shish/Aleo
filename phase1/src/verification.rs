@@ -173,7 +173,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 mod tests {
     use super::*;
     use crate::helpers::testing::{generate_input, generate_output};
-    use snark_utils::calculate_hash;
+    use setup_utils::calculate_hash;
 
     use zexe_algebra::{Bls12_377, BW6_761};
 

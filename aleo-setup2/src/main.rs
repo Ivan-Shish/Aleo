@@ -1,7 +1,7 @@
 mod cli;
 use cli::*;
 
-use snark_utils::{beacon_randomness, from_slice, get_rng, user_system_randomness};
+use setup_utils::{beacon_randomness, from_slice, get_rng, user_system_randomness};
 
 use gumdrop::Options;
 use std::{process, time::Instant};

@@ -17,7 +17,7 @@ path = "tests/aleo_compatibility.rs"
 required-features = ["phase2/testing"]
 
 [dependencies]
-snark-utils = { path = "../snark-utils" }
+setup-utils = { path = "../setup-utils" }
 
 snarkos-algorithms = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-algorithms", default-features = false }
 snarkos-errors = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-errors", default-features = false, optional = true }

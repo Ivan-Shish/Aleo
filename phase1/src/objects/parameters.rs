@@ -1,4 +1,4 @@
-use snark_utils::UseCompression;
+use setup_utils::UseCompression;
 
 use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 

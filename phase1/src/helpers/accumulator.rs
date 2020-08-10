@@ -1,7 +1,7 @@
 //! Accumulator which operates on batches of data
 
 use crate::{Phase1Parameters, PublicKey};
-use snark_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
+use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
 use zexe_algebra::{AffineCurve, PairingEngine};
 

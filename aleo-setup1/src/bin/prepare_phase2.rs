@@ -1,6 +1,6 @@
 use aleo_setup1::cli::{curve_from_str, CurveKind};
 use phase1::{parameters::*, Phase1};
-use snark_utils::{Groth16Params, Result, UseCompression};
+use setup_utils::{Groth16Params, Result, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
