@@ -426,7 +426,7 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
 mod tests {
     use super::*;
     use crate::chunked_groth16::{contribute, verify};
-    use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
+    use powersoftau::{Phase1, Phase1Parameters};
     use rand::thread_rng;
     use snark_utils::{Groth16Params, UseCompression};
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
@@ -543,11 +543,11 @@ mod tests {
         let powers = 5;
         let batch = 16;
         let phase2_size = 7;
-        let params = CeremonyParams::<E>::new(powers, batch);
+        let params = Phase1Parameters::<E>::new(powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
             let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-            BatchedAccumulator::deserialize(&output, compressed, &params).unwrap()
+            Phase1::deserialize(&output, compressed, &params).unwrap()
         };
 
         let groth_params = Groth16Params::<E>::new(

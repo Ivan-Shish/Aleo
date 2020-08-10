@@ -255,7 +255,7 @@ fn split_transcript<E: PairingEngine>(
 mod tests {
     use super::*;
     use crate::UseCompression as UseCompressionV1;
-    use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
+    use powersoftau::{Phase1, Phase1Parameters};
     use test_helpers::{setup_verify, UseCompression};
     use zexe_algebra::Bls12_377;
 
@@ -289,9 +289,9 @@ mod tests {
 
     fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
         let batch = 2;
-        let params = CeremonyParams::<E>::new(powers, batch);
+        let params = Phase1Parameters::<E>::new(powers, batch);
         let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-        let accumulator = BatchedAccumulator::deserialize(&output, compressed, &params).unwrap();
+        let accumulator = Phase1::deserialize(&output, compressed, &params).unwrap();
 
         let groth_params = Groth16Params::<E>::new(
             prepared_phase1_size,

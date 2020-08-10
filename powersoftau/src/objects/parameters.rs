@@ -1,19 +1,12 @@
-use snark_utils::{ElementType, UseCompression};
-use std::marker::PhantomData;
+use snark_utils::UseCompression;
+
 use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 
-/// Determines if points should be checked for correctness during deserialization.
-/// This is not necessary for participants, because a transcript verifier can
-/// check this theirself.
-#[derive(Copy, Clone, PartialEq)]
-pub enum CheckForCorrectness {
-    Yes,
-    No,
-}
+use std::marker::PhantomData;
 
 /// The sizes of the group elements of a curve
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
-pub struct CurveParams<E> {
+pub struct CurveParameters<E> {
     /// Size of a G1 Element
     pub g1_size: usize,
     /// Size of a G2 Element
@@ -25,9 +18,9 @@ pub struct CurveParams<E> {
     engine_type: PhantomData<E>,
 }
 
-impl<E: PairingEngine> CurveParams<E> {
-    pub fn new() -> CurveParams<E> {
-        CurveParams {
+impl<E: PairingEngine> CurveParameters<E> {
+    pub fn new() -> CurveParameters<E> {
+        CurveParameters {
             g1_size: <E as PairingEngine>::G1Affine::UNCOMPRESSED_SIZE,
             g2_size: <E as PairingEngine>::G2Affine::UNCOMPRESSED_SIZE,
             g1_compressed_size: <E as PairingEngine>::G1Affine::SERIALIZED_SIZE,
@@ -37,43 +30,20 @@ impl<E: PairingEngine> CurveParams<E> {
     }
 }
 
-// impl<E> CurveParams<E> {
-//     pub fn g1_size(&self, compression: UseCompression) -> usize {
-//         match compression {
-//             UseCompression::Yes => self.g1_compressed_size,
-//             UseCompression::No => self.g1_size,
-//         }
-//     }
-//
-//     pub fn g2_size(&self, compression: UseCompression) -> usize {
-//         match compression {
-//             UseCompression::Yes => self.g2_compressed_size,
-//             UseCompression::No => self.g2_size,
-//         }
-//     }
-//
-//     pub fn get_size(&self, element_type: ElementType, compression: UseCompression) -> usize {
-//         match element_type {
-//             ElementType::AlphaG1 | ElementType::BetaG1 | ElementType::TauG1 => self.g1_size(compression),
-//             ElementType::BetaG2 | ElementType::TauG2 => self.g2_size(compression),
-//         }
-//     }
-// }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// The parameters used for the trusted setup ceremony
-pub struct CeremonyParams<E> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Phase1Parameters<E> {
     /// The type of the curve being used
-    pub curve: CurveParams<E>,
+    pub curve: CurveParameters<E>,
     /// The number of Powers of Tau G1 elements which will be accumulated
     pub powers_g1_length: usize,
     /// The number of Powers of Tau Alpha/Beta/G2 elements which will be accumulated
     pub powers_length: usize,
-    /// The circuit size exponent (ie length will be 2^size), depends on the computation you want to support
+    /// The circuit size exponent (ie length will be 2^size),
+    /// depends on the computation you want to support.
     pub size: usize,
     /// The empirical batch size for the batched accumulator.
-    /// This is a hyper parameter and may be different for each
-    /// curve.
+    /// This is a hyper parameter and may be different for each curve.
     pub batch_size: usize,
     /// Size of the used public key
     pub public_key_size: usize,
@@ -85,18 +55,18 @@ pub struct CeremonyParams<E> {
     pub hash_size: usize,
 }
 
-impl<E: PairingEngine> CeremonyParams<E> {
+impl<E: PairingEngine> Phase1Parameters<E> {
     /// Constructs a new ceremony parameters object from the type of provided curve
     /// Panics if given batch_size = 0
     pub fn new(size: usize, batch_size: usize) -> Self {
         // create the curve
-        let curve = CurveParams::<E>::new();
+        let curve = CurveParameters::<E>::new();
         Self::new_with_curve(curve, size, batch_size)
     }
 
     /// Constructs a new ceremony parameters object from the directly provided curve with parameters
     /// Consider using the `new` method if you want to use one of the pre-implemented curves
-    pub fn new_with_curve(curve: CurveParams<E>, size: usize, batch_size: usize) -> Self {
+    pub fn new_with_curve(curve: CurveParameters<E>, size: usize, batch_size: usize) -> Self {
         // assume we're using a 64 byte long hash function such as Blake
         let hash_size = 64;
 
@@ -135,14 +105,14 @@ impl<E: PairingEngine> CeremonyParams<E> {
 
         Self {
             curve,
+            powers_g1_length,
+            powers_length,
             size,
             batch_size,
             accumulator_size,
             public_key_size,
             contribution_size,
             hash_size,
-            powers_length,
-            powers_g1_length,
         }
     }
 
@@ -161,7 +131,7 @@ mod tests {
     use zexe_algebra::{Bls12_377, Bls12_381, BW6_761};
 
     fn curve_params_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
-        let p = CurveParams::<E>::new();
+        let p = CurveParameters::<E>::new();
         assert_eq!(p.g1_size, g1);
         assert_eq!(p.g2_size, g2);
         assert_eq!(p.g1_compressed_size, g1_compressed);
@@ -169,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn params_sizes() {
+    fn test_parameter_sizes() {
         curve_params_test::<Bls12_377>(96, 192, 48, 96);
         curve_params_test::<Bls12_381>(96, 192, 48, 96);
         curve_params_test::<BW6_761>(192, 192, 96, 96);

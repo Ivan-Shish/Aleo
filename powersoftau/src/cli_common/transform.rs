@@ -1,14 +1,13 @@
-use crate::{
-    batched_accumulator::BatchedAccumulator,
-    keypair::PublicKey,
-    parameters::{CeremonyParams, CheckForCorrectness},
-};
-use memmap::*;
+use crate::{Phase1, Phase1Parameters, PublicKey};
 use snark_utils::{calculate_hash, print_hash, UseCompression};
-use std::fs::OpenOptions;
+
 use zexe_algebra::PairingEngine as Engine;
 
-use std::io::{Read, Write};
+use memmap::*;
+use std::{
+    fs::OpenOptions,
+    io::{Read, Write},
+};
 
 const PREVIOUS_CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
 const CONTRIBUTION_IS_COMPRESSED: UseCompression = UseCompression::Yes;
@@ -18,7 +17,7 @@ pub fn transform<T: Engine + Sync>(
     challenge_filename: &str,
     response_filename: &str,
     new_challenge_filename: &str,
-    parameters: &CeremonyParams<T>,
+    parameters: &Phase1Parameters<T>,
 ) {
     println!(
         "Will verify and decompress a contribution to accumulator for 2^{} powers of tau",
@@ -123,15 +122,13 @@ pub fn transform<T: Engine + Sync>(
 
     println!("Verifying a contribution to contain proper powers and correspond to the public key...");
 
-    let res = BatchedAccumulator::verify_transformation(
+    let res = Phase1::verification(
         &challenge_readable_map,
         &response_readable_map,
         &public_key,
         current_accumulator_hash.as_slice(),
         PREVIOUS_CHALLENGE_IS_COMPRESSED,
         CONTRIBUTION_IS_COMPRESSED,
-        CheckForCorrectness::No,
-        CheckForCorrectness::Yes,
         &parameters,
     );
 
@@ -176,13 +173,8 @@ pub fn transform<T: Engine + Sync>(
                 .expect("unable to write hash to new challenge file");
         }
 
-        BatchedAccumulator::decompress(
-            &response_readable_map,
-            &mut writable_map,
-            CheckForCorrectness::No,
-            &parameters,
-        )
-        .expect("must decompress a response for a new challenge");
+        Phase1::decompress(&response_readable_map, &mut writable_map, &parameters)
+            .expect("must decompress a response for a new challenge");
 
         writable_map.flush().expect("must flush the memory map");
 

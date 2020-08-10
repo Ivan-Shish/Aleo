@@ -1,6 +1,5 @@
-use powersoftau::parameters::CeremonyParams;
+use powersoftau::{helpers::testing::setup_verify, Phase1Parameters};
 use snark_utils::UseCompression;
-use test_helpers::setup_verify;
 
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
 use snarkos_models::curves::{AffineCurve as AleoAffineCurve, PairingEngine as AleoPairingEngine};
@@ -25,7 +24,7 @@ use std::io::Read;
 fn compatible_powersoftau<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() -> anyhow::Result<()> {
     // Generate an accumulator via Zexe's trusted setup.
     let (powers, batch) = (6, 4);
-    let params = CeremonyParams::<Zexe>::new(powers, batch);
+    let params = Phase1Parameters::<Zexe>::new(powers, batch);
 
     // Perform 1 power of tau contribution (assume Powers of Tau is computed correctly)
     let compressed = UseCompression::No;

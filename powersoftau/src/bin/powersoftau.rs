@@ -1,6 +1,6 @@
 use powersoftau::{
     cli_common::{contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts},
-    parameters::CeremonyParams,
+    Phase1Parameters,
 };
 use snark_utils::{beacon_randomness, get_rng, user_system_randomness};
 
@@ -33,7 +33,7 @@ fn main() {
 }
 
 fn execute_cmd<E: Engine>(opts: PowersOfTauOpts) {
-    let parameters = CeremonyParams::<E>::new(opts.power, opts.batch_size);
+    let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
 
     let command = opts.clone().command.unwrap_or_else(|| {
         eprintln!("No command was provided.");

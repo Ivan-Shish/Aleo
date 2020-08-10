@@ -1,16 +1,8 @@
-use rand::Rng;
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    PairingEngine,
-    ProjectiveCurve,
-    SerializationError,
-    UniformRand,
-};
+use crate::Phase1Parameters;
+use snark_utils::{Error, UseCompression};
 
-use super::parameters::CeremonyParams;
-use snark_utils::{compute_g2_s, Error, UseCompression};
+use zexe_algebra::{CanonicalDeserialize, CanonicalSerialize, PairingEngine, SerializationError};
+
 use std::io::{Read, Write};
 
 /// Contains terms of the form (s<sub>1</sub>, s<sub>1</sub><sup>x</sup>, H(s<sub>1</sub><sup>x</sup>)<sub>2</sub>, H(s<sub>1</sub><sup>x</sup>)<sub>2</sub><sup>x</sup>)
@@ -50,7 +42,7 @@ impl<E: PairingEngine> PublicKey<E> {
         &self,
         output_map: &mut [u8],
         accumulator_was_compressed: UseCompression,
-        parameters: &CeremonyParams<E>,
+        parameters: &Phase1Parameters<E>,
     ) -> Result<(), Error> {
         let position = match accumulator_was_compressed {
             UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
@@ -66,7 +58,7 @@ impl<E: PairingEngine> PublicKey<E> {
     pub fn read(
         input_map: &[u8],
         accumulator_was_compressed: UseCompression,
-        parameters: &CeremonyParams<E>,
+        parameters: &Phase1Parameters<E>,
     ) -> Result<Self, Error> {
         let position = match accumulator_was_compressed {
             UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
@@ -75,60 +67,4 @@ impl<E: PairingEngine> PublicKey<E> {
         // The public key is written after the provided position
         Ok(PublicKey::deserialize(&mut &input_map[position..])?)
     }
-}
-
-/// Contains the secrets τ, α and β that the participant of the ceremony must destroy.
-#[derive(PartialEq, Debug)]
-pub struct PrivateKey<E: PairingEngine> {
-    pub tau: E::Fr,
-    pub alpha: E::Fr,
-    pub beta: E::Fr,
-}
-
-/// Constructs a keypair given an RNG and a 64-byte transcript `digest`.
-pub fn keypair<E: PairingEngine, R: Rng>(rng: &mut R, digest: &[u8]) -> Result<(PublicKey<E>, PrivateKey<E>), Error> {
-    if digest.len() != 64 {
-        return Err(Error::InvalidLength {
-            expected: 64,
-            got: digest.len(),
-        });
-    }
-
-    // tau is a contribution to the "powers of tau", in a set of points of the form "tau^i * G"
-    let tau = E::Fr::rand(rng);
-    // alpha and beta are a set of contributions in a form "alpha * tau^i * G" and that are required
-    // for construction of the polynomials
-    let alpha = E::Fr::rand(rng);
-    let beta = E::Fr::rand(rng);
-
-    let mut op = |x: E::Fr, personalization: u8| -> Result<_, Error> {
-        // Sample random g^s
-        let g1_s = E::G1Projective::rand(rng).into_affine();
-        // Compute g^{s*x}
-        let g1_s_x = g1_s.mul(x).into_affine();
-        // Hash into G2 as g^{s'}
-        let g2_s: E::G2Affine = compute_g2_s::<E>(&digest, &g1_s, &g1_s_x, personalization)?;
-        // Compute g^{s'*x}
-        let g2_s_x = g2_s.mul(x).into_affine();
-
-        Ok(((g1_s, g1_s_x), g2_s_x))
-    };
-
-    // these "public keys" are required for the next participants to check that points are in fact
-    // sequential powers
-    let pk_tau = op(tau, 0)?;
-    let pk_alpha = op(alpha, 1)?;
-    let pk_beta = op(beta, 2)?;
-
-    Ok((
-        PublicKey {
-            tau_g1: pk_tau.0,
-            alpha_g1: pk_alpha.0,
-            beta_g1: pk_beta.0,
-            tau_g2: pk_tau.1,
-            alpha_g2: pk_alpha.1,
-            beta_g2: pk_beta.1,
-        },
-        PrivateKey { tau, alpha, beta },
-    ))
 }

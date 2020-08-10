@@ -1,10 +1,15 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use powersoftau::{keypair::*, parameters::*, BatchedAccumulator as RawAccumulator};
-use rand::thread_rng;
+use powersoftau::{
+    helpers::testing::{generate_input, setup_verify},
+    key_generation::*,
+    parameters::*,
+    Phase1,
+};
 use snark_utils::*;
+
 use zexe_algebra::Bls12_377;
 
-use test_helpers::{generate_input, setup_verify};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use rand::thread_rng;
 
 // Benchmark comparing the generation of the iterator in parallel chunks
 // Parallel generation is strictly better
@@ -16,14 +21,14 @@ fn generate_initial_benchmark(c: &mut Criterion) {
             if power > 8 {
                 group.sample_size(10);
             }
-            let parameters = CeremonyParams::<Bls12_377>::new(power, power);
+            let parameters = Phase1Parameters::<Bls12_377>::new(power, power);
             let expected_challenge_length = parameters.get_length(*compression);
 
             // count in `other` powers (G1 will be 2x that)
             group.throughput(Throughput::Elements(power as u64));
             group.bench_with_input(format!("{}", compression), &power, |b, _power| {
                 let mut output = vec![0; expected_challenge_length];
-                b.iter(|| RawAccumulator::generate_initial(&mut output, *compression, &parameters))
+                b.iter(|| Phase1::initialization(&mut output, *compression, &parameters))
             });
         }
     }
@@ -39,22 +44,22 @@ fn contribute_benchmark(c: &mut Criterion) {
 
     // we gather data on various sizes
     for size in 4..8 {
-        let parameters = CeremonyParams::<Bls12_377>::new(size, batch);
+        let parameters = Phase1Parameters::<Bls12_377>::new(size, batch);
         let (input, _) = generate_input(&parameters, in_compressed);
         let mut output = vec![0; parameters.get_length(out_compressed)];
         let current_accumulator_hash = blank_hash();
         let mut rng = thread_rng();
         // generate the private key
-        let (_, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+        let (_, privkey) =
+            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
         group.bench_with_input(format!("{}_{}", in_compressed, out_compressed), &size, |b, _size| {
             b.iter(|| {
-                RawAccumulator::contribute(
+                Phase1::computation(
                     &input,
                     &mut output,
                     in_compressed,
                     out_compressed,
-                    CheckForCorrectness::Yes,
                     &privkey,
                     &parameters,
                 )
@@ -68,8 +73,6 @@ fn contribute_benchmark(c: &mut Criterion) {
 // compressed situations. Parallel verification is consistently faster by 10-15% in all
 // modes of operation
 fn verify_benchmark(c: &mut Criterion) {
-    let correctness = CheckForCorrectness::No;
-
     // Iterate over all combinations of the following parameters
     let compression = &[
         (UseCompression::Yes, UseCompression::Yes),
@@ -86,7 +89,7 @@ fn verify_benchmark(c: &mut Criterion) {
     // Test the benchmark for everything in the parameter space
     for power in powers {
         for (compressed_input, compressed_output) in compression {
-            let parameters = CeremonyParams::<Bls12_377>::new(power, batch);
+            let parameters = Phase1Parameters::<Bls12_377>::new(power, batch);
 
             let (input, output, pubkey, current_accumulator_hash) =
                 setup_verify(*compressed_input, *compressed_output, &parameters);
@@ -96,15 +99,13 @@ fn verify_benchmark(c: &mut Criterion) {
                 &power,
                 |b, _power| {
                     b.iter(|| {
-                        RawAccumulator::verify_transformation(
+                        Phase1::verification(
                             &input,
                             &output,
                             &pubkey,
                             &current_accumulator_hash,
                             *compressed_input,
                             *compressed_output,
-                            correctness,
-                            correctness,
                             &parameters,
                         )
                         .unwrap()
