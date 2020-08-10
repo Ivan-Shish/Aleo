@@ -2,7 +2,7 @@ use gumdrop::Options;
 use memmap::MmapOptions;
 use phase2::{chunked_groth16::contribute as chunked_contribute, keypair::PublicKey};
 use rand::Rng;
-use snark_utils::Result;
+use setup_utils::Result;
 use std::fs::OpenOptions;
 use zexe_algebra::{Bls12_377, BW6_761};
 

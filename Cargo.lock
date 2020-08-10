@@ -22,7 +22,7 @@ dependencies = [
  "rand 0.7.3",
  "rand_chacha",
  "rustc_version",
- "snark-utils",
+ "setup-utils",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -46,7 +46,7 @@ dependencies = [
  "rand 0.7.3",
  "rand_xorshift",
  "rusty-hook",
- "snark-utils",
+ "setup-utils",
  "snarkos-curves",
  "snarkos-dpc",
  "snarkos-models",
@@ -815,7 +815,7 @@ dependencies = [
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
- "snark-utils",
+ "setup-utils",
  "snarkos-curves",
  "snarkos-models",
  "snarkos-utilities",
@@ -840,7 +840,7 @@ dependencies = [
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
- "snark-utils",
+ "setup-utils",
  "snarkos-algorithms",
  "snarkos-curves",
  "snarkos-errors",
@@ -1212,6 +1212,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "setup-utils"
+version = "0.1.0"
+dependencies = [
+ "algebra",
+ "blake2",
+ "criterion",
+ "crossbeam",
+ "ff-fft",
+ "num_cpus",
+ "phase1",
+ "r1cs-core",
+ "rand 0.7.3",
+ "rand_chacha",
+ "rayon",
+ "rust-crypto",
+ "rusty-hook",
+ "thiserror",
+ "tracing",
+ "typenum",
+]
+
+[[package]]
 name = "sha2"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1238,28 +1260,6 @@ name = "smallvec"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3757cb9d89161a2f24e1cf78efa0c1fcff485d18e3f55e0aa3480824ddaa0f3f"
-
-[[package]]
-name = "snark-utils"
-version = "0.1.0"
-dependencies = [
- "algebra",
- "blake2",
- "criterion",
- "crossbeam",
- "ff-fft",
- "num_cpus",
- "phase1",
- "r1cs-core",
- "rand 0.7.3",
- "rand_chacha",
- "rayon",
- "rust-crypto",
- "rusty-hook",
- "thiserror",
- "tracing",
- "typenum",
-]
 
 [[package]]
 name = "snarkos-algorithms"

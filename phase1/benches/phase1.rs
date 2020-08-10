@@ -3,7 +3,7 @@ use phase1::{
     Phase1,
     Phase1Parameters,
 };
-use snark_utils::*;
+use setup_utils::*;
 
 use zexe_algebra::Bls12_377;
 

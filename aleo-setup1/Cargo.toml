@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 phase1 = { path = "../phase1" }
-snark-utils = { path = "../snark-utils", features = ["parallel"] }
+setup-utils = { path = "../setup-utils", features = ["parallel"] }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "bls12_377", "bw6_761", "derive"] }
 

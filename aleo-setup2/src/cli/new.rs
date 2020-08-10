@@ -3,7 +3,7 @@ use gumdrop::Options;
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use phase2::parameters::{circuit_to_qap, MPCParameters};
-use snark_utils::{log_2, Groth16Params, UseCompression};
+use setup_utils::{log_2, Groth16Params, UseCompression};
 
 use snarkos_dpc::base_dpc::{
     inner_circuit::InnerCircuit,

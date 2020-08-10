@@ -1,5 +1,5 @@
 use phase2::chunked_groth16::verify as chunked_verify;
-use snark_utils::Result;
+use setup_utils::Result;
 
 use zexe_algebra::{Bls12_377, BW6_761};
 

@@ -2,7 +2,7 @@ use super::{
     keypair::{hash_cs_pubkeys, Keypair, PublicKey},
     polynomial::eval,
 };
-use snark_utils::*;
+use setup_utils::*;
 
 use zexe_algebra::{
     AffineCurve,
@@ -429,7 +429,7 @@ mod tests {
         helpers::testing::TestCircuit,
     };
     use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
-    use snark_utils::{Groth16Params, UseCompression};
+    use setup_utils::{Groth16Params, UseCompression};
 
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
 

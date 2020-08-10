@@ -155,7 +155,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 mod tests {
     use super::*;
     use crate::helpers::testing::generate_input;
-    use snark_utils::{batch_exp, generate_powers_of_tau};
+    use setup_utils::{batch_exp, generate_powers_of_tau};
 
     use zexe_algebra::{Bls12_377, ProjectiveCurve, BW6_761};
 

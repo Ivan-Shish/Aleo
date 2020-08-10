@@ -3,7 +3,7 @@ extern crate hex_literal;
 
 use aleo_setup1::cli::{contribute, new_challenge, transform, Command, CurveKind, Phase1Opts};
 use phase1::Phase1Parameters;
-use snark_utils::{beacon_randomness, get_rng, user_system_randomness};
+use setup_utils::{beacon_randomness, get_rng, user_system_randomness};
 
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 

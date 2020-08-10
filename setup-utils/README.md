@@ -1,6 +1,6 @@
-# SNARK MPC Utils
+# setup-utils
 
-Utilities for building MPC Ceremonies for large SNARKs with Zexe.
+Utilities for building MPC Ceremonies for large SNARKs.
 
 Provides traits for batched writing and reading Group Elements
 to buffers. 

@@ -4,7 +4,7 @@ members = [
     "phase1",
     "aleo-setup1",
     "phase2",
-    "snark-utils",
+    "setup-utils",
 ]
 
 [profile.release]

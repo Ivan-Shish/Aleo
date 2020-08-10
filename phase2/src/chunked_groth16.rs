@@ -7,7 +7,7 @@ use crate::{
     keypair::{Keypair, PublicKey},
     parameters::*,
 };
-use snark_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
+use setup_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
 
 use zexe_algebra::{
     AffineCurve,

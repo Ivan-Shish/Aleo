@@ -10,7 +10,7 @@ mod serialization;
 mod verification;
 
 use crate::helpers::accumulator::{self, *};
-use snark_utils::{
+use setup_utils::{
     blank_hash,
     check_same_ratio,
     compute_g2_s,

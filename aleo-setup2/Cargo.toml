@@ -10,7 +10,7 @@ edition = "2018"
 
 [dependencies]
 phase2 = { path = "../phase2" }
-snark-utils = { path = "../snark-utils" }
+setup-utils = { path = "../setup-utils" }
 
 snarkos-curves = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-curves", default-features = false }
 snarkos-dpc = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-dpc", default-features = false }
