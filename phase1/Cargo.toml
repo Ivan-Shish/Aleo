@@ -11,7 +11,7 @@ edition = "2018"
 [[bench]]
 name = "phase1"
 harness = false
-required-features = ["criterion"]
+required-features = ["benchmark"]
 
 [dependencies]
 setup-utils = { path = "../setup-utils", default-features = false }
@@ -44,6 +44,7 @@ rusty-hook = { version = "0.11.2" }
 default = ["cli"]
 testing = ["parallel", "zexe_algebra_core"]
 parallel = ["rayon", "setup-utils/parallel", "zexe_algebra/parallel", "zexe_algebra_core/parallel"]
+benchmark = ["criterion"]
 
 cli = ["parallel", "setup-utils/cli"]
 wasm = ["setup-utils/wasm"]
