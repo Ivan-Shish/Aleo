@@ -1,5 +1,5 @@
 use phase2::parameters::MPCParameters;
-use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
+use powersoftau::{Phase1, Phase1Parameters};
 use snark_utils::{Groth16Params, UseCompression};
 use test_helpers::{setup_verify, TestCircuit};
 
@@ -29,11 +29,11 @@ where
 {
     let powers = 6; // powers of tau
     let batch = 4;
-    let params = CeremonyParams::<E>::new(powers, batch);
+    let params = Phase1Parameters::<E>::new(powers, batch);
     let compressed = UseCompression::Yes;
     // make 1 power of tau contribution (assume powers of tau gets calculated properly)
     let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-    let accumulator = BatchedAccumulator::deserialize(&output, compressed, &params).unwrap();
+    let accumulator = Phase1::deserialize(&output, compressed, &params).unwrap();
 
     // prepare only the first 32 powers (for whatever reason)
     let groth_params = Groth16Params::<E>::new(

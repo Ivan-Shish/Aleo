@@ -829,7 +829,6 @@ dependencies = [
  "snarkos-curves",
  "snarkos-models",
  "snarkos-utilities",
- "test-helpers",
  "tracing",
  "tracing-subscriber",
 ]

@@ -1,17 +1,15 @@
-use gumdrop::Options;
 use powersoftau::{
     cli_common::{curve_from_str, CurveKind},
     parameters::*,
-    BatchedAccumulator,
+    Phase1,
 };
 use snark_utils::{Groth16Params, Result, UseCompression};
 
-use std::time::Instant;
 use zexe_algebra::{Bls12_377, Bls12_381, PairingEngine, BW6_761};
 
-use std::fs::OpenOptions;
-
+use gumdrop::Options;
 use memmap::*;
+use std::{fs::OpenOptions, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
@@ -63,7 +61,7 @@ fn main() -> Result<()> {
 }
 
 fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
-    let parameters = CeremonyParams::<E>::new(opts.power, opts.batch_size);
+    let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
     // Try to load response file from disk.
     let reader = OpenOptions::new()
         .read(true)
@@ -84,7 +82,7 @@ fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<(
         .expect("unable to create parameter file in this directory");
 
     // Deserialize the accumulator
-    let current_accumulator = BatchedAccumulator::deserialize(&response_readable_map, UseCompression::Yes, &parameters)
+    let current_accumulator = Phase1::deserialize(&response_readable_map, UseCompression::Yes, &parameters)
         .expect("unable to read uncompressed accumulator");
 
     // Load the elements to the Groth16 utility

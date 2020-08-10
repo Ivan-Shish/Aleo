@@ -1,25 +1,22 @@
-use crate::{
-    batched_accumulator::BatchedAccumulator,
-    keypair::keypair,
-    parameters::{CeremonyParams, CheckForCorrectness},
-};
+use crate::{Phase1, Phase1Parameters};
+use snark_utils::{calculate_hash, print_hash, UseCompression};
+
+use zexe_algebra::PairingEngine as Engine;
+
 use memmap::*;
 use rand::Rng;
-use snark_utils::{calculate_hash, print_hash, UseCompression};
 use std::{
     fs::OpenOptions,
     io::{Read, Write},
 };
-use zexe_algebra::PairingEngine as Engine;
 
-const INPUT_IS_COMPRESSED: UseCompression = UseCompression::No;
-const COMPRESS_THE_OUTPUT: UseCompression = UseCompression::Yes;
-const CHECK_INPUT_CORRECTNESS: CheckForCorrectness = CheckForCorrectness::No;
+const COMPRESSED_INPUT: UseCompression = UseCompression::No;
+const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
 
 pub fn contribute<T: Engine + Sync>(
     challenge_filename: &str,
     response_filename: &str,
-    parameters: &CeremonyParams<T>,
+    parameters: &Phase1Parameters<T>,
     mut rng: impl Rng,
 ) {
     // Try to load challenge file from disk.
@@ -31,7 +28,7 @@ pub fn contribute<T: Engine + Sync>(
         let metadata = reader
             .metadata()
             .expect("unable to get filesystem metadata for challenge file");
-        let expected_challenge_length = match INPUT_IS_COMPRESSED {
+        let expected_challenge_length = match COMPRESSED_INPUT {
             UseCompression::Yes => parameters.contribution_size,
             UseCompression::No => parameters.accumulator_size,
         };
@@ -59,7 +56,7 @@ pub fn contribute<T: Engine + Sync>(
         .open(response_filename)
         .expect("unable to create response file");
 
-    let required_output_length = match COMPRESS_THE_OUTPUT {
+    let required_output_length = match COMPRESSED_OUTPUT {
         UseCompression::Yes => parameters.contribution_size,
         UseCompression::No => parameters.accumulator_size + parameters.public_key_size,
     };
@@ -77,7 +74,7 @@ pub fn contribute<T: Engine + Sync>(
     println!("Calculating previous contribution hash...");
 
     assert!(
-        UseCompression::No == INPUT_IS_COMPRESSED,
+        UseCompression::No == COMPRESSED_INPUT,
         "Hashing the compressed file in not yet defined"
     );
     let current_accumulator_hash = calculate_hash(&readable_map);
@@ -107,18 +104,18 @@ pub fn contribute<T: Engine + Sync>(
     }
 
     // Construct our keypair using the RNG we created above
-    let (pubkey, privkey) = keypair(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+    let (pubkey, privkey) =
+        Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
     // Perform the transformation
     println!("Computing and writing your contribution, this could take a while...");
 
     // this computes a transformation and writes it
-    BatchedAccumulator::contribute(
+    Phase1::computation(
         &readable_map,
         &mut writable_map,
-        INPUT_IS_COMPRESSED,
-        COMPRESS_THE_OUTPUT,
-        CHECK_INPUT_CORRECTNESS,
+        COMPRESSED_INPUT,
+        COMPRESSED_OUTPUT,
         &privkey,
         &parameters,
     )
@@ -128,7 +125,7 @@ pub fn contribute<T: Engine + Sync>(
 
     // Write the public key
     pubkey
-        .write(&mut writable_map, COMPRESS_THE_OUTPUT, &parameters)
+        .write(&mut writable_map, COMPRESSED_OUTPUT, &parameters)
         .expect("unable to write public key");
 
     writable_map.flush().expect("must flush a memory map");

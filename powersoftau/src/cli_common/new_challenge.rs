@@ -1,13 +1,14 @@
-use crate::{batched_accumulator::BatchedAccumulator, parameters::CeremonyParams};
+use crate::{Phase1, Phase1Parameters};
 use snark_utils::{blank_hash, calculate_hash, print_hash, UseCompression};
+
+use zexe_algebra::PairingEngine as Engine;
 
 use memmap::*;
 use std::{fs::OpenOptions, io::Write};
-use zexe_algebra::PairingEngine as Engine;
 
 const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
 
-pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &CeremonyParams<T>) {
+pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Phase1Parameters<T>) {
     println!(
         "Will generate an empty accumulator for 2^{} powers of tau",
         parameters.size
@@ -47,7 +48,7 @@ pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Ce
     println!("Blank hash for an empty challenge:");
     print_hash(&hash);
 
-    BatchedAccumulator::generate_initial(&mut writable_map, COMPRESS_NEW_CHALLENGE, &parameters)
+    Phase1::initialization(&mut writable_map, COMPRESS_NEW_CHALLENGE, &parameters)
         .expect("generation of initial accumulator is successful");
     writable_map.flush().expect("unable to flush memmap to disk");
 
