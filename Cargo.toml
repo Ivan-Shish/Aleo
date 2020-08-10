@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "./aleo-snark-setup",
-    "./powersoftau",
+    "phase1",
     "./phase2",
     "./snark-utils",
     "./test-helpers",
