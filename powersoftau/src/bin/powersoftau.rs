@@ -1,16 +1,17 @@
-use gumdrop::Options;
 use powersoftau::{
     cli_common::{contribute, new_challenge, transform, Command, CurveKind, PowersOfTauOpts},
     parameters::CeremonyParams,
 };
 use snark_utils::{beacon_randomness, get_rng, user_system_randomness};
 
+use zexe_algebra::{Bls12_377, Bls12_381, PairingEngine as Engine, BW6_761};
+
+use gumdrop::Options;
 use std::{process, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
 };
-use zexe_algebra::{Bls12_377, Bls12_381, PairingEngine as Engine, BW6_761};
 
 #[macro_use]
 extern crate hex_literal;

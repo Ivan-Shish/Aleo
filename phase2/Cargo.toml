@@ -18,9 +18,9 @@ snarkos-algorithms = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package 
 snarkos-models = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-models", default-features = false }
 snarkos-utilities = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-utilities", default-features = false }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", package = "algebra", version = "0.1.0", features = ["parallel", "full"] }
-zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", package = "groth16", version = "0.1.0", features = ["parallel"] }
-zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", package = "r1cs-core", version = "0.1.0" }
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "full"] }
+zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "groth16", version = "0.1.0", features = ["parallel"] }
+zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
 
 byteorder = { version = "1.3.4" }
 cfg-if = { version = "0.1.10" }
@@ -36,7 +36,7 @@ test-helpers = { path = "../test-helpers" }
 
 snarkos-curves = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-curves", default-features = false }
 
-zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", package = "r1cs-std", version = "0.1.0" }
+zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-std", version = "0.1.0" }
 
 rusty-hook = { version = "0.11.2" }
 tracing-subscriber = { version = "0.2.3" }

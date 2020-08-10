@@ -166,18 +166,18 @@ mod tests {
     use super::*;
     use zexe_algebra::{Bls12_377, Bls12_381, BW6_761};
 
-    #[test]
-    fn params_sizes() {
-        curve_params_test::<Bls12_377>(96, 192, 48, 96);
-        curve_params_test::<Bls12_381>(96, 192, 48, 96);
-        curve_params_test::<BW6_761>(192, 192, 96, 96);
-    }
-
     fn curve_params_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
         let p = CurveParams::<E>::new();
         assert_eq!(p.g1, g1);
         assert_eq!(p.g2, g2);
         assert_eq!(p.g1_compressed, g1_compressed);
         assert_eq!(p.g2_compressed, g2_compressed);
+    }
+
+    #[test]
+    fn params_sizes() {
+        curve_params_test::<Bls12_377>(96, 192, 48, 96);
+        curve_params_test::<Bls12_381>(96, 192, 48, 96);
+        curve_params_test::<BW6_761>(192, 192, 96, 96);
     }
 }

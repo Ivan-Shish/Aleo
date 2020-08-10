@@ -44,6 +44,39 @@ impl<E: PairingEngine> PartialEq for PublicKey<E> {
     }
 }
 
+impl<E: PairingEngine> PublicKey<E> {
+    /// Writes the key to the memory map (takes into account offsets)
+    pub fn write(
+        &self,
+        output_map: &mut [u8],
+        accumulator_was_compressed: UseCompression,
+        parameters: &CeremonyParams<E>,
+    ) -> Result<(), Error> {
+        let position = match accumulator_was_compressed {
+            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
+            UseCompression::No => parameters.accumulator_size,
+        };
+        // Write the public key after the provided position
+        self.serialize(&mut output_map[position..].as_mut())?;
+
+        Ok(())
+    }
+
+    /// Deserialize the public key from the memory map (takes into account offsets)
+    pub fn read(
+        input_map: &[u8],
+        accumulator_was_compressed: UseCompression,
+        parameters: &CeremonyParams<E>,
+    ) -> Result<Self, Error> {
+        let position = match accumulator_was_compressed {
+            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
+            UseCompression::No => parameters.accumulator_size,
+        };
+        // The public key is written after the provided position
+        Ok(PublicKey::deserialize(&mut &input_map[position..])?)
+    }
+}
+
 /// Contains the secrets τ, α and β that the participant of the ceremony must destroy.
 #[derive(PartialEq, Debug)]
 pub struct PrivateKey<E: PairingEngine> {
@@ -98,37 +131,4 @@ pub fn keypair<E: PairingEngine, R: Rng>(rng: &mut R, digest: &[u8]) -> Result<(
         },
         PrivateKey { tau, alpha, beta },
     ))
-}
-
-impl<E: PairingEngine> PublicKey<E> {
-    /// Writes the key to the memory map (takes into account offsets)
-    pub fn write(
-        &self,
-        output_map: &mut [u8],
-        accumulator_was_compressed: UseCompression,
-        parameters: &CeremonyParams<E>,
-    ) -> Result<(), Error> {
-        let position = match accumulator_was_compressed {
-            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
-            UseCompression::No => parameters.accumulator_size,
-        };
-        // Write the public key after the provided position
-        self.serialize(&mut output_map[position..].as_mut())?;
-
-        Ok(())
-    }
-
-    /// Deserialize the public key from the memory map (takes into account offsets)
-    pub fn read(
-        input_map: &[u8],
-        accumulator_was_compressed: UseCompression,
-        parameters: &CeremonyParams<E>,
-    ) -> Result<Self, Error> {
-        let position = match accumulator_was_compressed {
-            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
-            UseCompression::No => parameters.accumulator_size,
-        };
-        // The public key is written after the provided position
-        Ok(PublicKey::deserialize(&mut &input_map[position..])?)
-    }
 }
