@@ -834,6 +834,7 @@ dependencies = [
  "groth16",
  "num_cpus",
  "phase1",
+ "phase2",
  "r1cs-core",
  "r1cs-std",
  "rand 0.7.3",
@@ -842,9 +843,9 @@ dependencies = [
  "snark-utils",
  "snarkos-algorithms",
  "snarkos-curves",
+ "snarkos-errors",
  "snarkos-models",
  "snarkos-utilities",
- "test-helpers",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1445,25 +1446,6 @@ dependencies = [
  "proc-macro2 1.0.18",
  "quote 1.0.7",
  "unicode-xid 0.2.1",
-]
-
-[[package]]
-name = "test-helpers"
-version = "0.1.0"
-dependencies = [
- "algebra",
- "groth16",
- "phase1",
- "r1cs-core",
- "rand 0.7.3",
- "rust-crypto",
- "rusty-hook",
- "snark-utils",
- "snarkos-algorithms",
- "snarkos-curves",
- "snarkos-errors",
- "snarkos-models",
- "typenum",
 ]
 
 [[package]]

@@ -5,7 +5,6 @@ members = [
     "aleo-setup1",
     "phase2",
     "snark-utils",
-    "test-helpers",
 ]
 
 [profile.release]

@@ -39,7 +39,7 @@ pub fn generate_powers_of_tau_crossbeam<E: PairingEngine>(tau: &E::Fr, start: us
 }
 
 // Benchmark showing that the Rayon generator is faster
-fn powersoftau_benchmark(c: &mut Criterion) {
+fn benchmark_phase1(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let start = 0;
     let end = 50;
@@ -56,7 +56,7 @@ fn powersoftau_benchmark(c: &mut Criterion) {
 }
 
 // Benchmark for finding the optimal batch size for batch_exp
-fn batchexp_benchmark(c: &mut Criterion) {
+fn benchmark_batchexp(c: &mut Criterion) {
     let mut group = c.benchmark_group("Exponentiation");
     group.sample_size(10);
     let mut rng = rand::thread_rng();
@@ -75,7 +75,7 @@ fn batchexp_benchmark(c: &mut Criterion) {
 }
 
 // Benchmark for finding the optimal batch size for power_pairs
-fn multiexp_benchmark(c: &mut Criterion) {
+fn benchmark_multiexp(c: &mut Criterion) {
     let mut group = c.benchmark_group("Multiexp");
     group.sample_size(10);
     let mut rng = rand::thread_rng();
@@ -92,5 +92,5 @@ fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarFiel
     (0..v.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect()
 }
 
-criterion_group!(benches, powersoftau_benchmark, batchexp_benchmark, multiexp_benchmark);
+criterion_group!(benches, benchmark_phase1, benchmark_batchexp, benchmark_multiexp);
 criterion_main!(benches);

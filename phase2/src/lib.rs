@@ -1,5 +1,7 @@
 use cfg_if::cfg_if;
 
+pub mod helpers;
+
 pub mod keypair;
 
 pub mod parameters;

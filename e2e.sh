@@ -6,14 +6,14 @@ POWER=16
 BATCH=10000
 CURVE="bls12_377"
 
-powersoftau="cargo run --bin powersoftau -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
+phase1="cargo run --bin phase1 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
 phase2="cargo run --release --bin prepare_phase2 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
-snark="cargo run --release --bin aleo-snark-setup --"
+snark="cargo run --release --bin aleo-setup2 --"
 
 ####### Phase 1
 
-$powersoftau new --challenge-fname challenge
-yes | $powersoftau contribute --challenge-fname challenge --response-fname response
+$phase1 new --challenge-fname challenge
+yes | $phase1 contribute --challenge-fname challenge --response-fname response
 rm challenge # no longer needed
 
 ###### Prepare Phase 2

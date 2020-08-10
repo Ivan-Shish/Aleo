@@ -5,7 +5,7 @@ RUN apt-get update && \
 WORKDIR /build
 COPY . .
 RUN mkdir bin
-RUN cd powersoftau && \
+RUN cd aleo-setup1 && \
     cargo build --release --bins && \
     find ./target/release/ -maxdepth 1 -type f -perm /a+x -exec sh -c 'mv {} /build/bin/phase1_$(basename {})' \;
 RUN cd phase2 && \

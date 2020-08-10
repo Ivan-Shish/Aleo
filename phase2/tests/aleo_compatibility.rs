@@ -1,13 +1,10 @@
 use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
-use phase2::parameters::MPCParameters;
+use phase2::{helpers::testing::TestCircuit, parameters::MPCParameters};
 use snark_utils::{Groth16Params, UseCompression};
-use test_helpers::TestCircuit;
 
-use rand::{thread_rng, Rng};
-use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine, BW6_761};
+use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine as ZexePairingEngine, BW6_761};
 use zexe_groth16::Parameters;
 
-// SnarkOS data types
 use snarkos_algorithms::snark::groth16::{
     create_random_proof,
     prepare_verifying_key,
@@ -21,22 +18,25 @@ use snarkos_models::{
 };
 use snarkos_utilities::serialize::CanonicalDeserialize;
 
-fn generate_mpc_parameters<Aleo, E, C, R: Rng>(c: C, rng: &mut R) -> MPCParameters<E>
+use rand::{thread_rng, Rng};
+
+fn generate_mpc_parameters<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine, C, R: Rng>(
+    c: C,
+    rng: &mut R,
+) -> MPCParameters<Zexe>
 where
-    Aleo: AleoPairingEngine,
-    E: PairingEngine,
     C: Clone + ConstraintSynthesizer<Aleo::Fr>,
 {
-    let powers = 6; // powers of tau
+    let powers = 6; // Powers of tau
     let batch = 4;
-    let params = Phase1Parameters::<E>::new(powers, batch);
+    let params = Phase1Parameters::<Zexe>::new(powers, batch);
     let compressed = UseCompression::Yes;
-    // make 1 power of tau contribution (assume powers of tau gets calculated properly)
+    // Make 1 power of tau contribution (assume powers of tau gets calculated properly).
     let (_, output, _, _) = setup_verify(compressed, compressed, &params);
     let accumulator = Phase1::deserialize(&output, compressed, &params).unwrap();
 
-    // prepare only the first 32 powers (for whatever reason)
-    let groth_params = Groth16Params::<E>::new(
+    // Prepare only the first 32 powers (for whatever reason).
+    let groth_params = Groth16Params::<Zexe>::new(
         32,
         accumulator.tau_powers_g1,
         accumulator.tau_powers_g2,
@@ -45,7 +45,7 @@ where
         accumulator.beta_g2,
     )
     .unwrap();
-    // write the transcript to a file
+    // Write the transcript to a file.
     let mut writer = vec![];
     groth_params.write(&mut writer, compressed).unwrap();
 
@@ -55,10 +55,10 @@ where
     let phase2_size = std::cmp::max(counter.num_constraints, counter.num_aux + counter.num_inputs + 1);
 
     let mut mpc =
-        MPCParameters::<E>::new_from_buffer::<Aleo, _>(c, writer.as_mut(), compressed, 32, phase2_size).unwrap();
+        MPCParameters::<Zexe>::new_from_buffer::<Aleo, _>(c, writer.as_mut(), compressed, 32, phase2_size).unwrap();
 
     let before = mpc.clone();
-    // it is _not_ safe to use it yet, there must be 1 contribution
+    // It is _not_ safe to use it yet, there must be 1 contribution.
     mpc.contribute(rng).unwrap();
 
     before.verify(&mpc).unwrap();
@@ -66,26 +66,16 @@ where
     mpc
 }
 
-#[test]
-fn test_groth_bls12_377() {
-    groth_test_curve::<AleoBls12_377, Bls12_377>()
-}
-
-#[test]
-fn test_groth_bw6() {
-    groth_test_curve::<AleoBW6, BW6_761>()
-}
-
-fn groth_test_curve<Aleo: AleoPairingEngine, E: PairingEngine>() {
+fn test_groth16_curve<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() {
     let rng = &mut thread_rng();
-    // generate the params
-    let params: Parameters<E> = {
+    // Generate the parameters.
+    let params: Parameters<Zexe> = {
         let c = TestCircuit::<Aleo>(None);
-        let setup = generate_mpc_parameters::<Aleo, E, _, _>(c, rng);
+        let setup = generate_mpc_parameters::<Aleo, Zexe, _, _>(c, rng);
         setup.get_params().clone()
     };
 
-    // convert the Zexe params to snarkOS params
+    // Convert the Zexe parameters to Aleo parameters.
     let mut v = Vec::new();
     params.serialize(&mut v).unwrap();
     let params = AleoGroth16Params::<Aleo>::deserialize(&mut &v[..]).unwrap();
@@ -93,7 +83,7 @@ fn groth_test_curve<Aleo: AleoPairingEngine, E: PairingEngine>() {
     // Prepare the verification key (for proof verification)
     let pvk = prepare_verifying_key(&params.vk);
 
-    // Create a proof with these params
+    // Create a proof with these parameters.
     let proof = {
         let c = TestCircuit::<Aleo>(Some(Aleo::Fr::from(5)));
         create_random_proof(c, &params, rng).unwrap()
@@ -101,4 +91,14 @@ fn groth_test_curve<Aleo: AleoPairingEngine, E: PairingEngine>() {
 
     let res = verify_proof(&pvk, &proof, &[Aleo::Fr::from(25u8)]);
     assert!(res.is_ok());
+}
+
+#[test]
+fn test_groth16_bls12_377() {
+    test_groth16_curve::<AleoBls12_377, Bls12_377>()
+}
+
+#[test]
+fn test_groth16_bw6() {
+    test_groth16_curve::<AleoBW6, BW6_761>()
 }
