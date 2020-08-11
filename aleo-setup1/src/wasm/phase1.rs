@@ -112,10 +112,82 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use wasm_bindgen_test::*;
 
-    #[wasm_bindgen_test]
-    pub fn test_phase1_contribute() {
-        println!("hello world");
+    use rand::thread_rng;
+    use setup_utils::{batch_exp, blank_hash, generate_powers_of_tau};
+    use zexe_algebra::{AffineCurve, ProjectiveCurve};
+
+    fn generate_input<E: PairingEngine>(
+        parameters: &Phase1Parameters<E>,
+        compressed: UseCompression,
+    ) -> (Vec<u8>, Phase1<E>) {
+        let len = parameters.get_length(compressed);
+        let mut output = vec![0; len];
+        Phase1::initialization(&mut output, compressed, &parameters).unwrap();
+        let mut input = vec![0; len];
+        input.copy_from_slice(&output);
+        let before = Phase1::deserialize(&output, compressed, &parameters).unwrap();
+        (input, before)
     }
+
+    fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Parameters<E>) {
+        // Get a non-mutable copy of the initial accumulator state.
+        let (input, mut before) = generate_input(&parameters, COMPRESSED_INPUT);
+
+        let mut rng = thread_rng();
+        // Construct our keypair using the RNG we created above
+        let current_accumulator_hash = blank_hash();
+        // let (_, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).unwrap();
+        let (_, privkey): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
+            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+
+        let output = contribute_challenge(&input, parameters, rng).unwrap().response;
+
+        let deserialized = Phase1::deserialize(&output, COMPRESSED_OUTPUT, &parameters).unwrap();
+
+        let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
+        batch_exp(
+            &mut before.tau_powers_g1,
+            &tau_powers[0..parameters.powers_g1_length],
+            None,
+        )
+        .unwrap();
+        batch_exp(
+            &mut before.tau_powers_g2,
+            &tau_powers[0..parameters.powers_length],
+            None,
+        )
+        .unwrap();
+        batch_exp(
+            &mut before.alpha_tau_powers_g1,
+            &tau_powers[0..parameters.powers_length],
+            Some(&privkey.alpha),
+        )
+        .unwrap();
+        batch_exp(
+            &mut before.beta_tau_powers_g1,
+            &tau_powers[0..parameters.powers_length],
+            Some(&privkey.beta),
+        )
+        .unwrap();
+        before.beta_g2 = before.beta_g2.mul(privkey.beta).into_affine();
+
+        assert_eq!(deserialized, before);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_phase1_contribute_bls12_377() {
+        contribute_challenge_test(&get_parameters::<Bls12_377>(2, 2));
+        // Works even when the batch is larger than the powers
+        // contribute_challenge_test(&get_parameters::<Bls12_377>(6, 128));
+    }
+
+    // #[wasm_bindgen_test]
+    // fn test_phase1_contribute_bw6_761() {
+    //     contribute_challenge_test(&get_parameters::<BW6_761>(2, 2));
+    //     // Works even when the batch is larger than the powers
+    //     contribute_challenge_test(&get_parameters::<Bls12_377>(6, 128));
+    // }
 }

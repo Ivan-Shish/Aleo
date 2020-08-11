@@ -1,20 +1,17 @@
+use cfg_if::cfg_if;
+
+cfg_if! {
+    if #[cfg(not(feature = "wasm"))] {
+        use super::polynomial::eval;
+        use zexe_algebra::{ Zero };
+        use zexe_groth16::{VerifyingKey};
+        use zexe_r1cs_core::SynthesisError;
+    }
+}
+
 use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
-#[cfg(not(feature = "wasm"))]
-use super::polynomial::eval;
 
 use setup_utils::*;
-
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    Field,
-    PairingEngine,
-    ProjectiveCurve,
-    Zero,
-};
-use zexe_groth16::{Parameters, VerifyingKey};
-use zexe_r1cs_core::SynthesisError;
 
 use snarkos_algorithms::snark::groth16::KeypairAssembly;
 use snarkos_models::{
@@ -22,6 +19,8 @@ use snarkos_models::{
     gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
 };
 use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
+use zexe_algebra::{AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, PairingEngine, ProjectiveCurve};
+use zexe_groth16::Parameters;
 
 use rand::Rng;
 use std::{
