@@ -48,7 +48,6 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift",
- "rusty-hook",
  "setup-utils",
  "snarkos-curves",
  "snarkos-dpc",
