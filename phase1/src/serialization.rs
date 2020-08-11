@@ -38,6 +38,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         })
     }
 
+    #[cfg(not(feature = "wasm"))]
     pub fn decompress(input: &[u8], output: &mut [u8], parameters: &'a Phase1Parameters<E>) -> Result<()> {
         accumulator::decompress(input, output, parameters)?;
         Ok(())

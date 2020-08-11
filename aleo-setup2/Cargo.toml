@@ -23,15 +23,14 @@ zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", pac
 zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
 zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-std", version = "0.1.0" }
 
-cfg-if = { version = "0.1.10" }
 anyhow = { version = "1.0.31" }
+cfg-if = { version = "0.1.10" }
 gumdrop = { version = "0.7.0", optional = true }
 hex = { version = "0.4.2" }
 hex-literal = { version = "0.1.4", optional = true }
 memmap = { version = "0.7.0", optional = true }
 rand = { version = "0.7.3" }
 rand_xorshift = { version = "0.2.0" }
-rusty-hook = { version = "0.11.2", optional = true }
 thiserror = { version = "1.0.11" }
 tracing-subscriber = { version = "0.2.3" }
 
@@ -39,5 +38,5 @@ tracing-subscriber = { version = "0.2.3" }
 default = ["cli"]
 parallel = ["phase2/parallel", "setup-utils/parallel"]
 
-cli = ["gumdrop", "hex-literal", "memmap", "rusty-hook", "parallel", "phase2/cli", "setup-utils/cli"]
+cli = ["gumdrop", "hex-literal", "memmap", "parallel", "phase2/cli", "setup-utils/cli"]
 wasm = ["phase2/wasm", "setup-utils/wasm"]

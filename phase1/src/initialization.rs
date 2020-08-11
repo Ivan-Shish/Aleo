@@ -21,6 +21,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         let one_g1 = &E::G1Affine::prime_subgroup_generator();
         let one_g2 = &E::G2Affine::prime_subgroup_generator();
 
+        #[cfg(not(feature = "wasm"))]
         rayon::scope(|s| {
             s.spawn(|_| {
                 tau_g1
@@ -48,6 +49,29 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     .expect("could not initialize beta_g2 element")
             });
         });
+
+        #[cfg(feature = "wasm")]
+        {
+            tau_g1
+                .init_element(one_g1, compressed_output)
+                .expect("could not initialize tau_g1 elements");
+
+            tau_g2
+                .init_element(one_g2, compressed_output)
+                .expect("could not initialize tau_g2 elements");
+
+            alpha_g1
+                .init_element(one_g1, compressed_output)
+                .expect("could not initialize alpha_g1 elements");
+
+            beta_g1
+                .init_element(one_g1, compressed_output)
+                .expect("could not initialize beta_g1 elements");
+
+            beta_g2
+                .init_element(one_g2, compressed_output)
+                .expect("could not initialize beta_g2 element");
+        }
 
         info!("phase1-initialization complete");
 
