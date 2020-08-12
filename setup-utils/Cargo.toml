@@ -15,7 +15,7 @@ harness = false
 
 [dependencies]
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0" }
-zexe_fft = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "ff-fft", version = "0.1.0" }
+zexe_fft = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "ff-fft", version = "0.1.0", default-features = false }
 zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
 
 blake2 = { version = "0.8.1" }
