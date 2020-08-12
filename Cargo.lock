@@ -1254,6 +1254,7 @@ version = "0.3.0"
 dependencies = [
  "algebra",
  "blake2",
+ "cfg-if",
  "criterion",
  "crossbeam",
  "ff-fft",

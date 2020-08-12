@@ -20,6 +20,8 @@ pub use helpers::*;
 mod io;
 pub use io::{buffer_size, BatchDeserializer, BatchSerializer, Deserializer, Serializer};
 
+pub mod rayon_cfg;
+
 // Re-exports for handling hashes
 pub use blake2::digest::generic_array::GenericArray;
 pub use typenum::U64;
