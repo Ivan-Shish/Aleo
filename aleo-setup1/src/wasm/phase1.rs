@@ -4,6 +4,7 @@ use setup_utils::{calculate_hash, get_rng, user_system_randomness, UseCompressio
 
 #[cfg(test)]
 use mocktopus::macros::*;
+
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use rand::Rng;
@@ -160,7 +161,7 @@ mod tests {
 
         let privkey = private_key.clone();
         key_generation::<ThreadRng, E>
-            .mock_safe(move |_, _| MockResult::Return({ Ok((public_key.clone(), private_key.clone())) }));
+            .mock_safe(move |_, _| MockResult::Return(Ok((public_key.clone(), private_key.clone()))));
 
         let output = contribute_challenge(&input, parameters, rng).unwrap().response;
 
