@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 /// knowledge of τ, α and β.
 ///
 /// It is necessary to verify `same_ratio`((s<sub>1</sub>, s<sub>1</sub><sup>x</sup>), (H(s<sub>1</sub><sup>x</sup>)<sub>2</sub>, H(s<sub>1</sub><sup>x</sup>)<sub>2</sub><sup>x</sup>)).
-#[derive(Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Eq, Debug, CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct PublicKey<E: PairingEngine> {
     pub tau_g1: (E::G1Affine, E::G1Affine),
     pub alpha_g1: (E::G1Affine, E::G1Affine),
