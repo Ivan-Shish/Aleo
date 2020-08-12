@@ -208,6 +208,6 @@ mod tests {
     fn test_phase1_contribute_bw6_761() {
         contribute_challenge_test(&get_parameters::<BW6_761>(2, 2));
         // Works even when the batch is larger than the powers
-        contribute_challenge_test(&get_parameters::<Bls12_377>(6, 128));
+        contribute_challenge_test(&get_parameters::<BW6_761>(6, 128));
     }
 }
