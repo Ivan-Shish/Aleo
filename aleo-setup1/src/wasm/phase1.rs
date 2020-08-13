@@ -2,9 +2,6 @@ use crate::{curve_from_str, CurveKind};
 use phase1::{Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, get_rng, user_system_randomness, UseCompression};
 
-#[cfg(test)]
-use mocktopus::macros::*;
-
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use rand::Rng;
@@ -48,17 +45,6 @@ pub fn get_parameters<E: PairingEngine>(batch_size: usize, power: usize) -> Phas
     Phase1Parameters::<E>::new(power, batch_size)
 }
 
-#[cfg_attr(test, mockable)]
-pub fn key_generation<R: Rng, E: PairingEngine + Sync>(
-    rng: &mut R,
-    current_accumulator_hash: &[u8],
-) -> Result<(phase1::PublicKey<E>, phase1::PrivateKey<E>), String> {
-    match Phase1::key_generation(rng, current_accumulator_hash.as_ref()) {
-        Ok(pair) => Ok(pair),
-        Err(_) => return Err("could not generate keypair".to_string()),
-    }
-}
-
 pub fn contribute_challenge<E: PairingEngine + Sync>(
     challenge: &[u8],
     parameters: &Phase1Parameters<E>,
@@ -91,7 +77,7 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
 
     // Construct our keypair using the RNG we created above
     let (public_key, private_key): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
-        match key_generation(&mut rng, current_accumulator_hash.as_ref()) {
+        match Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()) {
             Ok(pair) => pair,
             Err(_) => return Err("could not generate keypair".to_string()),
         };
@@ -130,8 +116,8 @@ mod tests {
     use super::*;
     use wasm_bindgen_test::*;
 
-    use mocktopus::mocking::*;
-    use rand::{rngs::ThreadRng, thread_rng};
+    use rand::SeedableRng;
+    use rand_xorshift::XorShiftRng;
     use setup_utils::{batch_exp, blank_hash, generate_powers_of_tau};
     use zexe_algebra::{AffineCurve, ProjectiveCurve};
 
@@ -152,18 +138,16 @@ mod tests {
         // Get a non-mutable copy of the initial accumulator state.
         let (input, mut before) = generate_input(&parameters, COMPRESSED_INPUT);
 
-        let mut rng = thread_rng();
+        let mut rng = XorShiftRng::seed_from_u64(0);
         // Construct our keypair using the RNG we created above
         let current_accumulator_hash = blank_hash();
 
-        let (public_key, private_key): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
+        let (_, privkey): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
             Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
-        let privkey = private_key.clone();
-        key_generation::<ThreadRng, E>
-            .mock_safe(move |_, _| MockResult::Return(Ok((public_key.clone(), private_key.clone()))));
-
-        let output = contribute_challenge(&input, parameters, rng).unwrap().response;
+        let output = contribute_challenge(&input, parameters, XorShiftRng::seed_from_u64(0))
+            .unwrap()
+            .response;
 
         let deserialized = Phase1::deserialize(&output, COMPRESSED_OUTPUT, &parameters).unwrap();
 
