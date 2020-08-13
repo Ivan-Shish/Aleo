@@ -26,14 +26,14 @@ $phase2 --response-fname response --phase2-fname processed --phase2-size $POWER
 $snark new --phase1 processed --output initial_ceremony --phase1-size $POWER --is-inner
 
 cp initial_ceremony contribution1
-yes | $snark contribute --data contribution1
-$snark verify --before initial_ceremony --after contribution1
+yes | $snark contribute --data contribution1 --is-inner
+$snark verify --before initial_ceremony --after contribution1 --is-inner
 
 # a new contributor contributes
 cp contribution1 contribution2
-yes | $snark contribute --data contribution2
-$snark verify --before contribution1 --after contribution2
-$snark verify --before initial_ceremony --after contribution2
+yes | $snark contribute --data contribution2 --is-inner
+$snark verify --before contribution1 --after contribution2 --is-inner
+$snark verify --before initial_ceremony --after contribution2 --is-inner
 
 # done! since `verify` passed, you can be sure that this will work
 # as shown in the `mpc.rs` example
