@@ -81,7 +81,7 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
         Err(_) => return Err("could not generate keypair".to_string()),
     };
 
-    // this computes a transformation and writes it
+    // This computes a transformation and writes it
     match Phase1::computation(
         &challenge,
         &mut response,
