@@ -18,7 +18,7 @@ cfg_if::cfg_if! {
     } else {
         pub fn scope<'scope, OP, R>(op: OP) -> R
         where
-            OP: for<'s> FnOnce(&'s rayon::ScopeShim<'scope>) -> R + 'scope + Send,
+            OP: for<'s> FnOnce(&'s rayon::Scope<'scope>) -> R + 'scope + Send,
             R: Send {
             rayon::scope(op)
         }
