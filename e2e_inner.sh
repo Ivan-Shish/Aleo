@@ -6,7 +6,7 @@ POWER=19
 BATCH=10000
 CURVE="bls12_377"
 
-phase1="cargo run --bin phase1 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
+phase1="cargo run --bin phase1 --release -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
 phase2="cargo run --release --bin prepare_phase2 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
 snark="cargo run --release --bin aleo-setup2 --"
 
