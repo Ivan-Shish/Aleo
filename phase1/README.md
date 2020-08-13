@@ -5,7 +5,7 @@ Distributed generation of powers of tau for Phase 1 of [BGM17](https://eprint.ia
 Also contains a binary which converts the Powers of Tau to Lagrange coefficients and allows Phase 2 to produce efficient A, B and L queries for the Groth16 SNARK.
 
 - Utilizes [Zexe's algebra crate](https://github.com/scipr-lab/zexe), meaning we support all available curves:
-    - Bls12-377
+    - BLS12-377
     - BW6-761
     - ...
 - Memory footprint can be configured by adjusting `batch-size` via CLI and via environment variable [`RAYON_NUM_THREADS`](https://github.com/rayon-rs/rayon/blob/master/FAQ.md#how-many-threads-will-rayon-spawn).
