@@ -88,7 +88,6 @@ jobs:
         with:
           command: test
           args: --release --all --no-fail-fast
-        if: matrix.rust == 'nightly'
 
 #  codecov:
 #    name: Code Coverage
