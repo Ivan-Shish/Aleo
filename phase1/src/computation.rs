@@ -58,7 +58,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                     trace!("generated powers of tau");
 
-                    // raise each element from the input buffer to the powers of tau
+                    // Raise each element from the input buffer to the powers of tau
                     // and write the updated value (without allocating) to the
                     // output buffer
                     rayon::scope(|t| {
