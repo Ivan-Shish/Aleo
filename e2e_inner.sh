@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/bash -e
 
 rm -f challenge* response* new_challenge* processed*
 
-POWER=16
+POWER=19
 BATCH=10000
 CURVE="bls12_377"
 
@@ -14,7 +14,8 @@ snark="cargo run --release --bin aleo-setup2 --"
 
 $phase1 new --challenge-fname challenge
 yes | $phase1 contribute --challenge-fname challenge --response-fname response
-rm challenge # no longer needed
+$phase1 verify-and-transform --challenge-fname challenge --response-fname response --new-challenge-fname new_challenge
+rm challenge new_challenge # no longer needed
 
 ###### Prepare Phase 2
 
