@@ -1,5 +1,3 @@
-// Compilation
-#![cfg_attr(test, feature(proc_macro_hygiene))]
 // Documentation
 #![cfg_attr(nightly, feature(doc_cfg, external_doc))]
 #![cfg_attr(nightly, doc(include = "../README.md"))]
