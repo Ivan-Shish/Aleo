@@ -18,6 +18,8 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         digest: &[u8],
         compressed_input: UseCompression,
         compressed_output: UseCompression,
+        check_input_for_correctness: CheckForCorrectness,
+        check_output_for_correctness: CheckForCorrectness,
         parameters: &'a Phase1Parameters<E>,
     ) -> Result<()> {
         let span = info_span!("phase1-verification");
@@ -51,12 +53,15 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
         // We keep the values of the Tau G1/G2 telements for later use.
         let (g1_check, g2_check) = {
-            let mut before_g1 = read_initial_elements::<E::G1Affine>(in_tau_g1, compressed_input)?;
-            let mut after_g1 = read_initial_elements::<E::G1Affine>(tau_g1, compressed_output)?;
+            let mut before_g1 =
+                read_initial_elements::<E::G1Affine>(in_tau_g1, compressed_input, check_input_for_correctness)?;
+            let mut after_g1 =
+                read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
             if after_g1[0] != E::G1Affine::prime_subgroup_generator() {
                 return Err(VerificationError::InvalidGenerator(ElementType::TauG1).into());
             }
-            let after_g2 = read_initial_elements::<E::G2Affine>(tau_g2, compressed_output)?;
+            let after_g2 =
+                read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
             if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
                 return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
             }
@@ -73,13 +78,15 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 (in_alpha_g1, alpha_g1, alpha_g2_check),
                 (in_beta_g1, beta_g1, beta_g2_check),
             ] {
-                before.read_batch_preallocated(&mut before_g1, compressed_input)?;
-                after.read_batch_preallocated(&mut after_g1, compressed_output)?;
+                before.read_batch_preallocated(&mut before_g1, compressed_input, check_input_for_correctness)?;
+                after.read_batch_preallocated(&mut after_g1, compressed_output, check_output_for_correctness)?;
                 check_same_ratio::<E>(&(before_g1[0], after_g1[0]), check, "Before-After: Alpha[0] G1<>G2")?;
             }
 
-            let before_beta_g2 = (&*in_beta_g2).read_element::<E::G2Affine>(compressed_input)?;
-            let after_beta_g2 = (&*beta_g2).read_element::<E::G2Affine>(compressed_output)?;
+            let before_beta_g2 =
+                (&*in_beta_g2).read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
+            let after_beta_g2 =
+                (&*beta_g2).read_element::<E::G2Affine>(compressed_output, check_output_for_correctness)?;
             check_same_ratio::<E>(
                 &(before_g1[0], after_g1[0]),
                 &(before_beta_g2, after_beta_g2),
@@ -106,8 +113,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     let _ = span.enter();
 
                     let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-                    check_power_ratios::<E>((tau_g1, compressed_output), (start, end), &mut g1, &g2_check)
-                        .expect("could not check ratios for Tau G1");
+                    check_power_ratios::<E>(
+                        (tau_g1, compressed_output, check_output_for_correctness),
+                        (start, end),
+                        &mut g1,
+                        &g2_check,
+                    )
+                    .expect("could not check ratios for Tau G1");
 
                     trace!("tau g1 verification successful");
                 });
@@ -129,8 +141,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             let _ = span.enter();
 
                             let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
-                            check_power_ratios_g2::<E>((tau_g2, compressed_output), (start, end), &mut g2, &g1_check)
-                                .expect("could not check ratios for tau_g2");
+                            check_power_ratios_g2::<E>(
+                                (tau_g2, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g2,
+                                &g1_check,
+                            )
+                            .expect("could not check ratios for tau_g2");
 
                             trace!("tau_g2 verification successful");
                         });
@@ -139,8 +156,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             let _ = span.enter();
 
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-                            check_power_ratios::<E>((alpha_g1, compressed_output), (start, end), &mut g1, &g2_check)
-                                .expect("could not check ratios for alpha_g1");
+                            check_power_ratios::<E>(
+                                (alpha_g1, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for alpha_g1");
 
                             trace!("alpha_g1 verification successful");
                         });
@@ -149,8 +171,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             let _ = span.enter();
 
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-                            check_power_ratios::<E>((beta_g1, compressed_output), (start, end), &mut g1, &g2_check)
-                                .expect("could not check ratios for beta_g1");
+                            check_power_ratios::<E>(
+                                (beta_g1, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for beta_g1");
 
                             trace!("beta_g1 verification successful");
                         });
@@ -188,7 +215,7 @@ mod tests {
         let parameters = Phase1Parameters::<E>::new(powers, batch);
 
         // allocate the input/output vectors
-        let (input, _) = generate_input(&parameters, compressed_input);
+        let (input, _) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
         let mut output = generate_output(&parameters, compressed_output);
 
         // Construct our keypair
@@ -203,6 +230,7 @@ mod tests {
             &mut output,
             compressed_input,
             compressed_output,
+            CheckForCorrectness::No,
             &privkey,
             &parameters,
         )
@@ -217,6 +245,8 @@ mod tests {
             &current_accumulator_hash,
             compressed_input,
             compressed_output,
+            CheckForCorrectness::No,
+            CheckForCorrectness::Yes,
             &parameters,
         );
         assert!(res.is_ok());
@@ -235,6 +265,7 @@ mod tests {
             &mut output_2,
             compressed_output,
             compressed_output,
+            CheckForCorrectness::No,
             &privkey,
             &parameters,
         )
@@ -249,6 +280,8 @@ mod tests {
             &current_accumulator_hash,
             compressed_output,
             compressed_output,
+            CheckForCorrectness::No,
+            CheckForCorrectness::Yes,
             &parameters,
         );
         assert!(res.is_ok());
@@ -261,6 +294,8 @@ mod tests {
             &blank_hash(),
             compressed_output,
             compressed_output,
+            CheckForCorrectness::No,
+            CheckForCorrectness::Yes,
             &parameters,
         );
         assert!(res.is_err());
@@ -274,6 +309,8 @@ mod tests {
             &current_accumulator_hash,
             compressed_output,
             compressed_output,
+            CheckForCorrectness::No,
+            CheckForCorrectness::Yes,
             &parameters,
         );
         assert!(res.is_err());

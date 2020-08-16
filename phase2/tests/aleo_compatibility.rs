@@ -1,6 +1,6 @@
 use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
 use phase2::{helpers::testing::TestCircuit, parameters::MPCParameters};
-use setup_utils::{Groth16Params, UseCompression};
+use setup_utils::{CheckForCorrectness, Groth16Params, UseCompression};
 
 use zexe_algebra::{serialize::CanonicalSerialize, Bls12_377, PairingEngine as ZexePairingEngine, BW6_761};
 use zexe_groth16::Parameters;
@@ -32,8 +32,8 @@ where
     let params = Phase1Parameters::<Zexe>::new(powers, batch);
     let compressed = UseCompression::Yes;
     // Make 1 power of tau contribution (assume powers of tau gets calculated properly).
-    let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-    let accumulator = Phase1::deserialize(&output, compressed, &params).unwrap();
+    let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
+    let accumulator = Phase1::deserialize(&output, compressed, CheckForCorrectness::Yes, &params).unwrap();
 
     // Prepare only the first 32 powers (for whatever reason).
     let groth_params = Groth16Params::<Zexe>::new(
@@ -54,8 +54,15 @@ where
     c.clone().generate_constraints(&mut counter).unwrap();
     let phase2_size = std::cmp::max(counter.num_constraints, counter.num_aux + counter.num_inputs + 1);
 
-    let mut mpc =
-        MPCParameters::<Zexe>::new_from_buffer::<Aleo, _>(c, writer.as_mut(), compressed, 32, phase2_size).unwrap();
+    let mut mpc = MPCParameters::<Zexe>::new_from_buffer::<Aleo, _>(
+        c,
+        writer.as_mut(),
+        compressed,
+        CheckForCorrectness::Yes,
+        32,
+        phase2_size,
+    )
+    .unwrap();
 
     let before = mpc.clone();
     // It is _not_ safe to use it yet, there must be 1 contribution.

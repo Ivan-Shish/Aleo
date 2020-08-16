@@ -1,5 +1,5 @@
 use phase1::{helpers::testing::setup_verify, Phase1Parameters};
-use setup_utils::UseCompression;
+use setup_utils::{CheckForCorrectness, UseCompression};
 
 use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
 use snarkos_models::curves::{AffineCurve as AleoAffineCurve, PairingEngine as AleoPairingEngine};
@@ -28,7 +28,7 @@ fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
 
     // Perform 1 power of tau contribution (assume Powers of Tau is computed correctly)
     let compressed = UseCompression::No;
-    let (_, output, _, _) = setup_verify(compressed, compressed, &params);
+    let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
 
     // Advance the cursor past the output hash.
     let mut reader = std::io::BufReader::new(std::io::Cursor::new(output));

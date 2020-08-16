@@ -6,7 +6,7 @@ use zexe_algebra::{AffineCurve, PairingEngine};
 use itertools::{Itertools, MinMaxResult};
 
 /// Buffer, compression
-type Input<'a> = (&'a [u8], UseCompression);
+type Input<'a> = (&'a [u8], UseCompression, CheckForCorrectness);
 
 /// Mutable buffer, compression
 type Output<'a> = (&'a mut [u8], UseCompression);
@@ -41,7 +41,7 @@ pub(crate) fn iter_chunk(
 /// provided `powers` and maybe to the `coeff`, and then writes them back
 pub(crate) fn apply_powers<C: AffineCurve>(
     (output, output_compressed): Output,
-    (input, input_compressed): Input,
+    (input, input_compressed, check_input_for_correctness): Input,
     (start, end): (usize, usize),
     powers: &[C::ScalarField],
     coeff: Option<&C::ScalarField>,
@@ -49,7 +49,8 @@ pub(crate) fn apply_powers<C: AffineCurve>(
     let in_size = buffer_size::<C>(input_compressed);
     let out_size = buffer_size::<C>(output_compressed);
     // read the input
-    let mut elements = &mut input[start * in_size..end * in_size].read_batch::<C>(input_compressed)?;
+    let mut elements =
+        &mut input[start * in_size..end * in_size].read_batch::<C>(input_compressed, check_input_for_correctness)?;
     // calculate the powers
     batch_exp(&mut elements, &powers[..end - start], coeff)?;
     // write back
