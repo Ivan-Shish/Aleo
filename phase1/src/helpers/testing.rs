@@ -6,7 +6,7 @@ use zexe_algebra_core::UniformRand;
 
 use rand::{thread_rng, Rng};
 
-pub use setup_utils::UseCompression;
+pub use setup_utils::{CheckForCorrectness, UseCompression};
 
 /// Returns a random affine curve point from the provided RNG.
 pub fn random_point<C: AffineCurve>(rng: &mut impl Rng) -> C {
@@ -23,10 +23,11 @@ pub fn random_point_vec<C: AffineCurve>(size: usize, rng: &mut impl Rng) -> Vec<
 /// the test must call verify on the returned values.
 pub fn setup_verify<E: PairingEngine>(
     compressed_input: UseCompression,
+    check_input_for_correctness: CheckForCorrectness,
     compressed_output: UseCompression,
     parameters: &Phase1Parameters<E>,
 ) -> (Vec<u8>, Vec<u8>, PublicKey<E>, GenericArray<u8, U64>) {
-    let (input, _) = generate_input(&parameters, compressed_input);
+    let (input, _) = generate_input(&parameters, compressed_input, check_input_for_correctness);
     let mut output = generate_output(&parameters, compressed_output);
 
     // Construct our keypair
@@ -41,6 +42,7 @@ pub fn setup_verify<E: PairingEngine>(
         &mut output,
         compressed_input,
         compressed_output,
+        CheckForCorrectness::Yes,
         &privkey,
         parameters,
     )
@@ -55,13 +57,14 @@ pub fn setup_verify<E: PairingEngine>(
 pub fn generate_input<E: PairingEngine>(
     parameters: &Phase1Parameters<E>,
     compressed: UseCompression,
+    check_for_correctness: CheckForCorrectness,
 ) -> (Vec<u8>, Phase1<E>) {
     let len = parameters.get_length(compressed);
     let mut output = vec![0; len];
     Phase1::initialization(&mut output, compressed, &parameters).unwrap();
     let mut input = vec![0; len];
     input.copy_from_slice(&output);
-    let before = Phase1::deserialize(&output, compressed, &parameters).unwrap();
+    let before = Phase1::deserialize(&output, compressed, check_for_correctness, &parameters).unwrap();
     (input, before)
 }
 

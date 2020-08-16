@@ -38,13 +38,17 @@ pub(crate) fn compute_g2_s_key<E: PairingEngine>(key: &PublicKey<E>, digest: &[u
 /// and then checks that their powers pairs ratio matches the one from the
 /// provided `check` pair
 pub(crate) fn check_power_ratios<E: PairingEngine>(
-    (buffer, compression): (&[u8], UseCompression),
+    (buffer, compression, check_for_correctness): (&[u8], UseCompression, CheckForCorrectness),
     (start, end): (usize, usize),
     elements: &mut [E::G1Affine],
     check: &(E::G2Affine, E::G2Affine),
 ) -> Result<()> {
     let size = buffer_size::<E::G1Affine>(compression);
-    buffer[start * size..end * size].read_batch_preallocated(&mut elements[0..end - start], compression)?;
+    buffer[start * size..end * size].read_batch_preallocated(
+        &mut elements[0..end - start],
+        compression,
+        check_for_correctness,
+    )?;
     check_same_ratio::<E>(&power_pairs(&elements[..end - start]), check, "Power pairs")?;
     Ok(())
 }
@@ -53,22 +57,30 @@ pub(crate) fn check_power_ratios<E: PairingEngine>(
 /// and then checks that their powers pairs ratio matches the one from the
 /// provided `check` pair
 pub(crate) fn check_power_ratios_g2<E: PairingEngine>(
-    (buffer, compression): (&[u8], UseCompression),
+    (buffer, compression, check_for_correctness): (&[u8], UseCompression, CheckForCorrectness),
     (start, end): (usize, usize),
     elements: &mut [E::G2Affine],
     check: &(E::G1Affine, E::G1Affine),
 ) -> Result<()> {
     let size = buffer_size::<E::G2Affine>(compression);
-    buffer[start * size..end * size].read_batch_preallocated(&mut elements[0..end - start], compression)?;
+    buffer[start * size..end * size].read_batch_preallocated(
+        &mut elements[0..end - start],
+        compression,
+        check_for_correctness,
+    )?;
     check_same_ratio::<E>(check, &power_pairs(&elements[..end - start]), "Power pairs")?;
     Ok(())
 }
 
 /// Reads a chunk of 2 elements from the buffer
-pub(crate) fn read_initial_elements<C: AffineCurve>(buf: &[u8], compressed: UseCompression) -> Result<Vec<C>> {
+pub(crate) fn read_initial_elements<C: AffineCurve>(
+    buf: &[u8],
+    compressed: UseCompression,
+    check_input_for_correctness: CheckForCorrectness,
+) -> Result<Vec<C>> {
     let batch = 2;
     let size = buffer_size::<C>(compressed);
-    let result = buf[0..batch * size].read_batch(compressed)?;
+    let result = buf[0..batch * size].read_batch(compressed, check_input_for_correctness)?;
     if result.len() != batch {
         return Err(Error::InvalidLength {
             expected: batch,
@@ -103,23 +115,29 @@ pub fn serialize<E: PairingEngine>(
 pub fn deserialize<E: PairingEngine>(
     input: &[u8],
     compressed: UseCompression,
+    check_input_for_correctness: CheckForCorrectness,
     parameters: &Phase1Parameters<E>,
 ) -> Result<AccumulatorElements<E>> {
     // get an immutable reference to the input chunks
     let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, in_beta_g2) = split(&input, parameters, compressed);
 
     // deserialize each part of the buffer separately
-    let tau_g1 = in_tau_g1.read_batch(compressed)?;
-    let tau_g2 = in_tau_g2.read_batch(compressed)?;
-    let alpha_g1 = in_alpha_g1.read_batch(compressed)?;
-    let beta_g1 = in_beta_g1.read_batch(compressed)?;
-    let beta_g2 = (&*in_beta_g2).read_element(compressed)?;
+    let tau_g1 = in_tau_g1.read_batch(compressed, check_input_for_correctness)?;
+    let tau_g2 = in_tau_g2.read_batch(compressed, check_input_for_correctness)?;
+    let alpha_g1 = in_alpha_g1.read_batch(compressed, check_input_for_correctness)?;
+    let beta_g1 = in_beta_g1.read_batch(compressed, check_input_for_correctness)?;
+    let beta_g2 = (&*in_beta_g2).read_element(compressed, check_input_for_correctness)?;
 
     Ok((tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2))
 }
 
 /// Reads an input buffer and a secret key **which must be destroyed after this function is executed**.
-pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters: &Phase1Parameters<E>) -> Result<()> {
+pub fn decompress<E: PairingEngine>(
+    input: &[u8],
+    output: &mut [u8],
+    check_input_for_correctness: CheckForCorrectness,
+    parameters: &Phase1Parameters<E>,
+) -> Result<()> {
     let compressed_input = UseCompression::Yes;
     let compressed_output = UseCompression::No;
     // get an immutable reference to the compressed input chunks
@@ -131,7 +149,7 @@ pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters:
     // decompress beta_g2 for the first chunk
     {
         // get the compressed element
-        let beta_g2_el = in_beta_g2.read_element::<E::G2Affine>(compressed_input)?;
+        let beta_g2_el = in_beta_g2.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
         // write it back decompressed
         beta_g2.write_element(&beta_g2_el, compressed_output)?;
     }
@@ -141,7 +159,7 @@ pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters:
         // decompress each element
         rayon::scope(|t| {
             t.spawn(|_| {
-                decompress_buffer::<E::G1Affine>(tau_g1, in_tau_g1, (start, end))
+                decompress_buffer::<E::G1Affine>(tau_g1, in_tau_g1, check_input_for_correctness, (start, end))
                     .expect("could not decompress the TauG1 elements")
             });
             if start < parameters.powers_length {
@@ -156,15 +174,20 @@ pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters:
 
                 rayon::scope(|t| {
                     t.spawn(|_| {
-                        decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, (start, end))
+                        decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (start, end))
                             .expect("could not decompress the TauG2 elements")
                     });
                     t.spawn(|_| {
-                        decompress_buffer::<E::G1Affine>(alpha_g1, in_alpha_g1, (start, end))
-                            .expect("could not decompress the AlphaG1 elements")
+                        decompress_buffer::<E::G1Affine>(
+                            alpha_g1,
+                            in_alpha_g1,
+                            check_input_for_correctness,
+                            (start, end),
+                        )
+                        .expect("could not decompress the AlphaG1 elements")
                     });
                     t.spawn(|_| {
-                        decompress_buffer::<E::G1Affine>(beta_g1, in_beta_g1, (start, end))
+                        decompress_buffer::<E::G1Affine>(beta_g1, in_beta_g1, check_input_for_correctness, (start, end))
                             .expect("could not decompress the BetaG1 elements")
                     });
                 });
@@ -176,11 +199,17 @@ pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters:
 }
 
 /// Takes a compressed input buffer and decompresses it
-fn decompress_buffer<C: AffineCurve>(output: &mut [u8], input: &[u8], (start, end): (usize, usize)) -> Result<()> {
+fn decompress_buffer<C: AffineCurve>(
+    output: &mut [u8],
+    input: &[u8],
+    check_input_for_correctness: CheckForCorrectness,
+    (start, end): (usize, usize),
+) -> Result<()> {
     let in_size = buffer_size::<C>(UseCompression::Yes);
     let out_size = buffer_size::<C>(UseCompression::No);
     // read the compressed input
-    let elements = input[start * in_size..end * in_size].read_batch::<C>(UseCompression::Yes)?;
+    let elements =
+        input[start * in_size..end * in_size].read_batch::<C>(UseCompression::Yes, check_input_for_correctness)?;
     // write it back uncompressed
     output[start * out_size..end * out_size].write_batch(&elements, UseCompression::No)?;
 
@@ -210,8 +239,10 @@ mod tests {
         let len = num_els * buffer_size::<C>(UseCompression::No);
         let mut out = vec![0; len];
         // Perform the decompression.
-        decompress_buffer::<C>(&mut out, &input, (0, num_els)).unwrap();
-        let deserialized = out.read_batch::<C>(UseCompression::No).unwrap();
+        decompress_buffer::<C>(&mut out, &input, CheckForCorrectness::Yes, (0, num_els)).unwrap();
+        let deserialized = out
+            .read_batch::<C>(UseCompression::No, CheckForCorrectness::Yes)
+            .unwrap();
         // Ensure they match.
         assert_eq!(deserialized, elements);
     }

@@ -65,6 +65,7 @@ fn benchmark_computation(c: &mut Criterion) {
                         &mut output,
                         compressed_input,
                         compressed_output,
+                        CheckForCorrectness::Yes,
                         &private_key,
                         &parameters,
                     )
@@ -79,6 +80,8 @@ fn benchmark_computation(c: &mut Criterion) {
 // compressed situations. Parallel verification is consistently faster by 10-15% in all
 // modes of operation
 fn benchmark_verification(c: &mut Criterion) {
+    let correctness = CheckForCorrectness::No;
+
     // Iterate over all combinations of the following parameters
     let compression = &[
         (UseCompression::Yes, UseCompression::Yes),
@@ -113,6 +116,8 @@ fn benchmark_verification(c: &mut Criterion) {
                             &current_accumulator_hash,
                             *compressed_input,
                             *compressed_output,
+                            correctness,
+                            correctness,
                             &parameters,
                         )
                         .unwrap()

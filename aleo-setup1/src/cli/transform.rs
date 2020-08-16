@@ -1,5 +1,5 @@
 use phase1::{Phase1, Phase1Parameters, PublicKey};
-use setup_utils::{calculate_hash, print_hash, UseCompression};
+use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompression};
 
 use zexe_algebra::PairingEngine as Engine;
 
@@ -129,6 +129,8 @@ pub fn transform<T: Engine + Sync>(
         current_accumulator_hash.as_slice(),
         PREVIOUS_CHALLENGE_IS_COMPRESSED,
         CONTRIBUTION_IS_COMPRESSED,
+        CheckForCorrectness::No,
+        CheckForCorrectness::Yes,
         &parameters,
     );
 
@@ -173,8 +175,13 @@ pub fn transform<T: Engine + Sync>(
                 .expect("unable to write hash to new challenge file");
         }
 
-        Phase1::decompress(&response_readable_map, &mut writable_map, &parameters)
-            .expect("must decompress a response for a new challenge");
+        Phase1::decompress(
+            &response_readable_map,
+            &mut writable_map,
+            CheckForCorrectness::No,
+            &parameters,
+        )
+        .expect("must decompress a response for a new challenge");
 
         writable_map.flush().expect("must flush the memory map");
 
