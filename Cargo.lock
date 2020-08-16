@@ -17,10 +17,9 @@ dependencies = [
  "cfg-if",
  "console_error_panic_hook",
  "gumdrop",
- "hex-literal",
  "memmap",
  "phase1",
- "rand 0.7.3",
+ "rand",
  "rustc_version",
  "serde",
  "serde_derive",
@@ -46,7 +45,7 @@ dependencies = [
  "phase2",
  "r1cs-core",
  "r1cs-std",
- "rand 0.7.3",
+ "rand",
  "rand_xorshift",
  "rusty-hook",
  "setup-utils",
@@ -76,7 +75,7 @@ dependencies = [
  "derivative",
  "field-assembly",
  "num-traits",
- "rand 0.7.3",
+ "rand",
  "rayon",
  "rustc_version",
  "unroll",
@@ -462,7 +461,7 @@ version = "0.1.0"
 source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
 dependencies = [
  "algebra-core",
- "rand 0.7.3",
+ "rand",
  "rayon",
 ]
 
@@ -481,22 +480,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1fd087255f739f4f1aeea69f11b72f8080e9c2e7645cd06955dad4a178a49e3"
 
 [[package]]
-name = "fuchsia-cprng"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
-
-[[package]]
 name = "futures"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b980f2816d6ee8673b6517b52cb0e808a180efc92e5c19d02cdda79066703ef"
-
-[[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 
 [[package]]
 name = "generic-array"
@@ -547,7 +534,7 @@ dependencies = [
  "bench-utils",
  "ff-fft",
  "r1cs-core",
- "rand 0.7.3",
+ "rand",
  "rayon",
 ]
 
@@ -823,7 +810,7 @@ dependencies = [
  "itertools 0.8.2",
  "num-traits",
  "phase1",
- "rand 0.7.3",
+ "rand",
  "rayon",
  "rusty-hook",
  "setup-utils",
@@ -848,7 +835,7 @@ dependencies = [
  "phase2",
  "r1cs-core",
  "r1cs-std",
- "rand 0.7.3",
+ "rand",
  "rayon",
  "rusty-hook",
  "setup-utils",
@@ -951,29 +938,6 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.3.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ac302d8f83c0c1974bf758f6b041c6c8ada916fbb44a609158ca8b064cc76c"
-dependencies = [
- "libc",
- "rand 0.4.6",
-]
-
-[[package]]
-name = "rand"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
-dependencies = [
- "fuchsia-cprng",
- "libc",
- "rand_core 0.3.1",
- "rdrand",
- "winapi",
-]
-
-[[package]]
-name = "rand"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a6b1679d49b24bbfe0c803429aa1874472f50d9b363131f0e89fc356b544d03"
@@ -981,7 +945,7 @@ dependencies = [
  "getrandom",
  "libc",
  "rand_chacha",
- "rand_core 0.5.1",
+ "rand_core",
  "rand_hc",
 ]
 
@@ -992,23 +956,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4c8ed856279c9737206bf725bf36935d8666ead7aa69b52be55af369d193402"
 dependencies = [
  "ppv-lite86",
- "rand_core 0.5.1",
+ "rand_core",
 ]
-
-[[package]]
-name = "rand_core"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
-dependencies = [
- "rand_core 0.4.2",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
 
 [[package]]
 name = "rand_core"
@@ -1025,7 +974,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
 dependencies = [
- "rand_core 0.5.1",
+ "rand_core",
 ]
 
 [[package]]
@@ -1034,7 +983,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77d416b86801d23dde1aa643023b775c3a462efc0ed96443add11546cdf1dca8"
 dependencies = [
- "rand_core 0.5.1",
+ "rand_core",
 ]
 
 [[package]]
@@ -1060,15 +1009,6 @@ dependencies = [
  "crossbeam-utils",
  "lazy_static",
  "num_cpus",
-]
-
-[[package]]
-name = "rdrand"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
-dependencies = [
- "rand_core 0.3.1",
 ]
 
 [[package]]
@@ -1098,25 +1038,6 @@ name = "regex-syntax"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26412eb97c6b088a6997e05f69403a802a92d520de2f8e63c2b65f9e0f47c4e8"
-
-[[package]]
-name = "rust-crypto"
-version = "0.2.36"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f76d05d3993fd5f4af9434e8e436db163a12a9d40e1a58a726f27a01dfd12a2a"
-dependencies = [
- "gcc",
- "libc",
- "rand 0.3.23",
- "rustc-serialize",
- "time",
-]
-
-[[package]]
-name = "rustc-serialize"
-version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
 
 [[package]]
 name = "rustc_version"
@@ -1234,10 +1155,9 @@ dependencies = [
  "num_cpus",
  "phase1",
  "r1cs-core",
- "rand 0.7.3",
+ "rand",
  "rand_chacha",
  "rayon",
- "rust-crypto",
  "rusty-hook",
  "thiserror",
  "tracing",
@@ -1281,7 +1201,7 @@ dependencies = [
  "derivative",
  "digest 0.8.1",
  "itertools 0.9.0",
- "rand 0.7.3",
+ "rand",
  "rand_chacha",
  "rayon",
  "sha2",
@@ -1298,7 +1218,7 @@ version = "0.8.0"
 source = "git+ssh://git@github.com/AleoHQ/snarkOS.git#d80ce42f37c8dbdd8dcb0ab9574361aea3276dc3"
 dependencies = [
  "derivative",
- "rand 0.7.3",
+ "rand",
  "rand_xorshift",
  "rustc_version",
  "serde",
@@ -1326,7 +1246,7 @@ dependencies = [
  "derivative",
  "hex",
  "itertools 0.9.0",
- "rand 0.7.3",
+ "rand",
  "snarkos-algorithms",
  "snarkos-curves",
  "snarkos-errors",
@@ -1374,7 +1294,7 @@ dependencies = [
  "bincode",
  "derivative",
  "itertools 0.9.0",
- "rand 0.7.3",
+ "rand",
  "rand_xorshift",
  "serde",
  "smallvec",
@@ -1393,7 +1313,7 @@ dependencies = [
  "derivative",
  "hex",
  "once_cell",
- "rand 0.7.3",
+ "rand",
  "serde",
  "sha2",
  "snarkos-algorithms",
@@ -1426,7 +1346,7 @@ version = "0.8.0"
 source = "git+ssh://git@github.com/AleoHQ/snarkOS.git#d80ce42f37c8dbdd8dcb0ab9574361aea3276dc3"
 dependencies = [
  "bincode",
- "rand 0.7.3",
+ "rand",
  "snarkos-derives",
  "snarkos-errors",
 ]

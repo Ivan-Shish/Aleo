@@ -16,8 +16,6 @@ pub enum Command {
     New(NewOpts),
     #[options(help = "contribute to ceremony by transforming the circuit parameters")]
     Contribute(ContributeOpts),
-    #[options(help = "contribute randomness via a random beacon (e.g. a bitcoin block header hash)")]
-    Beacon(ContributeOpts),
     #[options(help = "verify the contributions so far")]
     Verify(VerifyOpts),
 }

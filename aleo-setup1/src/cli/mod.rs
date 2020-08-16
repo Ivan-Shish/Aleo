@@ -50,8 +50,6 @@ pub enum Command {
         help = "contribute to ceremony by producing a response to a challenge (or create a new challenge if this is the first contribution)"
     )]
     Contribute(ContributeOpts),
-    #[options(help = "contribute randomness via a random beacon (e.g. a bitcoin block header hash)")]
-    Beacon(ContributeOpts),
     // this receives a challenge + response file, verifies it and generates a new challenge
     #[options(help = "verify the contributions so far and generate a new challenge")]
     VerifyAndTransform(VerifyAndTransformOpts),

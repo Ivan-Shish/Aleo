@@ -18,12 +18,6 @@ pub struct ContributeOpts {
     pub data: String,
     #[options(help = "the batches which can be loaded in memory", default = "50000")]
     pub batch: usize,
-    #[options(
-        help = "the beacon hash to be used if running a beacon contribution",
-        default = "0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620"
-    )]
-    pub beacon_hash: String,
-
     #[options(help = "setup the inner or the outer circuit?")]
     pub is_inner: bool,
 }

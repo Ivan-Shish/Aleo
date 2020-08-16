@@ -1,6 +1,6 @@
 # Aleo Setup I
 
-You can see an E2E demo with 3 participants and the beacon at the end by running `test.sh`.
+You can see an E2E demo with 3 participants by running `test.sh`.
 
 ## CLI Guide
 
@@ -9,7 +9,6 @@ You can see an E2E demo with 3 participants and the beacon at the end by running
 Coordinators run:
 1. `new` to create a new accumulator
 1. `verify-and-transform` after receiving a contribution to the previous challenge, to produce a new challenge for the next contribution
-1. `beacon` at the end of the ceremony (optional, as the security proof [does not require it](https://electriccoin.co/blog/reinforcing-the-security-of-the-sapling-mpc/))
 
 Users should only care about the `contribute` option.
 
@@ -31,7 +30,6 @@ Available commands:
 
   new                   creates a new challenge for the ceremony
   contribute            contribute to ceremony by producing a response to a challenge (or create a new challenge if this is the first contribution)
-  beacon                contribute randomness via a random beacon (e.g. a bitcoin block header hash)
   verify-and-transform  verify the contributions so far and generate a new challenge
 ```
 

@@ -22,5 +22,3 @@ It is totally up to the participants. In general, participants should beware of 
 ## Verifying execution of Powers of Tau
 
 When contributing, Powers of Tau outputs the accumulator's hash to your terminal. This should be made available to the next contributor separately, as a checksum so that they can verify the file they have received is not tampered with.
-
-As a final step, a randomness beacon is applied to the ceremony by the coordinator. This can be verified by running [this software](https://github.com/plutomonkey/verify-beacon/).

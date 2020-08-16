@@ -2,12 +2,9 @@ use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
-        #[macro_use]
-        extern crate hex_literal;
-
         use aleo_setup1::{CurveKind, cli::{contribute, new_challenge, transform, Command, Phase1Opts}};
         use phase1::Phase1Parameters;
-        use setup_utils::{beacon_randomness, get_rng, user_system_randomness};
+        use setup_utils::{get_rng, user_system_randomness};
 
         use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -35,13 +32,6 @@ cfg_if! {
                 Command::Contribute(opt) => {
                     // contribute to the randomness
                     let rng = get_rng(&user_system_randomness());
-                    contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
-                }
-                Command::Beacon(opt) => {
-                    // use the beacon's randomness
-                    // Place block hash here (block number #564321)
-                    let beacon_hash: [u8; 32] = hex!("0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620");
-                    let rng = get_rng(&beacon_randomness(beacon_hash));
                     contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
                 }
                 Command::VerifyAndTransform(opt) => {

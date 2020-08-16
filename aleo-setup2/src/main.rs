@@ -1,7 +1,7 @@
 mod cli;
 use cli::*;
 
-use setup_utils::{beacon_randomness, from_slice, get_rng, user_system_randomness};
+use setup_utils::{get_rng, user_system_randomness};
 
 use gumdrop::Options;
 use std::{process, time::Instant};
@@ -29,12 +29,6 @@ fn main() {
         Command::Contribute(ref opt) => {
             // contribute to the randomness
             let mut rng = get_rng(&user_system_randomness());
-            contribute(&opt, &mut rng).unwrap()
-        }
-        Command::Beacon(ref opt) => {
-            // use the beacon's randomness
-            let beacon_hash = hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
-            let mut rng = get_rng(&beacon_randomness(from_slice(&beacon_hash)));
             contribute(&opt, &mut rng).unwrap()
         }
         Command::Verify(ref opt) => verify(&opt).unwrap(),
