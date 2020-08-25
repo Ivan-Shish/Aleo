@@ -118,7 +118,7 @@ pub fn deserialize<E: PairingEngine>(
     Ok((tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2))
 }
 
-/// Reads an input buffer and a secret key **which must be destroyed after this function is executed**.
+/// Takes a compressed input buffer and decompresses it into the output buffer.
 pub fn decompress<E: PairingEngine>(input: &[u8], output: &mut [u8], parameters: &Phase1Parameters<E>) -> Result<()> {
     let compressed_input = UseCompression::Yes;
     let compressed_output = UseCompression::No;
