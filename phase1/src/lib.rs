@@ -36,15 +36,20 @@ use tracing::{debug, info, info_span, trace};
 /// * (β, τ, τ<sup>2</sup>, ..., τ<sup>2<sup>21</sup> - 1</sup>)<sub>2</sub>
 #[derive(Debug)]
 pub struct Phase1<'a, E: PairingEngine> {
-    /// tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_G1_LENGTH - 1}
+    /// Groth16: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_G1_LENGTH - 1}
+    /// Marlin: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
     pub tau_powers_g1: Vec<E::G1Affine>,
-    /// tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
+    /// Groth16: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
+    /// Marlin: 1/(tau^{TAU_POWERS_LENGTH - 1} - tau^{2^i}), for i = 0,...,floor(log2(TAU_POWERS_LENGTH-1))
     pub tau_powers_g2: Vec<E::G2Affine>,
-    /// alpha * tau^0, alpha * tau^1, alpha * tau^2, ..., alpha * tau^{TAU_POWERS_LENGTH - 1}
+    /// Groth16: alpha * tau^0, alpha * tau^1, alpha * tau^2, ..., alpha * tau^{TAU_POWERS_LENGTH - 1}
+    /// Marlin: alpha * tau^0, alpha * tau^1
     pub alpha_tau_powers_g1: Vec<E::G1Affine>,
-    /// beta * tau^0, beta * tau^1, beta * tau^2, ..., beta * tau^{TAU_POWERS_LENGTH - 1}
+    /// Groth16: beta * tau^0, beta * tau^1, beta * tau^2, ..., beta * tau^{TAU_POWERS_LENGTH - 1}
+    /// Marlin: empty
     pub beta_tau_powers_g1: Vec<E::G1Affine>,
-    /// beta
+    /// Groth16: beta
+    /// Marlin: empty
     pub beta_g2: E::G2Affine,
     /// Hash chain hash
     pub hash: GenericArray<u8, U64>,

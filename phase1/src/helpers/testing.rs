@@ -80,20 +80,40 @@ pub fn generate_random_accumulator<E: PairingEngine>(
     parameters: &Phase1Parameters<E>,
     compressed: UseCompression,
 ) -> (Vec<u8>, Phase1<E>) {
-    let tau_g1_size = parameters.powers_g1_length;
-    let other_size = parameters.powers_length;
-    let rng = &mut thread_rng();
-    let acc = Phase1 {
-        tau_powers_g1: random_point_vec(tau_g1_size, rng),
-        tau_powers_g2: random_point_vec(other_size, rng),
-        alpha_tau_powers_g1: random_point_vec(other_size, rng),
-        beta_tau_powers_g1: random_point_vec(other_size, rng),
-        beta_g2: random_point(rng),
-        hash: blank_hash(),
-        parameters,
-    };
-    let len = parameters.get_length(compressed);
-    let mut buf = vec![0; len];
-    acc.serialize(&mut buf, compressed, parameters).unwrap();
-    (buf, acc)
+    match parameters.proving_system {
+        crate::ProvingSystem::Groth16 => {
+            let tau_g1_size = parameters.powers_g1_length;
+            let other_size = parameters.powers_length;
+            let rng = &mut thread_rng();
+            let acc = Phase1 {
+                tau_powers_g1: random_point_vec(tau_g1_size, rng),
+                tau_powers_g2: random_point_vec(other_size, rng),
+                alpha_tau_powers_g1: random_point_vec(other_size, rng),
+                beta_tau_powers_g1: random_point_vec(other_size, rng),
+                beta_g2: random_point(rng),
+                hash: blank_hash(),
+                parameters,
+            };
+            let len = parameters.get_length(compressed);
+            let mut buf = vec![0; len];
+            acc.serialize(&mut buf, compressed, parameters).unwrap();
+            (buf, acc)
+        }
+        crate::ProvingSystem::Marlin => {
+            let rng = &mut thread_rng();
+            let acc = Phase1 {
+                tau_powers_g1: random_point_vec(parameters.powers_length, rng),
+                tau_powers_g2: random_point_vec(parameters.size, rng),
+                alpha_tau_powers_g1: random_point_vec(2, rng),
+                beta_tau_powers_g1: random_point_vec(0, rng),
+                beta_g2: E::G2Affine::prime_subgroup_generator(),
+                hash: blank_hash(),
+                parameters,
+            };
+            let len = parameters.get_length(compressed);
+            let mut buf = vec![0; len];
+            acc.serialize(&mut buf, compressed, parameters).unwrap();
+            (buf, acc)
+        }
+    }
 }

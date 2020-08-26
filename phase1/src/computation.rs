@@ -1,4 +1,5 @@
 use super::*;
+use zexe_algebra::{batch_inversion, Field};
 
 impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     ///
@@ -31,55 +32,142 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         let (tau_g1_outputs, tau_g2_outputs, alpha_g1_outputs, beta_g1_outputs, beta_g2_outputs) =
             split_mut(output, parameters, compressed_output);
 
-        // Write beta_g2 (0th index element) to beta_g2_outputs.
-        {
-            // Fetch the element.
-            let mut beta_g2_el =
-                beta_g2_inputs.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
-            // Multiply it by the key's beta element.
-            beta_g2_el = beta_g2_el.mul(key.beta).into_affine();
-            // Write it back.
-            beta_g2_outputs.write_element(&beta_g2_el, compressed_output)?;
-        }
+        match parameters.proving_system {
+            ProvingSystem::Groth16 => {
+                // Write beta_g2 (0th index element) to beta_g2_outputs.
+                {
+                    // Fetch the element.
+                    let mut beta_g2_el =
+                        beta_g2_inputs.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
+                    // Multiply it by the key's beta element.
+                    beta_g2_el = beta_g2_el.mul(key.beta).into_affine();
+                    // Write it back.
+                    beta_g2_outputs.write_element(&beta_g2_el, compressed_output)?;
+                }
 
-        // load `batch_size` chunks on each iteration and perform the transformation
-        iter_chunk(&parameters, |start, end| {
-            debug!("contributing to chunk from {} to {}", start, end);
-            let span = info_span!("batch", start, end);
-            let _ = span.enter();
-
-            #[cfg(not(feature = "wasm"))]
-            rayon::scope(|t| {
-                let _ = span.enter();
-
-                t.spawn(|_| {
+                // load `batch_size` chunks on each iteration and perform the transformation
+                iter_chunk(&parameters, |start, end| {
+                    debug!("contributing to chunk from {} to {}", start, end);
+                    let span = info_span!("batch", start, end);
                     let _ = span.enter();
 
-                    // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
-                    let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
-
-                    trace!("generated powers of tau");
-
-                    // Raise each element from the input buffer to the powers of tau
-                    // and write the updated value (without allocating) to the
-                    // output buffer
+                    #[cfg(not(feature = "wasm"))]
                     rayon::scope(|t| {
                         let _ = span.enter();
 
                         t.spawn(|_| {
                             let _ = span.enter();
 
-                            apply_powers::<E::G1Affine>(
-                                (tau_g1_outputs, compressed_output),
-                                (tau_g1_inputs, compressed_input, check_input_for_correctness),
-                                (start, end),
-                                &powers,
-                                None,
-                            )
-                            .expect("could not apply powers of tau to tau_g1 elements");
+                            // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
+                            let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
 
-                            trace!("applied powers to tau_g1 elements");
+                            trace!("generated powers of tau");
+
+                            // Raise each element from the input buffer to the powers of tau
+                            // and write the updated value (without allocating) to the
+                            // output buffer
+                            rayon::scope(|t| {
+                                let _ = span.enter();
+
+                                t.spawn(|_| {
+                                    let _ = span.enter();
+
+                                    apply_powers::<E::G1Affine>(
+                                        (tau_g1_outputs, compressed_output),
+                                        (tau_g1_inputs, compressed_input, check_input_for_correctness),
+                                        (start, end),
+                                        &powers,
+                                        None,
+                                    )
+                                    .expect("could not apply powers of tau to tau_g1 elements");
+
+                                    trace!("applied powers to tau_g1 elements");
+                                });
+                                if start < parameters.powers_length {
+                                    // if the `end` would be out of bounds, then just process until
+                                    // the end (this is necessary in case the last batch would try to
+                                    // process more elements than available)
+                                    let end = if start + parameters.batch_size > parameters.powers_length {
+                                        parameters.powers_length
+                                    } else {
+                                        end
+                                    };
+
+                                    rayon::scope(|t| {
+                                        let _ = span.enter();
+
+                                        t.spawn(|_| {
+                                            let _ = span.enter();
+
+                                            apply_powers::<E::G2Affine>(
+                                                (tau_g2_outputs, compressed_output),
+                                                (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                                                (start, end),
+                                                &powers,
+                                                None,
+                                            )
+                                            .expect("could not apply powers of tau to tau_g2 elements");
+
+                                            trace!("applied powers to tau_g2 elements");
+                                        });
+
+                                        t.spawn(|_| {
+                                            let _ = span.enter();
+
+                                            apply_powers::<E::G1Affine>(
+                                                (alpha_g1_outputs, compressed_output),
+                                                (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                                                (start, end),
+                                                &powers,
+                                                Some(&key.alpha),
+                                            )
+                                            .expect("could not apply powers of tau to alpha_g1 elements");
+
+                                            trace!("applied powers to alpha_g1 elements");
+                                        });
+
+                                        t.spawn(|_| {
+                                            let _ = span.enter();
+
+                                            apply_powers::<E::G1Affine>(
+                                                (beta_g1_outputs, compressed_output),
+                                                (beta_g1_inputs, compressed_input, check_input_for_correctness),
+                                                (start, end),
+                                                &powers,
+                                                Some(&key.beta),
+                                            )
+                                            .expect("could not apply powers of tau to beta_g1 elements");
+
+                                            trace!("applied powers to beta_g1 elements");
+                                        });
+                                    });
+                                }
+                            });
                         });
+                    });
+
+                    #[cfg(feature = "wasm")]
+                    {
+                        let _ = span.enter();
+
+                        // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
+                        let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
+
+                        trace!("generated powers of tau");
+
+                        let _ = span.enter();
+
+                        // Raise each element from the input buffer to the powers of tau
+                        // and write the updated value (without allocating) to the output buffer.
+                        apply_powers::<E::G1Affine>(
+                            (tau_g1_outputs, compressed_output),
+                            (tau_g1_inputs, compressed_input, check_input_for_correctness),
+                            (start, end),
+                            &powers,
+                            None,
+                        )
+                        .expect("could not apply powers of tau to tau_g1 elements");
+
                         if start < parameters.powers_length {
                             // if the `end` would be out of bounds, then just process until
                             // the end (this is necessary in case the last batch would try to
@@ -90,132 +178,131 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 end
                             };
 
-                            rayon::scope(|t| {
-                                let _ = span.enter();
+                            let _ = span.enter();
 
-                                t.spawn(|_| {
-                                    let _ = span.enter();
+                            apply_powers::<E::G2Affine>(
+                                (tau_g2_outputs, compressed_output),
+                                (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                                (start, end),
+                                &powers,
+                                None,
+                            )
+                            .expect("could not apply powers of tau to tau_g2 elements");
 
-                                    apply_powers::<E::G2Affine>(
-                                        (tau_g2_outputs, compressed_output),
-                                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                                        (start, end),
-                                        &powers,
-                                        None,
-                                    )
-                                    .expect("could not apply powers of tau to tau_g2 elements");
+                            trace!("applied powers to tau_g2 elements");
 
-                                    trace!("applied powers to tau_g2 elements");
-                                });
+                            apply_powers::<E::G1Affine>(
+                                (alpha_g1_outputs, compressed_output),
+                                (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                                (start, end),
+                                &powers,
+                                Some(&key.alpha),
+                            )
+                            .expect("could not apply powers of tau to alpha_g1 elements");
 
-                                t.spawn(|_| {
-                                    let _ = span.enter();
+                            trace!("applied powers to alpha_g1 elements");
 
-                                    apply_powers::<E::G1Affine>(
-                                        (alpha_g1_outputs, compressed_output),
-                                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                                        (start, end),
-                                        &powers,
-                                        Some(&key.alpha),
-                                    )
-                                    .expect("could not apply powers of tau to alpha_g1 elements");
+                            apply_powers::<E::G1Affine>(
+                                (beta_g1_outputs, compressed_output),
+                                (beta_g1_inputs, compressed_input, check_input_for_correctness),
+                                (start, end),
+                                &powers,
+                                Some(&key.beta),
+                            )
+                            .expect("could not apply powers of tau to beta_g1 elements");
 
-                                    trace!("applied powers to alpha_g1 elements");
-                                });
-
-                                t.spawn(|_| {
-                                    let _ = span.enter();
-
-                                    apply_powers::<E::G1Affine>(
-                                        (beta_g1_outputs, compressed_output),
-                                        (beta_g1_inputs, compressed_input, check_input_for_correctness),
-                                        (start, end),
-                                        &powers,
-                                        Some(&key.beta),
-                                    )
-                                    .expect("could not apply powers of tau to beta_g1 elements");
-
-                                    trace!("applied powers to beta_g1 elements");
-                                });
-                            });
+                            trace!("applied powers to beta_g1 elements");
                         }
-                    });
-                });
-            });
+                    }
 
-            #[cfg(feature = "wasm")]
-            {
-                let _ = span.enter();
+                    debug!("chunk contribution successful");
 
-                // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
-                let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
-
-                trace!("generated powers of tau");
-
-                let _ = span.enter();
-
-                // Raise each element from the input buffer to the powers of tau
-                // and write the updated value (without allocating) to the output buffer.
-                apply_powers::<E::G1Affine>(
-                    (tau_g1_outputs, compressed_output),
-                    (tau_g1_inputs, compressed_input, check_input_for_correctness),
-                    (start, end),
-                    &powers,
+                    Ok(())
+                })?;
+            }
+            ProvingSystem::Marlin => {
+                let mut g2_inverse_powers = (0..parameters.size)
+                    .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
+                    .collect::<Vec<_>>();
+                batch_inversion(&mut g2_inverse_powers);
+                apply_powers::<E::G2Affine>(
+                    (tau_g2_outputs, compressed_output),
+                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                    (0, parameters.size),
+                    &g2_inverse_powers,
                     None,
                 )
-                .expect("could not apply powers of tau to tau_g1 elements");
+                .expect("could not apply powers of tau to tau_g2 elements");
 
-                if start < parameters.powers_length {
-                    // if the `end` would be out of bounds, then just process until
-                    // the end (this is necessary in case the last batch would try to
-                    // process more elements than available)
-                    let end = if start + parameters.batch_size > parameters.powers_length {
-                        parameters.powers_length
-                    } else {
-                        end
-                    };
+                let num_alpha_powers = 2;
+                let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
+                apply_powers::<E::G1Affine>(
+                    (alpha_g1_outputs, compressed_output),
+                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                    (0, num_alpha_powers),
+                    &powers,
+                    Some(&key.alpha),
+                )
+                .expect("could not apply powers of tau alpha to tau_g1 elements");
 
+                // load `batch_size` chunks on each iteration and perform the transformation
+                iter_chunk(&parameters, |start, end| {
+                    debug!("contributing to chunk from {} to {}", start, end);
+                    let span = info_span!("batch", start, end);
                     let _ = span.enter();
 
-                    apply_powers::<E::G2Affine>(
-                        (tau_g2_outputs, compressed_output),
-                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        None,
-                    )
-                    .expect("could not apply powers of tau to tau_g2 elements");
+                    #[cfg(not(feature = "wasm"))]
+                    rayon::scope(|t| {
+                        let _ = span.enter();
 
-                    trace!("applied powers to tau_g2 elements");
+                        t.spawn(|_| {
+                            let _ = span.enter();
 
-                    apply_powers::<E::G1Affine>(
-                        (alpha_g1_outputs, compressed_output),
-                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        Some(&key.alpha),
-                    )
-                    .expect("could not apply powers of tau to alpha_g1 elements");
+                            // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
+                            let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
 
-                    trace!("applied powers to alpha_g1 elements");
+                            trace!("generated powers of tau");
 
-                    apply_powers::<E::G1Affine>(
-                        (beta_g1_outputs, compressed_output),
-                        (beta_g1_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        Some(&key.beta),
-                    )
-                    .expect("could not apply powers of tau to beta_g1 elements");
+                            apply_powers::<E::G1Affine>(
+                                (tau_g1_outputs, compressed_output),
+                                (tau_g1_inputs, compressed_input, check_input_for_correctness),
+                                (start, end),
+                                &powers,
+                                None,
+                            )
+                            .expect("could not apply powers of tau to tau_g1 elements");
+                        });
+                    });
 
-                    trace!("applied powers to beta_g1 elements");
-                }
+                    #[cfg(feature = "wasm")]
+                    {
+                        let _ = span.enter();
+
+                        // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
+                        let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
+
+                        trace!("generated powers of tau");
+
+                        let _ = span.enter();
+
+                        // Raise each element from the input buffer to the powers of tau
+                        // and write the updated value (without allocating) to the output buffer.
+                        apply_powers::<E::G1Affine>(
+                            (tau_g1_outputs, compressed_output),
+                            (tau_g1_inputs, compressed_input, check_input_for_correctness),
+                            (start, end),
+                            &powers,
+                            None,
+                        )
+                        .expect("could not apply powers of tau to tau_g1 elements");
+                    }
+
+                    debug!("chunk contribution successful");
+
+                    Ok(())
+                })?;
             }
-
-            debug!("chunk contribution successful");
-
-            Ok(())
-        })?;
+        }
 
         info!("phase1-contribution complete");
 
@@ -239,62 +326,82 @@ mod tests {
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
-        let parameters = Phase1Parameters::<E>::new(powers, batch);
-        let expected_response_length = parameters.get_length(compressed_output);
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
+            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let expected_response_length = parameters.get_length(compressed_output);
 
-        // Get a non-mutable copy of the initial accumulator state.
-        let (input, mut before) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
+            // Get a non-mutable copy of the initial accumulator state.
+            let (input, mut before) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
 
-        let mut output = vec![0; expected_response_length];
+            let mut output = vec![0; expected_response_length];
 
-        // Construct our keypair using the RNG we created above
-        let current_accumulator_hash = blank_hash();
-        let mut rng = thread_rng();
-        let (_, privkey) =
-            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+            // Construct our keypair using the RNG we created above
+            let current_accumulator_hash = blank_hash();
+            let mut rng = thread_rng();
+            let (_, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
+                .expect("could not generate keypair");
 
-        Phase1::computation(
-            &input,
-            &mut output,
-            compressed_input,
-            compressed_output,
-            CheckForCorrectness::No,
-            &privkey,
-            &parameters,
-        )
-        .unwrap();
+            Phase1::computation(
+                &input,
+                &mut output,
+                compressed_input,
+                compressed_output,
+                CheckForCorrectness::No,
+                &privkey,
+                &parameters,
+            )
+            .unwrap();
 
-        let deserialized =
-            Phase1::deserialize(&output, compressed_output, CheckForCorrectness::No, &parameters).unwrap();
+            let deserialized =
+                Phase1::deserialize(&output, compressed_output, CheckForCorrectness::No, &parameters).unwrap();
 
-        let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
-        batch_exp(
-            &mut before.tau_powers_g1,
-            &tau_powers[0..parameters.powers_g1_length],
-            None,
-        )
-        .unwrap();
-        batch_exp(
-            &mut before.tau_powers_g2,
-            &tau_powers[0..parameters.powers_length],
-            None,
-        )
-        .unwrap();
-        batch_exp(
-            &mut before.alpha_tau_powers_g1,
-            &tau_powers[0..parameters.powers_length],
-            Some(&privkey.alpha),
-        )
-        .unwrap();
-        batch_exp(
-            &mut before.beta_tau_powers_g1,
-            &tau_powers[0..parameters.powers_length],
-            Some(&privkey.beta),
-        )
-        .unwrap();
-        before.beta_g2 = before.beta_g2.mul(privkey.beta).into_affine();
-
-        assert_eq!(deserialized, before);
+            match proving_system {
+                ProvingSystem::Groth16 => {
+                    let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
+                    batch_exp(
+                        &mut before.tau_powers_g1,
+                        &tau_powers[0..parameters.powers_g1_length],
+                        None,
+                    )
+                    .unwrap();
+                    batch_exp(
+                        &mut before.tau_powers_g2,
+                        &tau_powers[0..parameters.powers_length],
+                        None,
+                    )
+                    .unwrap();
+                    batch_exp(
+                        &mut before.alpha_tau_powers_g1,
+                        &tau_powers[0..parameters.powers_length],
+                        Some(&privkey.alpha),
+                    )
+                    .unwrap();
+                    batch_exp(
+                        &mut before.beta_tau_powers_g1,
+                        &tau_powers[0..parameters.powers_length],
+                        Some(&privkey.beta),
+                    )
+                    .unwrap();
+                    before.beta_g2 = before.beta_g2.mul(privkey.beta).into_affine();
+                }
+                ProvingSystem::Marlin => {
+                    let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_length);
+                    batch_exp(
+                        &mut before.tau_powers_g1,
+                        &tau_powers[0..parameters.powers_length],
+                        None,
+                    )
+                    .unwrap();
+                    let mut g2_inverse_powers = (0..parameters.size)
+                        .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
+                        .collect::<Vec<_>>();
+                    batch_inversion(&mut g2_inverse_powers);
+                    batch_exp(&mut before.tau_powers_g2, &g2_inverse_powers[0..parameters.size], None).unwrap();
+                    batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..2], Some(&privkey.alpha)).unwrap();
+                }
+            }
+            assert_eq!(deserialized, before);
+        }
     }
 
     #[test]

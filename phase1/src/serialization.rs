@@ -58,29 +58,33 @@ mod tests {
     use zexe_algebra::{Bls12_377, BW6_761};
 
     fn serialize_curve_test<E: PairingEngine + Sync>(compress: UseCompression, size: usize, batch: usize) {
-        // Create a small accumulator with some random state.
-        let parameters = Phase1Parameters::<E>::new(size, batch);
-        let (buffer, accumulator) = generate_random_accumulator(&parameters, compress);
-        let deserialized = Phase1::deserialize(&buffer, compress, CheckForCorrectness::No, &parameters).unwrap();
-        assert_eq!(deserialized, accumulator);
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
+            // Create a small accumulator with some random state.
+            let parameters = Phase1Parameters::<E>::new(*proving_system, size, batch);
+            let (buffer, accumulator) = generate_random_accumulator(&parameters, compress);
+            let deserialized = Phase1::deserialize(&buffer, compress, CheckForCorrectness::No, &parameters).unwrap();
+            assert_eq!(deserialized, accumulator);
+        }
     }
 
     fn decompress_curve_test<E: PairingEngine>() {
-        let parameters = Phase1Parameters::<E>::new(2, 2);
-        // generate a random input compressed accumulator
-        let (input, before) = generate_random_accumulator(&parameters, UseCompression::Yes);
-        let mut output = generate_output(&parameters, UseCompression::No);
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
+            let parameters = Phase1Parameters::<E>::new(*proving_system, 2, 2);
+            // generate a random input compressed accumulator
+            let (input, before) = generate_random_accumulator(&parameters, UseCompression::Yes);
+            let mut output = generate_output(&parameters, UseCompression::No);
 
-        // decompress the input to the output
-        Phase1::decompress(&input, &mut output, CheckForCorrectness::No, &parameters).unwrap();
+            // decompress the input to the output
+            Phase1::decompress(&input, &mut output, CheckForCorrectness::No, &parameters).unwrap();
 
-        // deserializes the decompressed output
-        let deserialized =
-            Phase1::deserialize(&output, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
-        assert_eq!(deserialized, before);
+            // deserializes the decompressed output
+            let deserialized =
+                Phase1::deserialize(&output, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
+            assert_eq!(deserialized, before);
 
-        // trying to deserialize it as compressed should obviously fail
-        Phase1::deserialize(&output, UseCompression::Yes, CheckForCorrectness::No, &parameters).unwrap_err();
+            // trying to deserialize it as compressed should obviously fail
+            Phase1::deserialize(&output, UseCompression::Yes, CheckForCorrectness::No, &parameters).unwrap_err();
+        }
     }
 
     #[test]
