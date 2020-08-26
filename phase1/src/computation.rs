@@ -14,6 +14,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         output: &mut [u8],
         compressed_input: UseCompression,
         compressed_output: UseCompression,
+        check_input_for_correctness: CheckForCorrectness,
         key: &PrivateKey<E>,
         parameters: &'a Phase1Parameters<E>,
     ) -> Result<()> {
@@ -33,7 +34,8 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         // Write beta_g2 (0th index element) to beta_g2_outputs.
         {
             // Fetch the element.
-            let mut beta_g2_el = beta_g2_inputs.read_element::<E::G2Affine>(compressed_input)?;
+            let mut beta_g2_el =
+                beta_g2_inputs.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
             // Multiply it by the key's beta element.
             beta_g2_el = beta_g2_el.mul(key.beta).into_affine();
             // Write it back.
@@ -69,7 +71,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                             apply_powers::<E::G1Affine>(
                                 (tau_g1_outputs, compressed_output),
-                                (tau_g1_inputs, compressed_input),
+                                (tau_g1_inputs, compressed_input, check_input_for_correctness),
                                 (start, end),
                                 &powers,
                                 None,
@@ -96,7 +98,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     apply_powers::<E::G2Affine>(
                                         (tau_g2_outputs, compressed_output),
-                                        (tau_g2_inputs, compressed_input),
+                                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
                                         (start, end),
                                         &powers,
                                         None,
@@ -111,7 +113,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     apply_powers::<E::G1Affine>(
                                         (alpha_g1_outputs, compressed_output),
-                                        (alpha_g1_inputs, compressed_input),
+                                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
                                         (start, end),
                                         &powers,
                                         Some(&key.alpha),
@@ -126,7 +128,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     apply_powers::<E::G1Affine>(
                                         (beta_g1_outputs, compressed_output),
-                                        (beta_g1_inputs, compressed_input),
+                                        (beta_g1_inputs, compressed_input, check_input_for_correctness),
                                         (start, end),
                                         &powers,
                                         Some(&key.beta),
@@ -156,7 +158,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 // and write the updated value (without allocating) to the output buffer.
                 apply_powers::<E::G1Affine>(
                     (tau_g1_outputs, compressed_output),
-                    (tau_g1_inputs, compressed_input),
+                    (tau_g1_inputs, compressed_input, check_input_for_correctness),
                     (start, end),
                     &powers,
                     None,
@@ -177,7 +179,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                     apply_powers::<E::G2Affine>(
                         (tau_g2_outputs, compressed_output),
-                        (tau_g2_inputs, compressed_input),
+                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
                         (start, end),
                         &powers,
                         None,
@@ -188,7 +190,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                     apply_powers::<E::G1Affine>(
                         (alpha_g1_outputs, compressed_output),
-                        (alpha_g1_inputs, compressed_input),
+                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
                         (start, end),
                         &powers,
                         Some(&key.alpha),
@@ -199,7 +201,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                     apply_powers::<E::G1Affine>(
                         (beta_g1_outputs, compressed_output),
-                        (beta_g1_inputs, compressed_input),
+                        (beta_g1_inputs, compressed_input, check_input_for_correctness),
                         (start, end),
                         &powers,
                         Some(&key.beta),
@@ -241,7 +243,7 @@ mod tests {
         let expected_response_length = parameters.get_length(compressed_output);
 
         // Get a non-mutable copy of the initial accumulator state.
-        let (input, mut before) = generate_input(&parameters, compressed_input);
+        let (input, mut before) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
 
         let mut output = vec![0; expected_response_length];
 
@@ -256,12 +258,14 @@ mod tests {
             &mut output,
             compressed_input,
             compressed_output,
+            CheckForCorrectness::No,
             &privkey,
             &parameters,
         )
         .unwrap();
 
-        let deserialized = Phase1::deserialize(&output, compressed_output, &parameters).unwrap();
+        let deserialized =
+            Phase1::deserialize(&output, compressed_output, CheckForCorrectness::No, &parameters).unwrap();
 
         let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
         batch_exp(

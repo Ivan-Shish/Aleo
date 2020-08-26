@@ -1,5 +1,5 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
-use setup_utils::{log_2, Groth16Params, UseCompression};
+use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
@@ -175,6 +175,7 @@ pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + 
     let phase1 = Groth16Params::<Zexe>::read(
         &mut phase1_transcript,
         COMPRESSION,
+        CheckForCorrectness::No,
         2usize.pow(opt.phase1_size),
         phase2_size,
     )?;

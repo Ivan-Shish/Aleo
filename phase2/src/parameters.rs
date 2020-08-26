@@ -63,6 +63,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         circuit: C,
         transcript: &mut [u8],
         compressed: UseCompression,
+        check_input_for_correctness: CheckForCorrectness,
         phase1_size: usize,
         phase2_size: usize,
     ) -> Result<MPCParameters<E>>
@@ -71,7 +72,13 @@ impl<E: PairingEngine> MPCParameters<E> {
         Aleo: AleoPairingEngine,
     {
         let assembly = circuit_to_qap::<Aleo, E, _>(circuit)?;
-        let params = Groth16Params::<E>::read(transcript, compressed, phase1_size, phase2_size)?;
+        let params = Groth16Params::<E>::read(
+            transcript,
+            compressed,
+            check_input_for_correctness,
+            phase1_size,
+            phase2_size,
+        )?;
         Self::new(assembly, params)
     }
 
@@ -550,8 +557,8 @@ mod tests {
         let params = Phase1Parameters::<E>::new(powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
-            let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-            Phase1::deserialize(&output, compressed, &params).unwrap()
+            let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
+            Phase1::deserialize(&output, compressed, CheckForCorrectness::Yes, &params).unwrap()
         };
 
         let groth_params = Groth16Params::<E>::new(

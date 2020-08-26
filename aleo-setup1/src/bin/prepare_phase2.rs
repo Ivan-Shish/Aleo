@@ -1,4 +1,5 @@
 use cfg_if::cfg_if;
+use setup_utils::CheckForCorrectness;
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
@@ -62,7 +63,7 @@ cfg_if! {
                 .expect("unable to create parameter file in this directory");
 
             // Deserialize the accumulator
-            let current_accumulator = Phase1::deserialize(&response_readable_map, UseCompression::Yes, &parameters)
+            let current_accumulator = Phase1::deserialize(&response_readable_map, UseCompression::Yes, CheckForCorrectness::Yes, &parameters)
                 .expect("unable to read uncompressed accumulator");
 
             // Load the elements to the Groth16 utility
