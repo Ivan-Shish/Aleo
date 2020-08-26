@@ -62,28 +62,40 @@ mod tests {
     use zexe_algebra::{AffineCurve, Bls12_377, BW6_761};
 
     fn curve_initialization_test<E: PairingEngine>(powers: usize, batch: usize, compression: UseCompression) {
-        let parameters = Phase1Parameters::<E>::new(powers, batch);
-        let expected_challenge_length = match compression {
-            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
-            UseCompression::No => parameters.accumulator_size,
-        };
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
+            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let expected_challenge_length = match compression {
+                UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
+                UseCompression::No => parameters.accumulator_size,
+            };
 
-        let mut output = vec![0; expected_challenge_length];
-        Phase1::initialization(&mut output, compression, &parameters).unwrap();
+            let mut output = vec![0; expected_challenge_length];
+            Phase1::initialization(&mut output, compression, &parameters).unwrap();
 
-        let deserialized = Phase1::deserialize(&output, compression, CheckForCorrectness::Yes, &parameters).unwrap();
+            let deserialized =
+                Phase1::deserialize(&output, compression, CheckForCorrectness::Yes, &parameters).unwrap();
 
-        let g1_zero = E::G1Affine::prime_subgroup_generator();
-        let g2_zero = E::G2Affine::prime_subgroup_generator();
+            let g1_zero = E::G1Affine::prime_subgroup_generator();
+            let g2_zero = E::G2Affine::prime_subgroup_generator();
 
-        assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_g1_length]);
-        assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.powers_length]);
-        assert_eq!(deserialized.alpha_tau_powers_g1, vec![
-            g1_zero;
-            parameters.powers_length
-        ]);
-        assert_eq!(deserialized.beta_tau_powers_g1, vec![g1_zero; parameters.powers_length]);
-        assert_eq!(deserialized.beta_g2, g2_zero);
+            match parameters.proving_system {
+                ProvingSystem::Groth16 => {
+                    assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_g1_length]);
+                    assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.powers_length]);
+                    assert_eq!(deserialized.alpha_tau_powers_g1, vec![
+                        g1_zero;
+                        parameters.powers_length
+                    ]);
+                    assert_eq!(deserialized.beta_tau_powers_g1, vec![g1_zero; parameters.powers_length]);
+                    assert_eq!(deserialized.beta_g2, g2_zero);
+                }
+                ProvingSystem::Marlin => {
+                    assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_length]);
+                    assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.size]);
+                    assert_eq!(deserialized.alpha_tau_powers_g1, vec![g1_zero; 2]);
+                }
+            }
+        }
     }
 
     #[test]

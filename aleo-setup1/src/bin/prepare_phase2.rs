@@ -3,7 +3,7 @@ use setup_utils::CheckForCorrectness;
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
-        use aleo_setup1::{curve_from_str, CurveKind};
+        use aleo_setup1::{curve_from_str, proving_system_from_str, CurveKind};
         use phase1::{parameters::*, Phase1};
         use setup_utils::{Groth16Params, Result, UseCompression};
 
@@ -30,6 +30,12 @@ cfg_if! {
                 parse(try_from_str = "curve_from_str")
             )]
             pub curve_kind: CurveKind,
+            #[options(
+                help = "the proving system to use",
+                default = "groth16",
+                parse(try_from_str = "proving_system_from_str")
+            )]
+            pub proving_system: ProvingSystem,
             #[options(help = "the size of batches to process", default = "256")]
             pub batch_size: usize,
             #[options(
@@ -42,7 +48,7 @@ cfg_if! {
         }
 
         fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
-            let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
+            let parameters = Phase1Parameters::<E>::new(opts.proving_system, opts.power, opts.batch_size);
             // Try to load response file from disk.
             let reader = OpenOptions::new()
                 .read(true)

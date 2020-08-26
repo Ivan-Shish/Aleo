@@ -62,9 +62,15 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             }
             let after_g2 =
                 read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
-            if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
-                return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
+            match parameters.proving_system {
+                ProvingSystem::Groth16 => {
+                    if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
+                        return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
+                    }
+                }
+                ProvingSystem::Marlin => {}
             }
+
             let g1_check = (after_g1[0], after_g1[1]);
             let g2_check = (after_g2[0], after_g2[1]);
 
@@ -74,24 +80,30 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 tau_g2_check,
                 "Before-After: Tau [1] G1<>G2",
             )?;
-            for (before, after, check) in &[
-                (in_alpha_g1, alpha_g1, alpha_g2_check),
-                (in_beta_g1, beta_g1, beta_g2_check),
-            ] {
+            let checks = match parameters.proving_system {
+                ProvingSystem::Groth16 => vec![
+                    (in_alpha_g1, alpha_g1, alpha_g2_check),
+                    (in_beta_g1, beta_g1, beta_g2_check),
+                ],
+                ProvingSystem::Marlin => vec![(in_alpha_g1, alpha_g1, alpha_g2_check)],
+            };
+            for (before, after, check) in &checks {
                 before.read_batch_preallocated(&mut before_g1, compressed_input, check_input_for_correctness)?;
                 after.read_batch_preallocated(&mut after_g1, compressed_output, check_output_for_correctness)?;
                 check_same_ratio::<E>(&(before_g1[0], after_g1[0]), check, "Before-After: Alpha[0] G1<>G2")?;
             }
 
-            let before_beta_g2 =
-                (&*in_beta_g2).read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
-            let after_beta_g2 =
-                (&*beta_g2).read_element::<E::G2Affine>(compressed_output, check_output_for_correctness)?;
-            check_same_ratio::<E>(
-                &(before_g1[0], after_g1[0]),
-                &(before_beta_g2, after_beta_g2),
-                "Before-After: Other[0] G1<>G2",
-            )?;
+            if parameters.proving_system == ProvingSystem::Groth16 {
+                let before_beta_g2 =
+                    (&*in_beta_g2).read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
+                let after_beta_g2 =
+                    (&*beta_g2).read_element::<E::G2Affine>(compressed_output, check_output_for_correctness)?;
+                check_same_ratio::<E>(
+                    &(before_g1[0], after_g1[0]),
+                    &(before_beta_g2, after_beta_g2),
+                    "Before-After: Other[0] G1<>G2",
+                )?;
+            }
 
             (g1_check, g2_check)
         };
@@ -106,84 +118,145 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             let span = info_span!("batch", start, end);
             let _ = span.enter();
 
-            rayon::scope(|t| {
-                let _ = span.enter();
-
-                t.spawn(|_| {
-                    let _ = span.enter();
-
-                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-                    check_power_ratios::<E>(
-                        (tau_g1, compressed_output, check_output_for_correctness),
-                        (start, end),
-                        &mut g1,
-                        &g2_check,
-                    )
-                    .expect("could not check ratios for Tau G1");
-
-                    trace!("tau g1 verification successful");
-                });
-
-                if start < parameters.powers_length {
-                    // if the `end` would be out of bounds, then just process until
-                    // the end (this is necessary in case the last batch would try to
-                    // process more elements than available)
-                    let end = if start + parameters.batch_size > parameters.powers_length {
-                        parameters.powers_length
-                    } else {
-                        end
-                    };
-
+            match parameters.proving_system {
+                ProvingSystem::Groth16 => {
                     rayon::scope(|t| {
                         let _ = span.enter();
 
                         t.spawn(|_| {
                             let _ = span.enter();
 
-                            let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
-                            check_power_ratios_g2::<E>(
-                                (tau_g2, compressed_output, check_output_for_correctness),
+                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+                            check_power_ratios::<E>(
+                                (tau_g1, compressed_output, check_output_for_correctness),
                                 (start, end),
-                                &mut g2,
-                                &g1_check,
+                                &mut g1,
+                                &g2_check,
                             )
-                            .expect("could not check ratios for tau_g2");
+                            .expect("could not check ratios for Tau G1");
 
-                            trace!("tau_g2 verification successful");
+                            trace!("tau g1 verification successful");
                         });
+
+                        if start < parameters.powers_length {
+                            // if the `end` would be out of bounds, then just process until
+                            // the end (this is necessary in case the last batch would try to
+                            // process more elements than available)
+                            let end = if start + parameters.batch_size > parameters.powers_length {
+                                parameters.powers_length
+                            } else {
+                                end
+                            };
+
+                            rayon::scope(|t| {
+                                let _ = span.enter();
+
+                                t.spawn(|_| {
+                                    let _ = span.enter();
+
+                                    let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
+                                    check_power_ratios_g2::<E>(
+                                        (tau_g2, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g2,
+                                        &g1_check,
+                                    )
+                                    .expect("could not check ratios for tau_g2");
+
+                                    trace!("tau_g2 verification successful");
+                                });
+
+                                t.spawn(|_| {
+                                    let _ = span.enter();
+
+                                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+                                    check_power_ratios::<E>(
+                                        (alpha_g1, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g1,
+                                        &g2_check,
+                                    )
+                                    .expect("could not check ratios for alpha_g1");
+
+                                    trace!("alpha_g1 verification successful");
+                                });
+
+                                t.spawn(|_| {
+                                    let _ = span.enter();
+
+                                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+                                    check_power_ratios::<E>(
+                                        (beta_g1, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g1,
+                                        &g2_check,
+                                    )
+                                    .expect("could not check ratios for beta_g1");
+
+                                    trace!("beta_g1 verification successful");
+                                });
+                            });
+                        }
+                    });
+                }
+                ProvingSystem::Marlin => {
+                    rayon::scope(|t| {
+                        let _ = span.enter();
 
                         t.spawn(|_| {
                             let _ = span.enter();
 
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
                             check_power_ratios::<E>(
-                                (alpha_g1, compressed_output, check_output_for_correctness),
+                                (tau_g1, compressed_output, check_output_for_correctness),
                                 (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for Tau G1");
+
+                            trace!("tau g1 verification successful");
+                        });
+
+                        //this is the first batch, check alpha g1. batch size is guaranteed to be of size >= 2
+                        if start == 0 {
+                            let num_alpha_powers = 2;
+                            let mut g1 = vec![E::G1Affine::zero(); num_alpha_powers];
+                            check_power_ratios::<E>(
+                                (alpha_g1, compressed_output, check_output_for_correctness),
+                                (0, num_alpha_powers),
                                 &mut g1,
                                 &g2_check,
                             )
                             .expect("could not check ratios for alpha_g1");
 
                             trace!("alpha_g1 verification successful");
-                        });
+                        }
+                        let powers_of_two_in_range = (0..parameters.size)
+                            .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i)))
+                            .map(|(i, p)| (i, p as usize))
+                            .filter(|(_, p)| start <= *p && *p < end)
+                            .collect::<Vec<_>>();
 
-                        t.spawn(|_| {
-                            let _ = span.enter();
-
-                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-                            check_power_ratios::<E>(
-                                (beta_g1, compressed_output, check_output_for_correctness),
-                                (start, end),
-                                &mut g1,
-                                &g2_check,
+                        for (i, p) in powers_of_two_in_range.into_iter() {
+                            let g1_size = buffer_size::<E::G1Affine>(compressed_output);
+                            let g1 = (&tau_g1[p * g1_size..(p + 1) * g1_size])
+                                .read_element(compressed_output, check_output_for_correctness)
+                                .expect("should have read g1 element");
+                            let g2_size = buffer_size::<E::G2Affine>(compressed_output);
+                            let g2 = (&tau_g2[i * g2_size..(i + 1) * g2_size])
+                                .read_element(compressed_output, check_output_for_correctness)
+                                .expect("should have read g2 element");
+                            check_same_ratio::<E>(
+                                &(g1, E::G1Affine::prime_subgroup_generator()),
+                                &(E::G2Affine::prime_subgroup_generator(), g2),
+                                "G1<>G2",
                             )
-                            .expect("could not check ratios for beta_g1");
-
-                            trace!("beta_g1 verification successful");
-                        });
+                            .expect("should have checked same ratio");
+                        }
                     });
                 }
-            });
+            }
 
             debug!("chunk verification successful");
 
@@ -212,112 +285,125 @@ mod tests {
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
-        let parameters = Phase1Parameters::<E>::new(powers, batch);
+        for proving_system in &[ProvingSystem::Marlin] {
+            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
 
-        // allocate the input/output vectors
-        let (input, _) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
-        let mut output = generate_output(&parameters, compressed_output);
+            // allocate the input/output vectors
+            let (input, _) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
+            let mut output = generate_output(&parameters, compressed_output);
 
-        // Construct our keypair
-        let current_accumulator_hash = blank_hash();
-        let mut rng = thread_rng();
-        let (pubkey, privkey) =
-            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+            // Construct our keypair
+            let current_accumulator_hash = blank_hash();
+            let mut rng = thread_rng();
+            let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
+                .expect("could not generate keypair");
 
-        // transform the accumulator
-        Phase1::computation(
-            &input,
-            &mut output,
-            compressed_input,
-            compressed_output,
-            CheckForCorrectness::No,
-            &privkey,
-            &parameters,
-        )
-        .unwrap();
-        // ensure that the key is not available to the verifier
-        drop(privkey);
+            // transform the accumulator
+            Phase1::computation(
+                &input,
+                &mut output,
+                compressed_input,
+                compressed_output,
+                CheckForCorrectness::No,
+                &privkey,
+                &parameters,
+            )
+            .unwrap();
+            // ensure that the key is not available to the verifier
+            drop(privkey);
 
-        let res = Phase1::verification(
-            &input,
-            &output,
-            &pubkey,
-            &current_accumulator_hash,
-            compressed_input,
-            compressed_output,
-            CheckForCorrectness::No,
-            CheckForCorrectness::Yes,
-            &parameters,
-        );
-        assert!(res.is_ok());
+            let res = Phase1::verification(
+                &input,
+                &output,
+                &pubkey,
+                &current_accumulator_hash,
+                compressed_input,
+                compressed_output,
+                CheckForCorrectness::No,
+                CheckForCorrectness::Yes,
+                &parameters,
+            );
+            assert!(res.is_ok());
 
-        // subsequent participants must use the hash of the accumulator they received
-        let current_accumulator_hash = calculate_hash(&output);
+            // subsequent participants must use the hash of the accumulator they received
+            let current_accumulator_hash = calculate_hash(&output);
 
-        let (pubkey, privkey) =
-            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+            let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
+                .expect("could not generate keypair");
 
-        // generate a new output vector for the 2nd participant's contribution
-        let mut output_2 = generate_output(&parameters, compressed_output);
-        // we use the first output as input
-        Phase1::computation(
-            &output,
-            &mut output_2,
-            compressed_output,
-            compressed_output,
-            CheckForCorrectness::No,
-            &privkey,
-            &parameters,
-        )
-        .unwrap();
-        // ensure that the key is not available to the verifier
-        drop(privkey);
+            // generate a new output vector for the 2nd participant's contribution
+            let mut output_2 = generate_output(&parameters, compressed_output);
+            // we use the first output as input
+            Phase1::computation(
+                &output,
+                &mut output_2,
+                compressed_output,
+                compressed_output,
+                CheckForCorrectness::No,
+                &privkey,
+                &parameters,
+            )
+            .unwrap();
+            // ensure that the key is not available to the verifier
+            drop(privkey);
 
-        let res = Phase1::verification(
-            &output,
-            &output_2,
-            &pubkey,
-            &current_accumulator_hash,
-            compressed_output,
-            compressed_output,
-            CheckForCorrectness::No,
-            CheckForCorrectness::Yes,
-            &parameters,
-        );
-        assert!(res.is_ok());
+            let res = Phase1::verification(
+                &output,
+                &output_2,
+                &pubkey,
+                &current_accumulator_hash,
+                compressed_output,
+                compressed_output,
+                CheckForCorrectness::No,
+                CheckForCorrectness::Yes,
+                &parameters,
+            );
+            assert!(res.is_ok());
 
-        // verification will fail if the old hash is used
-        let res = Phase1::verification(
-            &output,
-            &output_2,
-            &pubkey,
-            &blank_hash(),
-            compressed_output,
-            compressed_output,
-            CheckForCorrectness::No,
-            CheckForCorrectness::Yes,
-            &parameters,
-        );
-        assert!(res.is_err());
+            // verification will fail if the old hash is used
+            let res = Phase1::verification(
+                &output,
+                &output_2,
+                &pubkey,
+                &blank_hash(),
+                compressed_output,
+                compressed_output,
+                CheckForCorrectness::No,
+                CheckForCorrectness::Yes,
+                &parameters,
+            );
+            assert!(res.is_err());
 
-        // verification will fail if even 1 byte is modified
-        output_2[100] = 0;
-        let res = Phase1::verification(
-            &output,
-            &output_2,
-            &pubkey,
-            &current_accumulator_hash,
-            compressed_output,
-            compressed_output,
-            CheckForCorrectness::No,
-            CheckForCorrectness::Yes,
-            &parameters,
-        );
-        assert!(res.is_err());
+            // verification will fail if even 1 byte is modified
+            output_2[100] = 0;
+            let res = Phase1::verification(
+                &output,
+                &output_2,
+                &pubkey,
+                &current_accumulator_hash,
+                compressed_output,
+                compressed_output,
+                CheckForCorrectness::No,
+                CheckForCorrectness::Yes,
+                &parameters,
+            );
+            assert!(res.is_err());
+        }
     }
+
+    use tracing_subscriber::{
+        filter::EnvFilter,
+        fmt::{time::ChronoUtc, Subscriber},
+    };
 
     #[test]
     fn test_verification_bls12_377() {
+        Subscriber::builder()
+            .with_target(false)
+            .with_timer(ChronoUtc::rfc3339())
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
+
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::Yes);
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::No, UseCompression::No);
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::No);

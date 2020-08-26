@@ -272,6 +272,7 @@ mod tests {
         },
         Phase1,
         Phase1Parameters,
+        ProvingSystem,
     };
 
     use zexe_algebra::Bls12_377;
@@ -292,7 +293,7 @@ mod tests {
         }
 
         let batch = 2;
-        let params = Phase1Parameters::<E>::new(powers, batch);
+        let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
         let (_, output, _, _) = setup_verify(
             compat(compressed),
             compat_correctness(CheckForCorrectness::Yes),
