@@ -1,5 +1,5 @@
 use phase1::{Phase1, Phase1Parameters};
-use setup_utils::{calculate_hash, print_hash, UseCompression};
+use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompression};
 
 use zexe_algebra::PairingEngine as Engine;
 
@@ -12,6 +12,7 @@ use std::{
 
 const COMPRESSED_INPUT: UseCompression = UseCompression::No;
 const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
+const CHECK_INPUT_CORRECTNESS: CheckForCorrectness = CheckForCorrectness::No;
 
 pub fn contribute<T: Engine + Sync>(
     challenge_filename: &str,
@@ -116,6 +117,7 @@ pub fn contribute<T: Engine + Sync>(
         &mut writable_map,
         COMPRESSED_INPUT,
         COMPRESSED_OUTPUT,
+        CHECK_INPUT_CORRECTNESS,
         &private_key,
         &parameters,
     )

@@ -23,10 +23,11 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     pub fn deserialize(
         input: &[u8],
         compression: UseCompression,
+        check_input_for_correctness: CheckForCorrectness,
         parameters: &'a Phase1Parameters<E>,
     ) -> Result<Phase1<'a, E>> {
         let (tau_powers_g1, tau_powers_g2, alpha_tau_powers_g1, beta_tau_powers_g1, beta_g2) =
-            accumulator::deserialize(input, compression, parameters)?;
+            accumulator::deserialize(input, compression, check_input_for_correctness, parameters)?;
         Ok(Phase1 {
             tau_powers_g1,
             tau_powers_g2,
@@ -38,8 +39,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         })
     }
 
-    pub fn decompress(input: &[u8], output: &mut [u8], parameters: &'a Phase1Parameters<E>) -> Result<()> {
-        accumulator::decompress(input, output, parameters)?;
+    pub fn decompress(
+        input: &[u8],
+        output: &mut [u8],
+        check_input_for_correctness: CheckForCorrectness,
+        parameters: &'a Phase1Parameters<E>,
+    ) -> Result<()> {
+        accumulator::decompress(input, output, check_input_for_correctness, parameters)?;
         Ok(())
     }
 }
@@ -55,7 +61,7 @@ mod tests {
         // Create a small accumulator with some random state.
         let parameters = Phase1Parameters::<E>::new(size, batch);
         let (buffer, accumulator) = generate_random_accumulator(&parameters, compress);
-        let deserialized = Phase1::deserialize(&buffer, compress, &parameters).unwrap();
+        let deserialized = Phase1::deserialize(&buffer, compress, CheckForCorrectness::No, &parameters).unwrap();
         assert_eq!(deserialized, accumulator);
     }
 
@@ -66,14 +72,15 @@ mod tests {
         let mut output = generate_output(&parameters, UseCompression::No);
 
         // decompress the input to the output
-        Phase1::decompress(&input, &mut output, &parameters).unwrap();
+        Phase1::decompress(&input, &mut output, CheckForCorrectness::No, &parameters).unwrap();
 
         // deserializes the decompressed output
-        let deserialized = Phase1::deserialize(&output, UseCompression::No, &parameters).unwrap();
+        let deserialized =
+            Phase1::deserialize(&output, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
         assert_eq!(deserialized, before);
 
         // trying to deserialize it as compressed should obviously fail
-        Phase1::deserialize(&output, UseCompression::Yes, &parameters).unwrap_err();
+        Phase1::deserialize(&output, UseCompression::Yes, CheckForCorrectness::No, &parameters).unwrap_err();
     }
 
     #[test]
