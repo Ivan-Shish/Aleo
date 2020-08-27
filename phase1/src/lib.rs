@@ -40,7 +40,7 @@ pub struct Phase1<'a, E: PairingEngine> {
     /// Marlin: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
     pub tau_powers_g1: Vec<E::G1Affine>,
     /// Groth16: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
-    /// Marlin: 1/(tau^{TAU_POWERS_LENGTH - 1} - tau^{2^i}), for i = 0,...,floor(log2(TAU_POWERS_LENGTH-1))
+    /// Marlin: tau^0, tau^1 and then 1/(tau^{TAU_POWERS_LENGTH - 1} - tau^{2^i}), for i = 0,...,floor(log2(TAU_POWERS_LENGTH-1))
     pub tau_powers_g2: Vec<E::G2Affine>,
     /// Groth16: alpha * tau^0, alpha * tau^1, alpha * tau^2, ..., alpha * tau^{TAU_POWERS_LENGTH - 1}
     /// Marlin: alpha * tau^0, alpha * tau^1

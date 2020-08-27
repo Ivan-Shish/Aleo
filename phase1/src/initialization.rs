@@ -91,7 +91,7 @@ mod tests {
                 }
                 ProvingSystem::Marlin => {
                     assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_length]);
-                    assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.size]);
+                    assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.size + 2]);
                     assert_eq!(deserialized.alpha_tau_powers_g1, vec![g1_zero; 2]);
                 }
             }

@@ -103,7 +103,7 @@ pub fn generate_random_accumulator<E: PairingEngine>(
             let rng = &mut thread_rng();
             let acc = Phase1 {
                 tau_powers_g1: random_point_vec(parameters.powers_length, rng),
-                tau_powers_g2: random_point_vec(parameters.size, rng),
+                tau_powers_g2: random_point_vec(parameters.size + 2, rng),
                 alpha_tau_powers_g1: random_point_vec(2, rng),
                 beta_tau_powers_g1: random_point_vec(0, rng),
                 beta_g2: E::G2Affine::prime_subgroup_generator(),

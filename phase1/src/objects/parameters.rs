@@ -105,7 +105,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     // Alpha in G1
                     2*curve.g1_size +
                     // G2 1/Tau Powers
-                    size * curve.g2_size +
+                    (size + 2) * curve.g2_size +
                     // Hash of the previous contribution
                     hash_size
             }
@@ -136,7 +136,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     // Alpha in G1
                     2*curve.g1_compressed_size +
                     // G2 1/Tau Powers
-                    powers_length * curve.g2_compressed_size +
+                    (size + 2) * curve.g2_compressed_size +
                     // Hash of the previous contribution
                     hash_size +
                     // The public key of the previous contributor

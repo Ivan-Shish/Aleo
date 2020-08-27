@@ -80,7 +80,7 @@ fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
                 for _ in 0..params.powers_length {
                     assert_compatibility::<Aleo::G1Affine, Zexe::G1Affine, _>(&mut reader)?;
                 }
-                for _ in 0..params.size {
+                for _ in 0..params.size + 2 {
                     assert_compatibility::<Aleo::G2Affine, Zexe::G2Affine, _>(&mut reader)?;
                 }
                 for _ in 0..2 {

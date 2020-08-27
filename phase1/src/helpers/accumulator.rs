@@ -225,7 +225,7 @@ pub fn decompress<E: PairingEngine>(
                 check_input_for_correctness,
                 (0, num_alpha_powers),
             )?;
-            decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.size))?;
+            decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.size + 2))?;
             iter_chunk(&parameters, |start, end| {
                 // decompress each element
                 rayon::scope(|t| {
