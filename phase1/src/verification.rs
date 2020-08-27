@@ -45,8 +45,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         debug!("key ratios were correctly produced");
 
         // Split the buffers
-        // todo: check that in_tau_g2 is actually not required
-        let (in_tau_g1, _, in_alpha_g1, in_beta_g1, in_beta_g2) = split(input, parameters, compressed_input);
+        let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, in_beta_g2) = split(input, parameters, compressed_input);
         let (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2) = split(output, parameters, compressed_output);
 
         // Ensure that the initial conditions are correctly formed (first 2 elements)
@@ -60,15 +59,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             if after_g1[0] != E::G1Affine::prime_subgroup_generator() {
                 return Err(VerificationError::InvalidGenerator(ElementType::TauG1).into());
             }
+            let before_g2 =
+                read_initial_elements::<E::G2Affine>(in_tau_g2, compressed_input, check_input_for_correctness)?;
             let after_g2 =
                 read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
-            match parameters.proving_system {
-                ProvingSystem::Groth16 => {
-                    if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
-                        return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
-                    }
-                }
-                ProvingSystem::Marlin => {}
+            if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
+                return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
             }
 
             let g1_check = (after_g1[0], after_g1[1]);
@@ -78,6 +74,11 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             check_same_ratio::<E>(
                 &(before_g1[1], after_g1[1]),
                 tau_g2_check,
+                "Before-After: Tau [1] G1<>G2",
+            )?;
+            check_same_ratio::<E>(
+                &key.tau_g1,
+                &(before_g2[1], after_g2[1]),
                 "Before-After: Tau [1] G1<>G2",
             )?;
             let checks = match parameters.proving_system {
@@ -230,6 +231,15 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             )
                             .expect("could not check ratios for alpha_g1");
 
+                            let mut g2 = vec![E::G2Affine::zero(); 2];
+                            check_power_ratios_g2::<E>(
+                                (tau_g2, compressed_output, check_output_for_correctness),
+                                (0, 2),
+                                &mut g2,
+                                &g1_check,
+                            )
+                            .expect("could not check ratios for tau_g2");
+
                             trace!("alpha_g1 verification successful");
                         }
                         let powers_of_two_in_range = (0..parameters.size)
@@ -244,7 +254,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g1 element");
                             let g2_size = buffer_size::<E::G2Affine>(compressed_output);
-                            let g2 = (&tau_g2[i * g2_size..(i + 1) * g2_size])
+                            let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g2 element");
                             check_same_ratio::<E>(
@@ -391,19 +401,8 @@ mod tests {
         }
     }
 
-    use tracing_subscriber::{
-        filter::EnvFilter,
-        fmt::{time::ChronoUtc, Subscriber},
-    };
-
     #[test]
     fn test_verification_bls12_377() {
-        Subscriber::builder()
-            .with_target(false)
-            .with_timer(ChronoUtc::rfc3339())
-            .with_env_filter(EnvFilter::from_default_env())
-            .init();
-
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::Yes);
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::No, UseCompression::No);
         curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::No);

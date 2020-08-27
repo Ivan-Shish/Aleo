@@ -228,7 +228,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 apply_powers::<E::G2Affine>(
                     (tau_g2_outputs, compressed_output),
                     (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (0, parameters.size),
+                    (2, parameters.size + 2),
                     &g2_inverse_powers,
                     None,
                 )
@@ -244,6 +244,16 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     Some(&key.alpha),
                 )
                 .expect("could not apply powers of tau alpha to tau_g1 elements");
+
+                let powers = generate_powers_of_tau::<E>(&key.tau, 0, 2);
+                apply_powers::<E::G2Affine>(
+                    (tau_g2_outputs, compressed_output),
+                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                    (0, 2),
+                    &powers,
+                    None,
+                )
+                .expect("could not apply powers of tau to initial tau_g2 elements");
 
                 // load `batch_size` chunks on each iteration and perform the transformation
                 iter_chunk(&parameters, |start, end| {
@@ -396,7 +406,13 @@ mod tests {
                         .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
                         .collect::<Vec<_>>();
                     batch_inversion(&mut g2_inverse_powers);
-                    batch_exp(&mut before.tau_powers_g2, &g2_inverse_powers[0..parameters.size], None).unwrap();
+                    batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
+                    batch_exp(
+                        &mut before.tau_powers_g2[2..],
+                        &g2_inverse_powers[0..parameters.size],
+                        None,
+                    )
+                    .unwrap();
                     batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..2], Some(&privkey.alpha)).unwrap();
                 }
             }
