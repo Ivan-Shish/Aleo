@@ -26,6 +26,8 @@ rand = { version = "0.7" }
 rayon = { version = "1.3.0", optional = true }
 tracing = { version = "0.1.17" }
 tracing-subscriber = { version = "0.2.3" }
+derivative = { version = "2", features = [ "use_core" ] }
+snarkos-profiler = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-profiler" }
 
 [dev-dependencies]
 phase1 = { path = "./", features = ["testing"] }
@@ -33,6 +35,12 @@ phase1 = { path = "./", features = ["testing"] }
 snarkos-curves = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-curves", default-features = false }
 snarkos-models = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-models", default-features = false }
 snarkos-utilities = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-utilities" }
+snarkos-objects = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-objects" }
+snarkos-errors = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-errors" }
+snarkos-posw = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-posw" }
+snarkos-algorithms = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-algorithms" }
+snarkos-gadgets = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-gadgets" }
+snarkos-polycommit = { git = "ssh://git@github.com/AleoHQ/snarkOS.git", package = "snarkos-polycommit" }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["full", "derive"] }
 
@@ -42,9 +50,20 @@ rusty-hook = { version = "0.11.2" }
 
 [features]
 default = ["cli"]
-testing = ["parallel", "zexe_algebra_core"]
+testing = ["parallel", "zexe_algebra_core", "snarkos-profiler/print-trace"]
 parallel = ["rayon", "setup-utils/parallel", "zexe_algebra/parallel", "zexe_algebra_core/parallel"]
 benchmark = ["criterion"]
 
 cli = ["parallel", "setup-utils/cli"]
 wasm = ["setup-utils/wasm"]
+
+[[test]]
+name = "aleo_compatibility"
+path = "tests/aleo_compatibility.rs"
+required-features = ["phase1/testing"]
+
+[[test]]
+name = "marlin"
+path = "tests/marlin.rs"
+required-features = ["phase1/testing"]
+
