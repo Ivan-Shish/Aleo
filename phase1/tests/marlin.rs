@@ -34,8 +34,6 @@ mod test {
 
     #[test]
     fn test_marlin_posw_bls12_377() {
-        rayon::ThreadPoolBuilder::new().num_threads(4).build_global().unwrap();
-
         let powers = 19usize;
         let batch = 1usize << 16;
         let parameters = Phase1Parameters::<ZexeBls12_377>::new(ProvingSystem::Marlin, powers, batch);

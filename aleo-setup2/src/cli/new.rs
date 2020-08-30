@@ -25,12 +25,15 @@ use snarkos_models::{
     parameters::Parameters,
 };
 use snarkos_parameters::LedgerMerkleTreeParameters;
-use snarkos_utilities::bytes::FromBytes;
+use snarkos_utilities::{
+    bytes::{FromBytes, ToBytes},
+    to_bytes,
+};
 
 use memmap::MmapOptions;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use snarkos_dpc::dpc::base_dpc::{program::PrivateProgramInput, program_circuit::ProgramCircuit, BaseDPCComponents};
+use snarkos_dpc::base_dpc::{program::PrivateProgramInput, BaseDPCComponents, NoopCircuit};
 use snarkos_models::algorithms::SNARK;
 use std::fs::OpenOptions;
 
@@ -91,16 +94,17 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
         let rng = &mut XorShiftRng::from_seed([0u8; 16]);
-        let program_snark_parameters = InstantiatedDPC::generate_program_snark_parameters(&circuit_parameters, rng)?;
-        let program_snark_proof = <Components as BaseDPCComponents>::ProgramSNARK::prove(
-            &program_snark_parameters.proving_key,
-            ProgramCircuit::<Components>::blank(&circuit_parameters),
+        let noop_program_snark_parameters =
+            InstantiatedDPC::generate_noop_program_snark_parameters(&circuit_parameters, rng)?;
+        let program_snark_proof = <Components as BaseDPCComponents>::NoopProgramSNARK::prove(
+            &noop_program_snark_parameters.proving_key,
+            NoopCircuit::<Components>::blank(&circuit_parameters),
             rng,
         )?;
 
-        let private_pred_input = PrivateProgramInput {
-            verification_key: program_snark_parameters.verification_key.clone(),
-            proof: program_snark_proof,
+        let private_program_input = PrivateProgramInput {
+            verification_key: to_bytes![noop_program_snark_parameters.verification_key.clone()]?,
+            proof: to_bytes![program_snark_proof]?,
         };
 
         let inner_snark_parameters = <Components as BaseDPCComponents>::InnerSNARK::setup(
@@ -121,7 +125,7 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
             &merkle_params,
             &inner_snark_vk,
             &inner_snark_proof,
-            &private_pred_input,
+            &private_program_input,
         );
         generate_params::<AleoOuter, ZexeOuter, _>(opt, circuit)
     }
