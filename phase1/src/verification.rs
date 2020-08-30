@@ -219,9 +219,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             trace!("tau g1 verification successful");
                         });
 
-                        //this is the first batch, check alpha g1. batch size is guaranteed to be of size >= 2
+                        //this is the first batch, check alpha g1. batch size is guaranteed to be of size >= 3
                         if start == 0 {
-                            let num_alpha_powers = 2;
+                            let num_alpha_powers = 3;
                             let mut g1 = vec![E::G1Affine::zero(); num_alpha_powers];
                             check_power_ratios::<E>(
                                 (alpha_g1, compressed_output, check_output_for_correctness),
@@ -231,7 +231,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             )
                             .expect("could not check ratios for alpha_g1");
 
-                            let mut g2 = vec![E::G2Affine::zero(); 2];
+                            trace!("alpha_g1 verification successful");
+
+                            let mut g2 = vec![E::G2Affine::zero(); 3];
                             check_power_ratios_g2::<E>(
                                 (tau_g2, compressed_output, check_output_for_correctness),
                                 (0, 2),
@@ -240,7 +242,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             )
                             .expect("could not check ratios for tau_g2");
 
-                            trace!("alpha_g1 verification successful");
+                            trace!("tau_g2 verification successful");
                         }
                         let powers_of_two_in_range = (0..parameters.size)
                             .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i)))
@@ -254,7 +256,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g1 element");
                             let g2_size = buffer_size::<E::G2Affine>(compressed_output);
-                            let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
+                            let g2 = (&tau_g2[(3 + i) * g2_size..(3 + i + 1) * g2_size])
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g2 element");
                             check_same_ratio::<E>(
@@ -403,17 +405,17 @@ mod tests {
 
     #[test]
     fn test_verification_bls12_377() {
-        curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::Yes);
-        curve_verification_test::<Bls12_377>(2, 2, UseCompression::No, UseCompression::No);
-        curve_verification_test::<Bls12_377>(2, 2, UseCompression::Yes, UseCompression::No);
-        curve_verification_test::<Bls12_377>(2, 2, UseCompression::No, UseCompression::Yes);
+        curve_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::Yes);
+        curve_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::No);
+        curve_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::No);
+        curve_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::Yes);
     }
 
     #[test]
     fn test_verification_bw6_761() {
-        curve_verification_test::<BW6_761>(2, 2, UseCompression::Yes, UseCompression::Yes);
-        curve_verification_test::<BW6_761>(2, 2, UseCompression::No, UseCompression::No);
-        curve_verification_test::<BW6_761>(2, 2, UseCompression::Yes, UseCompression::No);
-        curve_verification_test::<BW6_761>(2, 2, UseCompression::No, UseCompression::Yes);
+        curve_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::Yes);
+        curve_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::No);
+        curve_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::No);
+        curve_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::Yes);
     }
 }

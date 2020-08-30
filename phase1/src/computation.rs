@@ -234,7 +234,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 )
                 .expect("could not apply powers of tau to tau_g2 elements");
 
-                let num_alpha_powers = 2;
+                let num_alpha_powers = 3;
                 let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
                 apply_powers::<E::G1Affine>(
                     (alpha_g1_outputs, compressed_output),
@@ -406,9 +406,9 @@ mod tests {
                         .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
                         .collect::<Vec<_>>();
                     batch_inversion(&mut g2_inverse_powers);
-                    batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
+                    batch_exp(&mut before.tau_powers_g2[..3], &tau_powers[0..3], None).unwrap();
                     batch_exp(
-                        &mut before.tau_powers_g2[2..],
+                        &mut before.tau_powers_g2[3..],
                         &g2_inverse_powers[0..parameters.size],
                         None,
                     )

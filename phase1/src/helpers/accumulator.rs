@@ -218,7 +218,7 @@ pub fn decompress<E: PairingEngine>(
         }
         ProvingSystem::Marlin => {
             // load `batch_size` chunks on each iteration and decompress them
-            let num_alpha_powers = 2;
+            let num_alpha_powers = 3;
             decompress_buffer::<E::G1Affine>(
                 alpha_g1,
                 in_alpha_g1,
