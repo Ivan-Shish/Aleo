@@ -406,14 +406,14 @@ mod tests {
                         .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
                         .collect::<Vec<_>>();
                     batch_inversion(&mut g2_inverse_powers);
-                    batch_exp(&mut before.tau_powers_g2[..3], &tau_powers[0..3], None).unwrap();
+                    batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
                     batch_exp(
-                        &mut before.tau_powers_g2[3..],
+                        &mut before.tau_powers_g2[2..],
                         &g2_inverse_powers[0..parameters.size],
                         None,
                     )
                     .unwrap();
-                    batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..2], Some(&privkey.alpha)).unwrap();
+                    batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..3], Some(&privkey.alpha)).unwrap();
                 }
             }
             assert_eq!(deserialized, before);
