@@ -28,12 +28,26 @@ pub(crate) fn iter_chunk(
         ProvingSystem::Marlin => parameters.powers_length,
     };
     (0..upper_bound)
-        .chunks(parameters.batch_size)
+        .chunks(parameters.batch_size - 1)
         .into_iter()
         .map(|chunk| {
             let (start, end) = match chunk.minmax() {
-                MinMaxResult::MinMax(start, end) => (start, end + 1),
-                MinMaxResult::OneElement(start) => (start, start + 1),
+                MinMaxResult::MinMax(start, end) => (
+                    start,
+                    if end >= parameters.powers_g1_length - 1 {
+                        end + 1
+                    } else {
+                        end + 2
+                    },
+                ), // ensure there's overlap between chunks
+                MinMaxResult::OneElement(start) => (
+                    start,
+                    if start >= parameters.powers_g1_length - 1 {
+                        start + 1
+                    } else {
+                        start + 2
+                    },
+                ),
                 _ => return Err(Error::InvalidChunk),
             };
             action(start, end)
