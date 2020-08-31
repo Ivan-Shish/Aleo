@@ -32,22 +32,10 @@ pub(crate) fn iter_chunk(
         .into_iter()
         .map(|chunk| {
             let (start, end) = match chunk.minmax() {
-                MinMaxResult::MinMax(start, end) => (
-                    start,
-                    if end >= parameters.powers_g1_length - 1 {
-                        end + 1
-                    } else {
-                        end + 2
-                    },
-                ), // ensure there's overlap between chunks
-                MinMaxResult::OneElement(start) => (
-                    start,
-                    if start >= parameters.powers_g1_length - 1 {
-                        start + 1
-                    } else {
-                        start + 2
-                    },
-                ),
+                MinMaxResult::MinMax(start, end) => (start, if end >= upper_bound - 1 { end + 1 } else { end + 2 }), // ensure there's overlap between chunks
+                MinMaxResult::OneElement(start) => {
+                    (start, if start >= upper_bound - 1 { start + 1 } else { start + 2 })
+                }
                 _ => return Err(Error::InvalidChunk),
             };
             action(start, end)
