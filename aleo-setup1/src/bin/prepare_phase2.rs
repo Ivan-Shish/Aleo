@@ -1,6 +1,6 @@
 use aleo_setup1::{curve_from_str, CurveKind};
 use phase1::{parameters::*, Phase1};
-use setup_utils::{Groth16Params, Result, UseCompression, CheckForCorrectness};
+use setup_utils::{CheckForCorrectness, Groth16Params, Result, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
@@ -58,8 +58,13 @@ fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<(
         .expect("unable to create parameter file in this directory");
 
     // Deserialize the accumulator
-    let current_accumulator = Phase1::deserialize(&response_readable_map, UseCompression::Yes, CheckForCorrectness::Yes, &parameters)
-        .expect("unable to read uncompressed accumulator");
+    let current_accumulator = Phase1::deserialize(
+        &response_readable_map,
+        UseCompression::Yes,
+        CheckForCorrectness::Yes,
+        &parameters,
+    )
+    .expect("unable to read uncompressed accumulator");
 
     // Load the elements to the Groth16 utility
     let groth16_params = Groth16Params::<E>::new(
