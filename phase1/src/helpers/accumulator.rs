@@ -27,6 +27,9 @@ type AccumulatorElementsRef<'a, E: PairingEngine> = (
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
+        use crate::{PublicKey};
+        use zexe_algebra::{AffineCurve};
+
         /// Given a public key and the accumulator's digest, it hashes each G1 element
         /// along with the digest, and then hashes it to G2.
         pub(crate) fn compute_g2_s_key<E: PairingEngine>(key: &PublicKey<E>, digest: &[u8]) -> Result<[E::G2Affine; 3]> {
@@ -90,6 +93,7 @@ cfg_if! {
                     got: result.len(),
                 });
             }
+            Ok(result)
         }
 
         /// Takes a compressed input buffer and decompresses it into the output buffer.
