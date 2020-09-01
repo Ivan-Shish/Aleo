@@ -1,6 +1,6 @@
 use crate::{curve_from_str, CurveKind};
 use phase1::{Phase1, Phase1Parameters};
-use setup_utils::{calculate_hash, get_rng, user_system_randomness, UseCompression};
+use setup_utils::{calculate_hash, get_rng, user_system_randomness, CheckForCorrectness, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 
 const COMPRESSED_INPUT: UseCompression = UseCompression::No;
 const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
+const CHECK_INPUT_CORRECTNESS: CheckForCorrectness = CheckForCorrectness::No;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -88,6 +89,7 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
         &mut response,
         COMPRESSED_INPUT,
         COMPRESSED_OUTPUT,
+        CHECK_INPUT_CORRECTNESS,
         &private_key,
         &parameters,
     ) {
@@ -130,7 +132,7 @@ mod tests {
         Phase1::initialization(&mut output, compressed, &parameters).unwrap();
         let mut input = vec![0; len];
         input.copy_from_slice(&output);
-        let before = Phase1::deserialize(&output, compressed, &parameters).unwrap();
+        let before = Phase1::deserialize(&output, compressed, CHECK_INPUT_CORRECTNESS, &parameters).unwrap();
         (input, before)
     }
 
@@ -149,7 +151,8 @@ mod tests {
             .unwrap()
             .response;
 
-        let deserialized = Phase1::deserialize(&output, COMPRESSED_OUTPUT, &parameters).unwrap();
+        let deserialized =
+            Phase1::deserialize(&output, COMPRESSED_OUTPUT, CHECK_INPUT_CORRECTNESS, &parameters).unwrap();
 
         let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
         batch_exp(
