@@ -91,7 +91,7 @@ cfg_if! {
                 });
             }
         }
-        
+
         /// Takes a compressed input buffer and decompresses it into the output buffer.
         pub fn decompress<E: PairingEngine>(
             input: &[u8],
