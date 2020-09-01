@@ -48,8 +48,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             let span = info_span!("batch", start, end);
             let _ = span.enter();
 
-            #[cfg(not(feature = "wasm"))]
-            rayon::scope(|t| {
+            rayon_cfg::scope(|t| {
                 let _ = span.enter();
 
                 t.spawn(|_| {
@@ -63,7 +62,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     // Raise each element from the input buffer to the powers of tau
                     // and write the updated value (without allocating) to the
                     // output buffer
-                    rayon::scope(|t| {
+                    rayon_cfg::scope(|t| {
                         let _ = span.enter();
 
                         t.spawn(|_| {
@@ -90,7 +89,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 end
                             };
 
-                            rayon::scope(|t| {
+                            rayon_cfg::scope(|t| {
                                 let _ = span.enter();
 
                                 t.spawn(|_| {
@@ -142,76 +141,6 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     });
                 });
             });
-
-            #[cfg(feature = "wasm")]
-            {
-                let _ = span.enter();
-
-                // Generate powers from `start` to `end` (e.g. [0,4) then [4, 8) etc.)
-                let powers = generate_powers_of_tau::<E>(&key.tau, start, end);
-
-                trace!("generated powers of tau");
-
-                let _ = span.enter();
-
-                // Raise each element from the input buffer to the powers of tau
-                // and write the updated value (without allocating) to the output buffer.
-                apply_powers::<E::G1Affine>(
-                    (tau_g1_outputs, compressed_output),
-                    (tau_g1_inputs, compressed_input, check_input_for_correctness),
-                    (start, end),
-                    &powers,
-                    None,
-                )
-                .expect("could not apply powers of tau to tau_g1 elements");
-
-                if start < parameters.powers_length {
-                    // if the `end` would be out of bounds, then just process until
-                    // the end (this is necessary in case the last batch would try to
-                    // process more elements than available)
-                    let end = if start + parameters.batch_size > parameters.powers_length {
-                        parameters.powers_length
-                    } else {
-                        end
-                    };
-
-                    let _ = span.enter();
-
-                    apply_powers::<E::G2Affine>(
-                        (tau_g2_outputs, compressed_output),
-                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        None,
-                    )
-                    .expect("could not apply powers of tau to tau_g2 elements");
-
-                    trace!("applied powers to tau_g2 elements");
-
-                    apply_powers::<E::G1Affine>(
-                        (alpha_g1_outputs, compressed_output),
-                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        Some(&key.alpha),
-                    )
-                    .expect("could not apply powers of tau to alpha_g1 elements");
-
-                    trace!("applied powers to alpha_g1 elements");
-
-                    apply_powers::<E::G1Affine>(
-                        (beta_g1_outputs, compressed_output),
-                        (beta_g1_inputs, compressed_input, check_input_for_correctness),
-                        (start, end),
-                        &powers,
-                        Some(&key.beta),
-                    )
-                    .expect("could not apply powers of tau to beta_g1 elements");
-
-                    trace!("applied powers to beta_g1 elements");
-                }
-            }
-
             debug!("chunk contribution successful");
 
             Ok(())

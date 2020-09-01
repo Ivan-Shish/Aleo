@@ -6,15 +6,17 @@ pub mod objects;
 pub use objects::*;
 
 mod computation;
+mod initialization;
 mod key_generation;
+mod serialization;
+
+use crate::helpers::accumulator::{self};
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
-        mod initialization;
-        mod serialization;
         mod verification;
 
-        use crate::helpers::accumulator::{self, *};
+        use crate::helpers::accumulator::*;
         use zexe_algebra::Zero;
     }
 }

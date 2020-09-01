@@ -21,6 +21,7 @@ dependencies = [
  "memmap",
  "phase1",
  "rand 0.7.3",
+ "rand_xorshift",
  "rustc_version",
  "serde",
  "serde_derive",
@@ -37,6 +38,7 @@ version = "0.3.0"
 dependencies = [
  "algebra",
  "anyhow",
+ "cfg-if",
  "groth16",
  "gumdrop",
  "hex",
@@ -47,7 +49,6 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift",
- "rusty-hook",
  "setup-utils",
  "snarkos-curves",
  "snarkos-dpc",
@@ -834,8 +835,10 @@ dependencies = [
  "algebra",
  "byteorder",
  "cfg-if",
+ "console_error_panic_hook",
  "crossbeam",
  "groth16",
+ "itertools 0.9.0",
  "num_cpus",
  "phase1",
  "phase2",
@@ -852,6 +855,9 @@ dependencies = [
  "snarkos-utilities",
  "tracing",
  "tracing-subscriber",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
 ]
 
 [[package]]
@@ -1221,6 +1227,7 @@ version = "0.3.0"
 dependencies = [
  "algebra",
  "blake2",
+ "cfg-if",
  "criterion",
  "crossbeam",
  "ff-fft",
