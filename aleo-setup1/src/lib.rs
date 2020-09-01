@@ -33,7 +33,7 @@ pub fn proving_system_from_str(src: &str) -> Result<ProvingSystem, String> {
     let system = match src.to_lowercase().as_str() {
         "groth16" => ProvingSystem::Groth16,
         "marlin" => ProvingSystem::Marlin,
-        _ => return Err("unsupported proving system. Currently supported: groth16".to_string()),
+        _ => return Err("unsupported proving system. Currently supported: groth16, marlin".to_string()),
     };
     Ok(system)
 }

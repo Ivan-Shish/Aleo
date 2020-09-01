@@ -28,16 +28,3 @@ opt-level = 0
 debug-assertions = true
 debug = true
 
-
-#[patch.'ssh://git@github.com/AleoHQ/snarkOS.git']
-#snarkos-profiler = { path = '../snarkOS/profiler' }
-#snarkos-algorithms = { path = '../snarkOS/algorithms' }
-#snarkos-utilities = { path = '../snarkOS/utilities' }
-#snarkos-models = { path = '../snarkOS/models' }
-#snarkos-errors = { path = '../snarkOS/errors' }
-#snarkos-posw = { path = '../snarkOS/posw' }
-#snarkos-polycommit = { path = '../snarkOS/polycommit' }
-#snarkos-marlin = { path = '../snarkOS/marlin' }
-#snarkos-objects = { path = '../snarkOS/objects' }
-#snarkos-curves = { path = '../snarkOS/curves' }
-#snarkos-gadgets = { path = '../snarkOS/gadgets' }

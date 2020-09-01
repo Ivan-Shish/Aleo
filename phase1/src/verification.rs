@@ -256,7 +256,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g1 element");
                             let g2_size = buffer_size::<E::G2Affine>(compressed_output);
-                            let g2 = (&tau_g2[(3 + i) * g2_size..(3 + i + 1) * g2_size])
+                            let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g2 element");
                             check_same_ratio::<E>(
