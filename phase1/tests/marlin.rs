@@ -12,7 +12,7 @@ mod test {
     use snarkos_polycommit::kzg10::UniversalParams;
     use snarkos_posw::{txids_to_roots, Marlin, PoswMarlin};
     use snarkos_utilities::serialize::*;
-    use std::io::Cursor;
+    use std::{collections::BTreeMap, io::Cursor};
     use zexe_algebra::{
         bls12_377::{G1Affine as ZexeG1Affine, G2Affine as ZexeG2Affine},
         AffineCurve as ZexeAffineCurve,
@@ -68,6 +68,10 @@ mod test {
         let alpha_tau_powers_g1 =
             convert_vec_from_zexe_to_snarkos::<ZexeG1Affine, G1Affine>(&deserialized.alpha_tau_powers_g1);
 
+        let mut prepared_neg_powers_of_h = BTreeMap::new();
+        tau_powers_g2[2..].iter().enumerate().for_each(|(i, p)| {
+            prepared_neg_powers_of_h.insert(parameters.powers_length - 1 - 1 << i, p.prepare());
+        });
         let h = tau_powers_g2[0].clone();
         let beta_h = tau_powers_g2[1].clone();
         let universal_params = UniversalParams::<Bls12_377> {
@@ -75,7 +79,7 @@ mod test {
             powers_of_gamma_g: alpha_tau_powers_g1,
             h: h.clone(),
             beta_h: beta_h.clone(),
-            prepared_neg_powers_of_h: Some(tau_powers_g2[2..].iter().map(|p| p.prepare()).collect::<Vec<_>>()),
+            prepared_neg_powers_of_h,
             prepared_h: h.prepare(),
             prepared_beta_h: beta_h.prepare(),
         };

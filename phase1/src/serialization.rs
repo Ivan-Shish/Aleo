@@ -39,6 +39,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         })
     }
 
+    #[cfg(not(feature = "wasm"))]
     pub fn decompress(
         input: &[u8],
         output: &mut [u8],

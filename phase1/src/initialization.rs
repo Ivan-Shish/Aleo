@@ -1,4 +1,5 @@
 use super::*;
+use setup_utils::rayon_cfg;
 
 impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     ///
@@ -21,7 +22,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         let one_g1 = &E::G1Affine::prime_subgroup_generator();
         let one_g2 = &E::G2Affine::prime_subgroup_generator();
 
-        rayon::scope(|s| {
+        rayon_cfg::scope(|s| {
             s.spawn(|_| {
                 tau_g1
                     .init_element(one_g1, compressed_output)
