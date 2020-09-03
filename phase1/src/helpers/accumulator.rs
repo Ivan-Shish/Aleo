@@ -198,7 +198,7 @@ cfg_if! {
                         alpha_g1,
                         in_alpha_g1,
                         check_input_for_correctness,
-                        (0, num_alpha_powers),
+                        (0, num_alpha_powers + 3*parameters.size),
                     )?;
                     decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.size + 2))?;
                     iter_chunk(&parameters, |start, end| {
