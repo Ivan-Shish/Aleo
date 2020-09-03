@@ -293,7 +293,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             .expect("should have checked same ratio");
                             check_same_ratio::<E>(
                                 &(alpha_g1_elements[0], g1_alpha_check.0),
-                                &(g2_check.0, g2),
+                                &(E::G2Affine::prime_subgroup_generator(), g2),
                                 "alpha consistent",
                             )
                             .expect("should have checked same ratio");
