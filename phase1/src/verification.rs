@@ -51,7 +51,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         // Ensure that the initial conditions are correctly formed (first 2 elements)
         // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
         // We keep the values of the Tau G1/G2 telements for later use.
-        let (g1_check, g2_check) = {
+        let (g1_check, g2_check, g1_alpha_check) = {
             let mut before_g1 =
                 read_initial_elements::<E::G1Affine>(in_tau_g1, compressed_input, check_input_for_correctness)?;
             let mut after_g1 =
@@ -67,8 +67,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
             }
 
+            let after_alpha_g1 =
+                read_initial_elements::<E::G1Affine>(alpha_g1, compressed_output, check_output_for_correctness)?;
+
             let g1_check = (after_g1[0], after_g1[1]);
             let g2_check = (after_g2[0], after_g2[1]);
+            let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
 
             // Check TauG1 -> TauG2
             check_same_ratio::<E>(
@@ -106,7 +110,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 )?;
             }
 
-            (g1_check, g2_check)
+            (g1_check, g2_check, g1_alpha_check)
         };
 
         debug!("initial elements were computed correctly");
@@ -245,7 +249,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             trace!("tau_g2 verification successful");
                         }
                         let powers_of_two_in_range = (0..parameters.size)
-                            .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i)))
+                            .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i) + 2))
                             .map(|(i, p)| (i, p as usize))
                             .filter(|(_, p)| start <= *p && *p < end)
                             .collect::<Vec<_>>();
@@ -259,10 +263,38 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
                                 .read_element(compressed_output, check_output_for_correctness)
                                 .expect("should have read g2 element");
+
                             check_same_ratio::<E>(
                                 &(g1, E::G1Affine::prime_subgroup_generator()),
                                 &(E::G2Affine::prime_subgroup_generator(), g2),
                                 "G1<>G2",
+                            )
+                            .expect("should have checked same ratio");
+
+                            let mut alpha_g1_elements = vec![E::G1Affine::zero(); 3];
+                            (&alpha_g1[(3 + 3 * i) * g1_size..(3 + 3 * i + 3) * g1_size])
+                                .read_batch_preallocated(
+                                    &mut alpha_g1_elements,
+                                    compressed_output,
+                                    check_output_for_correctness,
+                                )
+                                .expect("should have read alpha g1 elements");
+                            check_same_ratio::<E>(
+                                &(alpha_g1_elements[0], alpha_g1_elements[1]),
+                                &g2_check,
+                                "alpha g1 ratio 1",
+                            )
+                            .expect("should have checked same ratio");
+                            check_same_ratio::<E>(
+                                &(alpha_g1_elements[1], alpha_g1_elements[2]),
+                                &g2_check,
+                                "alpha g1 ratio 2",
+                            )
+                            .expect("should have checked same ratio");
+                            check_same_ratio::<E>(
+                                &(alpha_g1_elements[0], g1_alpha_check.0),
+                                &(g2_check.0, g2),
+                                "alpha consistent",
                             )
                             .expect("should have checked same ratio");
                         }

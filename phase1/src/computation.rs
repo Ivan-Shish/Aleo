@@ -151,9 +151,10 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 })?;
             }
             ProvingSystem::Marlin => {
-                let mut g2_inverse_powers = (0..parameters.size)
-                    .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
+                let degree_bound_powers = (0..parameters.size)
+                    .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                     .collect::<Vec<_>>();
+                let mut g2_inverse_powers = degree_bound_powers.clone();
                 batch_inversion(&mut g2_inverse_powers);
                 apply_powers::<E::G2Affine>(
                     (tau_g2_outputs, compressed_output),
@@ -161,6 +162,19 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     (2, parameters.size + 2),
                     &g2_inverse_powers,
                     None,
+                )
+                .expect("could not apply powers of tau to tau_g2 elements");
+                let g1_degree_powers = degree_bound_powers
+                    .into_iter()
+                    .map(|f| vec![f, f * &key.tau, f * &key.tau.pow([2])])
+                    .flatten()
+                    .collect::<Vec<_>>();
+                apply_powers::<E::G1Affine>(
+                    (alpha_g1_outputs, compressed_output),
+                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                    (3, 3 + 3 * parameters.size),
+                    &g1_degree_powers,
+                    Some(&key.alpha),
                 )
                 .expect("could not apply powers of tau to tau_g2 elements");
 
@@ -308,9 +322,10 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                    let mut g2_inverse_powers = (0..parameters.size)
-                        .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
+                    let degree_bound_powers = (0..parameters.size)
+                        .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                         .collect::<Vec<_>>();
+                    let mut g2_inverse_powers = degree_bound_powers.clone();
                     batch_inversion(&mut g2_inverse_powers);
                     batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
                     batch_exp(
@@ -319,7 +334,23 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                    batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..3], Some(&privkey.alpha)).unwrap();
+                    let g1_degree_powers = degree_bound_powers
+                        .into_iter()
+                        .map(|f| vec![f, f * &privkey.tau, f * &privkey.tau * &privkey.tau])
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    batch_exp(
+                        &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.size],
+                        &g1_degree_powers,
+                        Some(&privkey.alpha),
+                    )
+                    .unwrap();
+                    batch_exp(
+                        &mut before.alpha_tau_powers_g1[0..3],
+                        &tau_powers[0..3],
+                        Some(&privkey.alpha),
+                    )
+                    .unwrap();
                 }
             }
             assert_eq!(deserialized, before);

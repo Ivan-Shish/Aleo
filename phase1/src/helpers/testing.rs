@@ -104,7 +104,7 @@ pub fn generate_random_accumulator<E: PairingEngine>(
             let acc = Phase1 {
                 tau_powers_g1: random_point_vec(parameters.powers_length, rng),
                 tau_powers_g2: random_point_vec(parameters.size + 2, rng),
-                alpha_tau_powers_g1: random_point_vec(3, rng),
+                alpha_tau_powers_g1: random_point_vec(3 + 3 * parameters.size, rng),
                 beta_tau_powers_g1: random_point_vec(0, rng),
                 beta_g2: E::G2Affine::prime_subgroup_generator(),
                 hash: blank_hash(),

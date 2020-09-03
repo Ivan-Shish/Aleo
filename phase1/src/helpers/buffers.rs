@@ -92,7 +92,7 @@ pub(crate) fn split_mut<'a, E: PairingEngine>(
         ProvingSystem::Marlin => {
             let g1_els = parameters.powers_length;
             let g2_els = parameters.size + 2;
-            let alpha_els = 3;
+            let alpha_els = 3 + 3 * parameters.size;
             let g1_size = buffer_size::<E::G1Affine>(compressed);
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
@@ -134,7 +134,7 @@ pub(crate) fn split<'a, E: PairingEngine>(
         ProvingSystem::Marlin => {
             let g1_els = parameters.powers_length;
             let g2_els = parameters.size + 2;
-            let alpha_els = 3;
+            let alpha_els = 3 + 3 * parameters.size;
             let g1_size = buffer_size::<E::G1Affine>(compressed);
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
