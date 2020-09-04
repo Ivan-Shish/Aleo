@@ -12,6 +12,8 @@ pub mod cli;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+use phase1::ProvingSystem;
+
 #[derive(Debug, Clone)]
 pub enum CurveKind {
     Bls12_377,
@@ -25,4 +27,13 @@ pub fn curve_from_str(src: &str) -> Result<CurveKind, String> {
         _ => return Err("unsupported curve".to_string()),
     };
     Ok(curve)
+}
+
+pub fn proving_system_from_str(src: &str) -> Result<ProvingSystem, String> {
+    let system = match src.to_lowercase().as_str() {
+        "groth16" => ProvingSystem::Groth16,
+        "marlin" => ProvingSystem::Marlin,
+        _ => return Err("unsupported proving system. Currently supported: groth16, marlin".to_string()),
+    };
+    Ok(system)
 }

@@ -1,4 +1,4 @@
-use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
+use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters, ProvingSystem};
 use phase2::{helpers::testing::TestCircuit, parameters::MPCParameters};
 use setup_utils::{CheckForCorrectness, Groth16Params, UseCompression};
 
@@ -21,6 +21,7 @@ use snarkos_utilities::serialize::CanonicalDeserialize;
 use rand::{thread_rng, Rng};
 
 fn generate_mpc_parameters<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine, C, R: Rng>(
+    proving_system: ProvingSystem,
     c: C,
     rng: &mut R,
 ) -> MPCParameters<Zexe>
@@ -29,7 +30,7 @@ where
 {
     let powers = 6; // Powers of tau
     let batch = 4;
-    let params = Phase1Parameters::<Zexe>::new(powers, batch);
+    let params = Phase1Parameters::<Zexe>::new(proving_system, powers, batch);
     let compressed = UseCompression::Yes;
     // Make 1 power of tau contribution (assume powers of tau gets calculated properly).
     let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
@@ -78,7 +79,7 @@ fn test_groth16_curve<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() {
     // Generate the parameters.
     let params: Parameters<Zexe> = {
         let c = TestCircuit::<Aleo>(None);
-        let setup = generate_mpc_parameters::<Aleo, Zexe, _, _>(c, rng);
+        let setup = generate_mpc_parameters::<Aleo, Zexe, _, _>(ProvingSystem::Groth16, c, rng);
         setup.get_params().clone()
     };
 

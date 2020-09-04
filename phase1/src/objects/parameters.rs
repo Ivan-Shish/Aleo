@@ -4,6 +4,12 @@ use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 
 use std::marker::PhantomData;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ProvingSystem {
+    Groth16,
+    Marlin,
+}
+
 /// The sizes of the group elements of a curve
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 pub struct CurveParameters<E> {
@@ -53,20 +59,27 @@ pub struct Phase1Parameters<E> {
     pub contribution_size: usize,
     /// Size of the hash of the previous contribution
     pub hash_size: usize,
+    /// Proving system
+    pub proving_system: ProvingSystem,
 }
 
 impl<E: PairingEngine> Phase1Parameters<E> {
     /// Constructs a new ceremony parameters object from the type of provided curve
     /// Panics if given batch_size = 0
-    pub fn new(size: usize, batch_size: usize) -> Self {
+    pub fn new(proving_system: ProvingSystem, size: usize, batch_size: usize) -> Self {
         // create the curve
         let curve = CurveParameters::<E>::new();
-        Self::new_with_curve(curve, size, batch_size)
+        Self::new_with_curve(curve, proving_system, size, batch_size)
     }
 
     /// Constructs a new ceremony parameters object from the directly provided curve with parameters
     /// Consider using the `new` method if you want to use one of the pre-implemented curves
-    pub fn new_with_curve(curve: CurveParameters<E>, size: usize, batch_size: usize) -> Self {
+    pub fn new_with_curve(
+        curve: CurveParameters<E>,
+        proving_system: ProvingSystem,
+        size: usize,
+        batch_size: usize,
+    ) -> Self {
         // assume we're using a 64 byte long hash function such as Blake
         let hash_size = 64;
 
@@ -75,15 +88,28 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         // 2^{size+1} - 1
         let powers_g1_length = (powers_length << 1) - 1;
 
-        let accumulator_size =
-            // G1 Tau powers
-            powers_g1_length * curve.g1_size +
-            // G2 Tau Powers + Alpha Tau powers + Beta Tau powers
-            powers_length * (curve.g2_size + (curve.g1_size * 2)) +
-            // Beta in G2
-            curve.g2_size +
-            // Hash of the previous contribution
-            hash_size;
+        let accumulator_size = match proving_system {
+            ProvingSystem::Groth16 => {
+                // G1 Tau powers
+                powers_g1_length * curve.g1_size +
+                    // G2 Tau Powers + Alpha Tau powers + Beta Tau powers
+                    powers_length * (curve.g2_size + (curve.g1_size * 2)) +
+                    // Beta in G2
+                    curve.g2_size +
+                    // Hash of the previous contribution
+                    hash_size
+            }
+            ProvingSystem::Marlin => {
+                // G1 Tau powers
+                powers_length * curve.g1_size +
+                    // Alpha in G1
+                    3*curve.g1_size + 3*size*curve.g1_size +
+                    // G2 1/Tau Powers
+                    (size + 2) * curve.g2_size +
+                    // Hash of the previous contribution
+                    hash_size
+            }
+        };
 
         let public_key_size =
            // tau, alpha, beta in g2
@@ -91,17 +117,32 @@ impl<E: PairingEngine> Phase1Parameters<E> {
            // (s1, s1*tau), (s2, s2*alpha), (s3, s3*beta) in g1
            6 * curve.g1_size;
 
-        let contribution_size =
-            // G1 Tau powers (compressed)
-            powers_g1_length * curve.g1_compressed_size +
-            // G2 Tau Powers + Alpha Tau powers + Beta Tau powers (compressed)
-            powers_length * (curve.g2_compressed_size + (curve.g1_compressed_size * 2)) +
-            // Beta in G2
-            curve.g2_compressed_size +
-            // Hash of the previous contribution
-            hash_size +
-            // The public key of the previous contributor
-            public_key_size;
+        let contribution_size = match proving_system {
+            ProvingSystem::Groth16 => {
+                // G1 Tau powers (compressed)
+                powers_g1_length * curve.g1_compressed_size +
+                    // G2 Tau Powers + Alpha Tau powers + Beta Tau powers (compressed)
+                    powers_length * (curve.g2_compressed_size + (curve.g1_compressed_size * 2)) +
+                    // Beta in G2
+                    curve.g2_compressed_size +
+                    // Hash of the previous contribution
+                    hash_size +
+                    // The public key of the previous contributor
+                    public_key_size
+            }
+            ProvingSystem::Marlin => {
+                // G1 Tau powers (compressed)
+                powers_length * curve.g1_compressed_size +
+                    // Alpha in G1
+                    3*curve.g1_compressed_size +  3*size*curve.g1_compressed_size +
+                    // G2 1/Tau Powers
+                    (size + 2) * curve.g2_compressed_size +
+                    // Hash of the previous contribution
+                    hash_size +
+                    // The public key of the previous contributor
+                    public_key_size
+            }
+        };
 
         Self {
             curve,
@@ -113,6 +154,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             public_key_size,
             contribution_size,
             hash_size,
+            proving_system,
         }
     }
 
