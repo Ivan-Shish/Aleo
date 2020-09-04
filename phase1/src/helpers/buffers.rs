@@ -1,4 +1,4 @@
-use crate::Phase1Parameters;
+use crate::{Phase1Parameters, ProvingSystem};
 use setup_utils::{BatchDeserializer, BatchSerializer, *};
 
 use zexe_algebra::{AffineCurve, PairingEngine};
@@ -23,27 +23,19 @@ pub(crate) fn iter_chunk(
     parameters: &Phase1Parameters<impl PairingEngine>,
     mut action: impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
-    (0..parameters.powers_g1_length)
+    let upper_bound = match parameters.proving_system {
+        ProvingSystem::Groth16 => parameters.powers_g1_length,
+        ProvingSystem::Marlin => parameters.powers_length,
+    };
+    (0..upper_bound)
         .chunks(parameters.batch_size - 1)
         .into_iter()
         .map(|chunk| {
             let (start, end) = match chunk.minmax() {
-                MinMaxResult::MinMax(start, end) => (
-                    start,
-                    if end >= parameters.powers_g1_length - 1 {
-                        end + 1
-                    } else {
-                        end + 2
-                    },
-                ), // ensure there's overlap between chunks
-                MinMaxResult::OneElement(start) => (
-                    start,
-                    if start >= parameters.powers_g1_length - 1 {
-                        start + 1
-                    } else {
-                        start + 2
-                    },
-                ),
+                MinMaxResult::MinMax(start, end) => (start, if end >= upper_bound - 1 { end + 1 } else { end + 2 }), // ensure there's overlap between chunks
+                MinMaxResult::OneElement(start) => {
+                    (start, if start >= upper_bound - 1 { start + 1 } else { start + 2 })
+                }
                 _ => return Err(Error::InvalidChunk),
             };
             action(start, end)
@@ -81,23 +73,38 @@ pub(crate) fn split_mut<'a, E: PairingEngine>(
     parameters: &'a Phase1Parameters<E>,
     compressed: UseCompression,
 ) -> SplitBufMut<'a> {
-    let num_powers = parameters.powers_length;
-    let num_powers_g1 = parameters.powers_g1_length;
+    match parameters.proving_system {
+        ProvingSystem::Groth16 => {
+            let g1_els = parameters.powers_g1_length;
+            let other = parameters.powers_length;
+            let g1_size = buffer_size::<E::G1Affine>(compressed);
+            let g2_size = buffer_size::<E::G2Affine>(compressed);
 
-    let g1_size = buffer_size::<E::G1Affine>(compressed);
-    let g2_size = buffer_size::<E::G2Affine>(compressed);
+            let (_, others) = buf.split_at_mut(parameters.hash_size);
+            let (tau_g1, others) = others.split_at_mut(g1_size * g1_els);
+            let (tau_g2, others) = others.split_at_mut(g2_size * other);
+            let (alpha_g1, others) = others.split_at_mut(g1_size * other);
+            let (beta_g1, beta_g2) = others.split_at_mut(g1_size * other);
+            // we take up to g2_size for beta_g2, since there might be other
+            // elements after it at the end of the buffer
+            (tau_g1, tau_g2, alpha_g1, beta_g1, &mut beta_g2[0..g2_size])
+        }
+        ProvingSystem::Marlin => {
+            let g1_els = parameters.powers_length;
+            let g2_els = parameters.size + 2;
+            let alpha_els = 3 + 3 * parameters.size;
+            let g1_size = buffer_size::<E::G1Affine>(compressed);
+            let g2_size = buffer_size::<E::G2Affine>(compressed);
 
-    // Set the first 64 bytes for the hash
-    let (_, others) = buf.split_at_mut(parameters.hash_size);
-
-    let (tau_g1, others) = others.split_at_mut(g1_size * num_powers_g1);
-    let (tau_g2, others) = others.split_at_mut(g2_size * num_powers);
-    let (alpha_g1, others) = others.split_at_mut(g1_size * num_powers);
-    let (beta_g1, beta_g2) = others.split_at_mut(g1_size * num_powers);
-
-    // We take up to g2_size for beta_g2, as there may be other
-    // elements after it at the end of the buffer.
-    (tau_g1, tau_g2, alpha_g1, beta_g1, &mut beta_g2[0..g2_size])
+            let (_, others) = buf.split_at_mut(parameters.hash_size);
+            let (tau_g1, others) = others.split_at_mut(g1_size * g1_els);
+            let (tau_g2, others) = others.split_at_mut(g2_size * g2_els);
+            let (alpha_g1, _) = others.split_at_mut(g1_size * alpha_els);
+            // we take up to g2_size for beta_g2, since there might be other
+            // elements after it at the end of the buffer
+            (tau_g1, tau_g2, alpha_g1, &mut [], &mut [])
+        }
+    }
 }
 
 /// Splits the full buffer in 5 non overlapping immutable slice.
@@ -108,17 +115,36 @@ pub(crate) fn split<'a, E: PairingEngine>(
     parameters: &Phase1Parameters<E>,
     compressed: UseCompression,
 ) -> SplitBuf<'a> {
-    let g1_els = parameters.powers_g1_length;
-    let other = parameters.powers_length;
-    let g1_size = buffer_size::<E::G1Affine>(compressed);
-    let g2_size = buffer_size::<E::G2Affine>(compressed);
+    match parameters.proving_system {
+        ProvingSystem::Groth16 => {
+            let g1_els = parameters.powers_g1_length;
+            let other = parameters.powers_length;
+            let g1_size = buffer_size::<E::G1Affine>(compressed);
+            let g2_size = buffer_size::<E::G2Affine>(compressed);
 
-    let (_, others) = buf.split_at(parameters.hash_size);
-    let (tau_g1, others) = others.split_at(g1_size * g1_els);
-    let (tau_g2, others) = others.split_at(g2_size * other);
-    let (alpha_g1, others) = others.split_at(g1_size * other);
-    let (beta_g1, beta_g2) = others.split_at(g1_size * other);
-    // we take up to g2_size for beta_g2, since there might be other
-    // elements after it at the end of the buffer
-    (tau_g1, tau_g2, alpha_g1, beta_g1, &beta_g2[0..g2_size])
+            let (_, others) = buf.split_at(parameters.hash_size);
+            let (tau_g1, others) = others.split_at(g1_size * g1_els);
+            let (tau_g2, others) = others.split_at(g2_size * other);
+            let (alpha_g1, others) = others.split_at(g1_size * other);
+            let (beta_g1, beta_g2) = others.split_at(g1_size * other);
+            // we take up to g2_size for beta_g2, since there might be other
+            // elements after it at the end of the buffer
+            (tau_g1, tau_g2, alpha_g1, beta_g1, &beta_g2[0..g2_size])
+        }
+        ProvingSystem::Marlin => {
+            let g1_els = parameters.powers_length;
+            let g2_els = parameters.size + 2;
+            let alpha_els = 3 + 3 * parameters.size;
+            let g1_size = buffer_size::<E::G1Affine>(compressed);
+            let g2_size = buffer_size::<E::G2Affine>(compressed);
+
+            let (_, others) = buf.split_at(parameters.hash_size);
+            let (tau_g1, others) = others.split_at(g1_size * g1_els);
+            let (tau_g2, others) = others.split_at(g2_size * g2_els);
+            let (alpha_g1, _) = others.split_at(g1_size * alpha_els);
+            // we take up to g2_size for beta_g2, since there might be other
+            // elements after it at the end of the buffer
+            (tau_g1, tau_g2, alpha_g1, &[], &[])
+        }
+    }
 }

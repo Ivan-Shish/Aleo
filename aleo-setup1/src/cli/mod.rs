@@ -7,15 +7,11 @@ pub use contribute::contribute;
 mod transform;
 pub use transform::transform;
 
-use crate::{curve_from_str, CurveKind};
+use crate::{curve_from_str, proving_system_from_str, CurveKind};
+use phase1::ProvingSystem;
 
 use gumdrop::Options;
 use std::default::Default;
-
-#[derive(Debug, Clone)]
-pub enum ProvingSystem {
-    Groth16,
-}
 
 #[derive(Debug, Options, Clone)]
 pub struct Phase1Opts {
@@ -87,12 +83,4 @@ pub struct VerifyAndTransformOpts {
         default = "new_challenge"
     )]
     pub new_challenge_fname: String,
-}
-
-pub fn proving_system_from_str(src: &str) -> Result<ProvingSystem, String> {
-    let system = match src.to_lowercase().as_str() {
-        "groth16" => ProvingSystem::Groth16,
-        _ => return Err("unsupported proving system. Currently supported: groth16".to_string()),
-    };
-    Ok(system)
 }

@@ -19,7 +19,7 @@ cfg_if! {
         };
 
         fn execute_cmd<E: Engine>(opts: Phase1Opts) {
-            let parameters = Phase1Parameters::<E>::new(opts.power, opts.batch_size);
+            let parameters = Phase1Parameters::<E>::new(opts.proving_system, opts.power, opts.batch_size);
 
             let command = opts.clone().command.unwrap_or_else(|| {
                 eprintln!("No command was provided.");

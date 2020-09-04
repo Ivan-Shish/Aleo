@@ -436,7 +436,7 @@ mod tests {
         chunked_groth16::{contribute, verify},
         helpers::testing::TestCircuit,
     };
-    use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters};
+    use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters, ProvingSystem};
     use setup_utils::{Groth16Params, UseCompression};
 
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
@@ -555,7 +555,7 @@ mod tests {
         let powers = 5;
         let batch = 16;
         let phase2_size = 7;
-        let params = Phase1Parameters::<E>::new(powers, batch);
+        let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
             let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);

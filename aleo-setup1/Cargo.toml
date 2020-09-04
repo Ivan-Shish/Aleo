@@ -52,5 +52,9 @@ wasm = ["console_error_panic_hook", "phase1/wasm", "rand/wasm-bindgen", "serde",
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm
 
 [[bin]]
+name = "phase1"
+required-features = ["cli"]
+
+[[bin]]
 name = "prepare_phase2"
 required-features = ["cli"]
