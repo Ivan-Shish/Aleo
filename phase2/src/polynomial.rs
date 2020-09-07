@@ -1,6 +1,7 @@
-use rayon::prelude::*;
 use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, Zero};
 use zexe_r1cs_core::Index;
+
+use rayon::prelude::*;
 
 /// Evaluates and returns the provided QAP Polynomial vectors at the provided coefficients.
 /// Format: [a_g1, b_g1, b_g2, gamma_abc_g1, l_g1]
@@ -107,8 +108,8 @@ fn dot_product<C: AffineCurve>(input: &[(C::ScalarField, Index)], coeffs: &[C], 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use phase1::helpers::testing::random_point_vec;
     use rand::{thread_rng, Rng};
-    use test_helpers::random_point_vec;
     use zexe_algebra::{
         bls12_377::{Bls12_377, Fr, G1Affine, G1Projective},
         UniformRand,

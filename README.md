@@ -1,4 +1,4 @@
-<h1 align="center">SNARK Multi Party Computation</h1>
+<h1 align="center">Aleo Setup I</h1>
 
 ## Overview
 
@@ -13,6 +13,8 @@ Note that the generated Powers of Tau can be re-used for any other Phase 2 setup
 
 For instructions on how to ensure that the ceremony is executed properly, refer to [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md)
 
+## Setup I
+
 ### Phase 1 (Powers of Tau)
 
 1. A coordinator generates an accumulator
@@ -21,9 +23,14 @@ For instructions on how to ensure that the ceremony is executed properly, refer 
 1. Participant uploads the accumulator back to the coordinator
 1. Coordinator verifies the accumulator was transformed correctly and produces a new challenge
 
-The notable part about this procedure, is that it _never_has to end. This is what allows SNARKs utilizing KZG10 to have a "continuous" setup. If a participant does not trust the setup, they themselves can contribute to the Powers of Tau, and instantiate KZG10 with the new parameters.
+The notable part about this procedure, is that it _never_has to end.
+This is what allows SNARKs utilizing KZG10 to have a "continuous" setup.
+If a participant does not trust the setup, they themselves can contribute to the Powers of Tau,
+and instantiate KZG10 with the new parameters.
 
-### Phase 2 (Specialization specific to Groth16)
+## Setup II
+
+### Phase 2 (Parameterization to Groth16)
 
 1. Coordinator "prepares" the parameters from Phase 1 and converts them to Lagrange Coefficients
 1. Participant downloads the latest state of the parameters
@@ -33,15 +40,15 @@ The notable part about this procedure, is that it _never_has to end. This is wha
 1. Loop from 2 for all participants
 
 This produces parameters which can then be used for constructing Groth16 SNARKs for that circuit. 
-The setup is sound as long as 1 party was honest and destroyed their "toxic waste" in step 3.
+The setup is sound so long as 1 party was honest and destroyed their "toxic waste" in step 3.
 
 ## Build Guide
 
-Build with `cargo build (--release)`. You will receive a `powersoftau` and `prepare_phase2` binary in the `target/` directory.
+Build with `cargo build (--release)`. You will receive a `phase1` and `prepare_phase2` binary in the `target/` directory.
 
-Test with `cargo test`.
+Test with `cargo test --all`.
 
-Benchmark with `cargo bench` (uses [`criterion`](https://github.com/bheisler/criterion.rs))
+Benchmark with `cargo bench --all` (uses [`criterion`](https://github.com/bheisler/criterion.rs))
 
 If contributing, do not forget to run `cargo fmt` and `cargo clippy --all-targets --all-features -- -D warnings`
 
@@ -51,28 +58,16 @@ All crates require Rust 2018 edition and are tested on the following channels:
 
 If you do not have Rust installed, run: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
-
 ## Directory Structure
 
 This repository contains several Rust crates that implement the different building blocks of the MPC. The high-level structure of the repository is as follows:
-
-- [`powersoftau`](powersoftau): Rust crate that provides an accumulator for Powers of Tau. It runs multithreaded and works in "batches", allowing large powers to be calculated in resource constrained environments
+- [`aleo-setup1`](aleo-setup1): Rust crate for running Aleo Setup I
+- [`aleo-setup2`](aleo-setup2): Rust crate for running Aleo Setup II
+- [`phase1`](phase1): Rust crate that provides an accumulator for Powers of Tau. It runs multithreaded and works in "batches", allowing large powers to be calculated in resource constrained environments
 - [`phase2`](phase2): Rust crate that provides a wrapper over Groth16's parameters which also contains a verifiable transcript of the so-far contributions to the specialization phase
-- [`snark-utils`](snark-utils): Utility functions shared across crates, involving i/o, mathematical operations and errors.
-
-In addition, there is a [`test-helpers`](test-helpers) crate which contains infrastructure for testing.
-
-## Disclaimer
-
-**This software has not been audited. Use at your own risk.**
-
+- [`setup-utils`](setup-utils): Utility functions shared across crates, involving i/o, mathematical operations and errors.
 
 ## License
 
-This work is licensed under either of the following licenses, at your discretion.
-
-- Apache License Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you,
-as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+This library is a collection of repositories licensed under different standard licenses.
+Please refer to each individual repository for its respective license.

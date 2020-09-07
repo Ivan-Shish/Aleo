@@ -4,13 +4,13 @@ Dockerfile
 **/node_modules
 **/target
 **/phase1radix2m*
+/phase1/challenge*
+/phase1/response*
+/phase1/transcript
+/phase1/tmp_*
 /phase2/pkg
 /phase2/*.params
 /phase2/*.json
 /phase2/*.bin
 /phase2/*.circom
 /phase2/verifier.sol
-/powersoftau/challenge*
-/powersoftau/response*
-/powersoftau/transcript
-/powersoftau/tmp_*

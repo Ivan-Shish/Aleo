@@ -1,20 +1,17 @@
-use snark_utils::*;
-use std::{
-    fmt,
-    io::{self, Read, Write},
-};
+use cfg_if::cfg_if;
 
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    Field,
-    PairingEngine,
-    ProjectiveCurve,
-    Zero,
-};
-use zexe_groth16::{Parameters, VerifyingKey};
-use zexe_r1cs_core::SynthesisError;
+cfg_if! {
+    if #[cfg(not(feature = "wasm"))] {
+        use super::polynomial::eval;
+        use zexe_algebra::{ Zero };
+        use zexe_groth16::{VerifyingKey};
+        use zexe_r1cs_core::SynthesisError;
+    }
+}
+
+use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
+
+use setup_utils::*;
 
 use snarkos_algorithms::snark::groth16::KeypairAssembly;
 use snarkos_models::{
@@ -22,12 +19,13 @@ use snarkos_models::{
     gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
 };
 use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
+use zexe_algebra::{AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, PairingEngine, ProjectiveCurve};
+use zexe_groth16::Parameters;
 
 use rand::Rng;
-
-use super::{
-    keypair::{hash_cs_pubkeys, Keypair, PublicKey},
-    polynomial::eval,
+use std::{
+    fmt,
+    io::{self, Read, Write},
 };
 
 /// MPC parameters are just like Zexe's `Parameters` except, when serialized,
@@ -60,10 +58,12 @@ impl<E: PairingEngine + PartialEq> PartialEq for MPCParameters<E> {
 }
 
 impl<E: PairingEngine> MPCParameters<E> {
+    #[cfg(not(feature = "wasm"))]
     pub fn new_from_buffer<Aleo, C>(
         circuit: C,
         transcript: &mut [u8],
         compressed: UseCompression,
+        check_input_for_correctness: CheckForCorrectness,
         phase1_size: usize,
         phase2_size: usize,
     ) -> Result<MPCParameters<E>>
@@ -72,13 +72,20 @@ impl<E: PairingEngine> MPCParameters<E> {
         Aleo: AleoPairingEngine,
     {
         let assembly = circuit_to_qap::<Aleo, E, _>(circuit)?;
-        let params = Groth16Params::<E>::read(transcript, compressed, phase1_size, phase2_size)?;
+        let params = Groth16Params::<E>::read(
+            transcript,
+            compressed,
+            check_input_for_correctness,
+            phase1_size,
+            phase2_size,
+        )?;
         Self::new(assembly, params)
     }
 
     /// Create new Groth16 parameters (compatible with Zexe and snarkOS) for a
     /// given QAP which has been produced from a circuit. The resulting parameters
     /// are unsafe to use until there are contributions (see `contribute()`).
+    #[cfg(not(feature = "wasm"))]
     pub fn new(assembly: zexe_groth16::KeypairAssembly<E>, params: Groth16Params<E>) -> Result<MPCParameters<E>> {
         // Evaluate the QAP against the coefficients created from phase 1
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
@@ -425,14 +432,19 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunked_groth16::{contribute, verify};
-    use powersoftau::{parameters::CeremonyParams, BatchedAccumulator};
-    use rand::thread_rng;
-    use snark_utils::{Groth16Params, UseCompression};
+    use crate::{
+        chunked_groth16::{contribute, verify},
+        helpers::testing::TestCircuit,
+    };
+    use phase1::{helpers::testing::setup_verify, Phase1, Phase1Parameters, ProvingSystem};
+    use setup_utils::{Groth16Params, UseCompression};
+
     use snarkos_curves::bls12_377::Bls12_377 as AleoBls12_377;
-    use test_helpers::{setup_verify, TestCircuit};
-    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
+
     use zexe_algebra::Bls12_377;
+
+    use rand::thread_rng;
+    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
 
     #[test]
     fn serialize_ceremony() {
@@ -543,11 +555,11 @@ mod tests {
         let powers = 5;
         let batch = 16;
         let phase2_size = 7;
-        let params = CeremonyParams::<E>::new(powers, batch);
+        let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
-            let (_, output, _, _) = setup_verify(compressed, compressed, &params);
-            BatchedAccumulator::deserialize(&output, compressed, &params).unwrap()
+            let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
+            Phase1::deserialize(&output, compressed, CheckForCorrectness::Yes, &params).unwrap()
         };
 
         let groth_params = Groth16Params::<E>::new(
