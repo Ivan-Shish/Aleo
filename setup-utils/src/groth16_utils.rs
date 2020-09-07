@@ -287,23 +287,25 @@ mod tests {
 
         fn compat_correctness(check_correctness: CheckForCorrectness) -> CheckForCorrectnessPhase1 {
             match check_correctness {
-                CheckForCorrectness::Yes => CheckForCorrectnessPhase1::Yes,
+                CheckForCorrectness::Full => CheckForCorrectnessPhase1::Full,
+                CheckForCorrectness::OnlyNonZero => CheckForCorrectnessPhase1::OnlyNonZero,
+                CheckForCorrectness::OnlyInGroup => CheckForCorrectnessPhase1::OnlyInGroup,
                 CheckForCorrectness::No => CheckForCorrectnessPhase1::No,
             }
         }
 
-        let batch = 2;
+        let batch = ((1 << powers) << 1) - 1;
         let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
         let (_, output, _, _) = setup_verify(
             compat(compressed),
-            compat_correctness(CheckForCorrectness::Yes),
+            compat_correctness(CheckForCorrectness::Full),
             compat(compressed),
             &params,
         );
         let accumulator = Phase1::deserialize(
             &output,
             compat(compressed),
-            compat_correctness(CheckForCorrectness::Yes),
+            compat_correctness(CheckForCorrectness::Full),
             &params,
         )
         .unwrap();
@@ -324,7 +326,7 @@ mod tests {
         let deserialized = Groth16Params::<E>::read(
             &mut reader.get_mut(),
             compressed,
-            CheckForCorrectness::Yes,
+            CheckForCorrectness::Full,
             prepared_phase1_size,
             prepared_phase1_size, // phase2_size == prepared phase1 size
         )
@@ -336,7 +338,7 @@ mod tests {
         let deserialized_subset = Groth16Params::<E>::read(
             &mut reader.get_mut(),
             compressed,
-            CheckForCorrectness::Yes,
+            CheckForCorrectness::Full,
             prepared_phase1_size,
             subset, // phase2 size is smaller than the prepared phase1 size
         )

@@ -558,8 +558,8 @@ mod tests {
         let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
-            let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
-            Phase1::deserialize(&output, compressed, CheckForCorrectness::Yes, &params).unwrap()
+            let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);
+            Phase1::deserialize(&output, compressed, CheckForCorrectness::Full, &params).unwrap()
         };
 
         let groth_params = Groth16Params::<E>::new(

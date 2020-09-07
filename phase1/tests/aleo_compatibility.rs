@@ -29,7 +29,7 @@ fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
 
         // Perform 1 power of tau contribution (assume Powers of Tau is computed correctly)
         let compressed = UseCompression::No;
-        let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
+        let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);
 
         // Advance the cursor past the output hash.
         let mut reader = std::io::BufReader::new(std::io::Cursor::new(output));

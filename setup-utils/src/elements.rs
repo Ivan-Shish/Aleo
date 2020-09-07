@@ -19,14 +19,18 @@ impl fmt::Display for UseCompression {
 /// Determines if points should be checked to be infinity.
 #[derive(Copy, Clone, PartialEq)]
 pub enum CheckForCorrectness {
-    Yes,
+    Full,
+    OnlyNonZero,
+    OnlyInGroup,
     No,
 }
 
 impl fmt::Display for CheckForCorrectness {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            CheckForCorrectness::Yes => write!(f, "Yes"),
+            CheckForCorrectness::Full => write!(f, "Full"),
+            CheckForCorrectness::OnlyNonZero => write!(f, "OnlyNonZero"),
+            CheckForCorrectness::OnlyInGroup => write!(f, "OnlyInGroup"),
             CheckForCorrectness::No => write!(f, "No"),
         }
     }

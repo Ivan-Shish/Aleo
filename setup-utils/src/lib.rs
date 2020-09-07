@@ -22,6 +22,9 @@ pub use io::{buffer_size, BatchDeserializer, BatchSerializer, Deserializer, Seri
 
 pub mod rayon_cfg;
 
+mod seed;
+pub use seed::derive_rng_from_seed;
+
 // Re-exports for handling hashes
 pub use blake2::digest::generic_array::GenericArray;
 pub use typenum::U64;
