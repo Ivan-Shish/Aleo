@@ -1,0 +1,42 @@
+[package]
+name = "aleo-setup2"
+version = "0.3.0"
+authors = ["Georgios Konstantopoulos <me@gakonst.com>", "The Aleo Team <hello@aleo.org>"]
+description = "Aleo Setup II"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "GPL-3.0"
+edition = "2018"
+
+[dependencies]
+phase2 = { path = "../phase2", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = false }
+
+snarkos-curves = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-curves", default-features = false }
+snarkos-dpc = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-dpc", default-features = false }
+snarkos-models = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-models", default-features = false }
+snarkos-parameters = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-parameters", default-features = false }
+snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities" }
+
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "full"] }
+zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "groth16", version = "0.1.0", features = ["parallel"] }
+zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
+zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-std", version = "0.1.0" }
+
+anyhow = { version = "1.0.31" }
+cfg-if = { version = "0.1.10" }
+gumdrop = { version = "0.7.0", optional = true }
+hex = { version = "0.4.2" }
+hex-literal = { version = "0.1.4", optional = true }
+memmap = { version = "0.7.0", optional = true }
+rand = { version = "0.7.3" }
+rand_xorshift = { version = "0.2.0" }
+thiserror = { version = "1.0.11" }
+tracing-subscriber = { version = "0.2.3" }
+
+[features]
+default = ["cli"]
+parallel = ["phase2/parallel", "setup-utils/parallel"]
+
+cli = ["gumdrop", "hex-literal", "memmap", "parallel", "phase2/cli", "setup-utils/cli"]
+wasm = ["phase2/wasm", "setup-utils/wasm"]

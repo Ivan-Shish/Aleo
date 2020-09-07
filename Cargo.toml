@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "./aleo-snark-setup",
-    "./powersoftau",
-    "./phase2",
-    "./snark-utils",
-    "./test-helpers",
+    "aleo-setup1",
+    "aleo-setup2",
+    "phase1",
+    "phase2",
+    "setup-utils",
 ]
 
 [profile.release]
