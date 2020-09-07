@@ -46,7 +46,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             s.spawn(|_| {
                 beta_g2
                     .init_element(one_g2, compressed_output)
-                    .expect("could not initialize beta_g2 element")
+                    .expect("could not initialize beta_g2 elements")
             });
         });
 
