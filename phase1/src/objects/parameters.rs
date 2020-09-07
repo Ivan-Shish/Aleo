@@ -4,6 +4,12 @@ use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 
 use std::marker::PhantomData;
 
+#[derive(Clone, PartialEq, Eq, Debug, Copy)]
+pub enum ContributionMode {
+    Full,
+    Chunked,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProvingSystem {
     Groth16,
@@ -39,17 +45,28 @@ impl<E: PairingEngine> CurveParameters<E> {
 /// The parameters used for the trusted setup ceremony
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Phase1Parameters<E> {
+    /// The contribution mode
+    pub contribution_mode: ContributionMode,
+    /// The chunk index
+    pub chunk_index: usize,
+    /// The chunk size
+    pub chunk_size: usize,
     /// The type of the curve being used
     pub curve: CurveParameters<E>,
-    /// The number of Powers of Tau G1 elements which will be accumulated
+    /// Proving system
+    pub proving_system: ProvingSystem,
+    /// The number of tau_g1 elements which will be accumulated in this chunk
+    pub g1_chunk_size: usize,
+    /// The number of tau_g2, alpha_g1, and beta_g1 elements which will be accumulated in this chunk
+    pub other_chunk_size: usize,
+    /// The total number of Powers of Tau G1 elements which will be accumulated
     pub powers_g1_length: usize,
-    /// The number of Powers of Tau Alpha/Beta/G2 elements which will be accumulated
+    /// The total number of Powers of Tau Alpha/Beta/G2 elements which will be accumulated
     pub powers_length: usize,
     /// The circuit size exponent (ie length will be 2^size),
     /// depends on the computation you want to support.
     pub size: usize,
-    /// The empirical batch size for the batched accumulator.
-    /// This is a hyper parameter and may be different for each curve.
+    /// The size of each chunk.
     pub batch_size: usize,
     /// Size of the used public key
     pub public_key_size: usize,
@@ -59,22 +76,45 @@ pub struct Phase1Parameters<E> {
     pub contribution_size: usize,
     /// Size of the hash of the previous contribution
     pub hash_size: usize,
-    /// Proving system
-    pub proving_system: ProvingSystem,
 }
 
 impl<E: PairingEngine> Phase1Parameters<E> {
     /// Constructs a new ceremony parameters object from the type of provided curve
     /// Panics if given batch_size = 0
     pub fn new(proving_system: ProvingSystem, size: usize, batch_size: usize) -> Self {
+        let curve = CurveParameters::<E>::new();
+        Self::new_with_curve(ContributionMode::Full, 0, 0, curve, proving_system, size, batch_size)
+    }
+
+    /// Constructs a new ceremony parameters object for a chunk from the type of provided curve
+    /// Panics if given batch_size = 0
+    pub fn new_chunk(
+        contribution_mode: ContributionMode,
+        chunk_index: usize,
+        chunk_size: usize,
+        proving_system: ProvingSystem,
+        size: usize,
+        batch_size: usize,
+    ) -> Self {
         // create the curve
         let curve = CurveParameters::<E>::new();
-        Self::new_with_curve(curve, proving_system, size, batch_size)
+        Self::new_with_curve(
+            contribution_mode,
+            chunk_index,
+            chunk_size,
+            curve,
+            proving_system,
+            size,
+            batch_size,
+        )
     }
 
     /// Constructs a new ceremony parameters object from the directly provided curve with parameters
     /// Consider using the `new` method if you want to use one of the pre-implemented curves
     pub fn new_with_curve(
+        contribution_mode: ContributionMode,
+        chunk_index: usize,
+        chunk_size: usize,
         curve: CurveParameters<E>,
         proving_system: ProvingSystem,
         size: usize,
@@ -88,22 +128,36 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         // 2^{size+1} - 1
         let powers_g1_length = (powers_length << 1) - 1;
 
+        let (g1_chunk_size, other_chunk_size) = Self::chunk_sizes(
+            contribution_mode,
+            chunk_size,
+            chunk_index,
+            proving_system,
+            powers_g1_length,
+            powers_length,
+        );
+
         let accumulator_size = match proving_system {
             ProvingSystem::Groth16 => {
                 // G1 Tau powers
-                powers_g1_length * curve.g1_size +
+                g1_chunk_size * curve.g1_size +
                     // G2 Tau Powers + Alpha Tau powers + Beta Tau powers
-                    powers_length * (curve.g2_size + (curve.g1_size * 2)) +
+                    (other_chunk_size * (curve.g2_size + (curve.g1_size * 2))) +
                     // Beta in G2
                     curve.g2_size +
+                    // Tau Single G1
+                    (2 * curve.g1_size) +
+                    // Tau Single G2
+                    (2 * curve.g2_size) +
                     // Hash of the previous contribution
                     hash_size
             }
+            // TODO (howardwu): Confirm the accumulator size for Marlin.
             ProvingSystem::Marlin => {
                 // G1 Tau powers
-                powers_length * curve.g1_size +
+                g1_chunk_size * curve.g1_size +
                     // Alpha in G1
-                    3*curve.g1_size + 3*size*curve.g1_size +
+                    (3 * curve.g1_size) + (3 * size*curve.g1_size) +
                     // G2 1/Tau Powers
                     (size + 2) * curve.g2_size +
                     // Hash of the previous contribution
@@ -120,21 +174,26 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         let contribution_size = match proving_system {
             ProvingSystem::Groth16 => {
                 // G1 Tau powers (compressed)
-                powers_g1_length * curve.g1_compressed_size +
+                g1_chunk_size * curve.g1_compressed_size +
                     // G2 Tau Powers + Alpha Tau powers + Beta Tau powers (compressed)
-                    powers_length * (curve.g2_compressed_size + (curve.g1_compressed_size * 2)) +
+                    (other_chunk_size * (curve.g2_compressed_size + (curve.g1_compressed_size * 2))) +
                     // Beta in G2
                     curve.g2_compressed_size +
+                    // Tau Single G1
+                    (2 * curve.g1_compressed_size) +
+                    // Tau Single G2
+                    (2 * curve.g2_compressed_size) +
                     // Hash of the previous contribution
                     hash_size +
                     // The public key of the previous contributor
                     public_key_size
             }
+            // TODO (howardwu): Confirm the accumulator size for Marlin.
             ProvingSystem::Marlin => {
                 // G1 Tau powers (compressed)
-                powers_length * curve.g1_compressed_size +
+                g1_chunk_size * curve.g1_compressed_size +
                     // Alpha in G1
-                    3*curve.g1_compressed_size +  3*size*curve.g1_compressed_size +
+                    (3 * curve.g1_compressed_size) +  (3 * size * curve.g1_compressed_size) +
                     // G2 1/Tau Powers
                     (size + 2) * curve.g2_compressed_size +
                     // Hash of the previous contribution
@@ -145,7 +204,13 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         };
 
         Self {
+            contribution_mode,
+            chunk_index,
+            chunk_size,
             curve,
+            proving_system,
+            g1_chunk_size,
+            other_chunk_size,
             powers_g1_length,
             powers_length,
             size,
@@ -154,8 +219,24 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             public_key_size,
             contribution_size,
             hash_size,
-            proving_system,
         }
+    }
+
+    pub fn into_chunk_parameters(
+        &self,
+        contribution_mode: ContributionMode,
+        chunk_index: usize,
+        chunk_size: usize,
+    ) -> Self {
+        Self::new_with_curve(
+            contribution_mode,
+            chunk_index,
+            chunk_size,
+            self.curve.clone(),
+            self.proving_system,
+            self.size,
+            self.batch_size,
+        )
     }
 
     /// Returns the length of the serialized accumulator depending on if it's compressed or not
@@ -164,6 +245,50 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             UseCompression::Yes => self.contribution_size - self.public_key_size,
             UseCompression::No => self.accumulator_size,
         }
+    }
+
+    fn chunk_sizes(
+        contribution_mode: ContributionMode,
+        chunk_index: usize,
+        chunk_size: usize,
+        proving_system: ProvingSystem,
+        powers_g1_length: usize,
+        powers_length: usize,
+    ) -> (usize, usize) {
+        // Determine the number of elements to process based on the proof system's requirement.
+        let upper_bound = match proving_system {
+            ProvingSystem::Groth16 => powers_g1_length,
+            ProvingSystem::Marlin => powers_length,
+        };
+
+        // In chunked contribution mode, select the chunk to iterate over.
+        // In full contribution mode, select the entire range up to the upper bound.
+        let (start, end) = match contribution_mode {
+            ContributionMode::Chunked => (chunk_index * chunk_size, (chunk_index + 1) * chunk_size),
+            ContributionMode::Full => (0, upper_bound),
+        };
+
+        // Determine the number of G1 elements.
+        let g1_chunk_size = match end > upper_bound {
+            true => upper_bound - start,
+            false => end - start,
+        };
+
+        // Determine the number of other elements.
+        let other_chunk_size = match proving_system {
+            ProvingSystem::Groth16 => {
+                if end > powers_length && start >= powers_length {
+                    0
+                } else if end > powers_length {
+                    powers_length - start
+                } else {
+                    end - start
+                }
+            }
+            ProvingSystem::Marlin => 0,
+        };
+
+        (g1_chunk_size, other_chunk_size)
     }
 }
 
