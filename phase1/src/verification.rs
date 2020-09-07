@@ -364,7 +364,7 @@ mod tests {
                 compressed_input,
                 compressed_output,
                 CheckForCorrectness::No,
-                CheckForCorrectness::Yes,
+                CheckForCorrectness::Full,
                 &parameters,
             );
             assert!(res.is_ok());
@@ -399,7 +399,7 @@ mod tests {
                 compressed_output,
                 compressed_output,
                 CheckForCorrectness::No,
-                CheckForCorrectness::Yes,
+                CheckForCorrectness::Full,
                 &parameters,
             );
             assert!(res.is_ok());
@@ -413,7 +413,7 @@ mod tests {
                 compressed_output,
                 compressed_output,
                 CheckForCorrectness::No,
-                CheckForCorrectness::Yes,
+                CheckForCorrectness::Full,
                 &parameters,
             );
             assert!(res.is_err());
@@ -428,7 +428,7 @@ mod tests {
                 compressed_output,
                 compressed_output,
                 CheckForCorrectness::No,
-                CheckForCorrectness::Yes,
+                CheckForCorrectness::Full,
                 &parameters,
             );
             assert!(res.is_err());

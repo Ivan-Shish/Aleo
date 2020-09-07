@@ -130,7 +130,7 @@ pub fn transform<T: Engine + Sync>(
         PREVIOUS_CHALLENGE_IS_COMPRESSED,
         CONTRIBUTION_IS_COMPRESSED,
         CheckForCorrectness::No,
-        CheckForCorrectness::Yes,
+        CheckForCorrectness::Full,
         &parameters,
     );
 

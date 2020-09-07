@@ -1757,15 +1757,15 @@ dependencies = [
 [[package]]
 name = "snarkos-profiler"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS#e36edb20550ee8a6d2503bbaebb5de7755988b3f"
-dependencies = [
- "colored",
-]
+source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 
 [[package]]
 name = "snarkos-profiler"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
+source = "git+https://github.com/AleoHQ/snarkOS#e36edb20550ee8a6d2503bbaebb5de7755988b3f"
+dependencies = [
+ "colored",
+]
 
 [[package]]
 name = "snarkos-utilities"

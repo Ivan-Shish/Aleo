@@ -74,7 +74,7 @@ mod tests {
             Phase1::initialization(&mut output, compression, &parameters).unwrap();
 
             let deserialized =
-                Phase1::deserialize(&output, compression, CheckForCorrectness::Yes, &parameters).unwrap();
+                Phase1::deserialize(&output, compression, CheckForCorrectness::Full, &parameters).unwrap();
 
             let g1_zero = E::G1Affine::prime_subgroup_generator();
             let g2_zero = E::G2Affine::prime_subgroup_generator();

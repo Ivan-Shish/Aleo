@@ -33,8 +33,8 @@ where
     let params = Phase1Parameters::<Zexe>::new(proving_system, powers, batch);
     let compressed = UseCompression::Yes;
     // Make 1 power of tau contribution (assume powers of tau gets calculated properly).
-    let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
-    let accumulator = Phase1::deserialize(&output, compressed, CheckForCorrectness::Yes, &params).unwrap();
+    let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);
+    let accumulator = Phase1::deserialize(&output, compressed, CheckForCorrectness::Full, &params).unwrap();
 
     // Prepare only the first 32 powers (for whatever reason).
     let groth_params = Groth16Params::<Zexe>::new(
@@ -59,7 +59,7 @@ where
         c,
         writer.as_mut(),
         compressed,
-        CheckForCorrectness::Yes,
+        CheckForCorrectness::Full,
         32,
         phase2_size,
     )

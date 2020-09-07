@@ -12,6 +12,11 @@ mod serialization;
 
 use crate::helpers::accumulator::{self};
 
+// mod verification;
+//
+// use crate::helpers::accumulator::*;
+// use zexe_algebra::Zero;
+
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         mod verification;

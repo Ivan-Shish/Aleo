@@ -289,9 +289,9 @@ mod tests {
         let len = num_els * buffer_size::<C>(UseCompression::No);
         let mut out = vec![0; len];
         // Perform the decompression.
-        decompress_buffer::<C>(&mut out, &input, CheckForCorrectness::Yes, (0, num_els)).unwrap();
+        decompress_buffer::<C>(&mut out, &input, CheckForCorrectness::Full, (0, num_els)).unwrap();
         let deserialized = out
-            .read_batch::<C>(UseCompression::No, CheckForCorrectness::Yes)
+            .read_batch::<C>(UseCompression::No, CheckForCorrectness::Full)
             .unwrap();
         // Ensure they match.
         assert_eq!(deserialized, elements);

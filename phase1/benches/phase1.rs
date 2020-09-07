@@ -65,7 +65,7 @@ fn benchmark_computation(c: &mut Criterion) {
                         &mut output,
                         compressed_input,
                         compressed_output,
-                        CheckForCorrectness::Yes,
+                        CheckForCorrectness::Full,
                         &private_key,
                         &parameters,
                     )

@@ -42,7 +42,7 @@ pub fn setup_verify<E: PairingEngine>(
         &mut output,
         compressed_input,
         compressed_output,
-        CheckForCorrectness::Yes,
+        CheckForCorrectness::Full,
         &privkey,
         parameters,
     )

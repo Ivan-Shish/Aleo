@@ -58,14 +58,25 @@ impl<R: Read> Deserializer for R {
     fn read_element<G: AffineCurve>(
         &mut self,
         compression: UseCompression,
-        check_correctness: CheckForCorrectness,
+        check_for_correctness: CheckForCorrectness,
     ) -> Result<G> {
         let point = match compression {
             UseCompression::Yes => G::deserialize(self)?,
-            UseCompression::No => G::deserialize_uncompressed(self)?,
+            UseCompression::No => {
+                if check_for_correctness == CheckForCorrectness::OnlyNonZero
+                    || check_for_correctness == CheckForCorrectness::No
+                {
+                    G::deserialize_unchecked(self)?
+                } else {
+                    G::deserialize_uncompressed(self)?
+                }
+            }
         };
 
-        if check_correctness == CheckForCorrectness::Yes && point.is_zero() {
+        if (check_for_correctness == CheckForCorrectness::Full
+            || check_for_correctness == CheckForCorrectness::OnlyNonZero)
+            && point.is_zero()
+        {
             return Err(Error::PointAtInfinity);
         }
 
