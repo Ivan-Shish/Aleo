@@ -28,9 +28,12 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
+      - name: Install WASM
+        run: |
+          rustup target add wasm32-unknown-unknown --toolchain nightly
+          cargo install wasm-bindgen-cli
+
       - name: Run WASM tests
         run: |
           cd phase1-wasm
-          rustup target add wasm32-unknown-unknown --toolchain nightly
-          cargo install wasm-bindgen-cli
           cargo test --release --target wasm32-unknown-unknown --no-default-features --features wasm
