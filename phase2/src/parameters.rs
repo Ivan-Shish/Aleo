@@ -555,7 +555,7 @@ mod tests {
         let powers = 5;
         let batch = 16;
         let phase2_size = 7;
-        let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
+        let params = Phase1Parameters::<E>::new_full(ProvingSystem::Groth16, powers, batch);
         let accumulator = {
             let compressed = UseCompression::No;
             let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);

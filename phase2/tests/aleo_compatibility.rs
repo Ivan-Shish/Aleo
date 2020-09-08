@@ -30,7 +30,7 @@ where
 {
     let powers = 6; // Powers of tau
     let batch = 4;
-    let params = Phase1Parameters::<Zexe>::new(proving_system, powers, batch);
+    let params = Phase1Parameters::<Zexe>::new_full(proving_system, powers, batch);
     let compressed = UseCompression::Yes;
     // Make 1 power of tau contribution (assume powers of tau gets calculated properly).
     let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);

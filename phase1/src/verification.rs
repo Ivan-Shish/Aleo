@@ -59,7 +59,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 let beta_single_g1_check = &(key.beta_g1.0, key.beta_g1.1);
                 let beta_single_g2_check = &(beta_g2_s, key.beta_g2);
 
-                // Ensure the key ratios are correctly produced
+                // Ensure the key ratios are correctly produced.
                 {
                     // Check the proofs of knowledge for tau, alpha, and beta.
                     let check_ratios = &[
@@ -193,39 +193,57 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                 (g1_check, g2_check, g1_alpha_check)
             }
-            false => {
-                // Ensure that the initial conditions are correctly formed (first 2 elements)
-                // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
-                // We keep the values of the tau_g1 / tau_g2 elements for later use.
+            false => match parameters.proving_system {
+                ProvingSystem::Groth16 => {
+                    // Ensure that the initial conditions are correctly formed (first 2 elements)
+                    // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
+                    // We keep the values of the tau_g1 / tau_g2 elements for later use.
 
-                // Current iteration of tau_g1[0].
-                let after_g1 =
-                    read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
+                    // Current iteration of tau_g1[0].
+                    let after_g1 =
+                        read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
 
-                // Check tau_g1[0] is the prime subgroup generator.
-                if after_g1[0] != E::G1Affine::prime_subgroup_generator() {
-                    return Err(VerificationError::InvalidGenerator(ElementType::TauG1).into());
+                    // Mock tau_g2[0]. This is done to unify this logic with other modes.
+                    let g2 = E::G2Affine::prime_subgroup_generator();
+                    let after_g2 = vec![g2, g2];
+
+                    // Mock alpha_g1[0]. This is done to unify this logic with other modes.
+                    let g1 = E::G1Affine::prime_subgroup_generator();
+                    let after_alpha_g1 = vec![g1, g1];
+
+                    let g1_check = (after_g1[0], after_g1[1]);
+                    let g2_check = (after_g2[0], after_g2[1]);
+                    let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
+
+                    (g1_check, g2_check, g1_alpha_check)
                 }
+                ProvingSystem::Marlin => {
+                    // Ensure that the initial conditions are correctly formed (first 2 elements)
+                    // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
+                    // We keep the values of the tau_g1 / tau_g2 elements for later use.
 
-                // Current iteration of tau_g2[0].
-                let after_g2 =
-                    read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
+                    // Current iteration of tau_g1[0].
+                    let after_g1 =
+                        read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
 
-                // Check tau_g2[0] is the prime subgroup generator.
-                if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
-                    return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
+                    // Current iteration of tau_g2[0].
+                    let after_g2 =
+                        read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
+
+                    // Fetch the iteration of alpha_g1[0].
+                    let after_alpha_g1 = read_initial_elements::<E::G1Affine>(
+                        alpha_g1,
+                        compressed_output,
+                        check_output_for_correctness,
+                    )?;
+
+                    let g1_check = (after_g1[0], after_g1[1]);
+                    let g2_check = (after_g2[0], after_g2[1]);
+                    let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
+
+                    (g1_check, g2_check, g1_alpha_check)
                 }
-
-                // Fetch the iteration of alpha_g1[0]. This is done to unify this logic with Marlin mode.
-                let after_alpha_g1 =
-                    read_initial_elements::<E::G1Affine>(alpha_g1, compressed_output, check_output_for_correctness)?;
-
-                let g1_check = (after_g1[0], after_g1[1]);
-                let g2_check = (after_g2[0], after_g2[1]);
-                let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
-
-                (g1_check, g2_check, g1_alpha_check)
-            }
+            },
         };
 
         debug!("initial elements were computed correctly");
@@ -459,7 +477,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                         // TODO (howardwu): Convert this piece to chunked contribution mode.
                         {
-                            let powers_of_two_in_range = (0..parameters.size)
+                            let powers_of_two_in_range = (0..parameters.total_size_in_log2)
                                 .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i) + 2))
                                 .map(|(i, p)| (i, p as usize))
                                 .filter(|(_, p)| start_chunk <= *p && *p < end_chunk)
@@ -533,14 +551,14 @@ mod tests {
 
     use zexe_algebra::{Bls12_377, BW6_761};
 
-    fn curve_verification_test<E: PairingEngine>(
-        powers: usize,
+    fn full_verification_test<E: PairingEngine>(
+        total_size_in_log2: usize,
         batch: usize,
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
         for proving_system in &[ProvingSystem::Marlin] {
-            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, total_size_in_log2, batch);
 
             // allocate the input/output vectors
             let (input, _) = generate_input(&parameters, compressed_input, CheckForCorrectness::No);
@@ -645,384 +663,192 @@ mod tests {
     }
 
     fn chunk_verification_test<E: PairingEngine>(
-        powers: usize,
+        total_size_in_log2: usize,
         batch: usize,
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
         let correctness = CheckForCorrectness::Full;
 
-        let powers_length = 1 << powers;
-        let powers_g1_length = (powers_length << 1) - 1;
-        let num_chunks = (powers_g1_length + batch - 1) / batch;
-
         // TODO (howardwu): Uncomment after fixing Marlin mode.
         // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
         for proving_system in &[ProvingSystem::Groth16] {
+            let powers_length = 1 << total_size_in_log2;
+            let powers_g1_length = (powers_length << 1) - 1;
+            let num_chunks = (powers_g1_length + batch - 1) / batch;
+
             for chunk_index in 0..num_chunks {
+                // Generate a new parameter for this chunk.
                 let parameters = Phase1Parameters::<E>::new_chunk(
                     ContributionMode::Chunked,
                     chunk_index,
                     batch,
                     *proving_system,
-                    powers,
+                    total_size_in_log2,
                     batch,
                 );
 
-                // Allocate the input/output vectors
-                let (input, _) = generate_input(&parameters, compressed_input, correctness);
-                let mut output = generate_output(&parameters, compressed_output);
+                //
+                // First contributor computes a chunk.
+                //
 
-                // Construct our keypair
-                let current_accumulator_hash = blank_hash();
-                let mut rng = derive_rng_from_seed(b"test_verify_transformation 1");
-                let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
-                    .expect("could not generate keypair");
+                let output_1 = {
+                    // Start with an empty hash as this is the first time.
+                    let digest = blank_hash();
 
-                // Transform the accumulator
-                Phase1::computation(
-                    &input,
-                    &mut output,
-                    compressed_input,
-                    compressed_output,
-                    correctness,
-                    &privkey,
-                    &parameters,
-                )
-                .unwrap();
-                // Ensure that the key is not available to the verifier
-                drop(privkey);
+                    // Construct the first contributor's keypair.
+                    let (public_key_1, private_key_1) = {
+                        let mut rng = derive_rng_from_seed(b"test_verify_transformation 1");
+                        Phase1::<E>::key_generation(&mut rng, digest.as_ref()).expect("could not generate keypair")
+                    };
 
-                let res = Phase1::verification(
-                    &input,
-                    &output,
-                    &pubkey,
-                    &current_accumulator_hash,
-                    compressed_input,
-                    compressed_output,
-                    correctness,
-                    correctness,
-                    &parameters,
-                );
-                assert!(res.is_ok());
+                    // Allocate the input/output vectors
+                    let (input, _) = generate_input(&parameters, compressed_input, correctness);
+                    let mut output_1 = generate_output(&parameters, compressed_output);
 
-                // Subsequent participants must use the hash of the accumulator they received
-                let current_accumulator_hash = calculate_hash(&output);
-
-                let mut rng = derive_rng_from_seed(b"test_verify_transformation 2");
-                let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
-                    .expect("could not generate keypair");
-
-                // Generate a new output vector for the 2nd participant's contribution
-                let mut output_2 = generate_output(&parameters, compressed_output);
-
-                // We use the first output as input
-                Phase1::computation(
-                    &output,
-                    &mut output_2,
-                    compressed_output,
-                    compressed_output,
-                    correctness,
-                    &privkey,
-                    &parameters,
-                )
-                .unwrap();
-                // Ensure that the key is not available to the verifier
-                drop(privkey);
-
-                let res = Phase1::verification(
-                    &output,
-                    &output_2,
-                    &pubkey,
-                    &current_accumulator_hash,
-                    compressed_output,
-                    compressed_output,
-                    correctness,
-                    correctness,
-                    &parameters,
-                );
-                assert!(res.is_ok());
-
-                if parameters.chunk_index == 0 {
-                    // Verification will fail if the old hash is used
-                    let res = Phase1::verification(
-                        &output,
-                        &output_2,
-                        &pubkey,
-                        &blank_hash(),
-                        compressed_output,
+                    // Compute a chunked contribution.
+                    Phase1::computation(
+                        &input,
+                        &mut output_1,
+                        compressed_input,
                         compressed_output,
                         correctness,
-                        correctness,
+                        &private_key_1,
                         &parameters,
+                    )
+                    .unwrap();
+                    // Ensure that the key is not available to the verifier.
+                    drop(private_key_1);
+
+                    // Verify that the chunked contribution is correct.
+                    assert!(
+                        Phase1::verification(
+                            &input,
+                            &output_1,
+                            &public_key_1,
+                            &digest,
+                            compressed_input,
+                            compressed_output,
+                            correctness,
+                            correctness,
+                            &parameters,
+                        )
+                        .is_ok()
                     );
-                    assert!(res.is_err());
-                }
 
-                /* TODO(kobi): bring back test
-                // Verification will fail if even 1 byte is modified
-                output_2[100] = 0;
-                let res = BatchedAccumulator::verify_transformation(
-                    &output,
-                    &output_2,
-                    &pubkey,
-                    &current_accumulator_hash,
-                    compressed_output,
-                    compressed_output,
-                    correctness,
-                    correctness,
-                    &parameters,
-                );
-                assert!(res.is_err());
-                 */
-            }
-        }
-    }
+                    output_1
+                };
 
-    // TODO (howardwu): Move to aggregation.rs
-    fn full_verification_test<E: PairingEngine>(
-        powers: usize,
-        batch: usize,
-        compressed_input: UseCompression,
-        compressed_output: UseCompression,
-        use_wrong_chunks: bool,
-    ) {
-        let correctness = CheckForCorrectness::Full;
+                //
+                // Second contributor computes a chunk.
+                //
 
-        let powers_length = 1 << powers;
-        let powers_g1_length = (powers_length << 1) - 1;
-        let num_chunks = (powers_g1_length + batch - 1) / batch;
+                let (output_2, public_key_2, digest) = {
+                    // Note subsequent participants must use the hash of the accumulator they received.
+                    let digest = calculate_hash(&output_1);
 
-        let mut chunks_participant_2: Vec<Vec<u8>> = vec![];
+                    // Construct the second contributor's keypair, based on the first contributor's output.
+                    let (public_key_2, private_key_2) = {
+                        let mut rng = derive_rng_from_seed(b"test_verify_transformation 2");
+                        Phase1::key_generation(&mut rng, digest.as_ref()).expect("could not generate keypair")
+                    };
 
-        // TODO (howardwu): Uncomment after fixing Marlin mode.
-        // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-        for proving_system in &[ProvingSystem::Groth16] {
-            for chunk_index in 0..num_chunks {
-                let parameters = Phase1Parameters::<E>::new_chunk(
-                    ContributionMode::Chunked,
-                    chunk_index,
-                    batch,
-                    *proving_system,
-                    powers,
-                    batch,
-                );
+                    // Generate a new output vector for the second contributor.
+                    let mut output_2 = generate_output(&parameters, compressed_output);
 
-                // Allocate the input/output vectors
-                let (input, _) = generate_input(&parameters, compressed_input, correctness);
-                let mut output = generate_output(&parameters, compressed_output);
+                    // Compute a chunked contribution, based on the first contributor's output.
+                    Phase1::computation(
+                        &output_1,
+                        &mut output_2,
+                        compressed_output,
+                        compressed_output,
+                        correctness,
+                        &private_key_2,
+                        &parameters,
+                    )
+                    .unwrap();
+                    // Ensure that the key is not available to the verifier.
+                    drop(private_key_2);
 
-                // Construct our keypair
-                let current_accumulator_hash = blank_hash();
-                let mut rng = derive_rng_from_seed(b"test_verify_transformation 1");
-                let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
-                    .expect("could not generate keypair");
+                    // Verify that the chunked contribution is correct.
+                    assert!(
+                        Phase1::verification(
+                            &output_1,
+                            &output_2,
+                            &public_key_2,
+                            &digest,
+                            compressed_output,
+                            compressed_output,
+                            correctness,
+                            correctness,
+                            &parameters,
+                        )
+                        .is_ok()
+                    );
 
-                // Transform the accumulator
-                Phase1::computation(
-                    &input,
-                    &mut output,
-                    compressed_input,
-                    compressed_output,
-                    correctness,
-                    &privkey,
-                    &parameters,
-                )
-                .unwrap();
-                // ensure that the key is not available to the verifier
-                drop(privkey);
-
-                let res = Phase1::verification(
-                    &input,
-                    &output,
-                    &pubkey,
-                    &current_accumulator_hash,
-                    compressed_input,
-                    compressed_output,
-                    correctness,
-                    correctness,
-                    &parameters,
-                );
-                assert!(res.is_ok());
-
-                // subsequent participants must use the hash of the accumulator they received
-                let current_accumulator_hash = calculate_hash(&output);
-
-                let mut rng = derive_rng_from_seed(b"test_verify_transformation 2");
-                let (pubkey, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
-                    .expect("could not generate keypair");
-
-                // generate a new output vector for the 2nd participant's contribution
-                let mut output_2 = generate_output(&parameters, compressed_output);
-                // we use the first output as input
-                Phase1::computation(
-                    &output,
-                    &mut output_2,
-                    compressed_output,
-                    compressed_output,
-                    correctness,
-                    &privkey,
-                    &parameters,
-                )
-                .unwrap();
-                // ensure that the key is not available to the verifier
-                drop(privkey);
-                if use_wrong_chunks {
-                    if chunk_index == 1 {
-                        let chunk_0_contribution: Vec<u8> = (*chunks_participant_2.iter().last().unwrap()).to_vec();
-                        chunks_participant_2.push(chunk_0_contribution);
-                    } else {
-                        chunks_participant_2.push(output_2.clone());
+                    // Verification will fail if the old hash is used.
+                    if parameters.chunk_index == 0 {
+                        assert!(
+                            Phase1::verification(
+                                &output_1,
+                                &output_2,
+                                &public_key_2,
+                                &blank_hash(),
+                                compressed_output,
+                                compressed_output,
+                                correctness,
+                                correctness,
+                                &parameters,
+                            )
+                            .is_err()
+                        );
                     }
-                } else {
-                    chunks_participant_2.push(output_2.clone());
-                }
 
-                let res = Phase1::verification(
-                    &output,
-                    &output_2,
-                    &pubkey,
-                    &current_accumulator_hash,
-                    compressed_output,
-                    compressed_output,
-                    correctness,
-                    correctness,
-                    &parameters,
-                );
-                assert!(res.is_ok());
+                    // Verification will fail if even 1 byte is modified.
+                    {
+                        output_2[100] = 0;
+                        assert!(
+                            Phase1::verification(
+                                &output_1,
+                                &output_2,
+                                &public_key_2,
+                                &digest,
+                                compressed_output,
+                                compressed_output,
+                                correctness,
+                                correctness,
+                                &parameters,
+                            )
+                            .is_err()
+                        );
+                    }
 
-                if parameters.chunk_index == 0 {
-                    // Verification will fail if the old hash is used
-                    let res = Phase1::verification(
-                        &output,
-                        &output_2,
-                        &pubkey,
-                        &blank_hash(),
-                        compressed_output,
-                        compressed_output,
-                        correctness,
-                        correctness,
-                        &parameters,
-                    );
-                    assert!(res.is_err());
-                }
+                    (output_2, public_key_2, digest)
+                };
             }
-
-            // TODO (howardwu): Fix this.
-
-            // // Aggregate the right ones. Combining and verification should work.
-            // let chunks_participant_2 = chunks_participant_2
-            //     .iter()
-            //     .map(|v| (v.as_slice(), compressed_output))
-            //     .collect::<Vec<_>>();
-            // let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
-            // let mut output = generate_output(&parameters, compressed_output);
-            //
-            // let parameters =
-            //     Phase1Parameters::<E>::new_chunk(ContributionMode::Chunked, 0, batch, *proving_system, powers, batch);
-            // Phase1::aggregation(
-            //     &chunks_participant_2,
-            //     (&mut output, compressed_output),
-            //     &parameters,
-            // )
-            //     .unwrap();
-            //
-            // let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
-            // Phase1::verification(
-            //     (&mut output, compressed_output, CheckForCorrectness::No),
-            //     &parameters,
-            // )
-            //     .unwrap();
-            //
-            // let res = Phase1::verification(
-            //     &output,
-            //     &output,
-            //     &pubkey,
-            //     &current_accumulator_hash,
-            //     compressed_output,
-            //     compressed_output,
-            //     correctness,
-            //     correctness,
-            //     &parameters,
-            // );
-            // assert!(res.is_ok());
         }
     }
 
     #[test]
     fn test_verification_bls12_377() {
-        curve_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::Yes);
-        curve_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::No);
-        curve_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::No);
-        curve_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::Yes);
+        full_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::Yes);
+        full_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::No);
+        full_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::No);
+        full_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::Yes);
     }
 
     #[test]
     fn test_verification_bw6_761() {
-        curve_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::Yes);
-        curve_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::No);
-        curve_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::No);
-        curve_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::Yes);
+        full_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::Yes);
+        full_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::No);
+        full_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::No);
+        full_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::Yes);
     }
 
-    // #[test]
-    // fn test_chunk_verification_bls12_377() {
-    //     chunk_verification_test::<Bls12_377>(
-    //         2,
-    //         2,
-    //         UseCompression::Yes,
-    //         UseCompression::Yes,
-    //     );
-    //     chunk_verification_test::<Bls12_377>(2, 2, UseCompression::No, UseCompression::No);
-    //     chunk_verification_test::<Bls12_377>(
-    //         2,
-    //         2,
-    //         UseCompression::Yes,
-    //         UseCompression::No,
-    //     );
-    // }
-    //
-    // #[test]
-    // #[should_panic]
-    // fn test_full_verification_bls12_377_wrong_chunks() {
-    //     full_verification_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::No,
-    //         UseCompression::Yes,
-    //         true,
-    //     );
-    // }
-    //
-    // #[test]
-    // fn test_full_verification_bls12_377() {
-    //     full_verification_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::Yes,
-    //         UseCompression::Yes,
-    //         false,
-    //     );
-    //     full_verification_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::Yes,
-    //         UseCompression::Yes,
-    //         false,
-    //     );
-    //     full_verification_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::No,
-    //         UseCompression::No,
-    //         false,
-    //     );
-    //     full_verification_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::Yes,
-    //         UseCompression::No,
-    //         false,
-    //     );
-    // }
+    #[test]
+    fn test_chunk_verification_bls12_377() {
+        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::Yes);
+        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::No, UseCompression::No);
+        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::No);
+    }
 }

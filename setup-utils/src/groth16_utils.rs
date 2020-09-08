@@ -295,7 +295,7 @@ mod tests {
         }
 
         let batch = ((1 << powers) << 1) - 1;
-        let params = Phase1Parameters::<E>::new(ProvingSystem::Groth16, powers, batch);
+        let params = Phase1Parameters::<E>::new_full(ProvingSystem::Groth16, powers, batch);
         let (_, output, _, _) = setup_verify(
             compat(compressed),
             compat_correctness(CheckForCorrectness::Full),

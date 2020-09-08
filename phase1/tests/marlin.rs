@@ -40,7 +40,7 @@ mod test {
     fn test_marlin_posw_bls12_377() {
         let powers = 19usize;
         let batch = 1usize << 16;
-        let parameters = Phase1Parameters::<ZexeBls12_377>::new(ProvingSystem::Marlin, powers, batch);
+        let parameters = Phase1Parameters::<ZexeBls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
 
         // Get a non-mutable copy of the initial accumulator state.
@@ -169,7 +169,7 @@ mod test {
     fn test_marlin_sonic_pc() {
         let powers = 16usize;
         let batch = 1usize << 12;
-        let parameters = Phase1Parameters::<ZexeBls12_377>::new(ProvingSystem::Marlin, powers, batch);
+        let parameters = Phase1Parameters::<ZexeBls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
 
         // Get a non-mutable copy of the initial accumulator state.

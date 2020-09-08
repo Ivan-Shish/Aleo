@@ -10,8 +10,6 @@ mod initialization;
 mod key_generation;
 mod serialization;
 
-use crate::helpers::accumulator::{self};
-
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         mod aggregation;
@@ -22,7 +20,10 @@ cfg_if! {
     }
 }
 
-use crate::helpers::buffers::*;
+use crate::helpers::{
+    accumulator::{self},
+    buffers::*,
+};
 use setup_utils::*;
 
 use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand};

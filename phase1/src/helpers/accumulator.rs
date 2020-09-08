@@ -230,9 +230,9 @@ cfg_if! {
                         alpha_g1,
                         in_alpha_g1,
                         check_input_for_correctness,
-                        (0, num_alpha_powers + 3*parameters.size),
+                        (0, num_alpha_powers + 3*parameters.total_size_in_log2),
                     )?;
-                    decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.size + 2))?;
+                    decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.total_size_in_log2 + 2))?;
 
                     rayon::scope(|t| {
                          t.spawn(|_| {

@@ -28,7 +28,7 @@ fn benchmark_initialization(c: &mut Criterion) {
                     group.sample_size(10);
                 }
 
-                let parameters = Phase1Parameters::<Bls12_377>::new(proof_system, power, power);
+                let parameters = Phase1Parameters::<Bls12_377>::new_full(proof_system, power, power);
                 let expected_challenge_length = parameters.get_length(*compression);
 
                 // count in `other` powers (G1 will be 2x that)
@@ -58,7 +58,7 @@ fn benchmark_computation(c: &mut Criterion) {
     // We gather data on various sizes.
     for power in 4..8 {
         for proof_system in proving_system {
-            let parameters = Phase1Parameters::<Bls12_377>::new(proof_system, power, batch);
+            let parameters = Phase1Parameters::<Bls12_377>::new_full(proof_system, power, batch);
 
             let (input, _) = generate_input(&parameters, compressed_input, correctness);
             let mut output = vec![0; parameters.get_length(compressed_output)];
@@ -116,7 +116,7 @@ fn benchmark_verification(c: &mut Criterion) {
     for power in powers {
         for (compressed_input, compressed_output) in compression {
             for proof_system in proving_system {
-                let parameters = Phase1Parameters::<Bls12_377>::new(proof_system, power, batch);
+                let parameters = Phase1Parameters::<Bls12_377>::new_full(proof_system, power, batch);
 
                 let (input, output, pubkey, current_accumulator_hash) =
                     setup_verify(*compressed_input, correctness, *compressed_output, &parameters);
