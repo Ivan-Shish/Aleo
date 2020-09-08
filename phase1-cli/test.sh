@@ -1,9 +1,9 @@
 #!/bin/sh
 
-rm challenge*
-rm response*
-rm transcript
-rm tmp_*
+rm challenge* || echo "no challenge files to remove"
+rm response* || echo "no response files to remove"
+rm transcript || echo "no transcript files to remove"
+rm tmp_* || echo "no temporary files to remove"
 
 set -e
 
