@@ -1,3 +1,7 @@
+// Documentation
+#![cfg_attr(nightly, feature(doc_cfg, external_doc))]
+#![cfg_attr(nightly, doc(include = "../README.md"))]
+
 mod new_challenge;
 pub use new_challenge::new_challenge;
 
@@ -7,8 +11,10 @@ pub use contribute::contribute;
 mod transform;
 pub use transform::transform;
 
-use crate::{curve_from_str, proving_system_from_str, CurveKind};
-use phase1::ProvingSystem;
+use phase1::{
+    helpers::{curve_from_str, proving_system_from_str, CurveKind},
+    ProvingSystem,
+};
 
 use gumdrop::Options;
 use std::default::Default;

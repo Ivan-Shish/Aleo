@@ -1,0 +1,11 @@
+[package]
+name = "phase1-coordinator"
+version = "0.3.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "Coordinator implementation of Phase 1"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "MIT/Apache-2.0"
+edition = "2018"
+
+[dependencies]

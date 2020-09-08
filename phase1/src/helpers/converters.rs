@@ -1,18 +1,4 @@
-// Documentation
-#![cfg_attr(nightly, feature(doc_cfg, external_doc))]
-#![cfg_attr(nightly, doc(include = "../README.md"))]
-
-#[cfg(target_arch = "wasm32")]
-#[macro_use]
-extern crate serde_derive;
-
-#[cfg(feature = "cli")]
-pub mod cli;
-
-#[cfg(target_arch = "wasm32")]
-pub mod wasm;
-
-use phase1::ProvingSystem;
+use crate::ProvingSystem;
 
 #[derive(Debug, Clone)]
 pub enum CurveKind {
