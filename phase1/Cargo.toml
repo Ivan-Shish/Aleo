@@ -2,7 +2,7 @@
 name = "phase1"
 version = "0.3.0"
 authors = ["Sean Bowe", "Alex Vlasov", "The Aleo Team <hello@aleo.org>"]
-description = "Communal zk-SNARK MPC for Public Parameters"
+description = "Core logic for Phase 1"
 homepage = "https://github.com/AleoHQ/aleo-setup"
 repository = "https://github.com/AleoHQ/aleo-setup"
 license = "MIT/Apache-2.0"

@@ -10,29 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aleo-setup1"
-version = "0.3.0"
-dependencies = [
- "algebra",
- "cfg-if",
- "console_error_panic_hook",
- "gumdrop",
- "hex-literal",
- "memmap",
- "phase1",
- "rand 0.7.3",
- "rand_xorshift",
- "rustc_version",
- "serde",
- "serde_derive",
- "setup-utils",
- "tracing",
- "tracing-subscriber",
- "wasm-bindgen",
- "wasm-bindgen-test",
-]
-
-[[package]]
 name = "aleo-setup2"
 version = "0.3.0"
 dependencies = [
@@ -1084,6 +1061,49 @@ dependencies = [
  "snarkos-utilities",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "phase1-cli"
+version = "0.3.0"
+dependencies = [
+ "algebra",
+ "cfg-if",
+ "gumdrop",
+ "hex-literal",
+ "memmap",
+ "phase1",
+ "rand 0.7.3",
+ "rand_xorshift",
+ "rustc_version",
+ "setup-utils",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "phase1-coordinator"
+version = "0.3.0"
+
+[[package]]
+name = "phase1-wasm"
+version = "0.3.0"
+dependencies = [
+ "algebra",
+ "cfg-if",
+ "console_error_panic_hook",
+ "phase1",
+ "rand 0.7.3",
+ "rand_xorshift",
+ "rustc_version",
+ "serde",
+ "serde_derive",
+ "setup-utils",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
