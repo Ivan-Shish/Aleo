@@ -81,6 +81,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 t.spawn(|_| {
                                     let _ = span.enter();
 
+                                    // Check that the chunk is of nonzero length.
+                                    assert!(tau_g1_inputs.len() > 0);
+
                                     apply_powers::<E::G1Affine>(
                                         (tau_g1_outputs, compressed_output),
                                         (tau_g1_inputs, compressed_input, check_input_for_correctness),
@@ -117,6 +120,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         t.spawn(|_| {
                                             let _ = span.enter();
 
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(tau_g2_inputs.len() > 0);
+
                                             apply_powers::<E::G2Affine>(
                                                 (tau_g2_outputs, compressed_output),
                                                 (tau_g2_inputs, compressed_input, check_input_for_correctness),
@@ -132,6 +138,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         t.spawn(|_| {
                                             let _ = span.enter();
 
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(alpha_g1_inputs.len() > 0);
+
                                             apply_powers::<E::G1Affine>(
                                                 (alpha_g1_outputs, compressed_output),
                                                 (alpha_g1_inputs, compressed_input, check_input_for_correctness),
@@ -146,6 +155,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                         t.spawn(|_| {
                                             let _ = span.enter();
+
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(beta_g1_inputs.len() > 0);
 
                                             apply_powers::<E::G1Affine>(
                                                 (beta_g1_outputs, compressed_output),
@@ -171,7 +183,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             }
             // TODO (howardwu): Convert this piece to chunked contribution mode.
             ProvingSystem::Marlin => {
-                let degree_bound_powers = (0..parameters.size)
+                let degree_bound_powers = (0..parameters.total_size_in_log2)
                     .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                     .collect::<Vec<_>>();
 
@@ -182,7 +194,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 apply_powers::<E::G2Affine>(
                     (tau_g2_outputs, compressed_output),
                     (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (2, parameters.size + 2),
+                    (2, parameters.total_size_in_log2 + 2),
                     &g2_inverse_powers,
                     None,
                 )
@@ -197,7 +209,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 apply_powers::<E::G1Affine>(
                     (alpha_g1_outputs, compressed_output),
                     (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                    (3, 3 + 3 * parameters.size),
+                    (3, 3 + 3 * parameters.total_size_in_log2),
                     &g1_degree_powers,
                     Some(&key.alpha),
                 )
@@ -285,8 +297,6 @@ mod tests {
 
     use zexe_algebra::{Bls12_377, ProjectiveCurve, BW6_761};
 
-    use rand::thread_rng;
-
     fn curve_computation_test<E: PairingEngine>(
         powers: usize,
         batch: usize,
@@ -296,7 +306,7 @@ mod tests {
         let input_correctness = CheckForCorrectness::Full;
 
         for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, powers, batch);
             let expected_response_length = parameters.get_length(compressed_output);
 
             // Get a non-mutable copy of the initial accumulator state.
@@ -361,7 +371,7 @@ mod tests {
                     )
                     .unwrap();
 
-                    let degree_bound_powers = (0..parameters.size)
+                    let degree_bound_powers = (0..parameters.total_size_in_log2)
                         .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                         .collect::<Vec<_>>();
                     let mut g2_inverse_powers = degree_bound_powers.clone();
@@ -369,7 +379,7 @@ mod tests {
                     batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
                     batch_exp(
                         &mut before.tau_powers_g2[2..],
-                        &g2_inverse_powers[0..parameters.size],
+                        &g2_inverse_powers[0..parameters.total_size_in_log2],
                         None,
                     )
                     .unwrap();
@@ -380,7 +390,7 @@ mod tests {
                         .flatten()
                         .collect::<Vec<_>>();
                     batch_exp(
-                        &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.size],
+                        &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.total_size_in_log2],
                         &g1_degree_powers,
                         Some(&privkey.alpha),
                     )

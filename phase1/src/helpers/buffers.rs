@@ -70,7 +70,8 @@ pub(crate) fn apply_powers<C: AffineCurve>(
 ) -> Result<()> {
     let in_size = buffer_size::<C>(input_compressed);
     let out_size = buffer_size::<C>(output_compressed);
-    // read the input
+
+    // Read the input
     let mut elements =
         &mut input[start * in_size..end * in_size].read_batch::<C>(input_compressed, check_input_for_correctness)?;
     // calculate the powers
@@ -161,8 +162,8 @@ pub(crate) fn split_mut<'a, E: PairingEngine>(
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
             let g1_chunk_size = parameters.g1_chunk_size;
-            let g2_chunk_size = parameters.size + 2;
-            let alpha_chunk_size = 3 + 3 * parameters.size;
+            let g2_chunk_size = parameters.total_size_in_log2 + 2;
+            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
 
             let (_, others) = buffer.split_at_mut(parameters.hash_size);
             let (tau_g1, others) = others.split_at_mut(g1_size * g1_chunk_size);
@@ -196,6 +197,9 @@ pub(crate) fn split<'a, E: PairingEngine>(
             let (alpha_g1, others) = others.split_at(g1_size * other_chunk_size);
             let (beta_g1, beta_g2) = others.split_at(g1_size * other_chunk_size);
 
+            // Check that tau_g1 is not empty.
+            assert!(tau_g1.len() > 0);
+
             // We take up to g2_size for beta_g2, since there might be other
             // elements after it at the end of the buffer.
             (tau_g1, tau_g2, alpha_g1, beta_g1, &beta_g2[0..g2_size])
@@ -205,13 +209,16 @@ pub(crate) fn split<'a, E: PairingEngine>(
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
             let g1_chunk_size = parameters.g1_chunk_size;
-            let g2_chunk_size = parameters.size + 2;
-            let alpha_chunk_size = 3 + 3 * parameters.size;
+            let g2_chunk_size = parameters.total_size_in_log2 + 2;
+            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
 
             let (_, others) = buffer.split_at(parameters.hash_size);
             let (tau_g1, others) = others.split_at(g1_size * g1_chunk_size);
             let (tau_g2, others) = others.split_at(g2_size * g2_chunk_size);
             let (alpha_g1, _) = others.split_at(g1_size * alpha_chunk_size);
+
+            // Check that tau_g1 is not empty.
+            assert!(tau_g1.len() > 0);
 
             (tau_g1, tau_g2, alpha_g1, &[], &[])
         }

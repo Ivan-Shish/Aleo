@@ -65,7 +65,7 @@ pub struct Phase1Parameters<E> {
     pub powers_length: usize,
     /// The circuit size exponent (ie length will be 2^size),
     /// depends on the computation you want to support.
-    pub size: usize,
+    pub total_size_in_log2: usize,
     /// The size of each chunk.
     pub batch_size: usize,
     /// Size of the used public key
@@ -81,9 +81,17 @@ pub struct Phase1Parameters<E> {
 impl<E: PairingEngine> Phase1Parameters<E> {
     /// Constructs a new ceremony parameters object from the type of provided curve
     /// Panics if given batch_size = 0
-    pub fn new(proving_system: ProvingSystem, size: usize, batch_size: usize) -> Self {
+    pub fn new_full(proving_system: ProvingSystem, total_size_in_log2: usize, batch_size: usize) -> Self {
         let curve = CurveParameters::<E>::new();
-        Self::new_with_curve(ContributionMode::Full, 0, 0, curve, proving_system, size, batch_size)
+        Self::new(
+            ContributionMode::Full,
+            0,
+            0,
+            curve,
+            proving_system,
+            total_size_in_log2,
+            batch_size,
+        )
     }
 
     /// Constructs a new ceremony parameters object for a chunk from the type of provided curve
@@ -93,48 +101,42 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         chunk_index: usize,
         chunk_size: usize,
         proving_system: ProvingSystem,
-        size: usize,
+        total_size_in_log2: usize,
         batch_size: usize,
     ) -> Self {
         // create the curve
         let curve = CurveParameters::<E>::new();
-        Self::new_with_curve(
+        Self::new(
             contribution_mode,
             chunk_index,
             chunk_size,
             curve,
             proving_system,
-            size,
+            total_size_in_log2,
             batch_size,
         )
     }
 
     /// Constructs a new ceremony parameters object from the directly provided curve with parameters
     /// Consider using the `new` method if you want to use one of the pre-implemented curves
-    pub fn new_with_curve(
+    pub fn new(
         contribution_mode: ContributionMode,
         chunk_index: usize,
         chunk_size: usize,
         curve: CurveParameters<E>,
         proving_system: ProvingSystem,
-        size: usize,
+        total_size_in_log2: usize,
         batch_size: usize,
     ) -> Self {
         // assume we're using a 64 byte long hash function such as Blake
         let hash_size = 64;
 
-        // 2^{size}
-        let powers_length = 1 << size;
-        // 2^{size+1} - 1
-        let powers_g1_length = (powers_length << 1) - 1;
-
         let (g1_chunk_size, other_chunk_size) = Self::chunk_sizes(
             contribution_mode,
-            chunk_size,
             chunk_index,
+            chunk_size,
             proving_system,
-            powers_g1_length,
-            powers_length,
+            total_size_in_log2,
         );
 
         let accumulator_size = match proving_system {
@@ -157,9 +159,9 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                 // G1 Tau powers
                 g1_chunk_size * curve.g1_size +
                     // Alpha in G1
-                    (3 * curve.g1_size) + (3 * size*curve.g1_size) +
+                    (3 * curve.g1_size) + (3 * total_size_in_log2 *curve.g1_size) +
                     // G2 1/Tau Powers
-                    (size + 2) * curve.g2_size +
+                    (total_size_in_log2 + 2) * curve.g2_size +
                     // Hash of the previous contribution
                     hash_size
             }
@@ -193,15 +195,21 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                 // G1 Tau powers (compressed)
                 g1_chunk_size * curve.g1_compressed_size +
                     // Alpha in G1
-                    (3 * curve.g1_compressed_size) +  (3 * size * curve.g1_compressed_size) +
+                    (3 * curve.g1_compressed_size) +  (3 * total_size_in_log2 * curve.g1_compressed_size) +
                     // G2 1/Tau Powers
-                    (size + 2) * curve.g2_compressed_size +
+                    (total_size_in_log2 + 2) * curve.g2_compressed_size +
                     // Hash of the previous contribution
                     hash_size +
                     // The public key of the previous contributor
                     public_key_size
             }
         };
+
+        // TODO (howardwu): Remove this.
+        // 2^{size}
+        let powers_length = 1 << total_size_in_log2;
+        // 2^{size+1} - 1
+        let powers_g1_length = (powers_length << 1) - 1;
 
         Self {
             contribution_mode,
@@ -213,7 +221,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             other_chunk_size,
             powers_g1_length,
             powers_length,
-            size,
+            total_size_in_log2,
             batch_size,
             accumulator_size,
             public_key_size,
@@ -228,13 +236,13 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         chunk_index: usize,
         chunk_size: usize,
     ) -> Self {
-        Self::new_with_curve(
+        Self::new(
             contribution_mode,
             chunk_index,
             chunk_size,
             self.curve.clone(),
             self.proving_system,
-            self.size,
+            self.total_size_in_log2,
             self.batch_size,
         )
     }
@@ -252,9 +260,13 @@ impl<E: PairingEngine> Phase1Parameters<E> {
         chunk_index: usize,
         chunk_size: usize,
         proving_system: ProvingSystem,
-        powers_g1_length: usize,
-        powers_length: usize,
+        total_size_in_log2: usize,
     ) -> (usize, usize) {
+        // 2^{size}
+        let powers_length = 1 << total_size_in_log2;
+        // 2^{size+1} - 1
+        let powers_g1_length = (powers_length << 1) - 1;
+
         // Determine the number of elements to process based on the proof system's requirement.
         let upper_bound = match proving_system {
             ProvingSystem::Groth16 => powers_g1_length,
@@ -297,7 +309,7 @@ mod tests {
     use super::*;
     use zexe_algebra::{Bls12_377, Bls12_381, BW6_761};
 
-    fn curve_params_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
+    fn curve_parameters_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
         let p = CurveParameters::<E>::new();
         assert_eq!(p.g1_size, g1);
         assert_eq!(p.g2_size, g2);
@@ -307,8 +319,8 @@ mod tests {
 
     #[test]
     fn test_parameter_sizes() {
-        curve_params_test::<Bls12_377>(96, 192, 48, 96);
-        curve_params_test::<Bls12_381>(96, 192, 48, 96);
-        curve_params_test::<BW6_761>(192, 192, 96, 96);
+        curve_parameters_test::<Bls12_377>(96, 192, 48, 96);
+        curve_parameters_test::<Bls12_381>(96, 192, 48, 96);
+        curve_parameters_test::<BW6_761>(192, 192, 96, 96);
     }
 }

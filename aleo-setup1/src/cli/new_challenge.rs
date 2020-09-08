@@ -11,7 +11,7 @@ const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
 pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Phase1Parameters<T>) {
     println!(
         "Will generate an empty accumulator for 2^{} powers of tau",
-        parameters.size
+        parameters.total_size_in_log2
     );
     println!("In total will generate up to {} powers", parameters.powers_g1_length);
 

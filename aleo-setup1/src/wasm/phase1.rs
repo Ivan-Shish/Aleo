@@ -60,7 +60,7 @@ pub fn get_parameters<E: PairingEngine>(
     power: usize,
     batch_size: usize,
 ) -> Phase1Parameters<E> {
-    Phase1Parameters::<E>::new(proving_system, power, batch_size)
+    Phase1Parameters::<E>::new_full(proving_system, power, batch_size)
 }
 
 pub fn contribute_challenge<E: PairingEngine + Sync>(
@@ -208,14 +208,14 @@ mod tests {
                     None,
                 )
                 .unwrap();
-                let mut g2_inverse_powers = (0..parameters.size)
+                let mut g2_inverse_powers = (0..parameters.total_size_in_log2)
                     .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
                     .collect::<Vec<_>>();
                 batch_inversion(&mut g2_inverse_powers);
                 batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
                 batch_exp(
                     &mut before.tau_powers_g2[2..],
-                    &g2_inverse_powers[0..parameters.size],
+                    &g2_inverse_powers[0..parameters.total_size_in_log2],
                     None,
                 )
                 .unwrap();

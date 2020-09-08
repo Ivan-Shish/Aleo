@@ -21,7 +21,7 @@ pub fn transform<T: Engine + Sync>(
 ) {
     println!(
         "Will verify and decompress a contribution to accumulator for 2^{} powers of tau",
-        parameters.size
+        parameters.total_size_in_log2
     );
 
     // Try to load challenge file from disk.
