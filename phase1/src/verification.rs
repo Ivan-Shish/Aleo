@@ -235,25 +235,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
 
-                            match parameters.contribution_mode {
-                                ContributionMode::Chunked => {
-                                    check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
-                                        (tau_g1, compressed_output),
-                                        (start_chunk, end_chunk),
-                                        &mut g1,
-                                    )
-                                    .expect("could not check element are non zero and in prime order subgroup");
-                                }
-                                ContributionMode::Full => {
-                                    check_power_ratios::<E>(
-                                        (tau_g1, compressed_output, check_output_for_correctness),
-                                        (start_chunk, end_chunk),
-                                        &mut g1,
-                                        &g2_check,
-                                    )
-                                    .expect("could not check ratios for tau_g1 elements");
-                                }
-                            };
+                            check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
+                                (tau_g1, compressed_output),
+                                (start_chunk, end_chunk),
+                                &mut g1,
+                            )
+                            .expect("could not check element are non zero and in prime order subgroup");
 
                             trace!("tau_g1 verification was successful");
                         });
@@ -286,25 +273,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
 
-                                    match parameters.contribution_mode {
-                                        ContributionMode::Chunked => {
-                                            check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G2Affine>(
-                                                (tau_g2, compressed_output),
-                                                (start_chunk, end_chunk),
-                                                &mut g2,
-                                            )
-                                            .expect("could not check element are non zero and in prime order subgroup");
-                                        }
-                                        ContributionMode::Full => {
-                                            check_power_ratios_g2::<E>(
-                                                (tau_g2, compressed_output, check_output_for_correctness),
-                                                (start_chunk, end_chunk),
-                                                &mut g2,
-                                                &g1_check,
-                                            )
-                                            .expect("could not check ratios for tau_g2 elements");
-                                        }
-                                    };
+                                    check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G2Affine>(
+                                        (tau_g2, compressed_output),
+                                        (start_chunk, end_chunk),
+                                        &mut g2,
+                                    )
+                                    .expect("could not check element are non zero and in prime order subgroup");
 
                                     trace!("tau_g2 verification was successful");
                                 });
@@ -315,25 +289,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
 
-                                    match parameters.contribution_mode {
-                                        ContributionMode::Chunked => {
-                                            check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
-                                                (alpha_g1, compressed_output),
-                                                (start_chunk, end_chunk),
-                                                &mut g1,
-                                            )
-                                            .expect("could not check element are non zero and in prime order subgroup");
-                                        }
-                                        ContributionMode::Full => {
-                                            check_power_ratios::<E>(
-                                                (alpha_g1, compressed_output, check_output_for_correctness),
-                                                (start_chunk, end_chunk),
-                                                &mut g1,
-                                                &g2_check,
-                                            )
-                                            .expect("could not check ratios for alpha_g1 elements");
-                                        }
-                                    };
+                                    check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
+                                        (alpha_g1, compressed_output),
+                                        (start_chunk, end_chunk),
+                                        &mut g1,
+                                    )
+                                    .expect("could not check element are non zero and in prime order subgroup");
 
                                     trace!("alpha_g1 verification was successful");
                                 });
@@ -344,25 +305,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                                     let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
 
-                                    match parameters.contribution_mode {
-                                        ContributionMode::Chunked => {
-                                            check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
-                                                (beta_g1, compressed_output),
-                                                (start_chunk, end_chunk),
-                                                &mut g1,
-                                            )
-                                            .expect("could not check element are non zero and in prime order subgroup");
-                                        }
-                                        ContributionMode::Full => {
-                                            check_power_ratios::<E>(
-                                                (beta_g1, compressed_output, check_output_for_correctness),
-                                                (start_chunk, end_chunk),
-                                                &mut g1,
-                                                &g2_check,
-                                            )
-                                            .expect("could not check ratios for beta_g1 elements");
-                                        }
-                                    };
+                                    check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
+                                        (beta_g1, compressed_output),
+                                        (start_chunk, end_chunk),
+                                        &mut g1,
+                                    )
+                                    .expect("could not check element are non zero and in prime order subgroup");
 
                                     trace!("beta_g1 verification was successful");
                                 });
@@ -380,25 +328,12 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
 
-                            match parameters.contribution_mode {
-                                ContributionMode::Chunked => {
-                                    check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
-                                        (tau_g1, compressed_output),
-                                        (start_chunk, end_chunk),
-                                        &mut g1,
-                                    )
-                                    .expect("could not check ratios for tau_g1 elements");
-                                }
-                                ContributionMode::Full => {
-                                    check_power_ratios::<E>(
-                                        (tau_g1, compressed_output, check_output_for_correctness),
-                                        (start_chunk, end_chunk),
-                                        &mut g1,
-                                        &g2_check,
-                                    )
-                                    .expect("could not check ratios for tau_g1 elements");
-                                }
-                            };
+                            check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
+                                (tau_g1, compressed_output),
+                                (start_chunk, end_chunk),
+                                &mut g1,
+                            )
+                            .expect("could not check ratios for tau_g1 elements");
 
                             trace!("tau_g1 verification was successful");
                         });
