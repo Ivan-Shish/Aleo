@@ -82,6 +82,7 @@ pub(crate) fn apply_powers<C: AffineCurve>(
     Ok(())
 }
 
+#[cfg(not(feature = "wasm"))]
 /// Splits the full buffer in 5 non overlapping mutable slice for a given chunk and batch size.
 /// Each slice corresponds to the group elements in the following order
 /// [TauG1, TauG2, AlphaG1, BetaG1, BetaG2]
