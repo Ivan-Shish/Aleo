@@ -33,7 +33,7 @@ pub struct Phase1Opts {
     pub seed: String,
     #[options(
         help = "the contribution mode",
-        default = "chunk",
+        default = "chunked",
         parse(try_from_str = "contribution_mode_from_str")
     )]
     pub contribution_mode: ContributionMode,
