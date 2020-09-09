@@ -32,9 +32,9 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown --toolchain nightly
           cargo install wasm-bindgen-cli
+          cargo update -p wasm-bindgen
 
       - name: Run WASM tests
         run: |
-          cargo update -p wasm-bindgen
           cd phase1-wasm
           cargo test --release --target wasm32-unknown-unknown --no-default-features --features wasm
