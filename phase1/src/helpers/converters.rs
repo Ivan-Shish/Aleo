@@ -1,4 +1,4 @@
-use crate::ProvingSystem;
+use crate::{ContributionMode, ProvingSystem};
 
 #[derive(Debug, Clone)]
 pub enum CurveKind {
@@ -13,6 +13,15 @@ pub fn curve_from_str(src: &str) -> Result<CurveKind, String> {
         _ => return Err("unsupported curve".to_string()),
     };
     Ok(curve)
+}
+
+pub fn contribution_mode_from_str(src: &str) -> Result<ContributionMode, String> {
+    let mode = match src.to_lowercase().as_str() {
+        "full" => ContributionMode::Full,
+        "chunked" => ContributionMode::Chunked,
+        _ => return Err("unsupported contribution mode. Currently supported: full, chunked".to_string()),
+    };
+    Ok(mode)
 }
 
 pub fn proving_system_from_str(src: &str) -> Result<ProvingSystem, String> {

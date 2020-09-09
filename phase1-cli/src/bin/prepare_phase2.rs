@@ -1,12 +1,9 @@
-use cfg_if::cfg_if;
-use setup_utils::CheckForCorrectness;
-
 use phase1::{
     helpers::{curve_from_str, proving_system_from_str, CurveKind},
     parameters::*,
     Phase1,
 };
-use setup_utils::{Groth16Params, Result, UseCompression};
+use setup_utils::{CheckForCorrectness, Groth16Params, Result, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 

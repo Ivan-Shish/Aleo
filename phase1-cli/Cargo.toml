@@ -8,18 +8,14 @@ repository = "https://github.com/AleoHQ/aleo-setup"
 license = "MIT/Apache-2.0"
 edition = "2018"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [dependencies]
-phase1 = { path = "../phase1" }
-setup-utils = { path = "../setup-utils" }
+phase1 = { path = "../phase1", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = false }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
 
-cfg-if = { version = "0.1.10" }
 gumdrop = { version = "0.7.0" }
-hex-literal = { version = "0.1.4" }
+hex = { version = "0.4.2" }
 memmap = { version = "0.7.0" }
 rand = { version = "0.7" }
 tracing = { version = "0.1.17" }
@@ -33,8 +29,8 @@ wasm-bindgen-test = { version = "0.3.15" }
 rustc_version = { version = "0.2" }
 
 [features]
-default = ["cli", "parallel"]
-cli = ["phase1/cli", "setup-utils/cli"]
+default = ["cli"]
+cli = ["phase1/cli", "parallel", "setup-utils/cli"]
 parallel = ["phase1/parallel", "setup-utils/parallel", "zexe_algebra/parallel"]
 
 [[bin]]

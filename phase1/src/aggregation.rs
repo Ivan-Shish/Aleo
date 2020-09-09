@@ -322,33 +322,15 @@ mod tests {
             Phase1::aggregation(&full_contribution, (&mut output, compressed_output), &parameters).unwrap();
 
             let parameters = Phase1Parameters::<E>::new_full(*proving_system, powers, batch);
-            // TODO (howardwu): Fix verification for this case.
-            // let res = Phase1::verification(
-            //     &output,
-            //     &output,
-            //     &current_public_key,
-            //     &current_digest,
-            //     compressed_output,
-            //     compressed_output,
-            //     correctness,
-            //     correctness,
-            //     &parameters,
-            // );
-            // assert!(res.is_ok());
+            assert!(Phase1::aggregate_verification((&output, compressed_output, correctness), &parameters,).is_ok());
         }
     }
 
-    // #[test]
-    // #[should_panic]
-    // fn test_aggregation_bls12_377_wrong_chunks() {
-    //     aggregation_test::<Bls12_377>(
-    //         4,
-    //         4,
-    //         UseCompression::No,
-    //         UseCompression::Yes,
-    //         true,
-    //     );
-    // }
+    #[test]
+    #[should_panic]
+    fn test_aggregation_bls12_377_wrong_chunks() {
+        aggregation_test::<Bls12_377>(4, 4, UseCompression::No, UseCompression::Yes, true);
+    }
 
     #[test]
     fn test_aggregation_bls12_377() {

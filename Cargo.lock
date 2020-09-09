@@ -1068,9 +1068,8 @@ name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
  "algebra",
- "cfg-if",
  "gumdrop",
- "hex-literal",
+ "hex",
  "memmap",
  "phase1",
  "rand 0.7.3",
@@ -1091,7 +1090,6 @@ name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
  "algebra",
- "cfg-if",
  "console_error_panic_hook",
  "phase1",
  "rand 0.7.3",
