@@ -5,7 +5,6 @@ rm -f challenge* response* new_challenge* processed* initial_ceremony* response_
 PROVING_SYSTEM=$1
 POWER=10
 BATCH=64
-MAX_CHUNK_INDEX=3 # we have 16 chunks, since we have a total of 2^11-1 powers
 CURVE="bw6"
 SEED=`tr -dc 'A-F0-9' < /dev/urandom | head -c32`
 echo $SEED > seed1
