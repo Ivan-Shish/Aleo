@@ -39,18 +39,6 @@ jobs:
           command: fmt
           args: --all -- --check
 
-      - name: Run phase1 chunked groth16
-        run: cd phase1 && ./scripts/phase1_chunked.sh groth16
-
-      - name: Run phase1 full groth16
-        run: cd phase1 && ./scripts/phase1_full.sh groth16
-
-      - name: Run phase1 chunked marlin
-        run: cd phase1 && ./scripts/phase1_chunked.sh marlin
-
-      - name: Run phase1 full marlin
-        run: cd phase1 && ./scripts/phase1_full.sh marlin
-
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -100,6 +88,18 @@ jobs:
         with:
           command: test
           args: --release --all --no-fail-fast
+
+      - name: Run phase1 chunked groth16
+        run: cd phase1 && ./scripts/phase1_chunked.sh groth16
+
+      - name: Run phase1 full groth16
+        run: cd phase1 && ./scripts/phase1_full.sh groth16
+
+      - name: Run phase1 chunked marlin
+        run: cd phase1 && ./scripts/phase1_chunked.sh marlin
+
+      - name: Run phase1 full marlin
+        run: cd phase1 && ./scripts/phase1_full.sh marlin
 
 #  codecov:
 #    name: Code Coverage
