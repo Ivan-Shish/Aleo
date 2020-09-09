@@ -28,8 +28,6 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - name: Install entropy daemon
-        run: sudo apt-get install haveged
 
       - name: Run phase1 chunked groth16
         run: cd phase1-cli && ./scripts/phase1_chunked.sh groth16
