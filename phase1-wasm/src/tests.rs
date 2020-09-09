@@ -78,9 +78,11 @@ fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Paramet
                 None,
             )
             .unwrap();
-            let mut g2_inverse_powers = (0..parameters.total_size_in_log2)
-                .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i)]))
+
+            let degree_bound_powers = (0..parameters.total_size_in_log2)
+                .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                 .collect::<Vec<_>>();
+            let mut g2_inverse_powers = degree_bound_powers.clone();
             batch_inversion(&mut g2_inverse_powers);
             batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
             batch_exp(
@@ -89,7 +91,24 @@ fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Paramet
                 None,
             )
             .unwrap();
-            batch_exp(&mut before.alpha_tau_powers_g1, &tau_powers[0..3], Some(&privkey.alpha)).unwrap();
+
+            let g1_degree_powers = degree_bound_powers
+                .into_iter()
+                .map(|f| vec![f, f * &privkey.tau, f * &privkey.tau * &privkey.tau])
+                .flatten()
+                .collect::<Vec<_>>();
+            batch_exp(
+                &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.total_size_in_log2],
+                &g1_degree_powers,
+                Some(&privkey.alpha),
+            )
+            .unwrap();
+            batch_exp(
+                &mut before.alpha_tau_powers_g1[0..3],
+                &tau_powers[0..3],
+                Some(&privkey.alpha),
+            )
+            .unwrap();
         }
     }
     assert_eq!(deserialized, before);
@@ -97,9 +116,7 @@ fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Paramet
 
 #[wasm_bindgen_test]
 pub fn test_phase1_contribute_bls12_377() {
-    // TODO (howardwu): Fix Marlin mode.
-    // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-    for proving_system in &[ProvingSystem::Groth16] {
+    for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
         contribute_challenge_test(&get_parameters::<Bls12_377>(*proving_system, 2, 2));
         // Works even when the batch is larger than the powers
         contribute_challenge_test(&get_parameters::<Bls12_377>(*proving_system, 6, 128));
@@ -108,9 +125,7 @@ pub fn test_phase1_contribute_bls12_377() {
 
 #[wasm_bindgen_test]
 fn test_phase1_contribute_bw6_761() {
-    // TODO (howardwu): Fix Marlin mode.
-    // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-    for proving_system in &[ProvingSystem::Groth16] {
+    for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
         contribute_challenge_test(&get_parameters::<BW6_761>(*proving_system, 2, 2));
         // Works even when the batch is larger than the powers
         contribute_challenge_test(&get_parameters::<BW6_761>(*proving_system, 6, 128));
