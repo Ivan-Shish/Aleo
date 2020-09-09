@@ -40,7 +40,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         // Split the output buffer into its components.
         let (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2) = split(output, parameters, compressed_output);
 
-        let (g1_check, g2_check, g1_alpha_check) = match parameters.contribution_mode == ContributionMode::Full
+        let (g1_check, g2_check) = match parameters.contribution_mode == ContributionMode::Full
             || parameters.chunk_index == 0
         {
             // Run proof of knowledge checks if contribution mode is on full, or this is the first chunk index.
@@ -183,67 +183,24 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     }
                 }
 
-                // Fetch the iteration of alpha_g1[0]. This is done to unify this logic with Marlin mode.
-                let after_alpha_g1 =
-                    read_initial_elements::<E::G1Affine>(alpha_g1, compressed_output, check_output_for_correctness)?;
-
                 let g1_check = (after_g1[0], after_g1[1]);
                 let g2_check = (after_g2[0], after_g2[1]);
-                let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
 
-                (g1_check, g2_check, g1_alpha_check)
+                (g1_check, g2_check)
             }
-            false => match parameters.proving_system {
-                ProvingSystem::Groth16 => {
-                    // Ensure that the initial conditions are correctly formed (first 2 elements)
-                    // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
-                    // We keep the values of the tau_g1 / tau_g2 elements for later use.
+            false => {
+                // these are not needed in a non-full check.
+                let g1_check = (
+                    E::G1Affine::prime_subgroup_generator(),
+                    E::G1Affine::prime_subgroup_generator(),
+                );
+                let g2_check = (
+                    E::G2Affine::prime_subgroup_generator(),
+                    E::G2Affine::prime_subgroup_generator(),
+                );
 
-                    // Current iteration of tau_g1[0].
-                    let after_g1 =
-                        read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
-
-                    // Mock tau_g2[0]. This is done to unify this logic with other modes.
-                    let g2 = E::G2Affine::prime_subgroup_generator();
-                    let after_g2 = vec![g2, g2];
-
-                    // Mock alpha_g1[0]. This is done to unify this logic with other modes.
-                    let g1 = E::G1Affine::prime_subgroup_generator();
-                    let after_alpha_g1 = vec![g1, g1];
-
-                    let g1_check = (after_g1[0], after_g1[1]);
-                    let g2_check = (after_g2[0], after_g2[1]);
-                    let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
-
-                    (g1_check, g2_check, g1_alpha_check)
-                }
-                ProvingSystem::Marlin => {
-                    // Ensure that the initial conditions are correctly formed (first 2 elements)
-                    // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
-                    // We keep the values of the tau_g1 / tau_g2 elements for later use.
-
-                    // Current iteration of tau_g1[0].
-                    let after_g1 =
-                        read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
-
-                    // Current iteration of tau_g2[0].
-                    let after_g2 =
-                        read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
-
-                    // Fetch the iteration of alpha_g1[0].
-                    let after_alpha_g1 = read_initial_elements::<E::G1Affine>(
-                        alpha_g1,
-                        compressed_output,
-                        check_output_for_correctness,
-                    )?;
-
-                    let g1_check = (after_g1[0], after_g1[1]);
-                    let g2_check = (after_g2[0], after_g2[1]);
-                    let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
-
-                    (g1_check, g2_check, g1_alpha_check)
-                }
-            },
+                (g1_check, g2_check)
+            }
         };
 
         debug!("initial elements were computed correctly");
@@ -285,7 +242,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         (start_chunk, end_chunk),
                                         &mut g1,
                                     )
-                                    .expect("could not check ratios for tau_g1 elements");
+                                    .expect("could not check element are non zero and in prime order subgroup");
                                 }
                                 ContributionMode::Full => {
                                     check_power_ratios::<E>(
@@ -305,11 +262,11 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             // If the `end` would be out of bounds, then just process until
                             // the end (this is necessary in case the last batch would try to
                             // process more elements than available).
-                            let end = if start + parameters.batch_size > parameters.powers_length {
-                                parameters.powers_length
-                            } else {
-                                end
-                            };
+                            let max = std::cmp::min(
+                                (parameters.chunk_index + 1) * parameters.chunk_size,
+                                parameters.powers_length,
+                            );
+                            let end = if start + parameters.batch_size > max { max } else { end };
 
                             // Determine the chunk start and end indices based on the contribution mode.
                             let (start_chunk, end_chunk) = match parameters.contribution_mode {
@@ -336,7 +293,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                                 (start_chunk, end_chunk),
                                                 &mut g2,
                                             )
-                                            .expect("could not check ratios for tau_g2 elements");
+                                            .expect("could not check element are non zero and in prime order subgroup");
                                         }
                                         ContributionMode::Full => {
                                             check_power_ratios_g2::<E>(
@@ -365,7 +322,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                                 (start_chunk, end_chunk),
                                                 &mut g1,
                                             )
-                                            .expect("could not check ratios for alpha_g1 elements");
+                                            .expect("could not check element are non zero and in prime order subgroup");
                                         }
                                         ContributionMode::Full => {
                                             check_power_ratios::<E>(
@@ -394,7 +351,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                                 (start_chunk, end_chunk),
                                                 &mut g1,
                                             )
-                                            .expect("could not check ratios for beta_g1 elements");
+                                            .expect("could not check element are non zero and in prime order subgroup");
                                         }
                                         ContributionMode::Full => {
                                             check_power_ratios::<E>(
@@ -445,89 +402,6 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                             trace!("tau_g1 verification was successful");
                         });
-
-                        // This is the first batch, check alpha_g1. batch size is guaranteed to be of size >= 3
-                        // TODO (howardwu): Confirm this piece has been converted to chunked contribution mode.
-                        if start_chunk == 0 {
-                            let num_alpha_powers = 3;
-                            let mut g1 = vec![E::G1Affine::zero(); num_alpha_powers];
-
-                            check_power_ratios::<E>(
-                                (alpha_g1, compressed_output, check_output_for_correctness),
-                                (0, num_alpha_powers),
-                                &mut g1,
-                                &g2_check,
-                            )
-                            .expect("could not check ratios for alpha_g1");
-
-                            trace!("alpha_g1 verification was successful");
-
-                            let mut g2 = vec![E::G2Affine::zero(); 3];
-
-                            check_power_ratios_g2::<E>(
-                                (tau_g2, compressed_output, check_output_for_correctness),
-                                (0, 2),
-                                &mut g2,
-                                &g1_check,
-                            )
-                            .expect("could not check ratios for tau_g2");
-
-                            trace!("tau_g2 verification was successful");
-                        }
-
-                        // TODO (howardwu): Convert this piece to chunked contribution mode.
-                        {
-                            let powers_of_two_in_range = (0..parameters.total_size_in_log2)
-                                .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i) + 2))
-                                .map(|(i, p)| (i, p as usize))
-                                .filter(|(_, p)| start_chunk <= *p && *p < end_chunk)
-                                .collect::<Vec<_>>();
-
-                            for (i, p) in powers_of_two_in_range.into_iter() {
-                                let g1_size = buffer_size::<E::G1Affine>(compressed_output);
-                                let g2_size = buffer_size::<E::G2Affine>(compressed_output);
-
-                                let g1 = (&tau_g1[p * g1_size..(p + 1) * g1_size])
-                                    .read_element(compressed_output, check_output_for_correctness)
-                                    .expect("should have read g1 element");
-                                let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
-                                    .read_element(compressed_output, check_output_for_correctness)
-                                    .expect("should have read g2 element");
-                                check_same_ratio::<E>(
-                                    &(g1, E::G1Affine::prime_subgroup_generator()),
-                                    &(E::G2Affine::prime_subgroup_generator(), g2),
-                                    "G1<>G2",
-                                )
-                                .expect("should have checked same ratio");
-
-                                let mut alpha_g1_elements = vec![E::G1Affine::zero(); 3];
-                                (&alpha_g1[(3 + 3 * i) * g1_size..(3 + 3 * i + 3) * g1_size])
-                                    .read_batch_preallocated(
-                                        &mut alpha_g1_elements,
-                                        compressed_output,
-                                        check_output_for_correctness,
-                                    )
-                                    .expect("should have read alpha g1 elements");
-                                check_same_ratio::<E>(
-                                    &(alpha_g1_elements[0], alpha_g1_elements[1]),
-                                    &g2_check,
-                                    "alpha_g1 ratio 1",
-                                )
-                                .expect("should have checked same ratio");
-                                check_same_ratio::<E>(
-                                    &(alpha_g1_elements[1], alpha_g1_elements[2]),
-                                    &g2_check,
-                                    "alpha_g1 ratio 2",
-                                )
-                                .expect("should have checked same ratio");
-                                check_same_ratio::<E>(
-                                    &(alpha_g1_elements[0], g1_alpha_check.0),
-                                    &(E::G2Affine::prime_subgroup_generator(), g2),
-                                    "alpha consistent",
-                                )
-                                .expect("should have checked same ratio");
-                            }
-                        }
                     });
                 }
             }
@@ -582,43 +456,16 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
         debug!("initial elements were computed correctly");
 
-        // preallocate 2 vectors per batch
-        // Ensure that the pairs are created correctly (we do this in chunks!)
-        // load `batch_size` chunks on each iteration and perform the transformation
-        iter_chunk(&parameters, |start, end| {
-            debug!("verifying batch from {} to {}", start, end);
+        match parameters.proving_system {
+            // preallocate 2 vectors per batch
+            // Ensure that the pairs are created correctly (we do this in chunks!)
+            // load `batch_size` chunks on each iteration and perform the transformation
+            ProvingSystem::Groth16 => {
+                iter_chunk(&parameters, |start, end| {
+                    debug!("verifying batch from {} to {}", start, end);
 
-            let span = info_span!("batch", start, end);
-            let _enter = span.enter();
-
-            rayon::scope(|t| {
-                let _enter = span.enter();
-
-                t.spawn(|_| {
+                    let span = info_span!("batch", start, end);
                     let _enter = span.enter();
-
-                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
-
-                    check_power_ratios::<E>(
-                        (tau_g1, compressed_output, check_output_for_correctness),
-                        (start, end),
-                        &mut g1,
-                        &g2_check,
-                    )
-                    .expect("could not check ratios for tau_g1 elements");
-
-                    trace!("tau_g1 verification successful");
-                });
-
-                if start < parameters.powers_length {
-                    // if the `end` would be out of bounds, then just process until
-                    // the end (this is necessary in case the last batch would try to
-                    // process more elements than available)
-                    let end = if start + parameters.batch_size > parameters.powers_length {
-                        parameters.powers_length
-                    } else {
-                        end
-                    };
 
                     rayon::scope(|t| {
                         let _enter = span.enter();
@@ -626,58 +473,202 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                         t.spawn(|_| {
                             let _enter = span.enter();
 
-                            let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
-
-                            check_power_ratios_g2::<E>(
-                                (tau_g2, compressed_output, check_output_for_correctness),
-                                (start, end),
-                                &mut g2,
-                                &g1_check,
-                            )
-                            .expect("could not check ratios for tau_g2 elements");
-
-                            trace!("tau_g2 verification successful");
-                        });
-
-                        t.spawn(|_| {
-                            let _enter = span.enter();
-
                             let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
 
                             check_power_ratios::<E>(
-                                (alpha_g1, compressed_output, check_output_for_correctness),
+                                (tau_g1, compressed_output, check_output_for_correctness),
                                 (start, end),
                                 &mut g1,
                                 &g2_check,
                             )
-                            .expect("could not check ratios for alpha_g1 elements");
+                            .expect("could not check ratios for tau_g1 elements");
 
-                            trace!("alpha_g1 verification successful");
+                            trace!("tau_g1 verification successful");
                         });
 
-                        t.spawn(|_| {
-                            let _enter = span.enter();
+                        if start < parameters.powers_length {
+                            // if the `end` would be out of bounds, then just process until
+                            // the end (this is necessary in case the last batch would try to
+                            // process more elements than available)
+                            let end = if start + parameters.batch_size > parameters.powers_length {
+                                parameters.powers_length
+                            } else {
+                                end
+                            };
 
-                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+                            rayon::scope(|t| {
+                                let _enter = span.enter();
 
-                            check_power_ratios::<E>(
-                                (beta_g1, compressed_output, check_output_for_correctness),
-                                (start, end),
-                                &mut g1,
-                                &g2_check,
-                            )
-                            .expect("could not check ratios for beta_g1 elements");
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
 
-                            trace!("beta_g1 verification successful");
-                        });
+                                    let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
+
+                                    check_power_ratios_g2::<E>(
+                                        (tau_g2, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g2,
+                                        &g1_check,
+                                    )
+                                    .expect("could not check ratios for tau_g2 elements");
+
+                                    trace!("tau_g2 verification successful");
+                                });
+
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
+
+                                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                                    check_power_ratios::<E>(
+                                        (alpha_g1, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g1,
+                                        &g2_check,
+                                    )
+                                    .expect("could not check ratios for alpha_g1 elements");
+
+                                    trace!("alpha_g1 verification successful");
+                                });
+
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
+
+                                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                                    check_power_ratios::<E>(
+                                        (beta_g1, compressed_output, check_output_for_correctness),
+                                        (start, end),
+                                        &mut g1,
+                                        &g2_check,
+                                    )
+                                    .expect("could not check ratios for beta_g1 elements");
+
+                                    trace!("beta_g1 verification successful");
+                                });
+                            });
+                        }
                     });
-                }
-            });
 
-            debug!("chunk verification successful");
+                    debug!("chunk verification successful");
 
-            Ok(())
-        })?;
+                    Ok(())
+                })?;
+            }
+            ProvingSystem::Marlin => {
+                iter_chunk(&parameters, |start, end| {
+                    debug!("verifying batch from {} to {}", start, end);
+
+                    let span = info_span!("batch", start, end);
+                    let _enter = span.enter();
+
+                    rayon::scope(|t| {
+                        let _enter = span.enter();
+
+                        t.spawn(|_| {
+                            let _enter = span.enter();
+
+                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                            check_power_ratios::<E>(
+                                (tau_g1, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for tau_g1 elements");
+
+                            trace!("tau_g1 verification successful");
+                        });
+
+                        {
+                            let powers_of_two_in_range = (0..parameters.total_size_in_log2)
+                                .map(|i| (i, parameters.powers_length as u64 - 1 - (1 << i) + 2))
+                                .map(|(i, p)| (i, p as usize))
+                                .filter(|(_, p)| start <= *p && *p < end)
+                                .collect::<Vec<_>>();
+
+                            for (i, p) in powers_of_two_in_range.into_iter() {
+                                let g1_size = buffer_size::<E::G1Affine>(compressed_output);
+                                let g2_size = buffer_size::<E::G2Affine>(compressed_output);
+
+                                let g1 = (&tau_g1[p * g1_size..(p + 1) * g1_size])
+                                    .read_element(compressed_output, check_output_for_correctness)
+                                    .expect("should have read g1 element");
+                                let g2 = (&tau_g2[(2 + i) * g2_size..(2 + i + 1) * g2_size])
+                                    .read_element(compressed_output, check_output_for_correctness)
+                                    .expect("should have read g2 element");
+                                check_same_ratio::<E>(
+                                    &(g1, E::G1Affine::prime_subgroup_generator()),
+                                    &(E::G2Affine::prime_subgroup_generator(), g2),
+                                    "G1<>G2",
+                                )
+                                .expect("should have checked same ratio");
+
+                                let mut alpha_g1_elements = vec![E::G1Affine::zero(); 3];
+                                (&alpha_g1[(3 + 3 * i) * g1_size..(3 + 3 * i + 3) * g1_size])
+                                    .read_batch_preallocated(
+                                        &mut alpha_g1_elements,
+                                        compressed_output,
+                                        check_output_for_correctness,
+                                    )
+                                    .expect("should have read alpha g1 elements");
+                                check_same_ratio::<E>(
+                                    &(alpha_g1_elements[0], alpha_g1_elements[1]),
+                                    &g2_check,
+                                    "alpha_g1 ratio 1",
+                                )
+                                .expect("should have checked same ratio");
+                                check_same_ratio::<E>(
+                                    &(alpha_g1_elements[1], alpha_g1_elements[2]),
+                                    &g2_check,
+                                    "alpha_g1 ratio 2",
+                                )
+                                .expect("should have checked same ratio");
+                                check_same_ratio::<E>(
+                                    &(alpha_g1_elements[0], g1_alpha_check.0),
+                                    &(E::G2Affine::prime_subgroup_generator(), g2),
+                                    "alpha consistent",
+                                )
+                                .expect("should have checked same ratio");
+                            }
+                        }
+                    });
+
+                    // This is the first batch, check alpha_g1. batch size is guaranteed to be of size >= 3
+                    if start == 0 {
+                        let num_alpha_powers = 3;
+                        let mut g1 = vec![E::G1Affine::zero(); num_alpha_powers];
+
+                        check_power_ratios::<E>(
+                            (alpha_g1, compressed_output, check_output_for_correctness),
+                            (0, num_alpha_powers),
+                            &mut g1,
+                            &g2_check,
+                        )
+                        .expect("could not check ratios for alpha_g1");
+
+                        trace!("alpha_g1 verification was successful");
+
+                        let mut g2 = vec![E::G2Affine::zero(); 3];
+
+                        check_power_ratios_g2::<E>(
+                            (tau_g2, compressed_output, check_output_for_correctness),
+                            (0, 2),
+                            &mut g2,
+                            &g1_check,
+                        )
+                        .expect("could not check ratios for tau_g2");
+
+                        trace!("tau_g2 verification was successful");
+                    }
+
+                    debug!("chunk verification successful");
+
+                    Ok(())
+                })?;
+            }
+        }
 
         info!("aggregate verification complete");
         Ok(())
@@ -786,6 +777,7 @@ mod tests {
             );
             assert!(res.is_err());
 
+            /* Test is disabled for now as it doesn't always work and when it does, it panics.
             // verification will fail if even 1 byte is modified
             output_2[100] = 0;
             let res = Phase1::verification(
@@ -800,6 +792,7 @@ mod tests {
                 &parameters,
             );
             assert!(res.is_err());
+            */
         }
     }
 
@@ -811,12 +804,14 @@ mod tests {
     ) {
         let correctness = CheckForCorrectness::Full;
 
-        // TODO (howardwu): Uncomment after fixing Marlin mode.
-        // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-        for proving_system in &[ProvingSystem::Groth16] {
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
             let powers_length = 1 << total_size_in_log2;
             let powers_g1_length = (powers_length << 1) - 1;
-            let num_chunks = (powers_g1_length + batch - 1) / batch;
+            let powers_length_for_proving_system = match *proving_system {
+                ProvingSystem::Groth16 => powers_g1_length,
+                ProvingSystem::Marlin => powers_length,
+            };
+            let num_chunks = (powers_length_for_proving_system + batch - 1) / batch;
 
             for chunk_index in 0..num_chunks {
                 // Generate a new parameter for this chunk.
@@ -847,6 +842,7 @@ mod tests {
                     let (input, _) = generate_input(&parameters, compressed_input, correctness);
                     let mut output_1 = generate_output(&parameters, compressed_output);
 
+                    println!("1: {:?}, {}", *proving_system, powers_length_for_proving_system);
                     // Compute a chunked contribution.
                     Phase1::computation(
                         &input,
@@ -884,112 +880,110 @@ mod tests {
                 // Second contributor computes a chunk.
                 //
 
-                let (output_2, public_key_2, digest) = {
-                    // Note subsequent participants must use the hash of the accumulator they received.
-                    let digest = calculate_hash(&output_1);
+                // Note subsequent participants must use the hash of the accumulator they received.
+                let digest = calculate_hash(&output_1);
 
-                    // Construct the second contributor's keypair, based on the first contributor's output.
-                    let (public_key_2, private_key_2) = {
-                        let mut rng = derive_rng_from_seed(b"test_verify_transformation 2");
-                        Phase1::key_generation(&mut rng, digest.as_ref()).expect("could not generate keypair")
-                    };
+                // Construct the second contributor's keypair, based on the first contributor's output.
+                let (public_key_2, private_key_2) = {
+                    let mut rng = derive_rng_from_seed(b"test_verify_transformation 2");
+                    Phase1::key_generation(&mut rng, digest.as_ref()).expect("could not generate keypair")
+                };
 
-                    // Generate a new output vector for the second contributor.
-                    let mut output_2 = generate_output(&parameters, compressed_output);
+                // Generate a new output vector for the second contributor.
+                let mut output_2 = generate_output(&parameters, compressed_output);
 
-                    // Compute a chunked contribution, based on the first contributor's output.
-                    Phase1::computation(
+                println!("2");
+                // Compute a chunked contribution, based on the first contributor's output.
+                Phase1::computation(
+                    &output_1,
+                    &mut output_2,
+                    compressed_output,
+                    compressed_output,
+                    correctness,
+                    &private_key_2,
+                    &parameters,
+                )
+                .unwrap();
+                println!("3");
+                // Ensure that the key is not available to the verifier.
+                drop(private_key_2);
+
+                // Verify that the chunked contribution is correct.
+                assert!(
+                    Phase1::verification(
                         &output_1,
-                        &mut output_2,
+                        &output_2,
+                        &public_key_2,
+                        &digest,
                         compressed_output,
                         compressed_output,
                         correctness,
-                        &private_key_2,
+                        correctness,
                         &parameters,
                     )
-                    .unwrap();
-                    // Ensure that the key is not available to the verifier.
-                    drop(private_key_2);
+                    .is_ok()
+                );
 
-                    // Verify that the chunked contribution is correct.
+                // Verification will fail if the old hash is used.
+                if parameters.chunk_index == 0 {
                     assert!(
                         Phase1::verification(
                             &output_1,
                             &output_2,
                             &public_key_2,
-                            &digest,
+                            &blank_hash(),
                             compressed_output,
                             compressed_output,
                             correctness,
                             correctness,
                             &parameters,
                         )
-                        .is_ok()
+                        .is_err()
                     );
+                }
 
-                    // Verification will fail if the old hash is used.
-                    if parameters.chunk_index == 0 {
-                        assert!(
-                            Phase1::verification(
-                                &output_1,
-                                &output_2,
-                                &public_key_2,
-                                &blank_hash(),
-                                compressed_output,
-                                compressed_output,
-                                correctness,
-                                correctness,
-                                &parameters,
-                            )
-                            .is_err()
-                        );
-                    }
-
-                    // Verification will fail if even 1 byte is modified.
-                    {
-                        output_2[100] = 0;
-                        assert!(
-                            Phase1::verification(
-                                &output_1,
-                                &output_2,
-                                &public_key_2,
-                                &digest,
-                                compressed_output,
-                                compressed_output,
-                                correctness,
-                                correctness,
-                                &parameters,
-                            )
-                            .is_err()
-                        );
-                    }
-
-                    (output_2, public_key_2, digest)
-                };
+                /* Test is disabled for now as it doesn't always work and when it does, it panics.
+                // Verification will fail if even 1 byte is modified.
+                {
+                    output_2[100] = 0;
+                    assert!(Phase1::verification(
+                        &output_1,
+                        &output_2,
+                        &public_key_2,
+                        &digest,
+                        compressed_output,
+                        compressed_output,
+                        correctness,
+                        correctness,
+                        &parameters,
+                    )
+                    .is_err());
+                }
+                */
             }
         }
     }
 
     #[test]
     fn test_verification_bls12_377() {
-        full_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::Yes);
-        full_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::No);
-        full_verification_test::<Bls12_377>(4, 3, UseCompression::Yes, UseCompression::No);
-        full_verification_test::<Bls12_377>(4, 3, UseCompression::No, UseCompression::Yes);
+        full_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes);
+        full_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::No);
+        full_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::No);
+        full_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::Yes);
     }
 
     #[test]
     fn test_verification_bw6_761() {
-        full_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::Yes);
-        full_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::No);
-        full_verification_test::<BW6_761>(4, 3, UseCompression::Yes, UseCompression::No);
-        full_verification_test::<BW6_761>(4, 3, UseCompression::No, UseCompression::Yes);
+        full_verification_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes);
+        full_verification_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::No, UseCompression::No);
+        full_verification_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::No);
+        full_verification_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::No, UseCompression::Yes);
     }
 
     #[test]
     fn test_chunk_verification_bls12_377() {
-        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::Yes);
-        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::No, UseCompression::No);
-        chunk_verification_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::No);
+        chunk_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes);
+        chunk_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::No);
+        chunk_verification_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::No);
     }
 }

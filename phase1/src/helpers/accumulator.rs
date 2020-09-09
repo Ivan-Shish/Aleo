@@ -100,9 +100,7 @@ cfg_if! {
             Ok(())
         }
 
-        // TODO (howardwu): Replace all uses of this with the batch size from parameters.
         /// Reads a chunk of 2 elements from the buffer
-        #[deprecated]
         pub(crate) fn read_initial_elements<C: AffineCurve>(
             buffer: &[u8],
             compressed: UseCompression,
