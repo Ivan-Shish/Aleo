@@ -40,166 +40,134 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
         // Split the output buffer into its components.
         let (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2) = split(output, parameters, compressed_output);
 
-        let (g1_check, g2_check) = match parameters.contribution_mode == ContributionMode::Full
-            || parameters.chunk_index == 0
-        {
+        if parameters.contribution_mode == ContributionMode::Full || parameters.chunk_index == 0 {
             // Run proof of knowledge checks if contribution mode is on full, or this is the first chunk index.
-            true => {
-                // Split the input buffer into its components.
-                let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, in_beta_g2) =
-                    split(input, parameters, compressed_input);
+            // Split the input buffer into its components.
+            let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, in_beta_g2) =
+                split(input, parameters, compressed_input);
 
-                let [tau_g2_s, alpha_g2_s, beta_g2_s] = compute_g2_s_key(&key, &digest)?;
+            let [tau_g2_s, alpha_g2_s, beta_g2_s] = compute_g2_s_key(&key, &digest)?;
 
-                // Compose into tuple form for convenience.
-                let tau_single_g1_check = &(key.tau_g1.0, key.tau_g1.1);
-                let tau_single_g2_check = &(tau_g2_s, key.tau_g2);
-                // let alpha_single_g1_check = &(key.alpha_g1.0, key.alpha_g1.1);
-                let alpha_single_g2_check = &(alpha_g2_s, key.alpha_g2);
-                let beta_single_g1_check = &(key.beta_g1.0, key.beta_g1.1);
-                let beta_single_g2_check = &(beta_g2_s, key.beta_g2);
+            // Compose into tuple form for convenience.
+            let tau_single_g1_check = &(key.tau_g1.0, key.tau_g1.1);
+            let tau_single_g2_check = &(tau_g2_s, key.tau_g2);
+            // let alpha_single_g1_check = &(key.alpha_g1.0, key.alpha_g1.1);
+            let alpha_single_g2_check = &(alpha_g2_s, key.alpha_g2);
+            let beta_single_g1_check = &(key.beta_g1.0, key.beta_g1.1);
+            let beta_single_g2_check = &(beta_g2_s, key.beta_g2);
 
-                // Ensure the key ratios are correctly produced.
-                {
-                    // Check the proofs of knowledge for tau, alpha, and beta.
-                    let check_ratios = &[
-                        (&(key.tau_g1.0, key.tau_g1.1), &(tau_g2_s, key.tau_g2), "Tau G1<>G2"),
-                        (
-                            &(key.alpha_g1.0, key.alpha_g1.1),
-                            &(alpha_g2_s, key.alpha_g2),
-                            "Alpha G1<>G2",
-                        ),
-                        (
-                            &(key.beta_g1.0, key.beta_g1.1),
-                            &(beta_g2_s, key.beta_g2),
-                            "Beta G1<>G2",
-                        ),
-                    ];
+            // Ensure the key ratios are correctly produced.
+            {
+                // Check the proofs of knowledge for tau, alpha, and beta.
+                let check_ratios = &[
+                    (&(key.tau_g1.0, key.tau_g1.1), &(tau_g2_s, key.tau_g2), "Tau G1<>G2"),
+                    (
+                        &(key.alpha_g1.0, key.alpha_g1.1),
+                        &(alpha_g2_s, key.alpha_g2),
+                        "Alpha G1<>G2",
+                    ),
+                    (
+                        &(key.beta_g1.0, key.beta_g1.1),
+                        &(beta_g2_s, key.beta_g2),
+                        "Beta G1<>G2",
+                    ),
+                ];
 
-                    for (a, b, err) in check_ratios {
-                        check_same_ratio::<E>(a, b, err)?;
-                    }
-                    debug!("key ratios were correctly produced");
+                for (a, b, err) in check_ratios {
+                    check_same_ratio::<E>(a, b, err)?;
                 }
-
-                // Ensure that the initial conditions are correctly formed (first 2 elements).
-                // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
-                // We keep the values of the tau_g1 / tau_g2 elements for later use.
-
-                // Check that tau^i was computed correctly in G1.
-                let (mut before_g1, mut after_g1) = {
-                    // Previous iteration of tau_g1[0].
-                    let before_g1 =
-                        read_initial_elements::<E::G1Affine>(in_tau_g1, compressed_input, check_input_for_correctness)?;
-                    // Current iteration of tau_g1[0].
-                    let after_g1 =
-                        read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
-
-                    // Check tau_g1[0] is the prime subgroup generator.
-                    if after_g1[0] != E::G1Affine::prime_subgroup_generator() {
-                        return Err(VerificationError::InvalidGenerator(ElementType::TauG1).into());
-                    }
-
-                    // Check that tau^1 was multiplied correctly.
-                    check_same_ratio::<E>(
-                        &(before_g1[1], after_g1[1]),
-                        tau_single_g2_check,
-                        "Before-After: tau_g1",
-                    )?;
-
-                    (before_g1, after_g1)
-                };
-
-                // Check that tau^i was computed correctly in G2.
-                let (_before_g2, after_g2) = {
-                    // Previous iteration of tau_g2[0].
-                    let before_g2 =
-                        read_initial_elements::<E::G2Affine>(in_tau_g2, compressed_input, check_input_for_correctness)?;
-                    // Current iteration of tau_g2[0].
-                    let after_g2 =
-                        read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
-
-                    // Check tau_g2[0] is the prime subgroup generator.
-                    if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
-                        return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
-                    }
-
-                    // Check that tau^1 was multiplied correctly.
-                    check_same_ratio::<E>(
-                        tau_single_g1_check,
-                        &(before_g2[1], after_g2[1]),
-                        "Before-After: tau_g2",
-                    )?;
-
-                    (before_g2, after_g2)
-                };
-
-                // Check that alpha_g1[0] and beta_g1[0] were computed correctly.
-                {
-                    // Determine the check based on the proof system's requirements.
-                    let checks = match parameters.proving_system {
-                        ProvingSystem::Groth16 => vec![
-                            (in_alpha_g1, alpha_g1, alpha_single_g2_check),
-                            (in_beta_g1, beta_g1, beta_single_g2_check),
-                        ],
-                        ProvingSystem::Marlin => vec![(in_alpha_g1, alpha_g1, alpha_single_g2_check)],
-                    };
-
-                    // Check that alpha_g1[0] and beta_g1[0] was multiplied correctly.
-                    for (before, after, check) in &checks {
-                        before.read_batch_preallocated(
-                            &mut before_g1,
-                            compressed_input,
-                            check_input_for_correctness,
-                        )?;
-                        after.read_batch_preallocated(
-                            &mut after_g1,
-                            compressed_output,
-                            check_output_for_correctness,
-                        )?;
-                        check_same_ratio::<E>(
-                            &(before_g1[0], after_g1[0]),
-                            check,
-                            "Before-After: alpha_g1[0] / beta_g1[0]",
-                        )?;
-                    }
-                }
-
-                // Check that beta_g2[0] was computed correctly.
-                {
-                    if parameters.proving_system == ProvingSystem::Groth16 {
-                        // Read in the first beta_g2 element from the previous iteration and current iteration.
-                        let before_beta_g2 = (&*in_beta_g2)
-                            .read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
-                        let after_beta_g2 =
-                            (&*beta_g2).read_element::<E::G2Affine>(compressed_output, check_output_for_correctness)?;
-
-                        // Check that beta_g2[0] was multiplied correctly.
-                        check_same_ratio::<E>(
-                            beta_single_g1_check,
-                            &(before_beta_g2, after_beta_g2),
-                            "Before-After: beta_g2[0]",
-                        )?;
-                    }
-                }
-
-                let g1_check = (after_g1[0], after_g1[1]);
-                let g2_check = (after_g2[0], after_g2[1]);
-
-                (g1_check, g2_check)
+                debug!("key ratios were correctly produced");
             }
-            false => {
-                // these are not needed in a non-full check.
-                let g1_check = (
-                    E::G1Affine::prime_subgroup_generator(),
-                    E::G1Affine::prime_subgroup_generator(),
-                );
-                let g2_check = (
-                    E::G2Affine::prime_subgroup_generator(),
-                    E::G2Affine::prime_subgroup_generator(),
-                );
 
-                (g1_check, g2_check)
+            // Ensure that the initial conditions are correctly formed (first 2 elements).
+            // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
+            // We keep the values of the tau_g1 / tau_g2 elements for later use.
+
+            // Check that tau^i was computed correctly in G1.
+            let (mut before_g1, mut after_g1) = {
+                // Previous iteration of tau_g1[0].
+                let before_g1 =
+                    read_initial_elements::<E::G1Affine>(in_tau_g1, compressed_input, check_input_for_correctness)?;
+                // Current iteration of tau_g1[0].
+                let after_g1 =
+                    read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
+
+                // Check tau_g1[0] is the prime subgroup generator.
+                if after_g1[0] != E::G1Affine::prime_subgroup_generator() {
+                    return Err(VerificationError::InvalidGenerator(ElementType::TauG1).into());
+                }
+
+                // Check that tau^1 was multiplied correctly.
+                check_same_ratio::<E>(
+                    &(before_g1[1], after_g1[1]),
+                    tau_single_g2_check,
+                    "Before-After: tau_g1",
+                )?;
+
+                (before_g1, after_g1)
+            };
+
+            // Check that tau^i was computed correctly in G2.
+            {
+                // Previous iteration of tau_g2[0].
+                let before_g2 =
+                    read_initial_elements::<E::G2Affine>(in_tau_g2, compressed_input, check_input_for_correctness)?;
+                // Current iteration of tau_g2[0].
+                let after_g2 =
+                    read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
+
+                // Check tau_g2[0] is the prime subgroup generator.
+                if after_g2[0] != E::G2Affine::prime_subgroup_generator() {
+                    return Err(VerificationError::InvalidGenerator(ElementType::TauG2).into());
+                }
+
+                // Check that tau^1 was multiplied correctly.
+                check_same_ratio::<E>(
+                    tau_single_g1_check,
+                    &(before_g2[1], after_g2[1]),
+                    "Before-After: tau_g2",
+                )?;
+            }
+
+            // Check that alpha_g1[0] and beta_g1[0] were computed correctly.
+            {
+                // Determine the check based on the proof system's requirements.
+                let checks = match parameters.proving_system {
+                    ProvingSystem::Groth16 => vec![
+                        (in_alpha_g1, alpha_g1, alpha_single_g2_check),
+                        (in_beta_g1, beta_g1, beta_single_g2_check),
+                    ],
+                    ProvingSystem::Marlin => vec![(in_alpha_g1, alpha_g1, alpha_single_g2_check)],
+                };
+
+                // Check that alpha_g1[0] and beta_g1[0] was multiplied correctly.
+                for (before, after, check) in &checks {
+                    before.read_batch_preallocated(&mut before_g1, compressed_input, check_input_for_correctness)?;
+                    after.read_batch_preallocated(&mut after_g1, compressed_output, check_output_for_correctness)?;
+                    check_same_ratio::<E>(
+                        &(before_g1[0], after_g1[0]),
+                        check,
+                        "Before-After: alpha_g1[0] / beta_g1[0]",
+                    )?;
+                }
+            }
+
+            // Check that beta_g2[0] was computed correctly.
+            {
+                if parameters.proving_system == ProvingSystem::Groth16 {
+                    // Read in the first beta_g2 element from the previous iteration and current iteration.
+                    let before_beta_g2 =
+                        (&*in_beta_g2).read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
+                    let after_beta_g2 =
+                        (&*beta_g2).read_element::<E::G2Affine>(compressed_output, check_output_for_correctness)?;
+
+                    // Check that beta_g2[0] was multiplied correctly.
+                    check_same_ratio::<E>(
+                        beta_single_g1_check,
+                        &(before_beta_g2, after_beta_g2),
+                        "Before-After: beta_g2[0]",
+                    )?;
+                }
             }
         };
 
