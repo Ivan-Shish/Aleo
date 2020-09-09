@@ -113,22 +113,44 @@ pub(crate) fn split_at_chunk_mut<'a, E: PairingEngine>(
         &mut buffer[start..end]
     };
 
-    // leave the first 64 bytes for the hash
-    let (_, others) = buffer.split_at_mut(parameters.hash_size);
-    let (tau_g1, others) = others.split_at_mut(g1_size * parameters.powers_g1_length);
-    let (tau_g2, others) = others.split_at_mut(g2_size * parameters.powers_length);
-    let (alpha_g1, others) = others.split_at_mut(g1_size * parameters.powers_length);
-    let (beta_g1, beta_g2) = others.split_at_mut(g1_size * parameters.powers_length);
+    match parameters.proving_system {
+        ProvingSystem::Groth16 => {
+            // leave the first 64 bytes for the hash
+            let (_, others) = buffer.split_at_mut(parameters.hash_size);
+            let (tau_g1, others) = others.split_at_mut(g1_size * parameters.powers_g1_length);
+            let (tau_g2, others) = others.split_at_mut(g2_size * parameters.powers_length);
+            let (alpha_g1, others) = others.split_at_mut(g1_size * parameters.powers_length);
+            let (beta_g1, beta_g2) = others.split_at_mut(g1_size * parameters.powers_length);
 
-    // We take up to g2_size for beta_g2, since there might be other
-    // elements after it at the end of the buffer.
-    (
-        buffer_to_chunk(tau_g1, g1_size, false),
-        buffer_to_chunk(tau_g2, g2_size, true),
-        buffer_to_chunk(alpha_g1, g1_size, true),
-        buffer_to_chunk(beta_g1, g1_size, true),
-        &mut beta_g2[0..g2_size],
-    )
+            // We take up to g2_size for beta_g2, since there might be other
+            // elements after it at the end of the buffer.
+            (
+                buffer_to_chunk(tau_g1, g1_size, false),
+                buffer_to_chunk(tau_g2, g2_size, true),
+                buffer_to_chunk(alpha_g1, g1_size, true),
+                buffer_to_chunk(beta_g1, g1_size, true),
+                &mut beta_g2[0..g2_size],
+            )
+        }
+        ProvingSystem::Marlin => {
+            let g2_chunk_size = parameters.total_size_in_log2 + 2;
+            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
+
+            // leave the first 64 bytes for the hash
+            let (_, others) = buffer.split_at_mut(parameters.hash_size);
+            let (tau_g1, others) = others.split_at_mut(g1_size * parameters.powers_length);
+            let (tau_g2, others) = others.split_at_mut(g2_size * g2_chunk_size);
+            let (alpha_g1, _) = others.split_at_mut(g1_size * alpha_chunk_size);
+
+            (
+                buffer_to_chunk(tau_g1, g1_size, false),
+                tau_g2,
+                alpha_g1,
+                &mut [],
+                &mut [],
+            )
+        }
+    }
 }
 
 /// Splits the full buffer in 5 non overlapping mutable slice.

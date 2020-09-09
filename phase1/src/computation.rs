@@ -99,11 +99,11 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                     // if the `end` would be out of bounds, then just process until
                                     // the end (this is necessary in case the last batch would try to
                                     // process more elements than available)
-                                    let end = if start + parameters.batch_size > parameters.powers_length {
-                                        parameters.powers_length
-                                    } else {
-                                        end
-                                    };
+                                    let max = std::cmp::min(
+                                        (parameters.chunk_index + 1) * parameters.chunk_size,
+                                        parameters.powers_length,
+                                    );
+                                    let end = if start + parameters.batch_size > max { max } else { end };
 
                                     // Determine the chunk start and end indices based on the contribution mode.
                                     let (start_chunk, end_chunk) = match parameters.contribution_mode {
@@ -181,62 +181,65 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     Ok(())
                 })?;
             }
-            // TODO (howardwu): Convert this piece to chunked contribution mode.
             ProvingSystem::Marlin => {
-                let degree_bound_powers = (0..parameters.total_size_in_log2)
-                    .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
-                    .collect::<Vec<_>>();
+                // we assume batch_size > 3 + 3*total_size_in_log2, allowing all the smaller amounts
+                // of powers in tau G2 and alpha tau G1 to reside there
+                if parameters.chunk_index == 0 {
+                    let degree_bound_powers = (0..parameters.total_size_in_log2)
+                        .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
+                        .collect::<Vec<_>>();
 
-                let mut g2_inverse_powers = degree_bound_powers.clone();
+                    let mut g2_inverse_powers = degree_bound_powers.clone();
 
-                batch_inversion(&mut g2_inverse_powers);
+                    batch_inversion(&mut g2_inverse_powers);
 
-                apply_powers::<E::G2Affine>(
-                    (tau_g2_outputs, compressed_output),
-                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (2, parameters.total_size_in_log2 + 2),
-                    &g2_inverse_powers,
-                    None,
-                )
-                .expect("could not apply powers of tau to tau_g2 elements");
+                    apply_powers::<E::G2Affine>(
+                        (tau_g2_outputs, compressed_output),
+                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                        (2, parameters.total_size_in_log2 + 2),
+                        &g2_inverse_powers,
+                        None,
+                    )
+                    .expect("could not apply powers of tau to tau_g2 elements");
 
-                let g1_degree_powers = degree_bound_powers
-                    .into_iter()
-                    .map(|f| vec![f, f * &key.tau, f * &key.tau.pow([2])])
-                    .flatten()
-                    .collect::<Vec<_>>();
+                    let g1_degree_powers = degree_bound_powers
+                        .into_iter()
+                        .map(|f| vec![f, f * &key.tau, f * &key.tau.pow([2])])
+                        .flatten()
+                        .collect::<Vec<_>>();
 
-                apply_powers::<E::G1Affine>(
-                    (alpha_g1_outputs, compressed_output),
-                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                    (3, 3 + 3 * parameters.total_size_in_log2),
-                    &g1_degree_powers,
-                    Some(&key.alpha),
-                )
-                .expect("could not apply powers of tau to tau_g2 elements");
+                    apply_powers::<E::G1Affine>(
+                        (alpha_g1_outputs, compressed_output),
+                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                        (3, 3 + 3 * parameters.total_size_in_log2),
+                        &g1_degree_powers,
+                        Some(&key.alpha),
+                    )
+                    .expect("could not apply powers of tau to tau_g2 elements");
 
-                let num_alpha_powers = 3;
-                let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
+                    let num_alpha_powers = 3;
+                    let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
 
-                apply_powers::<E::G1Affine>(
-                    (alpha_g1_outputs, compressed_output),
-                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                    (0, num_alpha_powers),
-                    &powers,
-                    Some(&key.alpha),
-                )
-                .expect("could not apply powers of tau alpha to tau_g1 elements");
+                    apply_powers::<E::G1Affine>(
+                        (alpha_g1_outputs, compressed_output),
+                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                        (0, num_alpha_powers),
+                        &powers,
+                        Some(&key.alpha),
+                    )
+                    .expect("could not apply powers of tau alpha to tau_g1 elements");
 
-                let powers = generate_powers_of_tau::<E>(&key.tau, 0, 2);
+                    let powers = generate_powers_of_tau::<E>(&key.tau, 0, 2);
 
-                apply_powers::<E::G2Affine>(
-                    (tau_g2_outputs, compressed_output),
-                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (0, 2),
-                    &powers,
-                    None,
-                )
-                .expect("could not apply powers of tau to initial tau_g2 elements");
+                    apply_powers::<E::G2Affine>(
+                        (tau_g2_outputs, compressed_output),
+                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                        (0, 2),
+                        &powers,
+                        None,
+                    )
+                    .expect("could not apply powers of tau to initial tau_g2 elements");
+                }
 
                 // load `batch_size` chunks on each iteration and perform the transformation
                 iter_chunk(&parameters, |start, end| {

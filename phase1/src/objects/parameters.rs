@@ -154,7 +154,6 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     // Hash of the previous contribution
                     hash_size
             }
-            // TODO (howardwu): Confirm the accumulator size for Marlin.
             ProvingSystem::Marlin => {
                 // G1 Tau powers
                 g1_chunk_size * curve.g1_size +
@@ -190,7 +189,6 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     // The public key of the previous contributor
                     public_key_size
             }
-            // TODO (howardwu): Confirm the accumulator size for Marlin.
             ProvingSystem::Marlin => {
                 // G1 Tau powers (compressed)
                 g1_chunk_size * curve.g1_compressed_size +

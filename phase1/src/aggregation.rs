@@ -18,8 +18,6 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
         info!("starting...");
 
-        // TODO (howardwu): Handle the Marlin mode case.
-
         for (chunk_index, (input, compressed_input)) in inputs.iter().enumerate() {
             let chunk_parameters =
                 parameters.into_chunk_parameters(parameters.contribution_mode, chunk_index, parameters.chunk_size);
@@ -40,77 +38,138 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             let span = info_span!("batch", start, end);
             let _enter = span.enter();
 
-            rayon::scope(|t| {
-                let _enter = span.enter();
-
-                t.spawn(|_| {
-                    let _enter = span.enter();
-
-                    let elements: Vec<E::G1Affine> = in_tau_g1
-                        .read_batch(compressed_input, CheckForCorrectness::No)
-                        .expect("should have read batch");
-                    tau_g1
-                        .write_batch(&elements, compressed_output)
-                        .expect("should have written batch");
-
-                    trace!("tau_g1 aggregation for chunk {} successful", chunk_index);
-                });
-
-                if start < chunk_parameters.powers_length {
+            match parameters.proving_system {
+                ProvingSystem::Groth16 => {
                     rayon::scope(|t| {
                         let _enter = span.enter();
 
                         t.spawn(|_| {
                             let _enter = span.enter();
 
-                            let elements: Vec<E::G2Affine> = in_tau_g2
+                            let elements: Vec<E::G1Affine> = in_tau_g1
                                 .read_batch(compressed_input, CheckForCorrectness::No)
                                 .expect("should have read batch");
-                            tau_g2
+                            tau_g1
                                 .write_batch(&elements, compressed_output)
                                 .expect("should have written batch");
 
-                            trace!("tau_g2 aggregation for chunk {} successful", chunk_index);
+                            trace!("tau_g1 aggregation for chunk {} successful", chunk_index);
                         });
 
-                        t.spawn(|_| {
-                            let _enter = span.enter();
+                        if start < chunk_parameters.powers_length {
+                            rayon::scope(|t| {
+                                let _enter = span.enter();
 
-                            let elements: Vec<E::G1Affine> = in_alpha_g1
-                                .read_batch(compressed_input, CheckForCorrectness::No)
-                                .expect("should have read batch");
-                            alpha_g1
-                                .write_batch(&elements, compressed_output)
-                                .expect("should have written batch");
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
 
-                            trace!("alpha_g1 aggregation for chunk {} successful", chunk_index);
-                        });
+                                    let elements: Vec<E::G2Affine> = in_tau_g2
+                                        .read_batch(compressed_input, CheckForCorrectness::No)
+                                        .expect("should have read batch");
+                                    tau_g2
+                                        .write_batch(&elements, compressed_output)
+                                        .expect("should have written batch");
 
-                        t.spawn(|_| {
-                            let _enter = span.enter();
+                                    trace!("tau_g2 aggregation for chunk {} successful", chunk_index);
+                                });
 
-                            let elements: Vec<E::G1Affine> = in_beta_g1
-                                .read_batch(compressed_input, CheckForCorrectness::No)
-                                .expect("should have read batch");
-                            beta_g1
-                                .write_batch(&elements, compressed_output)
-                                .expect("should have written batch");
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
 
-                            trace!("beta_g1 aggregation for chunk {} successful", chunk_index);
-                        });
+                                    let elements: Vec<E::G1Affine> = in_alpha_g1
+                                        .read_batch(compressed_input, CheckForCorrectness::No)
+                                        .expect("should have read batch");
+                                    alpha_g1
+                                        .write_batch(&elements, compressed_output)
+                                        .expect("should have written batch");
+
+                                    trace!("alpha_g1 aggregation for chunk {} successful", chunk_index);
+                                });
+
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
+
+                                    let elements: Vec<E::G1Affine> = in_beta_g1
+                                        .read_batch(compressed_input, CheckForCorrectness::No)
+                                        .expect("should have read batch");
+                                    beta_g1
+                                        .write_batch(&elements, compressed_output)
+                                        .expect("should have written batch");
+
+                                    trace!("beta_g1 aggregation for chunk {} successful", chunk_index);
+                                });
+                            });
+                        }
+
+                        if chunk_index == 0 {
+                            let element: E::G2Affine = (&*in_beta_g2)
+                                .read_element(compressed_input, CheckForCorrectness::No)
+                                .expect("should have read element");
+                            beta_g2
+                                .write_element(&element, compressed_output)
+                                .expect("should have written element");
+                            trace!("beta_g2 aggregation for chunk {} successful", chunk_index);
+                        }
                     });
                 }
 
-                if chunk_index == 0 {
-                    let element: E::G2Affine = (&*in_beta_g2)
-                        .read_element(compressed_input, CheckForCorrectness::No)
-                        .expect("should have read element");
-                    beta_g2
-                        .write_element(&element, compressed_output)
-                        .expect("should have written element");
-                    trace!("beta_g2 aggregation for chunk {} successful", chunk_index);
+                ProvingSystem::Marlin => {
+                    rayon::scope(|t| {
+                        let _enter = span.enter();
+
+                        t.spawn(|_| {
+                            let _enter = span.enter();
+
+                            let elements: Vec<E::G1Affine> = in_tau_g1
+                                .read_batch(compressed_input, CheckForCorrectness::No)
+                                .expect("should have read batch");
+                            tau_g1
+                                .write_batch(&elements, compressed_output)
+                                .expect("should have written batch");
+
+                            trace!("tau_g1 aggregation for chunk {} successful", chunk_index);
+                        });
+
+                        // handle tau G2
+                        if start < 2 + chunk_parameters.total_size_in_log2 {
+                            rayon::scope(|t| {
+                                let _enter = span.enter();
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
+
+                                    let elements: Vec<E::G2Affine> = in_tau_g2
+                                        .read_batch(compressed_input, CheckForCorrectness::No)
+                                        .expect("should have read batch");
+                                    tau_g2
+                                        .write_batch(&elements, compressed_output)
+                                        .expect("should have written batch");
+
+                                    trace!("tau_g2 aggregation for chunk {} successful", chunk_index);
+                                });
+                            });
+                        }
+                        // handle alpha tau G1
+                        if start < 3 + 3 * chunk_parameters.total_size_in_log2 {
+                            rayon::scope(|t| {
+                                let _enter = span.enter();
+
+                                t.spawn(|_| {
+                                    let _enter = span.enter();
+
+                                    let elements: Vec<E::G1Affine> = in_alpha_g1
+                                        .read_batch(compressed_input, CheckForCorrectness::No)
+                                        .expect("should have read batch");
+                                    alpha_g1
+                                        .write_batch(&elements, compressed_output)
+                                        .expect("should have written batch");
+
+                                    trace!("alpha_g1 aggregation for chunk {} successful", chunk_index);
+                                });
+                            });
+                        }
+                    });
                 }
-            });
+            }
 
             debug!("chunk {} processing successful", chunk_index);
         }
@@ -126,7 +185,7 @@ mod tests {
     use super::*;
     use crate::helpers::testing::{generate_input, generate_output};
 
-    use zexe_algebra::{AffineCurve, Bls12_377, BW6_761};
+    use zexe_algebra::{Bls12_377, BW6_761};
 
     fn aggregation_test<E: PairingEngine>(
         powers: usize,
@@ -137,20 +196,16 @@ mod tests {
     ) {
         let correctness = CheckForCorrectness::Full;
 
-        // TODO (howardwu): Uncomment after fixing Marlin mode.
-        // for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-        for proving_system in &[ProvingSystem::Groth16] {
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
             let powers_length = 1 << powers;
             let powers_g1_length = (powers_length << 1) - 1;
-            let num_chunks = (powers_g1_length + batch - 1) / batch;
+            let powers_length_for_proving_system = match *proving_system {
+                ProvingSystem::Groth16 => powers_g1_length,
+                ProvingSystem::Marlin => powers_length,
+            };
+            let num_chunks = (powers_length_for_proving_system + batch - 1) / batch;
 
             let mut full_contribution: Vec<Vec<u8>> = vec![];
-            let mut current_digest = blank_hash();
-            let (mut current_public_key, _) = Phase1::key_generation(
-                &mut derive_rng_from_seed(b"test_verify_transformation 0"),
-                current_digest.as_ref(),
-            )
-            .expect("could not generate keypair");
 
             for chunk_index in 0..num_chunks {
                 // Generate a new parameter for this chunk.
@@ -218,7 +273,7 @@ mod tests {
                 // Second contributor computes a chunk.
                 //
 
-                let (output_2, public_key_2, digest) = {
+                let output_2 = {
                     // Note subsequent participants must use the hash of the accumulator they received.
                     let digest = calculate_hash(&output_1);
 
@@ -279,7 +334,7 @@ mod tests {
                         );
                     }
 
-                    (output_2, public_key_2, digest)
+                    output_2
                 };
 
                 // Return the output based on the test case currently being run.
@@ -287,17 +342,12 @@ mod tests {
                     true => {
                         let chunk_0_contribution: Vec<u8> = (*full_contribution.iter().last().unwrap()).to_vec();
                         full_contribution.push(chunk_0_contribution);
-                        current_public_key = public_key_2;
-                        current_digest = digest;
                     }
                     false => {
                         full_contribution.push(output_2.clone());
-                        current_public_key = public_key_2;
                     }
                 }
             }
-
-            // TODO (howardwu): Fix this.
 
             // Aggregate the right ones. Combining and verification should work.
 
@@ -329,14 +379,28 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_aggregation_bls12_377_wrong_chunks() {
-        aggregation_test::<Bls12_377>(4, 4, UseCompression::No, UseCompression::Yes, true);
+        aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::Yes, true);
     }
 
     #[test]
     fn test_aggregation_bls12_377() {
-        aggregation_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::Yes, false);
-        aggregation_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::Yes, false);
-        aggregation_test::<Bls12_377>(4, 4, UseCompression::No, UseCompression::No, false);
-        aggregation_test::<Bls12_377>(4, 4, UseCompression::Yes, UseCompression::No, false);
+        aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes, false);
+        aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes, false);
+        aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::No, false);
+        aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::No, false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_aggregation_bw6_wrong_chunks() {
+        aggregation_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::No, UseCompression::Yes, true);
+    }
+
+    #[test]
+    fn test_aggregation_bw6() {
+        aggregation_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes, false);
+        aggregation_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::Yes, false);
+        aggregation_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::No, UseCompression::No, false);
+        aggregation_test::<BW6_761>(4, 3 + 3 * 4, UseCompression::Yes, UseCompression::No, false);
     }
 }
