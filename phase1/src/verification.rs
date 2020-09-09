@@ -217,10 +217,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             // If the `end` would be out of bounds, then just process until
                             // the end (this is necessary in case the last batch would try to
                             // process more elements than available).
-                            let max = std::cmp::min(
-                                (parameters.chunk_index + 1) * parameters.chunk_size,
-                                parameters.powers_length,
-                            );
+                            let max = match parameters.contribution_mode {
+                                ContributionMode::Chunked => std::cmp::min(
+                                    (parameters.chunk_index + 1) * parameters.chunk_size,
+                                    parameters.powers_length,
+                                ),
+                                ContributionMode::Full => parameters.powers_length,
+                            };
                             let end = if start + parameters.batch_size > max { max } else { end };
 
                             // Determine the chunk start and end indices based on the contribution mode.
