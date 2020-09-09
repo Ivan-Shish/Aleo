@@ -13,7 +13,7 @@ const PREVIOUS_CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
 const CONTRIBUTION_IS_COMPRESSED: UseCompression = UseCompression::Yes;
 const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
 
-pub fn transform<T: Engine + Sync>(
+pub fn transform_pok_and_correctness<T: Engine + Sync>(
     challenge_filename: &str,
     response_filename: &str,
     new_challenge_filename: &str,

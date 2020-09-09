@@ -5,26 +5,26 @@ pub mod helpers;
 pub mod objects;
 pub use objects::*;
 
+#[cfg(not(feature = "wasm"))]
+mod aggregation;
 mod computation;
 mod initialization;
 mod key_generation;
 mod serialization;
-
-cfg_if! {
-    if #[cfg(not(feature = "wasm"))] {
-        mod aggregation;
-        mod verification;
-
-        use crate::helpers::accumulator::*;
-        use zexe_algebra::Zero;
-    }
-}
+#[cfg(not(feature = "wasm"))]
+mod verification;
 
 use crate::helpers::{
     accumulator::{self},
     buffers::*,
 };
 use setup_utils::*;
+
+#[cfg(not(feature = "wasm"))]
+use crate::helpers::accumulator::*;
+
+#[cfg(not(feature = "wasm"))]
+use zexe_algebra::Zero;
 
 use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand};
 

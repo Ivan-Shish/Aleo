@@ -541,6 +541,147 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
         Ok(())
     }
+
+    /// Verifies that the accumulator was transformed correctly
+    /// given the `PublicKey` and the so-far hash of the accumulator.
+    /// This verifies the ratios in a given accumulator.
+    pub fn aggregate_verification(
+        (output, compressed_output, check_output_for_correctness): (&[u8], UseCompression, CheckForCorrectness),
+        parameters: &Phase1Parameters<E>,
+    ) -> Result<()> {
+        let span = info_span!("phase1-aggregate-verification");
+        let _enter = span.enter();
+
+        info!("starting...");
+
+        let (tau_g1, tau_g2, alpha_g1, beta_g1, _) = split(output, parameters, compressed_output);
+
+        let (g1_check, g2_check, g1_alpha_check) = {
+            // Ensure that the initial conditions are correctly formed (first 2 elements)
+            // We allocate a G1 vector of length 2 and re-use it for our G1 elements.
+            // We keep the values of the tau_g1 / tau_g2 elements for later use.
+
+            // Current iteration of tau_g1[0].
+            let after_g1 =
+                read_initial_elements::<E::G1Affine>(tau_g1, compressed_output, check_output_for_correctness)?;
+
+            // Current iteration of tau_g2[0].
+            let after_g2 =
+                read_initial_elements::<E::G2Affine>(tau_g2, compressed_output, check_output_for_correctness)?;
+
+            // Fetch the iteration of alpha_g1[0].
+            let after_alpha_g1 =
+                read_initial_elements::<E::G1Affine>(alpha_g1, compressed_output, check_output_for_correctness)?;
+
+            let g1_check = (after_g1[0], after_g1[1]);
+            let g2_check = (after_g2[0], after_g2[1]);
+            let g1_alpha_check = (after_alpha_g1[0], after_alpha_g1[1]);
+
+            (g1_check, g2_check, g1_alpha_check)
+        };
+
+        debug!("initial elements were computed correctly");
+
+        // preallocate 2 vectors per batch
+        // Ensure that the pairs are created correctly (we do this in chunks!)
+        // load `batch_size` chunks on each iteration and perform the transformation
+        iter_chunk(&parameters, |start, end| {
+            debug!("verifying batch from {} to {}", start, end);
+
+            let span = info_span!("batch", start, end);
+            let _enter = span.enter();
+
+            rayon::scope(|t| {
+                let _enter = span.enter();
+
+                t.spawn(|_| {
+                    let _enter = span.enter();
+
+                    let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                    check_power_ratios::<E>(
+                        (tau_g1, compressed_output, check_output_for_correctness),
+                        (start, end),
+                        &mut g1,
+                        &g2_check,
+                    )
+                    .expect("could not check ratios for tau_g1 elements");
+
+                    trace!("tau_g1 verification successful");
+                });
+
+                if start < parameters.powers_length {
+                    // if the `end` would be out of bounds, then just process until
+                    // the end (this is necessary in case the last batch would try to
+                    // process more elements than available)
+                    let end = if start + parameters.batch_size > parameters.powers_length {
+                        parameters.powers_length
+                    } else {
+                        end
+                    };
+
+                    rayon::scope(|t| {
+                        let _enter = span.enter();
+
+                        t.spawn(|_| {
+                            let _enter = span.enter();
+
+                            let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
+
+                            check_power_ratios_g2::<E>(
+                                (tau_g2, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g2,
+                                &g1_check,
+                            )
+                            .expect("could not check ratios for tau_g2 elements");
+
+                            trace!("tau_g2 verification successful");
+                        });
+
+                        t.spawn(|_| {
+                            let _enter = span.enter();
+
+                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                            check_power_ratios::<E>(
+                                (alpha_g1, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for alpha_g1 elements");
+
+                            trace!("alpha_g1 verification successful");
+                        });
+
+                        t.spawn(|_| {
+                            let _enter = span.enter();
+
+                            let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                            check_power_ratios::<E>(
+                                (beta_g1, compressed_output, check_output_for_correctness),
+                                (start, end),
+                                &mut g1,
+                                &g2_check,
+                            )
+                            .expect("could not check ratios for beta_g1 elements");
+
+                            trace!("beta_g1 verification successful");
+                        });
+                    });
+                }
+            });
+
+            debug!("chunk verification successful");
+
+            Ok(())
+        })?;
+
+        info!("aggregate verification complete");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

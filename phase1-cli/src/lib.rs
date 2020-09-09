@@ -2,17 +2,24 @@
 #![cfg_attr(nightly, feature(doc_cfg, external_doc))]
 #![cfg_attr(nightly, doc(include = "../README.md"))]
 
-mod new_challenge;
-pub use new_challenge::new_challenge;
+mod combine;
+pub use combine::combine;
 
 mod contribute;
 pub use contribute::contribute;
 
-mod transform;
-pub use transform::transform;
+mod new_challenge;
+pub use new_challenge::new_challenge;
+
+mod transform_pok_and_correctness;
+pub use transform_pok_and_correctness::transform_pok_and_correctness;
+
+mod transform_ratios;
+pub use transform_ratios::transform_ratios;
 
 use phase1::{
-    helpers::{curve_from_str, proving_system_from_str, CurveKind},
+    helpers::{contribution_mode_from_str, curve_from_str, proving_system_from_str, CurveKind},
+    ContributionMode,
     ProvingSystem,
 };
 
@@ -22,6 +29,18 @@ use std::default::Default;
 #[derive(Debug, Options, Clone)]
 pub struct Phase1Opts {
     help: bool,
+    #[options(help = "the seed to derive private elements from")]
+    pub seed: String,
+    #[options(
+        help = "the contribution mode",
+        default = "chunk",
+        parse(try_from_str = "contribution_mode_from_str")
+    )]
+    pub contribution_mode: ContributionMode,
+    #[options(help = "the chunk index to process")]
+    pub chunk_index: usize,
+    #[options(help = "the chunk size")]
+    pub chunk_size: usize,
     #[options(
         help = "the elliptic curve to use",
         default = "bls12_377",
@@ -54,9 +73,15 @@ pub enum Command {
     Contribute(ContributeOpts),
     #[options(help = "contribute randomness via a random beacon (e.g. a bitcoin block header hash)")]
     Beacon(ContributeOpts),
-    // this receives a challenge + response file, verifies it and generates a new challenge
-    #[options(help = "verify the contributions so far and generate a new challenge")]
-    VerifyAndTransform(VerifyAndTransformOpts),
+    // this receives a challenge + response file, verifies it and generates a new challenge, for a single chunk.
+    #[options(help = "verify the contributions so far and generate a new challenge, for a single chunk")]
+    VerifyAndTransformPokAndCorrectness(VerifyPokAndCorrectnessOpts),
+    // this receives a challenge + response file, verifies it and generates a new challenge, for a full contribution.
+    #[options(help = "verify the contributions so far and generate a new challenge, for a full contribution")]
+    VerifyAndTransformRatios(VerifyRatiosOpts),
+    // this receives a list of chunked responses and combines them into a single response.
+    #[options(help = "receive a list of chunked responses and combines them into a single response")]
+    Combine(CombineOpts),
 }
 
 // Options for the Contribute command
@@ -75,10 +100,15 @@ pub struct ContributeOpts {
     pub challenge_fname: String,
     #[options(help = "the response file which will be generated")]
     pub response_fname: String,
+    #[options(
+        help = "the beacon hash to be used if running a beacon contribution",
+        default = "0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620"
+    )]
+    pub beacon_hash: String,
 }
 
 #[derive(Debug, Options, Clone)]
-pub struct VerifyAndTransformOpts {
+pub struct VerifyPokAndCorrectnessOpts {
     help: bool,
     #[options(help = "the provided challenge file", default = "challenge")]
     pub challenge_fname: String,
@@ -89,4 +119,20 @@ pub struct VerifyAndTransformOpts {
         default = "new_challenge"
     )]
     pub new_challenge_fname: String,
+}
+
+#[derive(Debug, Options, Clone)]
+pub struct VerifyRatiosOpts {
+    help: bool,
+    #[options(help = "the provided response file which will be verified", default = "response")]
+    pub response_fname: String,
+}
+
+#[derive(Debug, Options, Clone)]
+pub struct CombineOpts {
+    help: bool,
+    #[options(help = "the response files which will be combined", default = "response_list")]
+    pub response_list_fname: String,
+    #[options(help = "the combined response file", default = "combined")]
+    pub combined_fname: String,
 }

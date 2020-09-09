@@ -1,26 +1,11 @@
 use crate::phase1::*;
-use phase1::{
-    helpers::{curve_from_str, proving_system_from_str, CurveKind},
-    Phase1,
-    Phase1Parameters,
-    ProvingSystem,
-};
-use setup_utils::{
-    batch_exp,
-    blank_hash,
-    calculate_hash,
-    generate_powers_of_tau,
-    get_rng,
-    user_system_randomness,
-    CheckForCorrectness,
-    UseCompression,
-};
+use phase1::{Phase1, Phase1Parameters, ProvingSystem};
+use setup_utils::{batch_exp, blank_hash, generate_powers_of_tau, UseCompression};
 
 use zexe_algebra::{batch_inversion, AffineCurve, Bls12_377, Field, PairingEngine, ProjectiveCurve, BW6_761};
 
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 
 fn generate_input<E: PairingEngine>(

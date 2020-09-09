@@ -1,23 +1,35 @@
-use cfg_if::cfg_if;
-
-#[macro_use]
-extern crate hex_literal;
-
-use phase1::{helpers::CurveKind, Phase1Parameters};
-use phase1_cli::{contribute, new_challenge, transform, Command, Phase1Opts};
-use setup_utils::{beacon_randomness, get_rng, user_system_randomness};
+use phase1::{helpers::CurveKind, CurveParameters, Phase1Parameters};
+use phase1_cli::{
+    combine,
+    contribute,
+    new_challenge,
+    transform_pok_and_correctness,
+    transform_ratios,
+    Command,
+    Phase1Opts,
+};
+use setup_utils::{beacon_randomness, derive_rng_from_seed, from_slice};
 
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 use gumdrop::Options;
-use std::{process, time::Instant};
+use std::{fs::read_to_string, process, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
 };
 
 fn execute_cmd<E: Engine>(opts: Phase1Opts) {
-    let parameters = Phase1Parameters::<E>::new_full(opts.proving_system, opts.power, opts.batch_size);
+    let curve = CurveParameters::<E>::new();
+    let parameters = Phase1Parameters::<E>::new(
+        opts.contribution_mode,
+        opts.chunk_index,
+        opts.chunk_size,
+        curve,
+        opts.proving_system,
+        opts.power,
+        opts.batch_size,
+    );
 
     let command = opts.clone().command.unwrap_or_else(|| {
         eprintln!("No command was provided.");
@@ -32,24 +44,33 @@ fn execute_cmd<E: Engine>(opts: Phase1Opts) {
         }
         Command::Contribute(opt) => {
             // contribute to the randomness
-            let rng = get_rng(&user_system_randomness());
+            let seed = hex::decode(&read_to_string(&opts.seed).expect("should have read seed").trim())
+                .expect("seed should be a hex string");
+            let rng = derive_rng_from_seed(&seed);
             contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
         }
         Command::Beacon(opt) => {
             // use the beacon's randomness
             // Place block hash here (block number #564321)
-            let beacon_hash: [u8; 32] = hex!("0000000000000000000a558a61ddc8ee4e488d647a747fe4dcc362fe2026c620");
-            let rng = get_rng(&beacon_randomness(beacon_hash));
+            let beacon_hash = hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
+            let rng = derive_rng_from_seed(&beacon_randomness(from_slice(&beacon_hash)));
             contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
         }
-        Command::VerifyAndTransform(opt) => {
+        Command::VerifyAndTransformPokAndCorrectness(opt) => {
             // we receive a previous participation, verify it, and generate a new challenge from it
-            transform(
+            transform_pok_and_correctness(
                 &opt.challenge_fname,
                 &opt.response_fname,
                 &opt.new_challenge_fname,
                 &parameters,
             );
+        }
+        Command::VerifyAndTransformRatios(opt) => {
+            // we receive a previous participation, verify it, and generate a new challenge from it
+            transform_ratios(&opt.response_fname, &parameters);
+        }
+        Command::Combine(opt) => {
+            combine(&opt.response_list_fname, &opt.combined_fname, &parameters);
         }
     };
 
