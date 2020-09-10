@@ -6,7 +6,6 @@ use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, 
 
 use zexe_algebra::{AffineCurve, PairingEngine};
 
-use setup_utils::errors::InvariantKind::Contributions;
 #[cfg(not(feature = "wasm"))]
 use zexe_algebra::{FpParameters, PrimeField, Zero};
 
