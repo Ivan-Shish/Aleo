@@ -1,10 +1,18 @@
 use phase1::{
     helpers::{curve_from_str, proving_system_from_str, CurveKind},
+    ContributionMode,
     Phase1,
     Phase1Parameters,
     ProvingSystem,
 };
-use setup_utils::{calculate_hash, get_rng, user_system_randomness, CheckForCorrectness, UseCompression};
+use setup_utils::{
+    calculate_hash,
+    derive_rng_from_seed,
+    get_rng,
+    user_system_randomness,
+    CheckForCorrectness,
+    UseCompression,
+};
 
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
@@ -34,7 +42,7 @@ pub struct Phase1WASM {}
 #[wasm_bindgen]
 impl Phase1WASM {
     #[wasm_bindgen]
-    pub fn contribute(
+    pub fn contribute_full(
         curve_kind: &str,
         proving_system: &str,
         batch_size: usize,
@@ -46,12 +54,40 @@ impl Phase1WASM {
         let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(
                 &challenge,
-                &get_parameters::<Bls12_377>(proving_system, batch_size, power),
+                &get_parameters_full::<Bls12_377>(proving_system, batch_size, power),
                 rng,
             ),
             CurveKind::BW6 => contribute_challenge(
                 &challenge,
-                &get_parameters::<BW6_761>(proving_system, batch_size, power),
+                &get_parameters_full::<BW6_761>(proving_system, batch_size, power),
+                rng,
+            ),
+        };
+        return Ok(JsValue::from_serde(&res.ok().unwrap()).unwrap());
+    }
+
+    #[wasm_bindgen]
+    pub fn contribute_chunked(
+        curve_kind: &str,
+        proving_system: &str,
+        batch_size: usize,
+        power: usize,
+        chunk_index: usize,
+        chunk_size: usize,
+        seed: &[u8],
+        challenge: &[u8],
+    ) -> Result<JsValue, JsValue> {
+        let rng = derive_rng_from_seed(seed);
+        let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
+        let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+            CurveKind::Bls12_377 => contribute_challenge(
+                &challenge,
+                &get_parameters_chunked::<Bls12_377>(proving_system, batch_size, power, chunk_index, chunk_size),
+                rng,
+            ),
+            CurveKind::BW6 => contribute_challenge(
+                &challenge,
+                &get_parameters_chunked::<BW6_761>(proving_system, batch_size, power, chunk_index, chunk_size),
                 rng,
             ),
         };
@@ -59,12 +95,29 @@ impl Phase1WASM {
     }
 }
 
-pub fn get_parameters<E: PairingEngine>(
+pub fn get_parameters_full<E: PairingEngine>(
     proving_system: ProvingSystem,
     power: usize,
     batch_size: usize,
 ) -> Phase1Parameters<E> {
     Phase1Parameters::<E>::new_full(proving_system, power, batch_size)
+}
+
+pub fn get_parameters_chunked<E: PairingEngine>(
+    proving_system: ProvingSystem,
+    power: usize,
+    batch_size: usize,
+    chunk_index: usize,
+    chunk_size: usize,
+) -> Phase1Parameters<E> {
+    Phase1Parameters::<E>::new_chunk(
+        ContributionMode::Chunked,
+        chunk_index,
+        chunk_size,
+        proving_system,
+        power,
+        batch_size,
+    )
 }
 
 pub fn contribute_challenge<E: PairingEngine + Sync>(
