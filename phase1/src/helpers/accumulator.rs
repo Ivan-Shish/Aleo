@@ -1,11 +1,12 @@
 //! Accumulator which operates on batches of data
 
-use crate::{helpers::buffers::*, Phase1Parameters, ProvingSystem};
+use crate::{helpers::buffers::*, ContributionMode, Phase1Parameters, ProvingSystem};
 use cfg_if::cfg_if;
 use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
 use zexe_algebra::{AffineCurve, PairingEngine};
 
+use setup_utils::errors::InvariantKind::Contributions;
 #[cfg(not(feature = "wasm"))]
 use zexe_algebra::{FpParameters, PrimeField, Zero};
 
@@ -225,15 +226,17 @@ cfg_if! {
                     // Get mutable refs to the decompressed outputs
                     let (tau_g1, tau_g2, alpha_g1, _, _) = split_mut(output, parameters, compressed_output);
 
-                    // Load `batch_size` chunks on each iteration and decompress them
-                    let num_alpha_powers = 3;
-                    decompress_buffer::<E::G1Affine>(
-                        alpha_g1,
-                        in_alpha_g1,
-                        check_input_for_correctness,
-                        (0, num_alpha_powers + 3*parameters.total_size_in_log2),
-                    )?;
-                    decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.total_size_in_log2 + 2))?;
+                    if parameters.chunk_index == 0 || parameters.contribution_mode == ContributionMode::Full {
+                        // Load `batch_size` chunks on each iteration and decompress them
+                        let num_alpha_powers = 3;
+                        decompress_buffer::<E::G1Affine>(
+                            alpha_g1,
+                            in_alpha_g1,
+                            check_input_for_correctness,
+                            (0, num_alpha_powers + 3*parameters.total_size_in_log2),
+                        )?;
+                        decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.total_size_in_log2 + 2))?;
+                    }
 
                     rayon::scope(|t| {
                          t.spawn(|_| {
