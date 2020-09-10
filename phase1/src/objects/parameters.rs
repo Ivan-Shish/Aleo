@@ -156,13 +156,17 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             }
             ProvingSystem::Marlin => {
                 // G1 Tau powers
-                g1_chunk_size * curve.g1_size +
-                    // Alpha in G1
-                    (3 * curve.g1_size) + (3 * total_size_in_log2 *curve.g1_size) +
-                    // G2 1/Tau Powers
-                    (total_size_in_log2 + 2) * curve.g2_size +
+                g1_chunk_size * curve.g1_size
+                    + if chunk_index == 0 {
+                        // Alpha in G1
+                        (3 * curve.g1_size) + (3 * total_size_in_log2 * curve.g1_size) +
+                            // G2 1/Tau Powers
+                            (total_size_in_log2 + 2) * curve.g2_size
+                    } else {
+                        0
+                    }
                     // Hash of the previous contribution
-                    hash_size
+                    + hash_size
             }
         };
 
@@ -192,10 +196,14 @@ impl<E: PairingEngine> Phase1Parameters<E> {
             ProvingSystem::Marlin => {
                 // G1 Tau powers (compressed)
                 g1_chunk_size * curve.g1_compressed_size +
-                    // Alpha in G1
-                    (3 * curve.g1_compressed_size) +  (3 * total_size_in_log2 * curve.g1_compressed_size) +
-                    // G2 1/Tau Powers
-                    (total_size_in_log2 + 2) * curve.g2_compressed_size +
+                    if chunk_index == 0 {
+                        // Alpha in G1
+                        (3 * curve.g1_compressed_size) + (3 * total_size_in_log2 * curve.g1_compressed_size) +
+                            // G2 1/Tau Powers
+                            (total_size_in_log2 + 2) * curve.g2_compressed_size
+                    } else {
+                        0
+                    } +
                     // Hash of the previous contribution
                     hash_size +
                     // The public key of the previous contributor

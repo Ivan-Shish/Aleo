@@ -134,8 +134,11 @@ pub(crate) fn split_at_chunk_mut<'a, E: PairingEngine>(
             )
         }
         ProvingSystem::Marlin => {
-            let g2_chunk_size = parameters.total_size_in_log2 + 2;
-            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
+            let (g2_chunk_size, alpha_chunk_size) = if parameters.chunk_index == 0 {
+                (parameters.total_size_in_log2 + 2, 3 + 3 * parameters.total_size_in_log2)
+            } else {
+                (0, 0)
+            };
 
             // leave the first 64 bytes for the hash
             let (_, others) = buffer.split_at_mut(parameters.hash_size);
@@ -185,8 +188,11 @@ pub(crate) fn split_mut<'a, E: PairingEngine>(
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
             let g1_chunk_size = parameters.g1_chunk_size;
-            let g2_chunk_size = parameters.total_size_in_log2 + 2;
-            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
+            let (g2_chunk_size, alpha_chunk_size) = if parameters.chunk_index == 0 {
+                (parameters.total_size_in_log2 + 2, 3 + 3 * parameters.total_size_in_log2)
+            } else {
+                (0, 0)
+            };
 
             let (_, others) = buffer.split_at_mut(parameters.hash_size);
             let (tau_g1, others) = others.split_at_mut(g1_size * g1_chunk_size);
@@ -232,8 +238,11 @@ pub(crate) fn split<'a, E: PairingEngine>(
             let g2_size = buffer_size::<E::G2Affine>(compressed);
 
             let g1_chunk_size = parameters.g1_chunk_size;
-            let g2_chunk_size = parameters.total_size_in_log2 + 2;
-            let alpha_chunk_size = 3 + 3 * parameters.total_size_in_log2;
+            let (g2_chunk_size, alpha_chunk_size) = if parameters.chunk_index == 0 {
+                (parameters.total_size_in_log2 + 2, 3 + 3 * parameters.total_size_in_log2)
+            } else {
+                (0, 0)
+            };
 
             let (_, others) = buffer.split_at(parameters.hash_size);
             let (tau_g1, others) = others.split_at(g1_size * g1_chunk_size);

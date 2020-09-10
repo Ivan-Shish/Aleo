@@ -595,7 +595,7 @@ mod tests {
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
-        for proving_system in &[ProvingSystem::Marlin] {
+        for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
             let parameters = Phase1Parameters::<E>::new_full(*proving_system, total_size_in_log2, batch);
 
             // allocate the input/output vectors
@@ -667,6 +667,11 @@ mod tests {
                 CheckForCorrectness::Full,
                 &parameters,
             );
+            assert!(res.is_ok());
+
+            // verification will fail if the old hash is used
+            let res =
+                Phase1::aggregate_verification((&output_2, compressed_output, CheckForCorrectness::Full), &parameters);
             assert!(res.is_ok());
 
             // verification will fail if the old hash is used
