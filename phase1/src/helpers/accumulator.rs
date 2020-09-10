@@ -1,11 +1,13 @@
 //! Accumulator which operates on batches of data
 
-use crate::{helpers::buffers::*, ContributionMode, Phase1Parameters, ProvingSystem};
+use crate::{helpers::buffers::*, Phase1Parameters, ProvingSystem};
 use cfg_if::cfg_if;
 use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
 use zexe_algebra::{AffineCurve, PairingEngine};
 
+#[cfg(not(feature = "wasm"))]
+use crate::ContributionMode;
 #[cfg(not(feature = "wasm"))]
 use zexe_algebra::{FpParameters, PrimeField, Zero};
 
