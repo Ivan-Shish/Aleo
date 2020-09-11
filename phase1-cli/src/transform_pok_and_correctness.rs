@@ -13,7 +13,7 @@ const PREVIOUS_CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
 const CONTRIBUTION_IS_COMPRESSED: UseCompression = UseCompression::Yes;
 const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
 
-pub fn transform<T: Engine + Sync>(
+pub fn transform_pok_and_correctness<T: Engine + Sync>(
     challenge_filename: &str,
     response_filename: &str,
     new_challenge_filename: &str,
@@ -21,7 +21,7 @@ pub fn transform<T: Engine + Sync>(
 ) {
     println!(
         "Will verify and decompress a contribution to accumulator for 2^{} powers of tau",
-        parameters.size
+        parameters.total_size_in_log2
     );
 
     // Try to load challenge file from disk.
@@ -130,7 +130,7 @@ pub fn transform<T: Engine + Sync>(
         PREVIOUS_CHALLENGE_IS_COMPRESSED,
         CONTRIBUTION_IS_COMPRESSED,
         CheckForCorrectness::No,
-        CheckForCorrectness::Yes,
+        CheckForCorrectness::Full,
         &parameters,
     );
 

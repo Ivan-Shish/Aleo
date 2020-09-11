@@ -1,28 +1,28 @@
-use cfg_if::cfg_if;
-
 pub mod helpers;
 
 pub mod objects;
 pub use objects::*;
 
+#[cfg(not(feature = "wasm"))]
+mod aggregation;
 mod computation;
 mod initialization;
 mod key_generation;
 mod serialization;
+#[cfg(not(feature = "wasm"))]
+mod verification;
 
-use crate::helpers::accumulator::{self};
-
-cfg_if! {
-    if #[cfg(not(feature = "wasm"))] {
-        mod verification;
-
-        use crate::helpers::accumulator::*;
-        use zexe_algebra::Zero;
-    }
-}
-
-use crate::helpers::buffers::*;
+use crate::helpers::{
+    accumulator::{self},
+    buffers::*,
+};
 use setup_utils::*;
+
+#[cfg(not(feature = "wasm"))]
+use crate::helpers::accumulator::*;
+
+#[cfg(not(feature = "wasm"))]
+use zexe_algebra::Zero;
 
 use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand};
 
@@ -42,10 +42,12 @@ pub struct Phase1<'a, E: PairingEngine> {
     /// Marlin: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
     pub tau_powers_g1: Vec<E::G1Affine>,
     /// Groth16: tau^0, tau^1, tau^2, ..., tau^{TAU_POWERS_LENGTH - 1}
-    /// Marlin: tau^0, tau^1 and then 1/(tau^{TAU_POWERS_LENGTH - 1} - tau^{2^i}), for i = 0,...,floor(log2(TAU_POWERS_LENGTH-1))
+    /// Marlin: tau^0, tau^1 and then 1/tau^{TAU_POWERS_LENGTH - 2^i + 1}, for i = 0,...,log2(TAU_POWERS_LENGTH)
     pub tau_powers_g2: Vec<E::G2Affine>,
     /// Groth16: alpha * tau^0, alpha * tau^1, alpha * tau^2, ..., alpha * tau^{TAU_POWERS_LENGTH - 1}
-    /// Marlin: alpha * tau^0, alpha * tau^1, alpha * tau^2
+    /// Marlin: alpha * tau^0, alpha * tau^1, alpha * tau^2 and then triples of
+    /// alpha * tau^{TAU_POWERS_LENGTH - 2^i + 1}, alpha * tau^{TAU_POWERS_LENGTH - 2^i + 2}, alpha * tau^{TAU_POWERS_LENGTH - 2^i + 3}
+    /// for i = 0,...,log2(TAU_POWERS_LENGTH)
     pub alpha_tau_powers_g1: Vec<E::G1Affine>,
     /// Groth16: beta * tau^0, beta * tau^1, beta * tau^2, ..., beta * tau^{TAU_POWERS_LENGTH - 1}
     /// Marlin: empty

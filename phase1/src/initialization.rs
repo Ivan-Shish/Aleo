@@ -46,7 +46,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             s.spawn(|_| {
                 beta_g2
                     .init_element(one_g2, compressed_output)
-                    .expect("could not initialize beta_g2 element")
+                    .expect("could not initialize beta_g2 elements")
             });
         });
 
@@ -64,7 +64,7 @@ mod tests {
 
     fn curve_initialization_test<E: PairingEngine>(powers: usize, batch: usize, compression: UseCompression) {
         for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, powers, batch);
             let expected_challenge_length = match compression {
                 UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
                 UseCompression::No => parameters.accumulator_size,
@@ -74,7 +74,7 @@ mod tests {
             Phase1::initialization(&mut output, compression, &parameters).unwrap();
 
             let deserialized =
-                Phase1::deserialize(&output, compression, CheckForCorrectness::Yes, &parameters).unwrap();
+                Phase1::deserialize(&output, compression, CheckForCorrectness::Full, &parameters).unwrap();
 
             let g1_zero = E::G1Affine::prime_subgroup_generator();
             let g2_zero = E::G2Affine::prime_subgroup_generator();
@@ -92,8 +92,15 @@ mod tests {
                 }
                 ProvingSystem::Marlin => {
                     assert_eq!(deserialized.tau_powers_g1, vec![g1_zero; parameters.powers_length]);
-                    assert_eq!(deserialized.tau_powers_g2, vec![g2_zero; parameters.size + 2]);
-                    assert_eq!(deserialized.alpha_tau_powers_g1, vec![g1_zero; 3 + 3 * parameters.size]);
+                    assert_eq!(deserialized.tau_powers_g2, vec![
+                        g2_zero;
+                        parameters.total_size_in_log2 + 2
+                    ]);
+                    assert_eq!(deserialized.alpha_tau_powers_g1, vec![
+                        g1_zero;
+                        3 + 3 * parameters
+                            .total_size_in_log2
+                    ]);
                 }
             }
         }

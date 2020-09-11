@@ -6,6 +6,11 @@ use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, 
 
 use zexe_algebra::{AffineCurve, PairingEngine};
 
+#[cfg(not(feature = "wasm"))]
+use crate::ContributionMode;
+#[cfg(not(feature = "wasm"))]
+use zexe_algebra::{FpParameters, PrimeField, Zero};
+
 #[allow(type_alias_bounds)]
 type AccumulatorElements<E: PairingEngine> = (
     Vec<E::G1Affine>,
@@ -76,15 +81,49 @@ cfg_if! {
             Ok(())
         }
 
+        /// Reads a list of group elements from the buffer to the provided `elements` slice
+        /// and then checks that the elements are nonzero and in the prime order subgroup.
+        pub(crate) fn check_elements_are_nonzero_and_in_prime_order_subgroup<C: AffineCurve>(
+            (buffer, compression): (&[u8], UseCompression),
+            (start, end): (usize, usize),
+            elements: &mut [C],
+        ) -> Result<()> {
+            let size = buffer_size::<C>(compression);
+            buffer[start * size..end * size].read_batch_preallocated(
+                &mut elements[0..end - start],
+                compression,
+                CheckForCorrectness::Full,
+            )?;
+            // TODO(kobi): replace with batch subgroup check
+            let all_in_prime_order_subgroup = elements.iter().all(|p| {
+                p.mul(<<C::ScalarField as PrimeField>::Params as FpParameters>::MODULUS)
+                    .is_zero()
+            });
+            if !all_in_prime_order_subgroup {
+                return Err(Error::IncorrectSubgroup);
+            }
+            Ok(())
+        }
+
         /// Reads a chunk of 2 elements from the buffer
         pub(crate) fn read_initial_elements<C: AffineCurve>(
-            buf: &[u8],
+            buffer: &[u8],
             compressed: UseCompression,
             check_input_for_correctness: CheckForCorrectness,
         ) -> Result<Vec<C>> {
-            let batch = 2;
+            read_initial_elements_with_amount(buffer, 2, compressed, check_input_for_correctness)
+        }
+
+        /// Reads a chunk of {amount} elements from the buffer
+        pub(crate) fn read_initial_elements_with_amount<C: AffineCurve>(
+            buffer: &[u8],
+            amount: usize,
+            compressed: UseCompression,
+            check_input_for_correctness: CheckForCorrectness,
+        ) -> Result<Vec<C>> {
+            let batch = amount;
             let size = buffer_size::<C>(compressed);
-            let result = buf[0..batch * size].read_batch(compressed, check_input_for_correctness)?;
+            let result = buffer[0..batch * size].read_batch(compressed, check_input_for_correctness)?;
             if result.len() != batch {
                 return Err(Error::InvalidLength {
                     expected: batch,
@@ -94,7 +133,7 @@ cfg_if! {
             Ok(result)
         }
 
-        /// Takes a compressed input buffer and decompresses it
+        /// Takes a compressed input buffer and decompresses it.
         fn decompress_buffer<C: AffineCurve>(
             output: &mut [u8],
             input: &[u8],
@@ -121,97 +160,96 @@ cfg_if! {
         ) -> Result<()> {
             let compressed_input = UseCompression::Yes;
             let compressed_output = UseCompression::No;
-            // get an immutable reference to the compressed input chunks
-            let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, mut in_beta_g2) = split(&input, parameters, compressed_input);
-
-            // get mutable refs to the decompressed outputs
-            let (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2) = split_mut(output, parameters, compressed_output);
 
             match parameters.proving_system {
                 ProvingSystem::Groth16 => {
-                    // decompress beta_g2 for the first chunk
+                    // Get an immutable reference to the compressed input chunks
+                    let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, mut in_beta_g2) = split(&input, parameters, compressed_input);
+                    // Get mutable refs to the decompressed outputs
+                    let (tau_g1, tau_g2, alpha_g1, beta_g1, beta_g2) = split_mut(output, parameters, compressed_output);
+
+                    // Decompress beta_g2
                     {
-                        // get the compressed element
+                        // Get the compressed element
                         let beta_g2_el =
                             in_beta_g2.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
-                        // write it back decompressed
+                        // Write it back decompressed
                         beta_g2.write_element(&beta_g2_el, compressed_output)?;
                     }
 
-            // load `batch_size` chunks on each iteration and decompress them
-            iter_chunk(&parameters, |start, end| {
-                // decompress each element
-                rayon::scope(|t| {
-                    t.spawn(|_| {
-                        decompress_buffer::<E::G1Affine>(tau_g1, in_tau_g1, check_input_for_correctness, (start, end))
-                            .expect("could not decompress the TauG1 elements")
-                    });
-                    if start < parameters.powers_length {
-                        // if the `end` would be out of bounds, then just process until
-                        // the end (this is necessary in case the last batch would try to
-                        // process more elements than available)
-                        let end = if start + parameters.batch_size > parameters.powers_length {
-                            parameters.powers_length
-                        } else {
-                            end
-                        };
-
-                                rayon::scope(|t| {
-                                    t.spawn(|_| {
-                                        decompress_buffer::<E::G2Affine>(
-                                            tau_g2,
-                                            in_tau_g2,
-                                            check_input_for_correctness,
-                                            (start, end),
-                                        )
-                                        .expect("could not decompress the TauG2 elements")
-                                    });
-                                    t.spawn(|_| {
-                                        decompress_buffer::<E::G1Affine>(
-                                            alpha_g1,
-                                            in_alpha_g1,
-                                            check_input_for_correctness,
-                                            (start, end),
-                                        )
-                                        .expect("could not decompress the AlphaG1 elements")
-                                    });
-                                    t.spawn(|_| {
-                                        decompress_buffer::<E::G1Affine>(
-                                            beta_g1,
-                                            in_beta_g1,
-                                            check_input_for_correctness,
-                                            (start, end),
-                                        )
-                                        .expect("could not decompress the BetaG1 elements")
-                                    });
-                                });
-                            }
+                    // Load `batch_size` chunks on each iteration and decompress them
+                    rayon::scope(|t| {
+                        t.spawn(|_| {
+                            decompress_buffer::<E::G1Affine>(
+                                tau_g1,
+                                in_tau_g1,
+                                check_input_for_correctness,
+                                (0, parameters.g1_chunk_size),
+                            )
+                            .expect("could not decompress the tau_g1 elements")
                         });
-
-                        Ok(())
-                    })?;
+                        if parameters.other_chunk_size > 0 {
+                            rayon::scope(|t| {
+                                t.spawn(|_| {
+                                    decompress_buffer::<E::G2Affine>(
+                                        tau_g2,
+                                        in_tau_g2,
+                                        check_input_for_correctness,
+                                        (0, parameters.other_chunk_size),
+                                    )
+                                    .expect("could not decompress the tau_g2 elements")
+                                });
+                                t.spawn(|_| {
+                                    decompress_buffer::<E::G1Affine>(
+                                        alpha_g1,
+                                        in_alpha_g1,
+                                        check_input_for_correctness,
+                                        (0, parameters.other_chunk_size),
+                                    )
+                                    .expect("could not decompress the alpha_g1 elements")
+                                });
+                                t.spawn(|_| {
+                                    decompress_buffer::<E::G1Affine>(
+                                        beta_g1,
+                                        in_beta_g1,
+                                        check_input_for_correctness,
+                                        (0, parameters.other_chunk_size),
+                                    )
+                                    .expect("could not decompress the beta_g1 elements")
+                                });
+                            });
+                        }
+                    });
                 }
                 ProvingSystem::Marlin => {
-                    // load `batch_size` chunks on each iteration and decompress them
-                    let num_alpha_powers = 3;
-                    decompress_buffer::<E::G1Affine>(
-                        alpha_g1,
-                        in_alpha_g1,
-                        check_input_for_correctness,
-                        (0, num_alpha_powers + 3*parameters.size),
-                    )?;
-                    decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.size + 2))?;
-                    iter_chunk(&parameters, |start, end| {
-                        // decompress each element
-                        rayon::scope(|t| {
-                            t.spawn(|_| {
-                                decompress_buffer::<E::G1Affine>(tau_g1, in_tau_g1, check_input_for_correctness, (start, end))
-                                    .expect("could not decompress the TauG1 elements")
-                            });
-                        });
+                    // Get an immutable reference to the compressed input chunks
+                    let (in_tau_g1, in_tau_g2, in_alpha_g1, _, _) = split(&input, parameters, compressed_input);
+                    // Get mutable refs to the decompressed outputs
+                    let (tau_g1, tau_g2, alpha_g1, _, _) = split_mut(output, parameters, compressed_output);
 
-                        Ok(())
-                    })?;
+                    if parameters.chunk_index == 0 || parameters.contribution_mode == ContributionMode::Full {
+                        // Load `batch_size` chunks on each iteration and decompress them
+                        let num_alpha_powers = 3;
+                        decompress_buffer::<E::G1Affine>(
+                            alpha_g1,
+                            in_alpha_g1,
+                            check_input_for_correctness,
+                            (0, num_alpha_powers + 3*parameters.total_size_in_log2),
+                        )?;
+                        decompress_buffer::<E::G2Affine>(tau_g2, in_tau_g2, check_input_for_correctness, (0, parameters.total_size_in_log2 + 2))?;
+                    }
+
+                    rayon::scope(|t| {
+                         t.spawn(|_| {
+                            decompress_buffer::<E::G1Affine>(
+                                tau_g1,
+                                in_tau_g1,
+                                check_input_for_correctness,
+                                (0, parameters.g1_chunk_size),
+                            )
+                            .expect("could not decompress the tau_g1 elements")
+                        });
+                    });
                 }
             }
             Ok(())
@@ -242,7 +280,7 @@ pub fn serialize<E: PairingEngine>(
     Ok(())
 }
 
-/// warning, only use this on machines which have enough memory to load
+/// Warning, only use this on machines which have enough memory to load
 /// the accumulator in memory
 pub fn deserialize<E: PairingEngine>(
     input: &[u8],
@@ -250,10 +288,10 @@ pub fn deserialize<E: PairingEngine>(
     check_input_for_correctness: CheckForCorrectness,
     parameters: &Phase1Parameters<E>,
 ) -> Result<AccumulatorElements<E>> {
-    // get an immutable reference to the input chunks
+    // Get an immutable reference to the input chunks
     let (in_tau_g1, in_tau_g2, in_alpha_g1, in_beta_g1, in_beta_g2) = split(&input, parameters, compressed);
 
-    // deserialize each part of the buffer separately
+    // Deserialize each part of the buffer separately
     let tau_g1 = in_tau_g1.read_batch(compressed, check_input_for_correctness)?;
     let tau_g2 = in_tau_g2.read_batch(compressed, check_input_for_correctness)?;
     let alpha_g1 = in_alpha_g1.read_batch(compressed, check_input_for_correctness)?;
@@ -289,9 +327,9 @@ mod tests {
         let len = num_els * buffer_size::<C>(UseCompression::No);
         let mut out = vec![0; len];
         // Perform the decompression.
-        decompress_buffer::<C>(&mut out, &input, CheckForCorrectness::Yes, (0, num_els)).unwrap();
+        decompress_buffer::<C>(&mut out, &input, CheckForCorrectness::Full, (0, num_els)).unwrap();
         let deserialized = out
-            .read_batch::<C>(UseCompression::No, CheckForCorrectness::Yes)
+            .read_batch::<C>(UseCompression::No, CheckForCorrectness::Full)
             .unwrap();
         // Ensure they match.
         assert_eq!(deserialized, elements);

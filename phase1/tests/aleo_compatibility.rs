@@ -25,11 +25,11 @@ fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
     for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
         // Generate an accumulator via Zexe's trusted setup.
         let (powers, batch) = (6, 4);
-        let params = Phase1Parameters::<Zexe>::new(*proving_system, powers, batch);
+        let params = Phase1Parameters::<Zexe>::new_full(*proving_system, powers, batch);
 
         // Perform 1 power of tau contribution (assume Powers of Tau is computed correctly)
         let compressed = UseCompression::No;
-        let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Yes, compressed, &params);
+        let (_, output, _, _) = setup_verify(compressed, CheckForCorrectness::Full, compressed, &params);
 
         // Advance the cursor past the output hash.
         let mut reader = std::io::BufReader::new(std::io::Cursor::new(output));
@@ -80,7 +80,7 @@ fn compatible_phase1_test<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine>() ->
                 for _ in 0..params.powers_length {
                     assert_compatibility::<Aleo::G1Affine, Zexe::G1Affine, _>(&mut reader)?;
                 }
-                for _ in 0..params.size + 2 {
+                for _ in 0..params.total_size_in_log2 + 2 {
                     assert_compatibility::<Aleo::G2Affine, Zexe::G2Affine, _>(&mut reader)?;
                 }
                 for _ in 0..3 {

@@ -61,7 +61,7 @@ mod tests {
     fn serialize_curve_test<E: PairingEngine + Sync>(compress: UseCompression, size: usize, batch: usize) {
         for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
             // Create a small accumulator with some random state.
-            let parameters = Phase1Parameters::<E>::new(*proving_system, size, batch);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, size, batch);
             let (buffer, accumulator) = generate_random_accumulator(&parameters, compress);
             let deserialized = Phase1::deserialize(&buffer, compress, CheckForCorrectness::No, &parameters).unwrap();
             assert_eq!(deserialized, accumulator);
@@ -70,7 +70,7 @@ mod tests {
 
     fn decompress_curve_test<E: PairingEngine>() {
         for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-            let parameters = Phase1Parameters::<E>::new(*proving_system, 2, 2);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, 2, 2);
             // generate a random input compressed accumulator
             let (input, before) = generate_random_accumulator(&parameters, UseCompression::Yes);
             let mut output = generate_output(&parameters, UseCompression::No);

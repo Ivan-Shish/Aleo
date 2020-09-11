@@ -61,7 +61,7 @@ If you do not have Rust installed, run: `curl --proto '=https' --tlsv1.2 -sSf ht
 ## Directory Structure
 
 This repository contains several Rust crates that implement the different building blocks of the MPC. The high-level structure of the repository is as follows:
-- [`aleo-setup1`](aleo-setup1): Rust crate for running Aleo Setup I
+- [`aleo-setup1`](phase1-cli): Rust crate for running Aleo Setup I
 - [`aleo-setup2`](aleo-setup2): Rust crate for running Aleo Setup II
 - [`phase1`](phase1): Rust crate that provides an accumulator for Powers of Tau. It runs multithreaded and works in "batches", allowing large powers to be calculated in resource constrained environments
 - [`phase2`](phase2): Rust crate that provides a wrapper over Groth16's parameters which also contains a verifiable transcript of the so-far contributions to the specialization phase
