@@ -48,8 +48,18 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 // load `batch_size` chunks on each iteration and perform the transformation
                 iter_chunk(&parameters, |start, end| {
                     debug!("contributing to chunk from {} to {}", start, end);
+
                     let span = info_span!("batch", start, end);
                     let _ = span.enter();
+
+                    // Determine the chunk start and end indices based on the contribution mode.
+                    let (start_chunk, end_chunk) = match parameters.contribution_mode {
+                        ContributionMode::Chunked => (
+                            start - parameters.chunk_index * parameters.chunk_size,
+                            end - parameters.chunk_index * parameters.chunk_size,
+                        ),
+                        ContributionMode::Full => (start, end),
+                    };
 
                     rayon_cfg::scope(|t| {
                         let _ = span.enter();
@@ -71,10 +81,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                 t.spawn(|_| {
                                     let _ = span.enter();
 
+                                    // Check that the chunk is of nonzero length.
+                                    assert!(tau_g1_inputs.len() > 0);
+
                                     apply_powers::<E::G1Affine>(
                                         (tau_g1_outputs, compressed_output),
                                         (tau_g1_inputs, compressed_input, check_input_for_correctness),
-                                        (start, end),
+                                        (start_chunk, end_chunk),
                                         &powers,
                                         None,
                                     )
@@ -86,10 +99,22 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                     // if the `end` would be out of bounds, then just process until
                                     // the end (this is necessary in case the last batch would try to
                                     // process more elements than available)
-                                    let end = if start + parameters.batch_size > parameters.powers_length {
-                                        parameters.powers_length
-                                    } else {
-                                        end
+                                    let max = match parameters.contribution_mode {
+                                        ContributionMode::Chunked => std::cmp::min(
+                                            (parameters.chunk_index + 1) * parameters.chunk_size,
+                                            parameters.powers_length,
+                                        ),
+                                        ContributionMode::Full => parameters.powers_length,
+                                    };
+                                    let end = if start + parameters.batch_size > max { max } else { end };
+
+                                    // Determine the chunk start and end indices based on the contribution mode.
+                                    let (start_chunk, end_chunk) = match parameters.contribution_mode {
+                                        ContributionMode::Chunked => (
+                                            start - parameters.chunk_index * parameters.chunk_size,
+                                            end - parameters.chunk_index * parameters.chunk_size,
+                                        ),
+                                        ContributionMode::Full => (start, end),
                                     };
 
                                     rayon_cfg::scope(|t| {
@@ -98,10 +123,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         t.spawn(|_| {
                                             let _ = span.enter();
 
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(tau_g2_inputs.len() > 0);
+
                                             apply_powers::<E::G2Affine>(
                                                 (tau_g2_outputs, compressed_output),
                                                 (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                                                (start, end),
+                                                (start_chunk, end_chunk),
                                                 &powers,
                                                 None,
                                             )
@@ -113,10 +141,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         t.spawn(|_| {
                                             let _ = span.enter();
 
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(alpha_g1_inputs.len() > 0);
+
                                             apply_powers::<E::G1Affine>(
                                                 (alpha_g1_outputs, compressed_output),
                                                 (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                                                (start, end),
+                                                (start_chunk, end_chunk),
                                                 &powers,
                                                 Some(&key.alpha),
                                             )
@@ -128,10 +159,13 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                                         t.spawn(|_| {
                                             let _ = span.enter();
 
+                                            // Check that the chunk is of nonzero length.
+                                            assert!(beta_g1_inputs.len() > 0);
+
                                             apply_powers::<E::G1Affine>(
                                                 (beta_g1_outputs, compressed_output),
                                                 (beta_g1_inputs, compressed_input, check_input_for_correctness),
-                                                (start, end),
+                                                (start_chunk, end_chunk),
                                                 &powers,
                                                 Some(&key.beta),
                                             )
@@ -151,59 +185,80 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                 })?;
             }
             ProvingSystem::Marlin => {
-                let degree_bound_powers = (0..parameters.size)
-                    .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
-                    .collect::<Vec<_>>();
-                let mut g2_inverse_powers = degree_bound_powers.clone();
-                batch_inversion(&mut g2_inverse_powers);
-                apply_powers::<E::G2Affine>(
-                    (tau_g2_outputs, compressed_output),
-                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (2, parameters.size + 2),
-                    &g2_inverse_powers,
-                    None,
-                )
-                .expect("could not apply powers of tau to tau_g2 elements");
-                let g1_degree_powers = degree_bound_powers
-                    .into_iter()
-                    .map(|f| vec![f, f * &key.tau, f * &key.tau.pow([2])])
-                    .flatten()
-                    .collect::<Vec<_>>();
-                apply_powers::<E::G1Affine>(
-                    (alpha_g1_outputs, compressed_output),
-                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                    (3, 3 + 3 * parameters.size),
-                    &g1_degree_powers,
-                    Some(&key.alpha),
-                )
-                .expect("could not apply powers of tau to tau_g2 elements");
+                // we assume batch_size > 3 + 3*total_size_in_log2, allowing all the smaller amounts
+                // of powers in tau G2 and alpha tau G1 to reside there
+                if parameters.chunk_index == 0 {
+                    let degree_bound_powers = (0..parameters.total_size_in_log2)
+                        .map(|i| key.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
+                        .collect::<Vec<_>>();
 
-                let num_alpha_powers = 3;
-                let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
-                apply_powers::<E::G1Affine>(
-                    (alpha_g1_outputs, compressed_output),
-                    (alpha_g1_inputs, compressed_input, check_input_for_correctness),
-                    (0, num_alpha_powers),
-                    &powers,
-                    Some(&key.alpha),
-                )
-                .expect("could not apply powers of tau alpha to tau_g1 elements");
+                    let mut g2_inverse_powers = degree_bound_powers.clone();
 
-                let powers = generate_powers_of_tau::<E>(&key.tau, 0, 2);
-                apply_powers::<E::G2Affine>(
-                    (tau_g2_outputs, compressed_output),
-                    (tau_g2_inputs, compressed_input, check_input_for_correctness),
-                    (0, 2),
-                    &powers,
-                    None,
-                )
-                .expect("could not apply powers of tau to initial tau_g2 elements");
+                    batch_inversion(&mut g2_inverse_powers);
+
+                    apply_powers::<E::G2Affine>(
+                        (tau_g2_outputs, compressed_output),
+                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                        (2, parameters.total_size_in_log2 + 2),
+                        &g2_inverse_powers,
+                        None,
+                    )
+                    .expect("could not apply powers of tau to tau_g2 elements");
+
+                    let g1_degree_powers = degree_bound_powers
+                        .into_iter()
+                        .map(|f| vec![f, f * &key.tau, f * &key.tau.pow([2])])
+                        .flatten()
+                        .collect::<Vec<_>>();
+
+                    apply_powers::<E::G1Affine>(
+                        (alpha_g1_outputs, compressed_output),
+                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                        (3, 3 + 3 * parameters.total_size_in_log2),
+                        &g1_degree_powers,
+                        Some(&key.alpha),
+                    )
+                    .expect("could not apply powers of tau to tau_g2 elements");
+
+                    let num_alpha_powers = 3;
+                    let powers = generate_powers_of_tau::<E>(&key.tau, 0, num_alpha_powers);
+
+                    apply_powers::<E::G1Affine>(
+                        (alpha_g1_outputs, compressed_output),
+                        (alpha_g1_inputs, compressed_input, check_input_for_correctness),
+                        (0, num_alpha_powers),
+                        &powers,
+                        Some(&key.alpha),
+                    )
+                    .expect("could not apply powers of tau alpha to tau_g1 elements");
+
+                    let powers = generate_powers_of_tau::<E>(&key.tau, 0, 2);
+
+                    apply_powers::<E::G2Affine>(
+                        (tau_g2_outputs, compressed_output),
+                        (tau_g2_inputs, compressed_input, check_input_for_correctness),
+                        (0, 2),
+                        &powers,
+                        None,
+                    )
+                    .expect("could not apply powers of tau to initial tau_g2 elements");
+                }
 
                 // load `batch_size` chunks on each iteration and perform the transformation
                 iter_chunk(&parameters, |start, end| {
                     debug!("contributing to chunk from {} to {}", start, end);
+
                     let span = info_span!("batch", start, end);
                     let _ = span.enter();
+
+                    // Determine the chunk start and end indices based on the contribution mode.
+                    let (start_chunk, end_chunk) = match parameters.contribution_mode {
+                        ContributionMode::Chunked => (
+                            start - parameters.chunk_index * parameters.chunk_size,
+                            end - parameters.chunk_index * parameters.chunk_size,
+                        ),
+                        ContributionMode::Full => (start, end),
+                    };
 
                     rayon_cfg::scope(|t| {
                         let _ = span.enter();
@@ -219,7 +274,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                             apply_powers::<E::G1Affine>(
                                 (tau_g1_outputs, compressed_output),
                                 (tau_g1_inputs, compressed_input, check_input_for_correctness),
-                                (start, end),
+                                (start_chunk, end_chunk),
                                 &powers,
                                 None,
                             )
@@ -244,11 +299,9 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 mod tests {
     use super::*;
     use crate::helpers::testing::generate_input;
-    use setup_utils::{batch_exp, generate_powers_of_tau};
+    use setup_utils::{batch_exp, derive_rng_from_seed, generate_powers_of_tau};
 
     use zexe_algebra::{Bls12_377, ProjectiveCurve, BW6_761};
-
-    use rand::thread_rng;
 
     fn curve_computation_test<E: PairingEngine>(
         powers: usize,
@@ -256,8 +309,10 @@ mod tests {
         compressed_input: UseCompression,
         compressed_output: UseCompression,
     ) {
+        let input_correctness = CheckForCorrectness::Full;
+
         for proving_system in &[ProvingSystem::Groth16, ProvingSystem::Marlin] {
-            let parameters = Phase1Parameters::<E>::new(*proving_system, powers, batch);
+            let parameters = Phase1Parameters::<E>::new_full(*proving_system, powers, batch);
             let expected_response_length = parameters.get_length(compressed_output);
 
             // Get a non-mutable copy of the initial accumulator state.
@@ -267,7 +322,7 @@ mod tests {
 
             // Construct our keypair using the RNG we created above
             let current_accumulator_hash = blank_hash();
-            let mut rng = thread_rng();
+            let mut rng = derive_rng_from_seed(b"curve_computation_test");
             let (_, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
                 .expect("could not generate keypair");
 
@@ -276,39 +331,38 @@ mod tests {
                 &mut output,
                 compressed_input,
                 compressed_output,
-                CheckForCorrectness::No,
+                input_correctness,
                 &privkey,
                 &parameters,
             )
             .unwrap();
 
-            let deserialized =
-                Phase1::deserialize(&output, compressed_output, CheckForCorrectness::No, &parameters).unwrap();
+            let deserialized = Phase1::deserialize(&output, compressed_output, input_correctness, &parameters).unwrap();
 
             match proving_system {
                 ProvingSystem::Groth16 => {
                     let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_g1_length);
                     batch_exp(
                         &mut before.tau_powers_g1,
-                        &tau_powers[0..parameters.powers_g1_length],
+                        &tau_powers[0..parameters.g1_chunk_size],
                         None,
                     )
                     .unwrap();
                     batch_exp(
                         &mut before.tau_powers_g2,
-                        &tau_powers[0..parameters.powers_length],
+                        &tau_powers[0..parameters.other_chunk_size],
                         None,
                     )
                     .unwrap();
                     batch_exp(
                         &mut before.alpha_tau_powers_g1,
-                        &tau_powers[0..parameters.powers_length],
+                        &tau_powers[0..parameters.other_chunk_size],
                         Some(&privkey.alpha),
                     )
                     .unwrap();
                     batch_exp(
                         &mut before.beta_tau_powers_g1,
-                        &tau_powers[0..parameters.powers_length],
+                        &tau_powers[0..parameters.other_chunk_size],
                         Some(&privkey.beta),
                     )
                     .unwrap();
@@ -322,7 +376,8 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                    let degree_bound_powers = (0..parameters.size)
+
+                    let degree_bound_powers = (0..parameters.total_size_in_log2)
                         .map(|i| privkey.tau.pow([parameters.powers_length as u64 - 1 - (1 << i) + 2]))
                         .collect::<Vec<_>>();
                     let mut g2_inverse_powers = degree_bound_powers.clone();
@@ -330,17 +385,18 @@ mod tests {
                     batch_exp(&mut before.tau_powers_g2[..2], &tau_powers[0..2], None).unwrap();
                     batch_exp(
                         &mut before.tau_powers_g2[2..],
-                        &g2_inverse_powers[0..parameters.size],
+                        &g2_inverse_powers[0..parameters.total_size_in_log2],
                         None,
                     )
                     .unwrap();
+
                     let g1_degree_powers = degree_bound_powers
                         .into_iter()
                         .map(|f| vec![f, f * &privkey.tau, f * &privkey.tau * &privkey.tau])
                         .flatten()
                         .collect::<Vec<_>>();
                     batch_exp(
-                        &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.size],
+                        &mut before.alpha_tau_powers_g1[3..3 + 3 * parameters.total_size_in_log2],
                         &g1_degree_powers,
                         Some(&privkey.alpha),
                     )

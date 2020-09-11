@@ -2,7 +2,7 @@
 name = "phase1"
 version = "0.3.0"
 authors = ["Sean Bowe", "Alex Vlasov", "The Aleo Team <hello@aleo.org>"]
-description = "Communal zk-SNARK MPC for Public Parameters"
+description = "Core logic for Phase 1"
 homepage = "https://github.com/AleoHQ/aleo-setup"
 repository = "https://github.com/AleoHQ/aleo-setup"
 license = "MIT/Apache-2.0"
@@ -32,31 +32,32 @@ snarkos-profiler = { git = "https://github.com/AleoHQ/snarkOS", package = "snark
 [dev-dependencies]
 phase1 = { path = "./", features = ["testing"] }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["full", "derive"] }
-snarkos-posw = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-posw", default-features = false }
-snarkos-errors = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-errors", default-features = false }
+snarkos-algorithms = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-algorithms", default-features = false }
 snarkos-curves = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-curves", default-features = false }
+snarkos-errors = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-errors", default-features = false }
+snarkos-gadgets = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-gadgets", default-features = false }
 snarkos-marlin = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-marlin", default-features = false }
 snarkos-models = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-models", default-features = false }
-snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities", default-features = false }
 snarkos-objects = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-objects", default-features = false }
-snarkos-algorithms = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-algorithms", default-features = false }
-snarkos-gadgets = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-gadgets", default-features = false }
 snarkos-polycommit = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-polycommit", default-features = false }
-blake2 = { version = "0.8", default-features = false }
+snarkos-posw = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-posw", default-features = false }
+snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities", default-features = false }
+
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["full", "derive"] }
 
 anyhow = { version = "1.0.31" }
+blake2 = { version = "0.8", default-features = false }
 num-traits = { version = "0.2.12" }
 rusty-hook = { version = "0.11.2" }
 
 [features]
 default = ["cli"]
-testing = ["parallel", "zexe_algebra_core", "snarkos-profiler/print-trace"]
-parallel = ["rayon", "setup-utils/parallel", "zexe_algebra/parallel", "zexe_algebra_core/parallel"]
-benchmark = ["criterion"]
-
 cli = ["parallel", "setup-utils/cli"]
+parallel = ["rayon", "setup-utils/parallel", "zexe_algebra/parallel", "zexe_algebra_core/parallel"]
 wasm = ["setup-utils/wasm"]
+
+benchmark = ["criterion"]
+testing = ["parallel", "zexe_algebra_core", "snarkos-profiler/print-trace"]
 
 [[test]]
 name = "aleo_compatibility"

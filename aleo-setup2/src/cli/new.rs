@@ -179,7 +179,7 @@ pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + 
     let phase1 = Groth16Params::<Zexe>::read(
         &mut phase1_transcript,
         COMPRESSION,
-        CheckForCorrectness::No,
+        CheckForCorrectness::No, // No need to check for correctness, since this has been processed by the coordinator.
         2usize.pow(opt.phase1_size),
         phase2_size,
     )?;

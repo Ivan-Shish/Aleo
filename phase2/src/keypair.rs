@@ -97,10 +97,10 @@ impl<E: PairingEngine> PublicKey<E> {
     /// Reads the key's **uncompressed** points from the provided
     /// reader
     pub fn read<R: Read>(reader: &mut R) -> Result<PublicKey<E>> {
-        let delta_after = reader.read_element(UseCompression::No, CheckForCorrectness::Yes)?;
-        let s = reader.read_element(UseCompression::No, CheckForCorrectness::Yes)?;
-        let s_delta = reader.read_element(UseCompression::No, CheckForCorrectness::Yes)?;
-        let r_delta = reader.read_element(UseCompression::No, CheckForCorrectness::Yes)?;
+        let delta_after = reader.read_element(UseCompression::No, CheckForCorrectness::Full)?;
+        let s = reader.read_element(UseCompression::No, CheckForCorrectness::Full)?;
+        let s_delta = reader.read_element(UseCompression::No, CheckForCorrectness::Full)?;
+        let r_delta = reader.read_element(UseCompression::No, CheckForCorrectness::Full)?;
         let mut transcript = [0u8; 64];
         reader.read_exact(&mut transcript)?;
 
