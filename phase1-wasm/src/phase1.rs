@@ -37,7 +37,7 @@ pub struct ContributionResponse {
 }
 
 /// Initialize the following hooks:
-/// 
+///
 /// + console error panic hook - to display panic messages in the console
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
