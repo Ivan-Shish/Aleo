@@ -36,6 +36,15 @@ pub struct ContributionResponse {
     contribution_hash: Vec<u8>,
 }
 
+/// Initialize the following hooks:
+/// 
+/// + console error panic hook - to display panic messages in the console
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub fn init_hooks() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+}
+
 #[wasm_bindgen]
 pub struct Phase1WASM {}
 
