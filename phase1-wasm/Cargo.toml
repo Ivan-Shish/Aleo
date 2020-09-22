@@ -17,12 +17,14 @@ setup-utils = { path = "../setup-utils", default-features = false }
 
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
 
+log = "0.4"
 rand = { version = "0.7" }
 serde = { version = "1.0.114" }
 serde_derive = { version = "1.0.114" }
 tracing = { version = "0.1.17" }
 tracing-subscriber = { version = "0.2.3" }
 wasm-bindgen = { version = "0.2.67", features=["serde-serialize"] }
+wasm-logger = { version = "0.2", optional = true }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -39,7 +41,7 @@ rustc_version = { version = "0.2" }
 
 [features]
 default = []
-wasm = ["console_error_panic_hook", "phase1/wasm", "rand/wasm-bindgen", "setup-utils/wasm"]
+wasm = ["console_error_panic_hook", "phase1/wasm", "rand/wasm-bindgen", "setup-utils/wasm", "wasm-logger"]
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm
