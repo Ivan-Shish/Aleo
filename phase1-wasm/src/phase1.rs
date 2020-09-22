@@ -91,12 +91,12 @@ impl Phase1WASM {
         let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(
                 &challenge,
-                &get_parameters_chunked::<Bls12_377>(proving_system, batch_size, power, chunk_index, chunk_size),
+                &get_parameters_chunked::<Bls12_377>(proving_system, power, batch_size, chunk_index, chunk_size),
                 rng,
             ),
             CurveKind::BW6 => contribute_challenge(
                 &challenge,
-                &get_parameters_chunked::<BW6_761>(proving_system, batch_size, power, chunk_index, chunk_size),
+                &get_parameters_chunked::<BW6_761>(proving_system, power, batch_size, chunk_index, chunk_size),
                 rng,
             ),
         };
