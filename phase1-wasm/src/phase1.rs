@@ -48,6 +48,13 @@ pub fn init_hooks() {
 #[wasm_bindgen]
 pub struct Phase1WASM {}
 
+fn convert_contribution_result_to_wasm(result: &Result<ContributionResponse, String>) -> Result<JsValue, JsValue> {
+    match result {
+        Ok(response) => JsValue::from_serde(&response).map_err(|e| JsValue::from_str(&e.to_string())),
+        Err(e) => Err(JsValue::from_str(&e)),
+    }
+}
+
 #[wasm_bindgen]
 impl Phase1WASM {
     #[wasm_bindgen]
@@ -72,7 +79,7 @@ impl Phase1WASM {
                 rng,
             ),
         };
-        return Ok(JsValue::from_serde(&res.ok().unwrap()).unwrap());
+        convert_contribution_result_to_wasm(&res)
     }
 
     #[wasm_bindgen]
@@ -100,10 +107,7 @@ impl Phase1WASM {
                 rng,
             ),
         };
-        match res {
-            Ok(response) => JsValue::from_serde(&response).map_err(|e| JsValue::from_str(&e.to_string())),
-            Err(e) => Err(JsValue::from_str(&e)),
-        }
+        convert_contribution_result_to_wasm(&res)
     }
 }
 
