@@ -100,7 +100,10 @@ impl Phase1WASM {
                 rng,
             ),
         };
-        return Ok(JsValue::from_serde(&res.ok().unwrap()).unwrap());
+        match res {
+            Ok(_) => Ok(JsValue::from_str("ok")),
+            Err(e) => Err(JsValue::from_str(&e)),
+        }
     }
 }
 
@@ -186,8 +189,8 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
                     contribution_hash: contribution_hash.as_slice().iter().cloned().collect(),
                 });
             }
-            Err(_) => {
-                return Err("unable to write public key".to_string());
+            Err(e) => {
+                return Err(e.to_string());
             }
         },
         Err(_) => {
