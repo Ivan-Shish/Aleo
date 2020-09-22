@@ -36,6 +36,15 @@ pub struct ContributionResponse {
     contribution_hash: Vec<u8>,
 }
 
+/// Initialize the following hooks:
+///
+/// + console error panic hook - to display panic messages in the console
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub fn init_hooks() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+}
+
 #[wasm_bindgen]
 pub struct Phase1WASM {}
 
@@ -91,7 +100,10 @@ impl Phase1WASM {
                 rng,
             ),
         };
-        return Ok(JsValue::from_serde(&res.ok().unwrap()).unwrap());
+        match res {
+            Ok(_) => Ok(JsValue::from_str("ok")),
+            Err(e) => Err(JsValue::from_str(&e)),
+        }
     }
 }
 
@@ -177,8 +189,8 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
                     contribution_hash: contribution_hash.as_slice().iter().cloned().collect(),
                 });
             }
-            Err(_) => {
-                return Err("unable to write public key".to_string());
+            Err(e) => {
+                return Err(e.to_string());
             }
         },
         Err(_) => {
