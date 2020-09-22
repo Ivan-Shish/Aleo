@@ -101,7 +101,7 @@ impl Phase1WASM {
             ),
         };
         match res {
-            Ok(_) => Ok(JsValue::from_str("ok")),
+            Ok(response) => JsValue::from_serde(&response).map_err(|e| JsValue::from_str(&e.to_string())),
             Err(e) => Err(JsValue::from_str(&e)),
         }
     }
