@@ -4,7 +4,7 @@ use rocket::{http::Status, State};
 
 #[get("/ceremony")]
 pub fn get_ceremony(coordinator: State<Coordinator>) -> Result<String, Status> {
-    let round = match coordinator.get_current_round() {
+    let round = match coordinator.get_latest_round() {
         Ok(round) => round,
         _ => return Err(Status::InternalServerError),
     };

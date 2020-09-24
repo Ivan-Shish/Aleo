@@ -1,3 +1,5 @@
+use crate::CoordinatorError;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -31,6 +33,29 @@ pub struct Contribution {
 }
 
 impl Contribution {
+    /// Creates a new instance of `Contribution`.
+    #[inline]
+    pub(crate) fn new(
+        chunk_id: u64,
+        contribution_id: u64,
+        verifier_id: String,
+        verified_base_url: &str,
+    ) -> Result<Self, CoordinatorError> {
+        Ok(Self {
+            contributor_id: None,
+            contributed_location: None,
+            verifier_id: Some(verifier_id),
+            verified_location: Some(
+                format!(
+                    "{}/chunks/{}/contribution/{}",
+                    verified_base_url, chunk_id, contribution_id
+                )
+                .parse::<Url>()?,
+            ),
+            verified: false,
+        })
+    }
+
     /// Returns a reference to the contributor ID, if it exists.
     /// Otherwise returns `None`.
     #[inline]

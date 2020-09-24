@@ -1,24 +1,37 @@
 use crate::{
-    objects::{Ceremony, Contribution, Round},
+    objects::{Chunk, Contribution, Round},
     parameters::{StorageType, BASE_URL},
     storage::{Key, Storage, Value},
 };
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tracing::{error, info};
 use url::Url;
 
+#[derive(Debug)]
 pub enum CoordinatorError {
-    FailedToAcquireLock,
+    AlreadyContributed,
     FailedToUpdateChunk,
+    InvalidNumberOfChunks,
     InvalidUrl,
     LockAlreadyAcquired,
     MissingChunk,
     MissingContributionChunk,
-    NoCeremony,
+    MissingVerifierIds,
+    NoContributions,
     NoRound,
+    PreviousRoundUnfinished,
+    RoundDoesNotExist,
     StorageFailed,
-    UnauthorizedRoundContributor,
     UnauthorizedChunkContributor,
+    UnauthorizedRoundContributor,
+    Url(url::ParseError),
+}
+
+impl From<url::ParseError> for CoordinatorError {
+    fn from(error: url::ParseError) -> Self {
+        CoordinatorError::Url(error)
+    }
 }
 
 pub struct Coordinator {
@@ -29,45 +42,70 @@ impl Coordinator {
     /// Creates a new instance of the `Coordinator`.
     #[inline]
     pub fn new() -> Self {
-        let storage = StorageType::load();
+        Self {
+            storage: Arc::new(RwLock::new(StorageType::load())),
+        }
+    }
 
-        // // Resume the current round if it was previously running. Otherwise set to `None`.
-        // let current_round = match storage.get(&Key::CurrentRound) {
-        //     Some(Value::CurrentRound(round)) => Some(&*round.clone()),
-        //     _ => None,
-        // };
+    // TODO (howardwu): Ensure verification is done and continuity is enforced.
+    /// Takes the previous round, checks it was fully verified, and constructs a new round.
+    #[inline]
+    pub fn next_round(
+        &mut self,
+        contributor_ids: &Vec<String>,
+        verifier_ids: &Vec<String>,
+        chunk_verifier_ids: &Vec<String>,
+        chunk_verified_base_url: &Vec<&str>,
+    ) -> Result<(), CoordinatorError> {
+        info!("Starting a new round...");
 
-        let storage = Arc::new(RwLock::new(storage));
-        Self { storage }
+        // Fetch the current height of the ceremony.
+        let height = self.get_round_height()?;
+        // Check that the previous round was fully completed and verified.
+        if let Ok(round) = self.get_round(height) {
+            if round.is_complete() {
+                return Err(CoordinatorError::PreviousRoundUnfinished);
+            }
+        }
+
+        // Construct the new round.
+        let round = Round::new(
+            0u64, /* version */
+            height + 1,
+            contributor_ids,
+            verifier_ids,
+            chunk_verifier_ids,
+            chunk_verified_base_url,
+        )?;
+
+        // Add the new round.
+        self.storage_mut()?.insert(Key::Round(height + 1), Value::Round(round));
+        self.storage_mut()?
+            .insert(Key::RoundHeight, Value::RoundHeight(height + 1));
+        Ok(())
     }
 
     #[inline]
-    pub fn get_ceremony(&self) -> Result<Ceremony, CoordinatorError> {
-        // Acquire the storage read lock.
-        let storage = match self.storage.read() {
-            Ok(storage) => storage,
-            _ => return Err(CoordinatorError::NoCeremony),
-        };
-        // Load the ceremony from storage.
-        match storage.get(&Key::Ceremony) {
-            Some(Value::Ceremony(ceremony)) => Ok(ceremony.clone()),
-            _ => Err(CoordinatorError::NoCeremony),
+    pub fn get_latest_round(&self) -> Result<Round, CoordinatorError> {
+        self.get_round(self.get_round_height()?)
+    }
+
+    #[inline]
+    pub fn get_round(&self, height: u64) -> Result<Round, CoordinatorError> {
+        // Load the round from storage.
+        match self.storage()?.get(&Key::Round(height)) {
+            Some(Value::Round(round)) => Ok(round.clone()),
+            _ => Err(CoordinatorError::RoundDoesNotExist),
         }
     }
 
     #[inline]
-    pub fn get_current_round(&self) -> Result<Round, CoordinatorError> {
+    pub fn get_round_height(&self) -> Result<u64, CoordinatorError> {
         // Acquire the storage read lock.
-        let storage = match self.storage.read() {
-            Ok(storage) => storage,
-            _ => {
-                error!("No round is currently running");
-                return Err(CoordinatorError::NoRound);
-            }
-        };
-        match storage.get(&Key::CurrentRound) {
-            Some(Value::CurrentRound(round)) => Ok(round.clone()),
-            _ => Err(CoordinatorError::NoRound),
+        match self.storage()?.get(&Key::RoundHeight) {
+            Some(Value::RoundHeight(round)) => Ok(*round),
+            // This is the first round of the ceremony.
+            _ => Ok(0),
         }
     }
 
@@ -92,7 +130,8 @@ impl Coordinator {
     #[inline]
     pub fn lock_chunk(&self, chunk_id: u64, participant_id: String) -> Result<(), CoordinatorError> {
         // Check that we are currently running a round.
-        let mut current_round = self.get_current_round()?;
+        let height = self.get_round_height()?;
+        let mut current_round = self.get_round(height)?;
 
         if !current_round.is_authorized_contributor(participant_id.clone()) {
             error!("Not authorized for /chunks/{}/lock", chunk_id);
@@ -118,24 +157,22 @@ impl Coordinator {
         };
 
         // Attempt to acquire the lock for the given participant ID.
-        if !chunk.acquire_lock(&participant_id) {
-            return Err(CoordinatorError::FailedToAcquireLock);
-        }
+        chunk.acquire_lock(&participant_id)?;
 
         // Attempt to update the current round chunk.
         if !current_round.set_chunk(chunk_id, &chunk) {
             return Err(CoordinatorError::FailedToUpdateChunk);
         }
 
-        // Acquire the storage write lock.
-        match self.storage.write() {
-            Ok(mut storage) => match storage.insert(Key::CurrentRound, Value::CurrentRound(current_round)) {
-                true => Ok(()),
-                false => Err(CoordinatorError::FailedToUpdateChunk),
-            },
-            _ => return Err(CoordinatorError::StorageFailed),
+        match self
+            .storage_mut()?
+            .insert(Key::Round(height), Value::Round(current_round))
+        {
+            true => Ok(()),
+            false => Err(CoordinatorError::FailedToUpdateChunk),
         }
     }
+
     //
     // #[inline]
     // pub fn contribute_chunk(&self, chunk_id: u64, participant_id: String) -> Result<Url, CoordinatorError> {
@@ -195,4 +232,22 @@ impl Coordinator {
     //     chunk.lock_holder = None;
     //     Ok(location)
     // }
+
+    /// Attempts to acquire the read lock for storage.
+    #[inline]
+    fn storage(&self) -> Result<RwLockReadGuard<StorageType>, CoordinatorError> {
+        match self.storage.read() {
+            Ok(storage) => Ok(storage),
+            _ => Err(CoordinatorError::StorageFailed),
+        }
+    }
+
+    /// Attempts to acquire the write lock for storage.
+    #[inline]
+    fn storage_mut(&self) -> Result<RwLockWriteGuard<StorageType>, CoordinatorError> {
+        match self.storage.write() {
+            Ok(storage) => Ok(storage),
+            _ => Err(CoordinatorError::StorageFailed),
+        }
+    }
 }

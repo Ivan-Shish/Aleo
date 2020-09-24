@@ -1,6 +1,7 @@
 use crate::{objects::Round, Coordinator, Storage};
 
 use rocket::{http::Status, State};
+use tracing::error;
 
 // TODO (howardwu): Add authentication.
 #[post("/chunks/<chunk_id>/lock", data = "<participant_id>")]
