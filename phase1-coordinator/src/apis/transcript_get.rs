@@ -2,9 +2,9 @@ use crate::{Coordinator, Storage};
 
 use rocket::{http::Status, State};
 
-#[get("/ceremony")]
-pub fn get_ceremony(coordinator: State<Coordinator>) -> Result<String, Status> {
-    let round = match coordinator.get_latest_round() {
+#[get("/transcript")]
+pub fn transcript_get(coordinator: State<Coordinator>) -> Result<String, Status> {
+    let round = match coordinator.get_transcript() {
         Ok(round) => round,
         _ => return Err(Status::InternalServerError),
     };

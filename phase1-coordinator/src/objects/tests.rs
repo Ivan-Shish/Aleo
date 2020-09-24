@@ -1,7 +1,7 @@
-use crate::Round;
-
-use serde_json;
-use std::io::{stdout, Write};
+// use crate::Round;
+//
+// use serde_json;
+// use std::io::{stdout, Write};
 // use curl::easy::Easy;
 //
 // pub fn fetch(buffer: &mut Vec<u8>) {
@@ -16,10 +16,10 @@ use std::io::{stdout, Write};
 //     handle.perform().unwrap()
 // }
 
-pub fn ceremony() -> Round {
-    let mut result = vec![];
-    fetch(&mut result);
-
-    let output: Round = serde_json::from_str(&String::from_utf8(result).unwrap()).unwrap();
-    output
-}
+// pub fn ceremony() -> Round {
+//     let mut result = vec![];
+//     fetch(&mut result);
+//
+//     let output: Round = serde_json::from_str(&String::from_utf8(result).unwrap()).unwrap();
+//     output
+// }

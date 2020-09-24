@@ -1,10 +1,14 @@
 use crate::{
+    environment::{StorageType, BASE_URL},
     objects::{Chunk, Contribution, Round},
-    parameters::{StorageType, BASE_URL},
     storage::{Key, Storage, Value},
 };
 
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    fmt,
+    io,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 use tracing::{error, info};
 use url::Url;
 
@@ -14,6 +18,9 @@ pub enum CoordinatorError {
     FailedToUpdateChunk,
     InvalidNumberOfChunks,
     InvalidUrl,
+    // #[error("IoError: {0}")]
+    // IoError(#[from] io::Error),
+    Launch(rocket::error::LaunchError),
     LockAlreadyAcquired,
     MissingChunk,
     MissingContributionChunk,
@@ -31,6 +38,18 @@ pub enum CoordinatorError {
 impl From<url::ParseError> for CoordinatorError {
     fn from(error: url::ParseError) -> Self {
         CoordinatorError::Url(error)
+    }
+}
+
+impl From<CoordinatorError> for anyhow::Error {
+    fn from(error: CoordinatorError) -> Self {
+        Self::msg(error.to_string())
+    }
+}
+
+impl fmt::Display for CoordinatorError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

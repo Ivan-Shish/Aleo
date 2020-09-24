@@ -10,10 +10,11 @@ use serde::{
     Serialize,
 };
 use serde_aux::prelude::*;
+use serde_diff::SerdeDiff;
 use tracing::{error, info};
 use url::Url;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
 pub struct Round {
     #[serde(deserialize_with = "deserialize_number_from_string")]

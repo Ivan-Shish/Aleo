@@ -1,4 +1,4 @@
 #[get("/ping")]
-pub fn ping() -> String {
+pub fn ping_get() -> String {
     format!("pong")
 }

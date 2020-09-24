@@ -3,13 +3,15 @@ use crate::{objects::Contribution, CoordinatorError};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
+use serde_diff::SerdeDiff;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
 pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     chunk_id: u64,
     lock_holder: Option<String>,
+    #[serde_diff(opaque)]
     contributions: Vec<Contribution>,
 }
 

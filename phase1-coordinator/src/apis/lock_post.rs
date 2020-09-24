@@ -5,7 +5,7 @@ use tracing::error;
 
 // TODO (howardwu): Add authentication.
 #[post("/chunks/<chunk_id>/lock", data = "<participant_id>")]
-pub fn post_lock(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
+pub fn lock_post(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
     match coordinator.lock_chunk(chunk_id, participant_id) {
         Ok(_) => Ok(json!({
             "status": "ok",
