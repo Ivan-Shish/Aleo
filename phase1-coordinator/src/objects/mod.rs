@@ -1,5 +1,5 @@
-pub mod ceremony;
-pub use ceremony::*;
+pub mod transcript;
+pub use transcript::*;
 
 pub mod chunk;
 pub use chunk::*;

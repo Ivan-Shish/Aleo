@@ -6,16 +6,16 @@ extern crate lazy_static;
 extern crate rocket;
 #[macro_use]
 extern crate serde_json;
-// #[macro_use]
-// extern crate tracing_log;
 
 pub mod apis;
-pub mod parameters;
-
 pub mod coordinator;
+pub mod environment;
+
 pub use coordinator::*;
+pub use storage::Storage;
 
 mod objects;
+mod storage;
 
-pub mod storage;
-pub use storage::Storage;
+#[cfg(test)]
+mod testing;

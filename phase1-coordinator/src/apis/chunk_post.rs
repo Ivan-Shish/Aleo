@@ -6,7 +6,7 @@ use url::Url;
 
 // TODO (howardwu): Add authentication.
 #[post("/chunks/<chunk_id>/contribution", data = "<participant_id>")]
-pub fn post_chunk(
+pub fn chunk_post(
     coordinator: State<&mut Coordinator>,
     chunk_id: u64,
     participant_id: String,

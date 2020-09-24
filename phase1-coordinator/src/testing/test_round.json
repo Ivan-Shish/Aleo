@@ -1,0 +1,142 @@
+{
+    "version": 0,
+    "height": 1,
+    "contributorIds": [
+        "test_contributor"
+    ],
+    "verifierIds": [
+        "test_verifier"
+    ],
+    "chunks": [
+        {
+            "chunkId": "0",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/0/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "1",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/1/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "2",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/2/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "3",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/3/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "4",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/4/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "5",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/5/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "6",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/6/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "7",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/7/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "8",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/8/contribution/0",
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "9",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "test_verifier",
+                    "verifiedLocation": "http://localhost:8080/chunks/9/contribution/0",
+                    "verified": false
+                }
+            ]
+        }
+    ]
+}

@@ -5,7 +5,7 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_json;
 
-use phase1_coordinator::{apis::*, storage::InMemory, Coordinator, CoordinatorError};
+use phase1_coordinator::{apis::*, environment::Environment, Coordinator, CoordinatorError};
 
 use tracing::{info, Level};
 // use tokio::prelude::*;
@@ -27,11 +27,11 @@ pub fn logger() {
 pub fn initialize_coordinator() -> Result<Coordinator, CoordinatorError> {
     let mut coordinator = Coordinator::new();
 
-    let num_chunks = 5;
-    let contributor_ids = vec!["test_contributor".to_string()];
-    let verifier_ids = vec!["test_verifier".to_string()];
+    let num_chunks = Environment::Development.number_of_chunks();
+    let contributor_ids = vec!["development_contributor".to_string()];
+    let verifier_ids = vec!["development_verifier".to_string()];
     let chunk_verifier_ids = (0..num_chunks).into_iter().map(|_| verifier_ids[0].clone()).collect();
-    let chunk_verifier_base_urls = (0..num_chunks).into_iter().map(|_| "http://localhost:8000").collect();
+    let chunk_verifier_base_urls = (0..num_chunks).into_iter().map(|_| "http://localhost:8080").collect();
 
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.get_round_height()? == 0 {
@@ -51,18 +51,15 @@ pub fn initialize_coordinator() -> Result<Coordinator, CoordinatorError> {
     Ok(coordinator)
 }
 
-pub fn rocket() -> Result<rocket::Rocket, CoordinatorError> {
+pub fn server() -> Result<rocket::Rocket, CoordinatorError> {
     Ok(rocket::ignite().manage(initialize_coordinator()?).mount("/", routes![
-        get_ceremony,
-        post_lock,
-        get_chunk,
-        post_chunk,
-        ping
+        chunk_get, chunk_post, lock_post, ping_get, // transcript_get,
+        round_get,
     ]))
 }
 
 pub fn main() -> Result<(), CoordinatorError> {
     logger();
-    rocket()?.launch();
+    server()?.launch();
     Ok(())
 }

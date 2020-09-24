@@ -1,11 +1,11 @@
-use crate::{objects::Round, parameters::BASE_URL, Coordinator, Storage};
+use crate::{environment::BASE_URL, objects::Round, Coordinator, Storage};
 
 use rocket::{http::Status, State};
 use tracing::error;
 
 // TODO (howardwu): Add authentication.
 #[get("/chunks/<chunk_id>/contribution", data = "<participant_id>")]
-pub fn get_chunk(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
+pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
     let mut round = match coordinator.get_latest_round() {
         Ok(round) => round,
         _ => {
