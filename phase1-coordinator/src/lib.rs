@@ -10,9 +10,12 @@ extern crate rocket;
 extern crate serde_json;
 
 pub mod apis;
+pub mod parameters;
 
 pub mod coordinator;
 pub use coordinator::*;
 
 mod objects;
-mod storage;
+
+pub mod storage;
+pub use storage::Storage;

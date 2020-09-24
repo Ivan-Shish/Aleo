@@ -4,6 +4,7 @@ members = [
     "aleo-setup2",
     "phase1",
     "phase1-cli",
+    "phase1-coordinator",
     "phase1-wasm",
     "phase2",
     "setup-utils",
