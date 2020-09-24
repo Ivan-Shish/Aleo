@@ -1,11 +1,11 @@
-use phase1_coordinator::Round;
+use crate::{objects::Round, parameters::BASE_URL, Coordinator, Storage};
 
-use rocket::http::Status;
+use rocket::{http::Status, State};
 
 // TODO (howardwu): Add authentication.
 #[get("/chunks/<chunk_id>/contribution", data = "<participant_id>")]
-fn get_chunk(chunk_id: u64, participant_id: String) -> Result<String, Status> {
-    let mut round = match get_round() {
+pub fn get_chunk(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
+    let mut round = match coordinator.get_current_round() {
         Ok(round) => round,
         _ => {
             error!("Unable to load the round state");
@@ -13,7 +13,7 @@ fn get_chunk(chunk_id: u64, participant_id: String) -> Result<String, Status> {
         }
     };
 
-    if !round.is_authorized(participant_id.clone()) {
+    if !round.is_authorized_contributor(participant_id.clone()) {
         error!("Not authorized for /chunks/<chunk_id>/lock");
         return Err(Status::Unauthorized);
     }

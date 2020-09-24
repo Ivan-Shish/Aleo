@@ -1,42 +1,54 @@
-use crate::storage::Storage;
+use crate::storage::{Key, Storage, Value};
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InMemory {
-    storage: HashMap<String, String>,
+    storage: HashMap<Key, Value>,
 }
 
 impl Storage for InMemory {
-    type Key = String;
-    type Options = ();
-    type Output = bool;
-    type Value = String;
-
-    /// Creates a new instance of storage.
+    /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
-    fn new(_: Self::Options) -> Self {
+    fn get(&self, key: &Key) -> Option<&Value> {
+        self.storage.get(key)
+    }
+
+    /// Returns the mutable value reference for a given key from storage, if it exists.
+    #[inline]
+    fn get_mut(&mut self, key: &Key) -> Option<&mut Value> {
+        self.storage.get_mut(key)
+    }
+
+    /// Inserts a new key value pair into storage,
+    /// updating the current value for a given key if it exists.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    #[inline]
+    fn insert(&mut self, key: Key, value: Value) -> bool {
+        self.insert(key, value)
+    }
+
+    /// Removes a value from storage for a given key.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    #[inline]
+    fn remove(&mut self, key: &Key) -> bool {
+        self.remove(key)
+    }
+
+    /// Loads a new instance of `Storage`.
+    #[inline]
+    fn load() -> Self {
         Self {
             storage: HashMap::default(),
         }
     }
 
-    /// Returns the value for a given key from storage, if it exists.
+    /// Stores an instance of `Storage`.
+    /// If successful, returns `true`. Otherwise, returns `false`.
     #[inline]
-    fn get(&self, key: &Self::Key) -> Option<&Self::Value> {
-        self.storage.get(key)
-    }
-
-    /// Inserts a new key value pair into storage,
-    /// updating the current value for a given key if it exists.
-    #[inline]
-    fn insert(&mut self, key: Self::Key, value: Self::Value) -> Self::Output {
-        self.insert(key, value)
-    }
-
-    /// Removes a value from storage for a given key.
-    #[inline]
-    fn remove(&mut self, key: &Self::Key) -> Self::Output {
-        self.remove(key)
+    fn store(&mut self) -> bool {
+        // As this storage is in memory, we can always return `true`.
+        true
     }
 }

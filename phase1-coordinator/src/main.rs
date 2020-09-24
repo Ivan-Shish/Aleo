@@ -7,24 +7,22 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_json;
 
-use phase1_coordinator::apis::*;
+use phase1_coordinator::{apis::*, storage::InMemory, Coordinator};
 
-const BASE_URL: &str = "http://167.71.156.62:8080";
+// use tokio::prelude::*;
 
 // #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 // pub struct LockRequest {
 //     participant_id: String,
 // }
 
-// TODO (howardwu): Implement the real version.
-fn get_round() -> Result<Round, Box<dyn std::error::Error>> {
-    let result: Round = serde_json::from_str(include_str!("./resources/ceremony.json"))?;
-    Ok(result)
-}
+pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut coordinator = Coordinator::new();
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
     rocket::ignite()
-        .mount("/", routes![get_ceremony, post_lock, get_chunk, post_chunk, get_ping])
+        .manage(coordinator)
+        .mount("/", routes![get_ceremony, post_lock, get_chunk, post_chunk, ping])
         .launch();
+
     Ok(())
 }
