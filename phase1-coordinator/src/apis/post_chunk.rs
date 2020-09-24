@@ -1,6 +1,7 @@
 use crate::{objects::Round, Coordinator, Storage};
 
 use rocket::{http::Status, State};
+use tracing::error;
 use url::Url;
 
 // TODO (howardwu): Add authentication.

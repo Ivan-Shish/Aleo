@@ -26,14 +26,15 @@ impl Storage for InMemory {
     /// If successful, returns `true`. Otherwise, returns `false`.
     #[inline]
     fn insert(&mut self, key: Key, value: Value) -> bool {
-        self.insert(key, value)
+        self.storage.insert(key, value);
+        true
     }
 
     /// Removes a value from storage for a given key.
     /// If successful, returns `true`. Otherwise, returns `false`.
     #[inline]
     fn remove(&mut self, key: &Key) -> bool {
-        self.remove(key)
+        self.storage.remove(key).is_some()
     }
 
     /// Loads a new instance of `Storage`.

@@ -3,11 +3,11 @@
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
-extern crate log;
-#[macro_use]
 extern crate rocket;
 #[macro_use]
 extern crate serde_json;
+// #[macro_use]
+// extern crate tracing_log;
 
 pub mod apis;
 pub mod parameters;

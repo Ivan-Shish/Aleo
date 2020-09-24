@@ -1,17 +1,19 @@
-use crate::objects::{Ceremony, Round};
+use crate::objects::Round;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Key {
-    CurrentRound,
-    Ceremony,
+    RoundHeight,
+    Round(u64),
+    Ping,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Value {
-    CurrentRound(Round),
-    Ceremony(Ceremony),
+    RoundHeight(u64),
+    Round(Round),
+    Pong,
 }
 
 /// A standard model for storage.
