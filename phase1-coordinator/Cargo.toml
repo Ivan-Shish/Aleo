@@ -16,21 +16,25 @@ path = "src/main.rs"
 phase1 = { path = "../phase1" }
 
 anyhow = { version = "1.0.32" }
-curl = { version = "0.4.33" }
+chrono = { version = "0.4", features = ["serde"] }
 lazy_static = { version = "1.4.0" }
-once_cell = { version = "1.4.1" }
 rayon = { version = "1.4.0" }
 rocket = { version = "0.4.5" }
 rocket_contrib = { version = "0.4", features = ["json"] }
-schemars = { version = "0.8.0-alpha-4", features = ["preserve_order"] }
+rocket_cors = { version = "0.4" }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "0.6" }
 serde-diff = { version = "0.3" }
 serde_json = { version = "1.0" }
-tokio = { version = "0.2.22", features = ["sync"] }
 tracing = { version = "0.1.19" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "1.0" }
 url_serde = { version = "0.2.0" }
 
 [dev-dependencies]
+once_cell = { version = "1.4.1" }
+serial_test = { version = "0.5" }
+
+#curl = { version = "0.4.33" }
+#schemars = { version = "0.8.0-alpha-4", features = ["preserve_order"] }
+#tokio = { version = "0.2.22", features = ["sync"] }

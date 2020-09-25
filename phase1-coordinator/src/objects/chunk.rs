@@ -20,7 +20,7 @@ impl Chunk {
     #[inline]
     pub fn new(chunk_id: u64, verifier_id: String, verifier_base_url: &str) -> Result<Self, CoordinatorError> {
         // Construct the starting contribution template for this chunk.
-        let contribution = Contribution::new(chunk_id, 0, verifier_id, verifier_base_url)?;
+        let contribution = Contribution::new_verifier(chunk_id, 0, verifier_id, verifier_base_url)?;
         Ok(Self {
             chunk_id,
             lock_holder: None,
@@ -50,10 +50,11 @@ impl Chunk {
         }
     }
 
-    /// Returns the number of contributions in this chunk.
+    /// Returns the current number of contributions in this chunk,
+    /// irrespective of the state of each contribution.
     #[inline]
-    pub fn num_contributions(&self) -> usize {
-        self.contributions.len()
+    pub fn contribution_id(&self) -> u64 {
+        self.contributions.len() as u64
     }
 
     /// Returns a reference to a list of contributions in this chunk.
@@ -69,6 +70,33 @@ impl Chunk {
             Some(contribution) => Ok(contribution),
             _ => Err(CoordinatorError::NoContributions),
         }
+    }
+
+    ///
+    /// Attempts to add a new contribution from a contributor to the chunk.
+    /// Upon success, releases the lock on this chunk to allow a verifier to
+    /// check the contribution for correctness.
+    ///
+    /// If the operations succeed, returns `Ok(())`. Otherwise, returns `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn add_contribution(
+        &mut self,
+        chunk_id: u64,
+        contributor_id: String,
+        contributor_base_url: &str,
+    ) -> Result<(), CoordinatorError> {
+        // Construct the starting contribution template for this chunk.
+        let contribution_id = self.contribution_id();
+        let contribution =
+            Contribution::new_contributor(chunk_id, contribution_id, contributor_id, contributor_base_url)?;
+
+        // Add the contribution to this chunk.
+        self.contributions.push(contribution);
+        // Releases the lock on this chunk.
+        self.lock_holder = None;
+
+        Ok(())
     }
 
     /// Returns `true` if the participant does not already hold the lock.
@@ -132,4 +160,19 @@ impl Chunk {
             .sum();
         return matching_contributions + matching_verifications;
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::prelude::*;
+
+    // #[test]
+    // fn test_update_chunk() {
+    //     let mut expected = test_round_1_json().unwrap().chunks[0].clone();
+    //     expected.acquire_lock("test_updated_contributor");
+    //
+    //     let candidate = test_round_1().unwrap().get_chunk_mut(0).unwrap();
+    //     assert!(candidate.update_chunk(0, &expected));
+    //     assert_eq!(expected, *candidate);
+    // }
 }

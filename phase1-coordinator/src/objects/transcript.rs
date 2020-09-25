@@ -4,17 +4,20 @@ use crate::{
 };
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transcript {
-    rounds: Vec<Round>,
+    rounds: HashMap<u64, Round>,
 }
 
 impl Transcript {
-    /// Creates a new instance of `Ceremony`.
+    /// Creates a new instance of `Transcript`.
     #[inline]
     pub(crate) fn new() -> Self {
-        Self { rounds: vec![] }
+        Self {
+            rounds: HashMap::default(),
+        }
     }
 }

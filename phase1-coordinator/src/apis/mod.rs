@@ -12,3 +12,6 @@ pub use ping_get::*;
 
 pub mod round_get;
 pub use round_get::*;
+
+pub mod timestamp_get;
+pub use timestamp_get::*;
