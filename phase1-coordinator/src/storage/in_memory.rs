@@ -21,6 +21,12 @@ impl Storage for InMemory {
         self.storage.get_mut(key)
     }
 
+    /// Returns `true` if a given key exists in storage. Otherwise, returns `false`.
+    #[inline]
+    fn contains_key(&self, key: &Key) -> bool {
+        self.storage.contains_key(key)
+    }
+
     /// Inserts a new key value pair into storage,
     /// updating the current value for a given key if it exists.
     /// If successful, returns `true`. Otherwise, returns `false`.

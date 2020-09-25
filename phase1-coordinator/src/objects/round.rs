@@ -3,16 +3,12 @@ use crate::{
     CoordinatorError,
 };
 
+use chrono::{DateTime, Utc};
 use rayon::prelude::*;
-use serde::{
-    de::{self, Deserializer},
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
-use tracing::{error, info};
-use url::Url;
+use tracing::info;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +17,11 @@ pub struct Round {
     version: u64,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     height: u64,
+    #[serde_diff(opaque)]
+    started_at: Option<DateTime<Utc>>,
+    #[serde_diff(opaque)]
+    finished_at: Option<DateTime<Utc>>,
+    duration_in_seconds: i64,
     contributor_ids: Vec<String>,
     verifier_ids: Vec<String>,
     chunks: Vec<Chunk>,
@@ -32,12 +33,18 @@ impl Round {
     pub fn new(
         version: u64,
         height: u64,
+        started_at: DateTime<Utc>,
         contributor_ids: &Vec<String>,
         verifier_ids: &Vec<String>,
         chunk_verifier_ids: &Vec<String>,
         chunk_verified_base_url: &Vec<&str>,
     ) -> Result<Self, CoordinatorError> {
         info!("Creating round {}", height);
+
+        // Check for convention that the height is nonzero.
+        if height == 0 {
+            return Err(CoordinatorError::RoundHeightIsZero);
+        }
 
         // Check that the chunk verifier IDs all exist in the list of verifier IDs.
         for id in chunk_verifier_ids {
@@ -73,6 +80,9 @@ impl Round {
         Ok(Self {
             version,
             height,
+            started_at: Some(started_at),
+            finished_at: None,
+            duration_in_seconds: -1,
             contributor_ids: contributor_ids.clone(),
             verifier_ids: verifier_ids.clone(),
             chunks,
@@ -99,9 +109,32 @@ impl Round {
         self.verifier_ids.contains(&participant_id)
     }
 
-    /// Sets the chunk at the given chunk ID in the round to the given, updated chunk.
+    /// Returns a reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
     #[inline]
-    pub(crate) fn set_chunk(&mut self, chunk_id: u64, updated_chunk: &Chunk) -> bool {
+    pub fn get_chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
+        match self.chunks.par_iter().find_any(|chunk| chunk.id() == chunk_id) {
+            Some(chunk) => Ok(chunk),
+            None => Err(CoordinatorError::MissingChunk),
+        }
+    }
+
+    /// Returns a mutable reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_chunk_mut(&mut self, chunk_id: u64) -> Option<&mut Chunk> {
+        self.chunks.par_iter_mut().find_any(|chunk| chunk.id() == chunk_id)
+    }
+
+    /// Returns a reference to a list of the chunks.
+    #[inline]
+    pub fn get_chunks(&self) -> &Vec<Chunk> {
+        &self.chunks
+    }
+
+    /// Updates the chunk at a given chunk ID to a given updated chunk, if the chunk ID exists.
+    #[inline]
+    pub(crate) fn update_chunk(&mut self, chunk_id: u64, updated_chunk: &Chunk) -> bool {
         if self.chunks.par_iter().filter(|chunk| chunk.id() == chunk_id).count() == 1 {
             self.chunks = self
                 .chunks
@@ -118,40 +151,21 @@ impl Round {
         }
     }
 
-    /// Returns a reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_chunk(&self, chunk_id: u64) -> Option<&Chunk> {
-        self.chunks.par_iter().find_any(|chunk| chunk.id() == chunk_id)
-    }
-
-    /// Returns a mutable reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_chunk_mut(&mut self, chunk_id: u64) -> Option<&mut Chunk> {
-        self.chunks.par_iter_mut().find_any(|chunk| chunk.id() == chunk_id)
-    }
-
-    /// Returns a reference to a list of the chunks.
-    #[inline]
-    pub fn get_chunks(&self) -> &Vec<Chunk> {
-        &self.chunks
-    }
-
     /// Returns a reference to a list of verifier IDs.
     #[inline]
     pub fn get_verifier_ids(&self) -> &Vec<String> {
         &self.verifier_ids
     }
 
+    // TODO (howardwu): Ensure verification is done and continuity is enforced.
     /// Returns `true` if the current round has been completed and verified.
     #[inline]
-    pub fn is_complete(&self) -> bool {
-        let num_contributions_total = self.contributor_ids.len();
+    pub fn is_verified(&self) -> bool {
+        let num_contributors = self.contributor_ids.len() as u64;
         self.chunks
             .par_iter()
             .filter(|chunk| {
-                let missing_contributions = chunk.num_contributions() < num_contributions_total;
+                let missing_contributions = chunk.contribution_id() < num_contributors;
                 let is_not_verified = !chunk
                     .get_contributions()
                     .par_iter()
@@ -163,16 +177,102 @@ impl Round {
             .collect::<Vec<_>>()
             .is_empty()
     }
+}
 
-    // TODO (howardwu): Rename to set_round.
-    /// Set the round to the new round.
-    #[inline]
-    fn set_ceremony(&mut self, new_round: Self) {
-        if self.version != new_round.version {
-            error!("New ceremony is outdated ({} vs {})", self.version, new_round.version);
-        } else {
-            // Set self to new version.
-            *self = new_round;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::prelude::*;
+
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_round_1_matches() {
+        let expected = test_round_1().unwrap();
+        let candidate = Round::new(
+            TEST_VERSION, /* version */
+            1,            /* height */
+            *TEST_STARTED_AT,
+            &TEST_CONTRIBUTOR_IDS,
+            &TEST_VERIFIER_IDS,
+            &TEST_CHUNK_VERIFIER_IDS,
+            &TEST_CHUNK_VERIFIED_BASE_URLS,
+        )
+        .unwrap();
+
+        if candidate != expected {
+            print_diff(&expected, &candidate);
         }
+        assert_eq!(candidate, expected);
+    }
+
+    #[test]
+    fn test_get_height() {
+        let round = test_round_1().unwrap();
+        assert_eq!(1, round.get_height());
+    }
+
+    #[test]
+    fn test_is_authorized_contributor() {
+        let round_1 = test_round_1().unwrap();
+        assert!(round_1.is_authorized_contributor(TEST_CONTRIBUTOR_ID_1.to_string()));
+    }
+
+    #[test]
+    fn test_is_authorized_verifier() {
+        let round_1 = test_round_1().unwrap();
+        assert!(round_1.is_authorized_verifier(TEST_VERIFIER_ID_1.to_string()));
+    }
+
+    #[test]
+    fn test_get_chunk() {
+        let expected = test_round_1_json().unwrap().chunks[0].clone();
+        let candidate = test_round_1().unwrap().get_chunk(0).unwrap().clone();
+        assert_eq!(expected, candidate);
+    }
+
+    #[test]
+    fn test_get_chunk_mut() {
+        let mut expected = test_round_1_json().unwrap().chunks[0].clone();
+        expected.acquire_lock("test_updated_contributor");
+
+        let mut candidate = test_round_1().unwrap().get_chunk_mut(0).unwrap().clone();
+        candidate.acquire_lock("test_updated_contributor");
+
+        assert_eq!(expected, candidate);
+    }
+
+    #[test]
+    fn test_update_chunk() {
+        let locked_chunk = {
+            let mut locked_chunk = test_round_1_json().unwrap().chunks[0].clone();
+            locked_chunk.acquire_lock("test_updated_contributor");
+            locked_chunk
+        };
+
+        let expected = {
+            let mut expected = test_round_1_json().unwrap();
+            expected.chunks[0] = locked_chunk.clone();
+            expected
+        };
+
+        let mut candidate = test_round_1().unwrap();
+        assert!(candidate.update_chunk(0, &locked_chunk));
+        assert_eq!(expected, candidate);
+    }
+
+    #[test]
+    fn test_get_verifier_ids() {
+        let candidates = test_round_1().unwrap().get_verifier_ids().clone();
+        for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
+            assert_eq!(*id, candidates[index]);
+        }
+    }
+
+    #[test]
+    fn test_is_complete() {
+        // TODO (howardwu): Add tests for a full completeness check.
+        let round = test_round_1().unwrap();
+        assert!(!round.is_verified());
     }
 }

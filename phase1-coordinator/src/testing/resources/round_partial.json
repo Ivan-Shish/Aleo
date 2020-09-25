@@ -1,0 +1,212 @@
+{
+    "version": 20,
+    "contributorIds": [
+        "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+        "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C"
+    ],
+    "verifierIds": [
+        "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C"
+    ],
+    "chunks": [
+        {
+            "chunkId": "0",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/0/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/0/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "1",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/1/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/1/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "2",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/2/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/2/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "3",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/3/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/3/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "4",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/4/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/4/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "5",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/5/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/5/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "6",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/6/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/6/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "7",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/7/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/7/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "8",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/8/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/8/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        },
+        {
+            "chunkId": "9",
+            "lockHolder": null,
+            "contributions": [
+                {
+                    "contributorId": null,
+                    "contributedLocation": null,
+                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
+                    "verifiedLocation": "http://167.71.156.62:8080/chunks/9/contribution/0",
+                    "verified": true
+                },
+                {
+                    "contributorId": "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
+                    "contributedLocation": "http://167.71.156.62:8080/chunks/9/contribution/1",
+                    "verifierId": null,
+                    "verifiedLocation": null,
+                    "verified": false
+                }
+            ]
+        }
+    ]
+}

@@ -2,6 +2,7 @@ use crate::objects::Round;
 
 use serde::{Deserialize, Serialize};
 
+/// A data structure representing all possible types of keys in storage.
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Key {
     RoundHeight,
@@ -9,6 +10,7 @@ pub enum Key {
     Ping,
 }
 
+/// A data structure representing all possible types of values in storage.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     RoundHeight(u64),
@@ -23,6 +25,9 @@ pub trait Storage: Sized + Send + Sync {
 
     /// Returns the mutable value reference for a given key from storage, if it exists.
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value>;
+
+    /// Returns `true` if a given key exists in storage. Otherwise, returns `false`.
+    fn contains_key(&self, key: &Key) -> bool;
 
     /// Inserts a new key value pair into storage,
     /// updating the current value for a given key if it exists.
