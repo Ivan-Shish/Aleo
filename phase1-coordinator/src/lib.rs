@@ -8,6 +8,7 @@ extern crate rocket;
 extern crate serde_json;
 
 pub mod apis;
+pub mod commands;
 pub mod coordinator;
 pub mod environment;
 
