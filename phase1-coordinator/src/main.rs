@@ -7,10 +7,8 @@ extern crate serde_json;
 
 use phase1_coordinator::{
     apis::*,
-    commands::initialization::Initialization,
     environment::{Environment, Parameters},
     Coordinator,
-    CoordinatorError,
 };
 
 use chrono::Utc;
@@ -29,13 +27,18 @@ fn logger() {
 #[inline]
 fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
-    let mut coordinator = Coordinator::new(*environment);
+    let mut coordinator = Coordinator::new(environment.clone())?;
 
-    let num_chunks = environment.number_of_chunks();
     let contributor_ids = vec!["0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string()];
     let verifier_ids = vec!["0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string()];
-    let chunk_verifier_ids = (0..num_chunks).into_iter().map(|_| verifier_ids[0].clone()).collect();
-    let chunk_verifier_base_urls = (0..num_chunks).into_iter().map(|_| "http://localhost:8080").collect();
+    let chunk_verifier_ids = (0..environment.number_of_chunks())
+        .into_iter()
+        .map(|_| verifier_ids[0].clone())
+        .collect();
+    let chunk_verifier_base_urls = (0..environment.number_of_chunks())
+        .into_iter()
+        .map(|_| "http://localhost:8080")
+        .collect();
 
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
@@ -49,8 +52,6 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     }
     info!("Coordinator is ready");
     info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
-
-    Initialization::run(environment)?;
 
     Ok(coordinator)
 }
@@ -87,6 +88,6 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 #[inline]
 pub fn main() -> anyhow::Result<()> {
     logger();
-    server(&Environment::Development(Parameters::AleoTest))?.launch();
+    server(&Environment::Test(Parameters::AleoTest))?.launch();
     Ok(())
 }

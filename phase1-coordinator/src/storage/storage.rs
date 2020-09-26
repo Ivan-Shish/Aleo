@@ -1,4 +1,4 @@
-use crate::objects::Round;
+use crate::{objects::Round, CoordinatorError};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,13 @@ pub enum Value {
 
 /// A standard model for storage.
 pub trait Storage: Sized + Send + Sync {
+    /// Loads a new instance of `Storage`.
+    fn load() -> Result<Self, CoordinatorError>;
+
+    /// Stores an instance of `Storage`.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    fn save(&mut self) -> bool;
+
     /// Returns the value reference for a given key from storage, if it exists.
     fn get(&self, key: &Key) -> Option<&Value>;
 
@@ -37,11 +44,4 @@ pub trait Storage: Sized + Send + Sync {
     /// Removes a value from storage for a given key.
     /// If successful, returns `true`. Otherwise, returns `false`.
     fn remove(&mut self, key: &Key) -> bool;
-
-    /// Loads a new instance of `Storage`.
-    fn load() -> Self;
-
-    /// Stores an instance of `Storage`.
-    /// If successful, returns `true`. Otherwise, returns `false`.
-    fn store(&mut self) -> bool;
 }

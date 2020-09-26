@@ -1,10 +1,6 @@
-use crate::{apis::*, environment::Environment, testing::prelude::*, Coordinator, CoordinatorError};
+use crate::{apis::*, testing::prelude::*, Coordinator, CoordinatorError};
 
-use rocket::{
-    http::{ContentType, Status},
-    local::Client,
-    Rocket,
-};
+use rocket::{local::Client, Rocket};
 use tracing::{info, Level};
 
 pub fn test_logger() {
@@ -14,7 +10,7 @@ pub fn test_logger() {
 
 pub fn test_coordinator() -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
-    let mut coordinator = Coordinator::new(TEST_ENVIRONMENT);
+    let mut coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(
@@ -31,7 +27,9 @@ pub fn test_coordinator() -> anyhow::Result<Coordinator> {
 
 pub fn test_server() -> anyhow::Result<Rocket> {
     info!("Starting server...");
-    test_logger();
+
+    clear_test_transcript();
+
     let server = rocket::ignite().manage(test_coordinator()?).mount("/", routes![
         chunk_get,
         chunk_post,
