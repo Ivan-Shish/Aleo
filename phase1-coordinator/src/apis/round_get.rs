@@ -27,7 +27,7 @@ mod test {
         assert!(response_body.is_some());
 
         let candidate: Round = serde_json::from_str(&response_body.unwrap()).unwrap();
-        let expected = test_round_1().unwrap();
+        let expected = test_round_0().unwrap();
         if candidate != expected {
             print_diff(&expected, &candidate);
         }

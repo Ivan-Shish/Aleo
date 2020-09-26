@@ -1,6 +1,6 @@
 {
     "version": 0,
-    "height": 1,
+    "height": 0,
     "startedAt": "1970-01-01T00:01:01Z",
     "finishedAt": null,
     "durationInSeconds": -1,
@@ -112,32 +112,6 @@
                     "contributedLocation": null,
                     "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
                     "verifiedLocation": "http://167.71.156.62:8080/chunks/7/contribution/0",
-                    "verified": true
-                }
-            ]
-        },
-        {
-            "chunkId": "8",
-            "lockHolder": null,
-            "contributions": [
-                {
-                    "contributorId": null,
-                    "contributedLocation": null,
-                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
-                    "verifiedLocation": "http://167.71.156.62:8080/chunks/8/contribution/0",
-                    "verified": true
-                }
-            ]
-        },
-        {
-            "chunkId": "9",
-            "lockHolder": null,
-            "contributions": [
-                {
-                    "contributorId": null,
-                    "contributedLocation": null,
-                    "verifierId": "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C",
-                    "verifiedLocation": "http://167.71.156.62:8080/chunks/9/contribution/0",
                     "verified": true
                 }
             ]

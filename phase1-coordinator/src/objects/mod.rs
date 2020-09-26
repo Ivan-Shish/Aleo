@@ -9,6 +9,3 @@ pub use round::*;
 
 // pub mod transcript;
 // pub use transcript::*;
-
-#[cfg(test)]
-pub mod tests;

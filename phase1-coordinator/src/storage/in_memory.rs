@@ -1,4 +1,7 @@
-use crate::storage::{Key, Storage, Value};
+use crate::{
+    storage::{Key, Storage, Value},
+    CoordinatorError,
+};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,6 +12,33 @@ pub struct InMemory {
 }
 
 impl Storage for InMemory {
+    /// Loads a new instance of `InMemory`.
+    #[inline]
+    fn load() -> Result<Self, CoordinatorError> {
+        // Initialize the data structure for storage.
+        // let mut storage = HashMap::default();
+
+        // Load all rounds from transcript into storage.
+        // for chunk_id in 0..environment.number_of_chunks() {
+        //     // Open the transcript file for round 0.
+        //     let transcript = environment.transcript_locator(0, chunk_id);
+        //     let file = OpenOptions::new().read(true).open(&transcript)?;
+        //     let reader = unsafe { MmapOptions::new().map(&file)? };
+        // }
+
+        Ok(Self {
+            storage: HashMap::default(),
+        })
+    }
+
+    /// Stores an instance of `InMemory`.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    #[inline]
+    fn save(&mut self) -> bool {
+        // As this storage is in memory, we can always return `true`.
+        true
+    }
+
     /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
     fn get(&self, key: &Key) -> Option<&Value> {
@@ -41,21 +71,5 @@ impl Storage for InMemory {
     #[inline]
     fn remove(&mut self, key: &Key) -> bool {
         self.storage.remove(key).is_some()
-    }
-
-    /// Loads a new instance of `Storage`.
-    #[inline]
-    fn load() -> Self {
-        Self {
-            storage: HashMap::default(),
-        }
-    }
-
-    /// Stores an instance of `Storage`.
-    /// If successful, returns `true`. Otherwise, returns `false`.
-    #[inline]
-    fn store(&mut self) -> bool {
-        // As this storage is in memory, we can always return `true`.
-        true
     }
 }

@@ -1,7 +1,4 @@
-use crate::{
-    objects::{Chunk, Contribution},
-    CoordinatorError,
-};
+use crate::{objects::Chunk, CoordinatorError};
 
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
@@ -40,11 +37,6 @@ impl Round {
         chunk_verified_base_url: &Vec<&str>,
     ) -> Result<Self, CoordinatorError> {
         info!("Creating round {}", height);
-
-        // Check for convention that the height is nonzero.
-        if height == 0 {
-            return Err(CoordinatorError::RoundHeightIsZero);
-        }
 
         // Check that the chunk verifier IDs all exist in the list of verifier IDs.
         for id in chunk_verifier_ids {
@@ -157,10 +149,10 @@ impl Round {
         &self.verifier_ids
     }
 
-    // TODO (howardwu): Ensure verification is done and continuity is enforced.
-    /// Returns `true` if the current round has been completed and verified.
+    /// Returns `true` if all contributions in all chunks are verified.
+    /// Otherwise, returns `false`.
     #[inline]
-    pub fn is_verified(&self) -> bool {
+    pub fn are_chunks_verified(&self) -> bool {
         let num_contributors = self.contributor_ids.len() as u64;
         self.chunks
             .par_iter()
@@ -184,14 +176,12 @@ mod tests {
     use super::*;
     use crate::testing::prelude::*;
 
-    use chrono::TimeZone;
-
     #[test]
     fn test_round_1_matches() {
-        let expected = test_round_1().unwrap();
+        let expected = test_round_0().unwrap();
         let candidate = Round::new(
             TEST_VERSION, /* version */
-            1,            /* height */
+            0,            /* height */
             *TEST_STARTED_AT,
             &TEST_CONTRIBUTOR_IDS,
             &TEST_VERIFIER_IDS,
@@ -208,36 +198,36 @@ mod tests {
 
     #[test]
     fn test_get_height() {
-        let round = test_round_1().unwrap();
-        assert_eq!(1, round.get_height());
+        let round = test_round_0().unwrap();
+        assert_eq!(0, round.get_height());
     }
 
     #[test]
     fn test_is_authorized_contributor() {
-        let round_1 = test_round_1().unwrap();
+        let round_1 = test_round_0().unwrap();
         assert!(round_1.is_authorized_contributor(TEST_CONTRIBUTOR_ID_1.to_string()));
     }
 
     #[test]
     fn test_is_authorized_verifier() {
-        let round_1 = test_round_1().unwrap();
+        let round_1 = test_round_0().unwrap();
         assert!(round_1.is_authorized_verifier(TEST_VERIFIER_ID_1.to_string()));
     }
 
     #[test]
     fn test_get_chunk() {
         let expected = test_round_1_json().unwrap().chunks[0].clone();
-        let candidate = test_round_1().unwrap().get_chunk(0).unwrap().clone();
+        let candidate = test_round_0().unwrap().get_chunk(0).unwrap().clone();
         assert_eq!(expected, candidate);
     }
 
     #[test]
     fn test_get_chunk_mut() {
         let mut expected = test_round_1_json().unwrap().chunks[0].clone();
-        expected.acquire_lock("test_updated_contributor");
+        expected.acquire_lock("test_updated_contributor").unwrap();
 
-        let mut candidate = test_round_1().unwrap().get_chunk_mut(0).unwrap().clone();
-        candidate.acquire_lock("test_updated_contributor");
+        let mut candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
+        candidate.acquire_lock("test_updated_contributor").unwrap();
 
         assert_eq!(expected, candidate);
     }
@@ -246,7 +236,7 @@ mod tests {
     fn test_update_chunk() {
         let locked_chunk = {
             let mut locked_chunk = test_round_1_json().unwrap().chunks[0].clone();
-            locked_chunk.acquire_lock("test_updated_contributor");
+            locked_chunk.acquire_lock("test_updated_contributor").unwrap();
             locked_chunk
         };
 
@@ -256,23 +246,23 @@ mod tests {
             expected
         };
 
-        let mut candidate = test_round_1().unwrap();
+        let mut candidate = test_round_0().unwrap();
         assert!(candidate.update_chunk(0, &locked_chunk));
         assert_eq!(expected, candidate);
     }
 
     #[test]
     fn test_get_verifier_ids() {
-        let candidates = test_round_1().unwrap().get_verifier_ids().clone();
+        let candidates = test_round_0().unwrap().get_verifier_ids().clone();
         for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
             assert_eq!(*id, candidates[index]);
         }
     }
 
     #[test]
-    fn test_is_complete() {
+    fn test_are_chunks_verified() {
         // TODO (howardwu): Add tests for a full completeness check.
-        let round = test_round_1().unwrap();
-        assert!(!round.is_verified());
+        let round = test_round_0().unwrap();
+        assert!(!round.are_chunks_verified());
     }
 }

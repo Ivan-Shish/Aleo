@@ -1,14 +1,10 @@
-use crate::storage::{InMemory, Storage};
-use phase1::{helpers::CurveKind, ContributionMode, CurveParameters, Phase1Parameters, ProvingSystem};
-// use phase1_coordinator_derives::phase1_parameters;
-
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
+use crate::storage::InMemory;
+use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
-use url::Url;
+use std::path::Path;
 
 type BatchSize = usize;
-type ChunkId = usize;
 type ChunkSize = usize;
 type Curve = CurveKind;
 type Power = usize;
@@ -17,13 +13,14 @@ pub type StorageType = InMemory;
 
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Parameters {
     AleoInner,
     AleoOuter,
     AleoUniversal,
     AleoTest,
     Simple,
+    Custom(Settings),
 }
 
 impl Parameters {
@@ -35,6 +32,7 @@ impl Parameters {
             Parameters::AleoUniversal => Self::aleo_universal(),
             Parameters::AleoTest => Self::aleo_test(),
             Parameters::Simple => Self::simple(),
+            Parameters::Custom(settings) => settings.clone(),
         }
     }
 
@@ -45,7 +43,7 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(20_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(512_usize),
+            ChunkSize::from(2048_usize),
         )
     }
 
@@ -54,9 +52,9 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(15_usize),
+            Power::from(21_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(512_usize),
+            ChunkSize::from(8192_usize),
         )
     }
 
@@ -65,9 +63,9 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
-            Power::from(15_usize),
+            Power::from(30_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(512_usize),
+            ChunkSize::from(8192_usize),
         )
     }
 
@@ -76,9 +74,9 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(15_usize),
+            Power::from(14_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(512_usize),
+            ChunkSize::from(4000_usize),
         )
     }
 
@@ -94,7 +92,7 @@ impl Parameters {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Environment {
     Test(Parameters),
     Development(Parameters),
@@ -102,15 +100,15 @@ pub enum Environment {
 }
 
 impl Environment {
-    // TODO (howardwu): Change storage type
-    /// Returns the storage system of the coordinator.
-    pub fn storage(&self) -> impl Storage {
-        match self {
-            Environment::Test(_) => InMemory::load(),
-            Environment::Development(_) => InMemory::load(),
-            Environment::Production(_) => InMemory::load(),
-        }
-    }
+    // // TODO (howardwu): Change storage type
+    // /// Returns the storage system of the coordinator.
+    // pub fn storage(&self) -> impl Storage {
+    //     match self {
+    //         Environment::Test(_) => InMemory::load(),
+    //         Environment::Development(_) => InMemory::load(),
+    //         Environment::Production(_) => InMemory::load(),
+    //     }
+    // }
 
     /// Returns the appropriate number of chunks for the coordinator
     /// to run given a proof system, power and chunk size.
@@ -121,10 +119,10 @@ impl Environment {
             Environment::Production(parameters) => parameters.to_settings(),
         };
 
-        match proving_system {
-            ProvingSystem::Groth16 => u64::pow(2, power as u32) / chunk_size as u64,
-            ProvingSystem::Marlin => u64::pow(2, power as u32) / chunk_size as u64,
-        }
+        return match proving_system {
+            ProvingSystem::Groth16 => ((1 << (power + 1)) - 1) / chunk_size,
+            ProvingSystem::Marlin => (1 << power) / chunk_size,
+        } as u64;
     }
 
     ///
@@ -209,7 +207,39 @@ impl Environment {
         }
     }
 
-    /// Returns the parameter settings of the coordinater.
+    /// Returns the transcript directory for a given round from the coordinator.
+    pub fn transcript_directory(&self, round_height: u64) -> String {
+        match self {
+            Environment::Test(_) => format!("./transcript/test/round-{}", round_height),
+            Environment::Development(_) => format!("./transcript/development/round-{}", round_height),
+            Environment::Production(_) => format!("./transcript/production/round-{}", round_height),
+        }
+    }
+
+    /// Returns the transcript locator for a given round and chunk ID from the coordinator.
+    pub fn transcript_locator(&self, round_height: u64, chunk_id: u64) -> String {
+        // Create the transcript directory path.
+        let path = self.transcript_directory(round_height);
+
+        // If the path does not exist, attempt to initialize the directory path.
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create transcript directory");
+        }
+
+        // Create a transcript locator located at `{transcript_directory}/{chunk_id}`.
+        format!("{}/{}", path, chunk_id)
+    }
+
+    /// Returns the final transcript locator for a given round from the coordinator.
+    pub fn final_transcript_locator(&self, round_height: u64) -> String {
+        // Create the transcript directory path.
+        let path = self.transcript_directory(round_height);
+
+        // Create a transcript locator located at `{transcript_directory}/final`.
+        format!("{}/final", path)
+    }
+
+    /// Returns the parameter settings of the coordinator.
     pub fn to_settings(&self) -> Settings {
         match self {
             Environment::Test(parameters) => parameters.to_settings(),
