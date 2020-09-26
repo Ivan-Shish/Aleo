@@ -5,7 +5,13 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_json;
 
-use phase1_coordinator::{apis::*, environment::Environment, Coordinator, CoordinatorError};
+use phase1_coordinator::{
+    apis::*,
+    commands::initialization::Initialization,
+    environment::{Environment, Parameters},
+    Coordinator,
+    CoordinatorError,
+};
 
 use chrono::Utc;
 use rocket::{
@@ -16,10 +22,7 @@ use tracing::{info, Level};
 
 #[inline]
 fn logger() {
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(Level::TRACE)
-        // build but do not install the subscriber.
-        .finish();
+    let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
@@ -47,6 +50,8 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Coordinator is ready");
     info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
 
+    Initialization::run(environment)?;
+
     Ok(coordinator)
 }
 
@@ -54,9 +59,9 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 fn server(environment: &Environment) -> anyhow::Result<Rocket> {
     info!("Starting server...");
     let builder = match environment {
-        Environment::Test => Config::build(RocketEnvironment::Development),
-        Environment::Development => Config::build(RocketEnvironment::Production),
-        Environment::Production => Config::build(RocketEnvironment::Production),
+        Environment::Test(_) => Config::build(RocketEnvironment::Development),
+        Environment::Development(_) => Config::build(RocketEnvironment::Production),
+        Environment::Production(_) => Config::build(RocketEnvironment::Production),
     };
 
     let config = builder
@@ -82,6 +87,6 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 #[inline]
 pub fn main() -> anyhow::Result<()> {
     logger();
-    server(&Environment::Development)?.launch();
+    server(&Environment::Development(Parameters::AleoTest))?.launch();
     Ok(())
 }

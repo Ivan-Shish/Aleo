@@ -1,9 +1,11 @@
 use crate::storage::{InMemory, Storage};
 use phase1::{helpers::CurveKind, ContributionMode, CurveParameters, Phase1Parameters, ProvingSystem};
+// use phase1_coordinator_derives::phase1_parameters;
 
-use zexe_algebra::{Bls12_377, PairingEngine};
+use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
+use url::Url;
 
 type BatchSize = usize;
 type ChunkId = usize;
@@ -13,16 +15,9 @@ type Power = usize;
 
 pub type StorageType = InMemory;
 
-pub type Settings = (
-    ContributionMode,
-    ProvingSystem,
-    CurveKind,
-    Power,
-    BatchSize,
-    ChunkSize,
-    ChunkId,
-);
+pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
 
+#[derive(Debug, Copy, Clone)]
 pub enum Parameters {
     AleoInner,
     AleoOuter,
@@ -32,73 +27,69 @@ pub enum Parameters {
 }
 
 impl Parameters {
-    pub fn to_settings(&self) -> Settings {
+    /// Returns the corresponding settings for each parameter type.
+    fn to_settings(&self) -> Settings {
         match self {
-            Parameters::AleoInner => self.aleo_inner(),
-            Parameters::AleoOuter => self.aleo_outer(),
-            Parameters::AleoUniversal => self.aleo_universal(),
-            Parameters::AleoTest => self.aleo_test(),
-            Parameters::Simple => self.simple(),
+            Parameters::AleoInner => Self::aleo_inner(),
+            Parameters::AleoOuter => Self::aleo_outer(),
+            Parameters::AleoUniversal => Self::aleo_universal(),
+            Parameters::AleoTest => Self::aleo_test(),
+            Parameters::Simple => Self::simple(),
         }
     }
 
-    pub fn aleo_inner() -> Settings {
+    fn aleo_inner() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(20),
-            BatchSize::from(64),
-            ChunkSize::from(512),
-            ChunkId::from(0),
+            Power::from(20_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(512_usize),
         )
     }
 
-    pub fn aleo_outer() -> Settings {
+    fn aleo_outer() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(15),
-            BatchSize::from(64),
-            ChunkSize::from(512),
-            ChunkId::from(0),
+            Power::from(15_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(512_usize),
         )
     }
 
-    pub fn aleo_universal() -> Settings {
+    fn aleo_universal() -> Settings {
         (
             ContributionMode::Chunked,
-            ProvingSystem::Groth16,
+            ProvingSystem::Marlin,
             CurveKind::Bls12_377,
-            Power::from(15),
-            BatchSize::from(64),
-            ChunkSize::from(512),
-            ChunkId::from(0),
+            Power::from(15_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(512_usize),
         )
     }
 
-    pub fn aleo_test() -> Settings {
+    fn aleo_test() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(15),
-            BatchSize::from(64),
-            ChunkSize::from(512),
-            ChunkId::from(0),
+            Power::from(15_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(512_usize),
         )
     }
 
-    pub fn simple() -> Settings {
+    fn simple() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(10),
-            BatchSize::from(64),
-            ChunkSize::from(512),
-            ChunkId::from(0),
+            Power::from(10_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(512_usize),
         )
     }
 }
@@ -111,38 +102,56 @@ pub enum Environment {
 }
 
 impl Environment {
-    /// Returns the Phase 1 parameters of the coordinator.
-    pub fn phase1_parameters(&self) -> Phase1Parameters<E> {
-        let (contribution_mode, proving_system, curve, power, batch_size, chunk_size, chunk_id) = match self {
+    // TODO (howardwu): Change storage type
+    /// Returns the storage system of the coordinator.
+    pub fn storage(&self) -> impl Storage {
+        match self {
+            Environment::Test(_) => InMemory::load(),
+            Environment::Development(_) => InMemory::load(),
+            Environment::Production(_) => InMemory::load(),
+        }
+    }
+
+    /// Returns the appropriate number of chunks for the coordinator
+    /// to run given a proof system, power and chunk size.
+    pub fn number_of_chunks(&self) -> u64 {
+        let (_, proving_system, _, power, _, chunk_size) = match self {
             Environment::Test(parameters) => parameters.to_settings(),
             Environment::Development(parameters) => parameters.to_settings(),
             Environment::Production(parameters) => parameters.to_settings(),
         };
 
-        Phase1Parameters::<_>::new(
-            *contribution_mode,
-            chunk_index,
-            *chunk_size,
-            CurveParameters::<_>::new(),
-            *proving_system,
-            *power,
-            *batch_size,
-        )
+        match proving_system {
+            ProvingSystem::Groth16 => u64::pow(2, power as u32) / chunk_size as u64,
+            ProvingSystem::Marlin => u64::pow(2, power as u32) / chunk_size as u64,
+        }
     }
 
-    // pub fn phase1_parameters(&self) -> Phase1Parameters<E> {
-    //     let (_, _, _, _, _, chunk_size, chunk_id) = match self {
-    //         Environment::Test(parameters) => parameters.into_settings(),
-    //         Environment::Development(parameters) => parameters.into_settings(),
-    //         Environment::Production(parameters) => parameters.into_settings(),
-    //     };
-
-    /// Returns the storage system of the coordinator.
-    pub fn storage<S: Storage>(&self) -> S {
+    ///
+    /// Returns the compressed input preference of the coordinator.
+    ///
+    /// By default, the coordinator returns `false` to minimize time
+    /// spent by contributors on decompressing inputs.
+    ///
+    pub fn compressed_inputs(&self) -> bool {
         match self {
-            Environment::Test(_) => InMemory,
-            Environment::Development(_) => InMemory,
-            Environment::Production(_) => InMemory, // TODO (howardwu): Change storage type
+            Environment::Test(_) => false,
+            Environment::Development(_) => false,
+            Environment::Production(_) => false,
+        }
+    }
+
+    ///
+    /// Returns the compressed output preference of the coordinator.
+    ///
+    /// By default, the coordinator returns `true` to minimize time
+    /// spent by the coordinator and contributors on uploading chunks.
+    ///
+    pub fn compressed_outputs(&self) -> bool {
+        match self {
+            Environment::Test(_) => true,
+            Environment::Development(_) => true,
+            Environment::Production(_) => true,
         }
     }
 
@@ -173,6 +182,11 @@ impl Environment {
         }
     }
 
+    /// Returns an unchecked instantiation for the base URL of the coordinator.
+    pub fn base_url(&self) -> String {
+        format!("http://{}:{}", self.address(), self.port())
+    }
+
     /// Returns the CORS policy of the server.
     pub fn cors(&self) -> Cors {
         let allowed_origins = match self {
@@ -195,7 +209,12 @@ impl Environment {
         }
     }
 
-    pub fn base_url(&self) -> String {
-        format!("http://{}:{}", self.address(), self.port())
+    /// Returns the parameter settings of the coordinater.
+    pub fn to_settings(&self) -> Settings {
+        match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        }
     }
 }

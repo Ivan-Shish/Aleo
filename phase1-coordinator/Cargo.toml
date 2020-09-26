@@ -14,11 +14,16 @@ path = "src/main.rs"
 
 [dependencies]
 phase1 = { path = "../phase1" }
+phase1-cli = { path = "../phase1-cli" }
+setup-utils = { path = "../setup-utils", default-features = false }
+
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
 
 anyhow = { version = "1.0.32" }
 chrono = { version = "0.4", features = ["serde"] }
+dotenv = { version = "0.15" }
 lazy_static = { version = "1.4.0" }
+memmap = { version = "0.7.0" }
 rayon = { version = "1.4.0" }
 rocket = { version = "0.4.5" }
 rocket_contrib = { version = "0.4", features = ["json"] }
@@ -27,6 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "0.6" }
 serde-diff = { version = "0.3" }
 serde_json = { version = "1.0" }
+toml = { version = "0.5.6" }
 tracing = { version = "0.1.19" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "1.0" }

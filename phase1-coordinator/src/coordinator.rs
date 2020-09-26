@@ -1,7 +1,7 @@
 use crate::{
     environment::{Environment, StorageType},
-    objects::{Contribution, Round},
-    storage::{Key, Storage, Value},
+    objects::Round,
+    storage::{InMemory, Key, Storage, Value},
 };
 
 use chrono::{DateTime, Utc};
@@ -70,7 +70,8 @@ impl Coordinator {
     #[inline]
     pub fn new(environment: Environment) -> Self {
         Self {
-            storage: Arc::new(RwLock::new(StorageType::load())),
+            storage: Arc::new(RwLock::new(InMemory::load())),
+            // storage: Arc::new(RwLock::new(environment.storage())),
             environment,
         }
     }

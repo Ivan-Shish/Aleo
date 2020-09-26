@@ -1,11 +1,17 @@
-use crate::{environment::Environment, objects::Round};
+use crate::{
+    environment::{Environment, Parameters},
+    objects::Round,
+};
 
 use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 
+/// Environment for testing purposes only.
+pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest);
+
 /// Version number for testing purposes only.
-pub static TEST_VERSION: u64 = Environment::Test.version();
+pub static TEST_VERSION: u64 = TEST_ENVIRONMENT.version();
 
 /// Contributor ID 1 for testing purposes only.
 pub static TEST_CONTRIBUTOR_ID_1: &str = "test_contributor";
@@ -27,10 +33,10 @@ lazy_static! {
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<String>> =  Lazy::new(|| vec![TEST_VERIFIER_ID_1.to_string()]);
 
     /// Chunk verifier IDs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<String>> = Lazy::new(|| (0..Environment::Test.number_of_chunks()).into_iter().map(|_| TEST_VERIFIER_IDS[0].clone()).collect());
+    pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<String>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| TEST_VERIFIER_IDS[0].clone()).collect());
 
     /// Chunk verified base URLs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIED_BASE_URLS: Lazy<Vec<&'static str>> = Lazy::new(|| (0..Environment::Test.number_of_chunks()).into_iter().map(|_| TEST_VERIFIED_BASE_URL_1).collect());
+    pub static ref TEST_CHUNK_VERIFIED_BASE_URLS: Lazy<Vec<&'static str>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| TEST_VERIFIED_BASE_URL_1).collect());
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.
