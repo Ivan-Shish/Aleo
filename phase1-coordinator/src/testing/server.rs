@@ -5,11 +5,16 @@ use rocket::{
     local::Client,
     Rocket,
 };
-use tracing::info;
+use tracing::{info, Level};
+
+pub fn test_logger() {
+    let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+}
 
 pub fn test_coordinator() -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
-    let mut coordinator = Coordinator::new(Environment::Test);
+    let mut coordinator = Coordinator::new(TEST_ENVIRONMENT);
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(
@@ -26,6 +31,7 @@ pub fn test_coordinator() -> anyhow::Result<Coordinator> {
 
 pub fn test_server() -> anyhow::Result<Rocket> {
     info!("Starting server...");
+    test_logger();
     let server = rocket::ignite().manage(test_coordinator()?).mount("/", routes![
         chunk_get,
         chunk_post,

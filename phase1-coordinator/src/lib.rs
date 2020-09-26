@@ -7,6 +7,9 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_json;
 
+#[macro_use]
+mod macros;
+
 pub mod apis;
 pub mod commands;
 pub mod coordinator;
