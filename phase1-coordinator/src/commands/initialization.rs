@@ -24,14 +24,16 @@ impl Initialization {
         let settings = environment.to_settings();
 
         // Fetch the transcript locator.
-        let transcript = environment.transcript_locator(round_height, chunk_id);
+        let transcript = environment.contribution_locator(round_height, chunk_id, 0);
         trace!("Storing round {} chunk {} in {}", round_height, chunk_id, transcript);
 
         // Execute ceremony initialization on chunk.
         let (_, _, curve, _, _, _) = settings;
         match curve {
-            CurveKind::Bls12_377 => new_challenge(&transcript, &phase1_parameters!(Bls12_377, settings, chunk_id)),
-            CurveKind::BW6 => new_challenge(&transcript, &phase1_parameters!(BW6_761, settings, chunk_id)),
+            CurveKind::Bls12_377 => {
+                new_challenge(&transcript, &phase1_chunked_parameters!(Bls12_377, settings, chunk_id))
+            }
+            CurveKind::BW6 => new_challenge(&transcript, &phase1_chunked_parameters!(BW6_761, settings, chunk_id)),
         };
 
         // Open the transcript file.
@@ -94,7 +96,7 @@ mod tests {
             let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, round_height, chunk_id).unwrap();
 
             // Open the transcript locator file.
-            let transcript = TEST_ENVIRONMENT.transcript_locator(round_height, chunk_id);
+            let transcript = TEST_ENVIRONMENT.contribution_locator(round_height, chunk_id, 0);
             let file = OpenOptions::new().read(true).open(transcript).unwrap();
             let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
 

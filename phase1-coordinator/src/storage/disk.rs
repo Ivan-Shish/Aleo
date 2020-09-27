@@ -19,7 +19,7 @@ impl Storage for InMemory {
     #[inline]
     fn load(environment: &Environment) -> Self {
         // Fetch the transcript locator from round 0.
-        let transcript = environment.transcript_directory(0);
+        let transcript = environment.round_directory(0);
 
         // Open the transcript file.
         let file = OpenOptions::new().read(true).open(&transcript)?;

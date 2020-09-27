@@ -1,4 +1,4 @@
-use crate::{apis::*, testing::prelude::*, Coordinator, CoordinatorError};
+use crate::{apis::*, testing::prelude::*, Coordinator, CoordinatorError, Participant};
 
 use rocket::{local::Client, Rocket};
 use tracing::{info, Level};
@@ -15,10 +15,10 @@ pub fn test_coordinator() -> anyhow::Result<Coordinator> {
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(
             *TEST_STARTED_AT,
-            &TEST_CONTRIBUTOR_IDS,
-            &TEST_VERIFIER_IDS,
-            &TEST_CHUNK_VERIFIER_IDS,
-            &TEST_CHUNK_VERIFIED_BASE_URLS,
+            TEST_CONTRIBUTOR_IDS,
+            TEST_VERIFIER_IDS,
+            TEST_CHUNK_VERIFIER_IDS,
+            TEST_CHUNK_VERIFIED_BASE_URLS,
         )?;
     }
     info!("Coordinator is ready");

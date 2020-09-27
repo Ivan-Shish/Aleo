@@ -1,4 +1,4 @@
-use crate::{Coordinator, CoordinatorError};
+use crate::{objects::Participant, Coordinator, CoordinatorError};
 
 use rocket::{http::Status, State};
 use rocket_contrib::json::Json;
@@ -18,21 +18,21 @@ pub struct LockResponse {
 }
 
 // TODO (howardwu): Add authentication.
-#[post("/chunks/<chunk_id>/lock", data = "<participant_id>")]
+#[post("/chunks/<chunk_id>/lock", data = "<participant>")]
 pub fn lock_post(
     coordinator: State<Coordinator>,
     chunk_id: u64,
-    participant_id: String,
+    participant: Participant,
 ) -> Result<Json<LockResponse>, Status> {
-    match coordinator.lock_chunk(chunk_id, participant_id) {
+    match coordinator.try_lock_chunk(chunk_id, participant) {
         Ok(_) => Ok(Json(LockResponse {
             status: format!("ok"),
             result: InnerLockResponse { chunk_id, locked: true },
         })),
         Err(CoordinatorError::UnauthorizedChunkContributor) => Err(Status::Unauthorized),
-        Err(CoordinatorError::LockAlreadyAcquired) => Err(Status::Unauthorized),
-        Err(CoordinatorError::MissingChunk) => Err(Status::PreconditionFailed),
-        Err(CoordinatorError::FailedToUpdateChunk) => Err(Status::InternalServerError),
+        Err(CoordinatorError::ChunkLockAlreadyAcquired) => Err(Status::Unauthorized),
+        Err(CoordinatorError::ChunkMissing) => Err(Status::PreconditionFailed),
+        Err(CoordinatorError::ChunkUpdateFailed) => Err(Status::InternalServerError),
         _ => Err(Status::NotFound),
     }
 
