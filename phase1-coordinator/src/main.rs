@@ -9,6 +9,7 @@ use phase1_coordinator::{
     apis::*,
     environment::{Environment, Parameters},
     Coordinator,
+    Participant,
 };
 
 use chrono::Utc;
@@ -29,11 +30,15 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let mut coordinator = Coordinator::new(environment.clone())?;
 
-    let contributor_ids = vec!["0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string()];
-    let verifier_ids = vec!["0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string()];
-    let chunk_verifier_ids = (0..environment.number_of_chunks())
+    let contributors = vec![Participant::Contributor(
+        "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
+    )];
+    let verifiers = vec![Participant::Verifier(
+        "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
+    )];
+    let chunk_verifiers = (0..environment.number_of_chunks())
         .into_iter()
-        .map(|_| verifier_ids[0].clone())
+        .map(|_| verifiers[0].clone())
         .collect();
     let chunk_verifier_base_urls = (0..environment.number_of_chunks())
         .into_iter()
@@ -44,10 +49,10 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(
             Utc::now(),
-            &contributor_ids,
-            &verifier_ids,
-            &chunk_verifier_ids,
-            &chunk_verifier_base_urls,
+            contributors,
+            verifiers,
+            chunk_verifiers,
+            chunk_verifier_base_urls,
         )?;
     }
     info!("Coordinator is ready");

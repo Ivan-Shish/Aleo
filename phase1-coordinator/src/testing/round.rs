@@ -1,6 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
+    Participant,
 };
 
 use chrono::{DateTime, TimeZone, Utc};
@@ -15,7 +16,7 @@ pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTes
 pub static TEST_VERSION: u64 = TEST_ENVIRONMENT.version();
 
 /// Contributor ID 1 for testing purposes only.
-pub static TEST_CONTRIBUTOR_ID_1: &str = "test_contributor";
+pub static TEST_CONTRIBUTOR_ID_1: Participant = Participant::Contributor("test_contributor".to_string());
 
 /// Verifier ID 1 for testing purposes only.
 pub static TEST_VERIFIER_ID_1: &str = "test_verifier";
@@ -44,7 +45,7 @@ lazy_static! {
 pub fn clear_test_transcript() {
     // std::thread::sleep(1000);
     for round_height in 0..10 {
-        let path = TEST_ENVIRONMENT.transcript_directory(round_height);
+        let path = TEST_ENVIRONMENT.round_directory(round_height);
         if std::path::Path::new(&path).exists() {
             // warn!("Test is clearing {:?}", &path);
             std::fs::remove_dir_all(&path).expect("unable to remove transcript directory");
@@ -54,8 +55,8 @@ pub fn clear_test_transcript() {
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.
-pub fn test_round_1_json() -> anyhow::Result<Round> {
-    Ok(serde_json::from_str(include_str!("resources/test_round_1.json"))?)
+pub fn test_round_0_json() -> anyhow::Result<Round> {
+    Ok(serde_json::from_str(include_str!("resources/test_round_0.json"))?)
 }
 
 /// Creates the initial round for testing purposes only.
@@ -64,10 +65,10 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         TEST_VERSION,
         0, /* height */
         *TEST_STARTED_AT,
-        &TEST_CONTRIBUTOR_IDS,
-        &TEST_VERIFIER_IDS,
-        &TEST_CHUNK_VERIFIER_IDS,
-        &TEST_CHUNK_VERIFIED_BASE_URLS,
+        TEST_CONTRIBUTOR_IDS,
+        TEST_VERIFIER_IDS,
+        TEST_CHUNK_VERIFIER_IDS,
+        TEST_CHUNK_VERIFIED_BASE_URLS,
     )?)
 }
 
@@ -80,8 +81,8 @@ pub fn print_diff<S: SerdeDiff>(a: &S, b: &S) {
 }
 
 #[test]
-fn test_round_1_matches() {
-    let expected = test_round_1_json().unwrap();
+fn test_round_0_matches() {
+    let expected = test_round_0_json().unwrap();
     let candidate = test_round_0().unwrap();
 
     // Print the differences in JSON if they do not match.

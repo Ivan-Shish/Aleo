@@ -16,13 +16,18 @@ impl Verification {
     ///
     /// Executes the round verification on a given chunk ID using phase1-cli logic.
     ///
-    pub fn run(environment: &Environment, round_height: u64, chunk_id: u64) -> anyhow::Result<()> {
+    pub fn run(
+        environment: &Environment,
+        round_height: u64,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> anyhow::Result<()> {
         // If there are no prior rounds, sanity check the initial contribution.
-        if round_height == 0 {
-            info!("Checking the initial contribution");
+        if round_height == 0 && contribution_id == 0 {
+            info!("Verifying the chunk contribution");
 
             // Open the transcript file.
-            let transcript = environment.transcript_locator(round_height, chunk_id);
+            let transcript = environment.contribution_locator(round_height, chunk_id, contribution_id);
             let file = OpenOptions::new().read(true).open(&transcript)?;
             let reader = unsafe { MmapOptions::new().map(&file)? };
 
@@ -37,7 +42,7 @@ impl Verification {
             // Compute the contribution hash to ensure it works.
             let _ = calculate_hash(&reader);
 
-            info!("Completed checking the initial contribution");
+            info!("Completed verification of the chunk contribution");
             return Ok(());
         }
 
@@ -45,25 +50,25 @@ impl Verification {
         let settings = environment.to_settings();
 
         // Fetch the transcript locators.
-        let previous_transcript = environment.transcript_locator(round_height - 1, chunk_id);
-        let candidate_transcript = environment.transcript_locator(round_height, chunk_id);
-        let next_transcript = environment.transcript_locator(round_height, chunk_id);
+        let previous_contribution = environment.contribution_locator(round_height, chunk_id, contribution_id - 1);
+        let candidate_contribution = environment.contribution_locator(round_height, chunk_id, contribution_id);
+        let next_contribution = environment.contribution_locator(round_height, chunk_id, contribution_id + 1);
 
         // Execute ceremony verification on chunk.
         let (_, _, curve, _, _, _) = settings.clone();
         let result = panic::catch_unwind(|| {
             match curve {
                 CurveKind::Bls12_377 => transform_pok_and_correctness(
-                    &previous_transcript,
-                    &candidate_transcript,
-                    &next_transcript,
-                    &phase1_parameters!(Bls12_377, settings, chunk_id),
+                    &previous_contribution,
+                    &candidate_contribution,
+                    &next_contribution,
+                    &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 ),
                 CurveKind::BW6 => transform_pok_and_correctness(
-                    &previous_transcript,
-                    &candidate_transcript,
-                    &next_transcript,
-                    &phase1_parameters!(BW6_761, settings, chunk_id),
+                    &previous_contribution,
+                    &candidate_contribution,
+                    &next_contribution,
+                    &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 ),
             };
         });

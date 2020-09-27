@@ -1,4 +1,4 @@
-use crate::storage::InMemory;
+use crate::{objects::Participant, storage::InMemory};
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
@@ -76,7 +76,7 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(14_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(4000_usize),
+            ChunkSize::from(8192_usize),
         )
     }
 
@@ -208,7 +208,7 @@ impl Environment {
     }
 
     /// Returns the transcript directory for a given round from the coordinator.
-    pub fn transcript_directory(&self, round_height: u64) -> String {
+    pub fn round_directory(&self, round_height: u64) -> String {
         match self {
             Environment::Test(_) => format!("./transcript/test/round-{}", round_height),
             Environment::Development(_) => format!("./transcript/development/round-{}", round_height),
@@ -216,27 +216,67 @@ impl Environment {
         }
     }
 
-    /// Returns the transcript locator for a given round and chunk ID from the coordinator.
-    pub fn transcript_locator(&self, round_height: u64, chunk_id: u64) -> String {
+    /// Returns the chunk transcript directory for a given round and chunk ID from the coordinator.
+    pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
         // Create the transcript directory path.
-        let path = self.transcript_directory(round_height);
+        let path = self.round_directory(round_height);
 
-        // If the path does not exist, attempt to initialize the directory path.
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create transcript directory");
-        }
-
-        // Create a transcript locator located at `{transcript_directory}/{chunk_id}`.
+        // Create the chunk transcript locator as `{round_directory}/{chunk_id}`.
         format!("{}/{}", path, chunk_id)
     }
 
-    /// Returns the final transcript locator for a given round from the coordinator.
-    pub fn final_transcript_locator(&self, round_height: u64) -> String {
-        // Create the transcript directory path.
-        let path = self.transcript_directory(round_height);
+    /// Returns the contribution locator for a given round, chunk ID, and contribution ID from the coordinator.
+    pub fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> String {
+        // Create the chunk transcript directory path.
+        let path = self.chunk_directory(round_height, chunk_id);
 
-        // Create a transcript locator located at `{transcript_directory}/final`.
-        format!("{}/final", path)
+        // If the path does not exist, attempt to initialize the directory path.
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
+        }
+
+        // Create the transcript locator as `{chunk_round_directory}/{contribution_id}`.
+        format!("{}/{}", path, contribution_id)
+    }
+
+    /// Returns the final round transcript locator for a given round from the coordinator.
+    pub fn final_round_locator(&self, round_height: u64) -> String {
+        // Create the transcript directory path.
+        let path = self.round_directory(round_height);
+
+        // If the path does not exist, attempt to initialize the directory path.
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
+        }
+
+        // Create the final round transcript locator located at `{round_directory}/contribution`.
+        format!("{}/contribution", path)
+    }
+
+    ///
+    /// Returns the contributor managed by the coordinator.
+    ///
+    /// The primary purpose of this is to establish an identity for the coordinator
+    /// when running initialization of each round.
+    ///
+    /// This can also be purposed for completing contributions of participants
+    /// who may have dropped off and handed over control of their session.
+    ///
+    pub fn coordinator_contributor(&self) -> Participant {
+        match self {
+            Environment::Test(_) => Participant::Contributor(format!("test-coordinator-contributor")),
+            Environment::Development(_) => Participant::Contributor(format!("development-coordinator-contributor")),
+            Environment::Production(_) => Participant::Contributor(format!("production-coordinator-contributor")),
+        }
+    }
+
+    /// Returns a verifier managed by the coordinator.
+    pub fn coordinator_verifier(&self) -> Participant {
+        match self {
+            Environment::Test(_) => Participant::Verifier(format!("test-coordinator-verifier")),
+            Environment::Development(_) => Participant::Verifier(format!("development-coordinator-verifier")),
+            Environment::Production(_) => Participant::Verifier(format!("production-coordinator-verifier")),
+        }
     }
 
     /// Returns the parameter settings of the coordinator.

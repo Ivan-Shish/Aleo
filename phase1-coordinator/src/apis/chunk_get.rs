@@ -1,20 +1,20 @@
-use crate::Coordinator;
+use crate::{objects::Participant, Coordinator};
 
 use rocket::{http::Status, State};
 use tracing::error;
 
 // TODO (howardwu): Add authentication.
-#[get("/chunks/<chunk_id>/contribution", data = "<participant_id>")]
-pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant_id: String) -> Result<String, Status> {
+#[get("/chunks/<chunk_id>/contribution", data = "<participant>")]
+pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant: Participant) -> Result<String, Status> {
     // Check that the participant ID is authorized.
-    match coordinator.is_current_contributor(participant_id.clone()) {
+    match coordinator.is_current_contributor(&participant) {
         // Case 1 - Participant is authorized.
         Ok(true) => (),
         // Case 2 - Participant is not authorized.
         Ok(false) => {
             error!(
                 "{} is not authorized for /chunks/{}/lock",
-                participant_id.clone(),
+                participant.clone(),
                 chunk_id
             );
             return Err(Status::Unauthorized);
@@ -36,7 +36,7 @@ pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant_id:
                 "status": "ok",
                 "result": {
                     "chunkId": chunk_id,
-                    "participantId": participant_id,
+                    "participantId": participant,
                     "writeUrl": chunk_locator.to_string()
                 }
             });
