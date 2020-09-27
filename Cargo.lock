@@ -1644,6 +1644,7 @@ dependencies = [
  "toml 0.5.6",
  "tracing",
  "tracing-subscriber",
+ "typenum",
  "url",
  "url_serde",
 ]

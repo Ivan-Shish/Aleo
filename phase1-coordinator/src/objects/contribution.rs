@@ -24,11 +24,9 @@ use url_serde;
 #[serde(rename_all = "camelCase")]
 pub struct Contribution {
     contributor_id: Option<Participant>,
-    #[serde(with = "url_serde")]
-    contributed_location: Option<Url>,
+    contributed_location: Option<String>,
     verifier_id: Option<Participant>,
-    #[serde(with = "url_serde")]
-    verified_location: Option<Url>,
+    verified_location: Option<String>,
     verified: bool,
 }
 
@@ -56,13 +54,10 @@ impl Contribution {
 
         Ok(Self {
             contributor_id: Some(participant),
-            contributed_location: Some(
-                format!(
-                    "{}/chunks/{}/contribution/{}",
-                    contributed_base_url, chunk_id, contribution_id
-                )
-                .parse()?,
-            ),
+            contributed_location: Some(format!(
+                "{}/chunks/{}/contribution/{}",
+                contributed_base_url, chunk_id, contribution_id
+            )),
             verifier_id: None,
             verified_location: None,
             verified: false,
@@ -90,17 +85,25 @@ impl Contribution {
             return Err(CoordinatorError::ExpectedVerifier);
         }
 
+        // Check that this function is only used to
+        // initialize a new round in the ceremony.
+        if contribution_id != 0 {
+            return Err(CoordinatorError::ContributionIdIsNonzero);
+        }
+
         // Create a new contribution instance.
+        // As this is function is only used for initialization,
+        // we can safely set `verified` to `true`.
         let mut contribution = Self {
             contributor_id: None,
             contributed_location: None,
-            verifier_id: None,
-            verified_location: None,
-            verified: false,
+            verifier_id: Some(participant),
+            verified_location: Some(format!(
+                "{}/chunks/{}/contribution/{}",
+                verified_base_url, chunk_id, contribution_id
+            )),
+            verified: true,
         };
-
-        // Assign the verifier to the contribution.
-        contribution.assign_verifier(chunk_id, contribution_id, participant, verified_base_url)?;
 
         Ok(contribution)
     }
@@ -146,13 +149,10 @@ impl Contribution {
         }
 
         self.verifier_id = Some(participant);
-        self.verified_location = Some(
-            format!(
-                "{}/chunks/{}/contribution/{}",
-                verified_base_url, chunk_id, contribution_id
-            )
-            .parse()?,
-        );
+        self.verified_location = Some(format!(
+            "{}/chunks/{}/contribution/{}",
+            verified_base_url, chunk_id, contribution_id
+        ));
         Ok(())
     }
 
@@ -214,7 +214,7 @@ impl Contribution {
     /// Returns a reference to the contributor location, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_contributed_location(&self) -> &Option<Url> {
+    pub fn get_contributed_location(&self) -> &Option<String> {
         &self.contributed_location
     }
 
@@ -228,7 +228,7 @@ impl Contribution {
     /// Returns a reference to the verifier location, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_verified_location(&self) -> &Option<Url> {
+    pub fn get_verified_location(&self) -> &Option<String> {
         &self.verified_location
     }
 }

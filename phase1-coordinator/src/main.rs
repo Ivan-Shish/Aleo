@@ -33,16 +33,14 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     let contributors = vec![Participant::Contributor(
         "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
     )];
-    let verifiers = vec![Participant::Verifier(
-        "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
-    )];
+    let verifiers = vec![environment.coordinator_verifier()];
     let chunk_verifiers = (0..environment.number_of_chunks())
         .into_iter()
         .map(|_| verifiers[0].clone())
         .collect();
     let chunk_verifier_base_urls = (0..environment.number_of_chunks())
         .into_iter()
-        .map(|_| "http://localhost:8080")
+        .map(|_| "http://localhost:8080".to_string())
         .collect();
 
     // If this is the first time running the ceremony, start by initializing one round.

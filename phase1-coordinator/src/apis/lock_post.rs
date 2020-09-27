@@ -45,29 +45,29 @@ pub fn lock_post(
     // let is_locked = round.try_lock_chunk(chunk_id, participant_id);
 }
 
-#[cfg(test)]
-mod test {
-    use super::LockResponse;
-    use crate::testing::prelude::*;
-
-    use tracing::trace;
-
-    #[test]
-    #[serial]
-    fn test_lock_post() {
-        test_logger();
-        let client = test_client().unwrap();
-
-        let mut response = client.post("/chunks/0/lock").body(TEST_CONTRIBUTOR_ID_1).dispatch();
-        let response_body = response.body_string();
-        println!("{:#?}", response_body);
-        assert_eq!(Status::Ok, response.status());
-        assert_eq!(Some(ContentType::JSON), response.content_type());
-        assert!(response_body.is_some());
-
-        let candidate: LockResponse = serde_json::from_str(&response_body.unwrap()).unwrap();
-        assert_eq!("ok", &candidate.status);
-        assert_eq!(0, candidate.result.chunk_id);
-        assert_eq!(true, candidate.result.locked);
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     use super::LockResponse;
+//     use crate::testing::prelude::*;
+//
+//     use tracing::trace;
+//
+//     #[test]
+//     #[serial]
+//     fn test_lock_post() {
+//         test_logger();
+//         let client = test_client().unwrap();
+//
+//         let mut response = client.post("/chunks/0/lock").body(TEST_CONTRIBUTOR_ID_1).dispatch();
+//         let response_body = response.body_string();
+//         println!("{:#?}", response_body);
+//         assert_eq!(Status::Ok, response.status());
+//         assert_eq!(Some(ContentType::JSON), response.content_type());
+//         assert!(response_body.is_some());
+//
+//         let candidate: LockResponse = serde_json::from_str(&response_body.unwrap()).unwrap();
+//         assert_eq!("ok", &candidate.status);
+//         assert_eq!(0, candidate.result.chunk_id);
+//         assert_eq!(true, candidate.result.locked);
+//     }
+// }

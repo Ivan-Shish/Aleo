@@ -12,11 +12,12 @@ use std::{
     path::Path,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
 #[derive(Debug)]
 pub enum CoordinatorError {
+    ChunkAlreadyComplete,
     ChunkAlreadyVerified,
     ChunkIdMismatch,
     ChunkLockAlreadyAcquired,
@@ -24,14 +25,14 @@ pub enum CoordinatorError {
     ChunkMissingTranscript,
     ChunkMissingVerification,
     ChunkNotLocked,
-    ChunkNotLockedOrWrongParticipant,
+    ChunkNotLockedOrByWrongParticipant,
     ChunkUpdateFailed,
-    ChunkVerificationFailed,
     ChunkVerifierMissing,
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
     ContributionFileSizeMismatch,
+    ContributionIdIsNonzero,
     ContributionIdMismatch,
     ContributionMissing,
     ContributionMissingVerification,
@@ -42,7 +43,10 @@ pub enum CoordinatorError {
     ExpectedContributor,
     ExpectedVerifier,
     Error(anyhow::Error),
+    FinalRoundTranscriptMissing,
     FinalTranscriptAlreadyExists,
+    InitializationFailed,
+    InitializationTranscriptsDiffer,
     InvalidUrl,
     IOError(std::io::Error),
     Launch(rocket::error::LaunchError),
@@ -57,6 +61,7 @@ pub enum CoordinatorError {
     RoundDoesNotExist,
     RoundHeightIsZero,
     RoundHeightMismatch,
+    RoundNotComplete,
     RoundNotVerified,
     RoundSkipped,
     RoundTranscriptMissing,
@@ -64,6 +69,8 @@ pub enum CoordinatorError {
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
     Url(url::ParseError),
+    VerificationFailed,
+    VerificationOnContributionIdZero,
 }
 
 impl From<anyhow::Error> for CoordinatorError {
@@ -121,8 +128,38 @@ impl Coordinator {
     }
 
     ///
-    /// Returns the current round of the ceremony from storage,
-    /// irrespective of the stage of its completion.
+    /// Returns `true` if the given participant is a contributor and included
+    /// in the list of contributors for the current round of the ceremony.
+    ///
+    /// If the contributor is not a contributor, or if there are
+    /// no prior rounds, returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn is_current_contributor(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
+        match participant {
+            Participant::Contributor(_) => Ok(self.current_round()?.is_authorized_contributor(participant)),
+            Participant::Verifier(_) => Err(CoordinatorError::ExpectedContributor),
+        }
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier and included
+    /// in the list of verifiers for the current round of the ceremony.
+    ///
+    /// If the contributor is not a contributor, or if there are
+    /// no prior rounds, returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn is_current_verifier(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
+        match participant {
+            Participant::Contributor(contributor_id) => Err(CoordinatorError::ExpectedVerifier),
+            Participant::Verifier(_) => Ok(self.current_round()?.is_authorized_verifier(participant)),
+        }
+    }
+
+    ///
+    /// Returns a reference to the current round of the ceremony
+    /// from storage, irrespective of the stage of its completion.
     ///
     /// If there are no prior rounds in storage, returns `0`.
     ///
@@ -178,37 +215,7 @@ impl Coordinator {
     }
 
     ///
-    /// Returns `true` if the given participant is a contributor and included
-    /// in the list of contributors for the current round of the ceremony.
-    ///
-    /// If the contributor is not a contributor, or if there are
-    /// no prior rounds, returns a `CoordinatorError`.
-    ///
-    #[inline]
-    pub fn is_current_contributor(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
-        match participant {
-            Participant::Contributor(_) => Ok(self.current_round()?.is_authorized_contributor(participant)),
-            Participant::Verifier(_) => Err(CoordinatorError::ExpectedContributor),
-        }
-    }
-
-    ///
-    /// Returns `true` if the given participant is a verifier and included
-    /// in the list of verifiers for the current round of the ceremony.
-    ///
-    /// If the contributor is not a contributor, or if there are
-    /// no prior rounds, returns a `CoordinatorError`.
-    ///
-    #[inline]
-    pub fn is_current_verifier(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
-        match participant {
-            Participant::Contributor(contributor_id) => Err(CoordinatorError::ExpectedVerifier),
-            Participant::Verifier(_) => Ok(self.current_round()?.is_authorized_verifier(participant)),
-        }
-    }
-
-    ///
-    /// Returns the round corresponding to the given height from storage.
+    /// Returns a reference to the round corresponding to the given height from storage.
     ///
     /// If there are no prior rounds, returns a `CoordinatorError`.
     ///
@@ -226,6 +233,9 @@ impl Coordinator {
     ///
     #[inline]
     fn set_round(&self, round_height: u64, round: Round) -> Result<(), CoordinatorError> {
+        trace!("Writing round {} to storage", round_height);
+
+        // TODO (howardwu): Do we need to structure this entry as an atomic transaction?
         let mut success = false;
         // Acquire the storage write lock.
         let mut storage = self.storage_mut()?;
@@ -235,97 +245,15 @@ impl Coordinator {
             if storage.insert(Key::RoundHeight, Value::RoundHeight(round_height)) {
                 // Lastly, save the round to storage.
                 if storage.save() {
+                    debug!("Completed writing round {} to storage", round_height);
                     success = true;
                 }
             }
         }
         match success {
-            true => {
-                trace!("Writing round {} to storage", round_height);
-                Ok(())
-            }
+            true => Ok(()),
             false => Err(CoordinatorError::StorageFailed),
         }
-    }
-
-    ///
-    /// Initiates the next round of the ceremony.
-    ///
-    /// If there are no prior rounds in storage, this initializes a new ceremony
-    /// by invoking `Initialization`, and saves it to storage.
-    ///
-    /// Otherwise, this loads the previous round from storage and checks that
-    /// the prior round is fully verified before proceeding to the next round,
-    /// and saving it in storage.
-    ///
-    /// In a test environment, this resets the transcript for the coordinator.
-    /// In a development or production environment, this does NOT reset the
-    /// transcript for the coordinator.
-    ///
-    /// On success, the function returns the new round height.
-    /// Otherwise, it returns a `CoordinatorError`.
-    ///
-    #[inline]
-    pub fn next_round(
-        &mut self,
-        started_at: DateTime<Utc>,
-        contributors: Vec<Participant>,
-        verifiers: Vec<Participant>,
-        chunk_verifiers: Vec<Participant>,
-        chunk_verified_base_url: Vec<&str>,
-    ) -> Result<u64, CoordinatorError> {
-        // Fetch the current height of the ceremony.
-        let round_height = self.current_round_height()?;
-        trace!("Current round height from storage is {}", round_height);
-
-        // Attempt to fetch the current round directly.
-        let mut current_round = self.get_round(round_height);
-        trace!("Current round exists in storage - {}", current_round.is_ok());
-
-        // If this is the initial round of the ceremony, this function
-        // proceeds to run ceremony initialization.
-        if round_height == 0 && current_round.is_err() {
-            info!("Starting initialization and verification");
-
-            // Execute the round initialization and verification as the coordinator.
-            // On success, the new round will have been saved to storage.
-            let round = self.initialize_round(round_height, started_at, chunk_verified_base_url.clone())?;
-
-            // Check the new round height, which should still be 0 in this case.
-            if round_height != round.get_height() {
-                error!("Round height after initialization was set to {}", round.get_height());
-                return Err(CoordinatorError::RoundHeightMismatch);
-            }
-
-            info!("Completed initialization and verification for round {}", round_height);
-            current_round = Ok(round);
-        }
-
-        // Check that all chunks in the current round are verified,
-        // so that we may transition to the next round.
-        let current_round = current_round?;
-        if !&current_round.is_complete() {
-            error!("Round {} is not complete and next round is not starting", round_height);
-            trace!("{:#?}", &current_round);
-            return Err(CoordinatorError::RoundNotVerified);
-        }
-
-        info!("Starting transition to new round");
-
-        // Execute round aggregation and aggregate verification.
-        let round = self.aggregate_round(
-            round_height,
-            started_at,
-            contributors,
-            verifiers,
-            chunk_verifiers,
-            chunk_verified_base_url,
-        )?;
-        // Fetch the new round height.
-        let new_height = round.get_height();
-
-        info!("Completed transition from round {} to {}", round_height, new_height);
-        Ok(new_height)
     }
 
     /// TODO (howardwu): Should we abstract the chunk locator as a ChunkLocator struct
@@ -361,63 +289,24 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_lock_chunk(&self, chunk_id: u64, participant: Participant) -> Result<(), CoordinatorError> {
-        // Check that the ceremony started and exists in storage.
         let round_height = self.current_round_height()?;
 
-        // Fetch a local copy of the current round from storage.
-        let mut current_round = self.get_round(round_height)?.clone();
-
-        // If the participant is a contributor ID, check they are authorized to acquire the lock as a contributor.
-        if participant.is_contributor() {
-            // Check that the contributor is an authorized contributor in the current round.
-            if !self.is_current_contributor(&participant)? {
-                error!("{} is not an authorized contributor", &participant);
-                return Err(CoordinatorError::UnauthorizedChunkContributor);
-            }
-
-            // Check that the contributor does not currently hold a lock to any chunk.
-            if current_round
-                .get_chunks()
-                .iter()
-                .filter(|chunk| chunk.is_locked_by(&participant))
-                .next()
-                .is_some()
-            {
-                error!("{} already holds the lock on chunk {}", &participant, chunk_id);
-                return Err(CoordinatorError::ChunkLockAlreadyAcquired);
-            }
-        }
-
-        // If the participant is a verifier ID, check they are authorized to acquire the lock as a verifier.
-        if participant.is_verifier() {
-            // Check that the verifier is an authorized verifier in the current round.
-            if !self.is_current_verifier(&participant)? {
-                error!("{} is not an authorized verifier", &participant);
-                return Err(CoordinatorError::UnauthorizedChunkVerifier);
-            }
-        }
-
-        // Fetch the chunk the participant intends to contribute to,
-        let chunk = current_round.get_chunk_mut(chunk_id)?;
-
-        // Attempt to acquire the lock for the given participant ID.
-        chunk.acquire_lock(participant)?;
-
-        // As the lock acquisition succeeded, insert and save the updated round into storage.
-        let mut success = false;
-        // Acquire the storage write lock.
+        // Load the round corresponding to the given round height from storage.
         let mut storage = self.storage_mut()?;
-        // First, add the updated round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(current_round)) {
-            // Next, save the round to storage.
-            if storage.save() {
-                success = true;
-            }
+        let round = match storage.get_mut(&Key::Round(round_height)) {
+            Some(Value::Round(round)) => round,
+            _ => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Check that the height set in `round` matches the current round height.
+        if round.get_height() != round_height {
+            return Err(CoordinatorError::RoundHeightMismatch);
         }
-        match success {
-            true => Ok(()),
-            false => Err(CoordinatorError::StorageFailed),
-        }
+
+        // Attempt to lock the given chunk ID for participant.
+        round.try_lock_chunk(chunk_id, participant)?;
+
+        Ok(())
     }
 
     ///
@@ -482,6 +371,85 @@ impl Coordinator {
         Ok(locator)
     }
 
+    ///
+    /// Initiates the next round of the ceremony.
+    ///
+    /// If there are no prior rounds in storage, this initializes a new ceremony
+    /// by invoking `Initialization`, and saves it to storage.
+    ///
+    /// Otherwise, this loads the current round from storage and checks that
+    /// it is fully verified before proceeding to aggregate the round, and
+    /// initialize the next round, saving it to storage for the coordinator.
+    ///
+    /// In a test environment, this function resets the transcript for the
+    /// coordinator when round height is 0.
+    /// In a development or production environment, this does NOT reset the
+    /// transcript for the coordinator.
+    ///
+    /// On success, the function returns the new round height.
+    /// Otherwise, it returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn next_round(
+        &mut self,
+        started_at: DateTime<Utc>,
+        contributors: Vec<Participant>,
+        verifiers: Vec<Participant>,
+        chunk_verifiers: Vec<Participant>,
+        chunk_verified_base_url: Vec<String>,
+    ) -> Result<u64, CoordinatorError> {
+        // Fetch the current height of the ceremony.
+        let round_height = self.current_round_height()?;
+        trace!("Current round height from storage is {}", round_height);
+
+        let next_height = round_height + 1;
+        info!("Starting transition from round {} to {}", round_height, next_height);
+
+        // Execute aggregation of the current round in preparation for
+        // transition to next round. If this is the initial round, there
+        // should be nothing to aggregate and we may continue.
+        if round_height != 0 {
+            // Attempt to fetch the current round directly.
+            let mut current_round = self.get_round(round_height);
+            trace!("Check current round exists in storage ({})", current_round.is_ok());
+
+            // Check that all chunks in the current round are verified,
+            // so that we may transition to the next round.
+            let current_round = current_round?;
+            if !&current_round.is_complete() {
+                error!("Round {} is not complete and next round is not starting", round_height);
+                trace!("{:#?}", &current_round);
+                return Err(CoordinatorError::RoundNotComplete);
+            }
+
+            // Execute round aggregation and aggregate verification on the current round.
+            self.aggregate_current_round()?;
+        }
+
+        // Execute the round initialization as the coordinator.
+        // On success, the new round will have been saved to storage.
+        self.initialize_round(
+            round_height,
+            started_at,
+            contributors,
+            verifiers,
+            chunk_verifiers,
+            chunk_verified_base_url.clone(),
+        )?;
+
+        // Fetch the new round height.
+        let new_height = self.current_round_height()?;
+
+        // Check that the new height increments the prior round height by 1.
+        if new_height != next_height {
+            error!("Round height after initialization is {}", new_height);
+            return Err(CoordinatorError::RoundHeightMismatch);
+        }
+
+        info!("Completed transition from round {} to {}", round_height, new_height);
+        Ok(new_height)
+    }
+
     // /// Attempts to run verification in the current round for a given chunk ID.
     // #[inline]
     // fn verify_chunk(&self, chunk_id: u64) -> Result<(), CoordinatorError> {
@@ -500,207 +468,186 @@ impl Coordinator {
     //     self.verify_contribution(chunk_id, contribution_id)
     // }
 
+    ///
     /// Attempts to run initialization for a given round.
+    ///
+    /// In a test environment, this function clears the transcript for the
+    /// coordinator. In a development or production environment, this
+    /// does NOT reset the transcript for the coordinator.
+    ///
     #[inline]
     fn initialize_round(
-        &self,
-        round_height: u64,
-        started_at: DateTime<Utc>,
-        chunk_verified_base_url: Vec<&str>,
-    ) -> Result<Round, CoordinatorError> {
-        trace!("Starting initialization for round {}", round_height);
-
-        // Fetch the current round height.
-        let current_round_height = self.current_round_height()?;
-
-        // Check that the given round height is above the current round height.
-        // Depending on the case, this function may safely assume that the
-        // current round height must be AT LEAST less than the current round height.
-        if round_height < current_round_height {
-            error!("Round {} is less than round {}", round_height, current_round_height);
-            return Err(CoordinatorError::RoundAlreadyInitialized);
-        }
-
-        // Initialize the contributors as a list comprising only the coorodinator contributor,
-        // as this is for initialization.
-        let contributors = vec![self.environment.coordinator_contributor()];
-
-        // Initialize the verifiers as a list comprising only the coordinator verifier,
-        // as this is for initialization.
-        let verifiers = vec![self.environment.coordinator_verifier()];
-
-        // Initialize the chunk verifiers as a list comprising only the coordinator verifier,
-        // as this is for initialization.
-        let chunk_verifiers = (0..self.environment.number_of_chunks())
-            .into_par_iter()
-            .map(|_| self.environment.coordinator_verifier())
-            .collect::<Vec<_>>();
-
-        // Attempt to load the round corresponding to the given round height from storage.
-        // If there is no round in storage, proceed to create a new round instance.
-        let mut round = match self.storage()?.get(&Key::Round(round_height)) {
-            // Check that the round does not exist in storage.
-            // If it exists, this means the round was already initialized.
-            Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
-            Some(_) => return Err(CoordinatorError::StorageFailed),
-            // Create a new round instance.
-            _ => Round::new(
-                &self.environment,
-                round_height,
-                started_at,
-                contributors,
-                verifiers,
-                chunk_verifiers,
-                chunk_verified_base_url,
-            )?,
-        };
-        // Check that the height specified in the round matches the given round height.
-        if round.get_height() != round_height {
-            return Err(CoordinatorError::RoundSkipped);
-        }
-
-        // If the path exists, this means a prior ceremony is stored as a transcript.
-        let round_directory = self.environment.round_directory(round_height);
-        let path = Path::new(&round_directory);
-        if path.exists() {
-            // If this is a test environment, attempt to clear it for the coordinator.
-            if let Environment::Test(_) = self.environment {
-                warn!("Coordinator is clearing {:?}", &path);
-                std::fs::remove_dir_all(&path).expect("unable to remove transcript directory");
-                warn!("Coordinator cleared {:?}", &path);
-            }
-        }
-
-        // Write the new round to storage.
-        self.set_round(round_height, round.clone())?;
-
-        // Execute initialization on all chunks to start a new ceremony.
-        for chunk_id in 0..self.environment.number_of_chunks() {
-            // Read the updated round to storage.
-            round = self.get_round(round_height)?;
-
-            info!("Coordinator is starting initialization on chunk {}", chunk_id);
-            // TODO (howardwu): Add contribution hash to `Round`.
-            let _contribution_hash = Initialization::run(&self.environment, round_height, chunk_id)?;
-            info!("Coordinator completed initialization on chunk {}", chunk_id);
-
-            // Check that the contribution locator corresponding to this round and chunk now exists.
-            let contribution_locator = self.environment.contribution_locator(round_height, chunk_id, 0);
-            if !Path::new(&contribution_locator).exists() {
-                return Err(CoordinatorError::RoundTranscriptMissing);
-            }
-
-            // Write the updated round to storage.
-            self.set_round(round_height, round.clone())?;
-
-            // Fetch the verifier of the coordinator and attempt to
-            // acquire the chunk lock for verification.
-            let verifier = self.environment.coordinator_verifier();
-            self.try_lock_chunk(chunk_id, verifier.clone())?;
-
-            // Read the updated round to storage.
-            round = self.get_round(round_height)?;
-
-            info!("Coordinator is starting verification on chunk {}", chunk_id);
-            Verification::run(&self.environment, round_height, chunk_id, 0)?;
-            info!("Coordinator completed verification on chunk {}", chunk_id);
-
-            // Attempts to set the current contribution as verified in the current round.
-            round.verify_contribution(chunk_id, 0, &verifier)?;
-
-            // Write the updated round to storage.
-            self.set_round(round_height, round.clone())?;
-        }
-
-        Ok(round)
-    }
-
-    /// Attempts to run verification in the current round for a given chunk ID and contribution ID.
-    #[inline]
-    fn verify_contribution(&self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
-        // Fetch the current round.
-        let mut current_round = self.current_round()?;
-        let round_height = current_round.get_height();
-
-        // Check that the contribution locator corresponding to this round and chunk exists.
-        let contribution_locator = self
-            .environment
-            .contribution_locator(round_height, chunk_id, contribution_id);
-        if !Path::new(&contribution_locator).exists() {
-            return Err(CoordinatorError::RoundTranscriptMissing);
-        }
-
-        // Fetch the verifier of the coordinator and attempt to
-        // acquire the chunk lock for verification.
-        let verifier = self.environment.coordinator_verifier();
-        self.try_lock_chunk(chunk_id, verifier.clone())?;
-
-        info!("Coordinator is starting chunk verification");
-        Verification::run(&self.environment, round_height, chunk_id, contribution_id)?;
-        info!("Coordinator completed chunk verification");
-
-        // Attempts to set the current contribution as verified in the current round.
-        current_round.verify_contribution(chunk_id, contribution_id, &verifier)?;
-
-        // TODO (howardwu): Do we need to structure this entry as an atomic transaction?
-        // If the transition succeeded, insert and save the round into storage.
-        let mut success = false;
-        // Acquire the storage write lock.
-        let mut storage = self.storage_mut()?;
-        // First, add the new round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(current_round.clone())) {
-            // Next, save the round to storage.
-            if storage.save() {
-                info!("Completed transition to new round");
-                success = true;
-            }
-        }
-        match success {
-            true => Ok(()),
-            false => Err(CoordinatorError::StorageFailed),
-        }
-    }
-
-    /// Attempts to run aggregation for a given round.
-    #[inline]
-    fn aggregate_round(
         &self,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
         verifiers: Vec<Participant>,
         chunk_verifiers: Vec<Participant>,
-        chunk_verified_base_url: Vec<&str>,
-    ) -> Result<Round, CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
+        chunk_verified_base_url: Vec<String>,
+    ) -> Result<(), CoordinatorError> {
+        trace!("Received call to initialize round {}", round_height);
 
-        // Check that the given round height matches the height value in the current round.
-        if round_height != current_round.get_height() {
+        // Fetch the current round height.
+        let current_round_height = self.current_round_height()?;
+
+        // Check that the given round height is above the current round height.
+        if round_height < current_round_height {
+            error!("Round {} is less than round {}", round_height, current_round_height);
+            return Err(CoordinatorError::RoundAlreadyInitialized);
+        }
+        // Check that the given round height corresponds to the current round height.
+        if round_height != current_round_height {
+            error!("Expected round height {} == {}", round_height, current_round_height);
             return Err(CoordinatorError::RoundHeightMismatch);
         }
 
-        // Check that all current round chunks are verified.
-        if !current_round.is_complete() {
-            return Err(CoordinatorError::RoundChunksMissingVerification);
+        // If this is the initial round, ensure the round does not exist yet.
+        // Attempt to load the round corresponding to the given round height from storage.
+        // If there is no round in storage, proceed to create a new round instance,
+        // and run `Initialization` to start the ceremony.
+        if round_height == 0 {
+            // If the path exists, this means a prior *ceremony* is stored as a transcript.
+            let round_directory = self.environment.round_directory(round_height);
+            let path = Path::new(&round_directory);
+            if path.exists() {
+                // If this is a test environment, attempt to clear it for the coordinator.
+                if let Environment::Test(_) = self.environment {
+                    warn!("Coordinator is clearing {:?}", &path);
+                    std::fs::remove_dir_all(&path).expect("unable to remove transcript directory");
+                    warn!("Coordinator cleared {:?}", &path);
+                } else {
+                    return Err(CoordinatorError::RoundAlreadyInitialized);
+                }
+            }
+
+            // Create an instantiation of `Round` for round 0.
+            let round = {
+                // Initialize the contributors as a list comprising only the coordinator contributor,
+                // as this is for initialization.
+                let contributors = vec![self.environment.coordinator_contributor()];
+
+                // Initialize the verifiers as a list comprising only the coordinator verifier,
+                // as this is for initialization.
+                let verifiers = vec![self.environment.coordinator_verifier()];
+
+                // Initialize the chunk verifiers as a list comprising only the coordinator verifier,
+                // as this is for initialization.
+                let chunk_verifiers = (0..self.environment.number_of_chunks())
+                    .into_par_iter()
+                    .map(|_| self.environment.coordinator_verifier())
+                    .collect::<Vec<_>>();
+
+                // Initialize the chunk verifiers as a list comprising only the coordinator verifier,
+                // as this is for initialization.
+                let chunk_verified_locators = (0..self.environment.number_of_chunks())
+                    .into_par_iter()
+                    .map(|chunk_id| self.environment.contribution_locator(round_height, chunk_id, 0))
+                    .collect::<Vec<_>>();
+
+                match self.storage()?.get(&Key::Round(round_height)) {
+                    // Check that the round does not exist in storage.
+                    // If it exists, this means the round was already initialized.
+                    Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
+                    Some(_) => return Err(CoordinatorError::StorageFailed),
+                    // Create a new round instance and save it to storage.
+                    _ => Round::new(
+                        &self.environment,
+                        round_height,
+                        started_at,
+                        contributors,
+                        verifiers,
+                        chunk_verifiers,
+                        chunk_verified_locators,
+                    )?,
+                }
+            };
+
+            debug!("Starting initialization of round {}", round_height);
+
+            // Execute initialization of contribution 0 for all chunks in the
+            // new round and check that the new locators exist.
+            for chunk_id in 0..self.environment.number_of_chunks() {
+                info!("Coordinator is starting initialization on chunk {}", chunk_id);
+                // TODO (howardwu): Add contribution hash to `Round`.
+                let _contribution_hash = Initialization::run(&self.environment, round_height, chunk_id)?;
+                info!("Coordinator completed initialization on chunk {}", chunk_id);
+
+                // Check that the contribution locator corresponding to this round's chunk now exists.
+                let contribution_locator = self.environment.contribution_locator(round_height, chunk_id, 0);
+                if !Path::new(&contribution_locator).exists() {
+                    return Err(CoordinatorError::RoundTranscriptMissing);
+                }
+
+                // Check that the contribution locator corresponding to the next round's chunk now exists.
+                let contribution_locator = self.environment.contribution_locator(round_height + 1, chunk_id, 0);
+                if !Path::new(&contribution_locator).exists() {
+                    return Err(CoordinatorError::RoundTranscriptMissing);
+                }
+
+                // Attempt to acquire the lock for verification.
+                // self.try_lock_for_verification(chunk_id, 0)?;
+
+                // Runs verification and on success, updates the chunk contribution to verified.
+                // self.verify_contribution(chunk_id, 0)?;
+            }
+
+            // Write the round to storage.
+            self.set_round(round_height, round)?;
+
+            // Check that the current round now matches the given round height unconditionally.
+            if self.current_round_height()? != round_height {
+                return Err(CoordinatorError::RoundHeightMismatch);
+            }
+
+            debug!("Completed initialization of round {}", round_height);
+
+            // // Execute initialization of contribution 0 for all chunks in the
+            // // new round and check that the new locators exist.
+            // let new_height = round_height + 1;
+            // debug!("Starting initialization of round {}", new_height);
+            // for chunk_id in 0..self.environment.number_of_chunks() {
+            //     info!("Coordinator is starting initialization on chunk {}", chunk_id);
+            //     // TODO (howardwu): Add contribution hash to `Round`.
+            //     let _contribution_hash = Initialization::run(&self.environment, new_height, chunk_id)?;
+            //     info!("Coordinator completed initialization on chunk {}", chunk_id);
+            //
+            //     // Check that the contribution locator corresponding to this round and chunk now exists.
+            //     let contribution_locator = self.environment.contribution_locator(new_height, chunk_id, 0);
+            //     if !Path::new(&contribution_locator).exists() {
+            //         return Err(CoordinatorError::RoundTranscriptMissing);
+            //     }
+            //
+            //     // Attempt to acquire the lock for verification.
+            //     // self.try_lock_for_verification(chunk_id, 0)?;
+            //
+            //     // Runs verification and on success, updates the chunk contribution to verified.
+            //     // self.verify_contribution(chunk_id, 0)?;
+            // }
         }
 
-        // TODO (howardwu): Do pre-check that all current chunk contributions are present
-        // Check that the transcript directory corresponding to this round exists.
-        let round_directory = self.environment.round_directory(round_height);
-        let path = Path::new(&round_directory);
-        if !path.exists() {
-            return Err(CoordinatorError::RoundTranscriptMissing);
-        }
+        // Create the new round height.
+        let new_height = round_height + 1;
 
-        // TODO (howardwu): Add aggregate verification logic.
-        // Execute aggregation to combine on all chunks in preparation for the next round.
-        info!("Coordinator is starting aggregation");
-        Aggregation::run(&self.environment, &current_round)?;
-        info!("Coordinator completed aggregation");
+        debug!("Starting initialization of round {}", new_height);
+
+        // Check that the new round does not exist in storage.
+        // If it exists, this means the round was already initialized.
+        match self.storage()?.get(&Key::Round(new_height)) {
+            Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
+            Some(_) => return Err(CoordinatorError::StorageFailed),
+            _ => (),
+        };
+
+        // Check that each contribution transcript for the next round exists.
+        for chunk_id in 0..self.environment.number_of_chunks() {
+            debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
+            let contribution_locator = self.environment.contribution_locator(new_height, chunk_id, 0);
+            if !Path::new(&contribution_locator).exists() {
+                return Err(CoordinatorError::RoundTranscriptMissing);
+            }
+        }
 
         // Instantiate the new round and height.
-        let new_height = round_height + 1;
         let new_round = Round::new(
             &self.environment,
             new_height,
@@ -711,26 +658,150 @@ impl Coordinator {
             chunk_verified_base_url,
         )?;
 
-        // TODO (howardwu): Do we need to structure this entry as an atomic transaction?
-        // If the transition succeeded, insert and save the round into storage.
-        let mut success = false;
-        // Acquire the storage write lock.
-        let mut storage = self.storage_mut()?;
-        // First, add the new round to storage.
-        if storage.insert(Key::Round(new_height), Value::Round(new_round.clone())) {
-            // Next, update the round height to reflect the update.
-            if storage.insert(Key::RoundHeight, Value::RoundHeight(new_height)) {
-                // Lastly, save the round to storage.
-                if storage.save() {
-                    info!("Completed transition to new round");
-                    success = true;
-                }
+        // Insert and save the new round into storage.
+        self.set_round(new_height, new_round);
+
+        debug!("Completed initialization of round {}", new_height);
+        Ok(())
+    }
+
+    /// Attempts to acquire the lock for a given chunk ID and contribution ID
+    /// in order to perform verification.
+    #[inline]
+    fn try_lock_verify(&self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Fetch the current height from storage.
+        let round_height = self.current_round_height()?;
+
+        // TODO (howardwu): Remove this restriction on round height == 0.
+        // Check that the contribution locator corresponding to this round and chunk exists.
+        if round_height == 0 {
+            let contribution_locator = self
+                .environment
+                .contribution_locator(round_height, chunk_id, contribution_id);
+            if !Path::new(&contribution_locator).exists() {
+                return Err(CoordinatorError::RoundTranscriptMissing);
             }
         }
-        match success {
-            true => Ok(new_round),
-            false => Err(CoordinatorError::StorageFailed),
+
+        // Load a mutable reference of the current round from storage.
+        let mut storage = self.storage_mut()?;
+        let mut current_round = match storage.get_mut(&Key::Round(round_height)) {
+            Some(Value::Round(round)) => round,
+            _ => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Check that the height set in `round` matches the current round height.
+        if current_round.get_height() != round_height {
+            return Err(CoordinatorError::RoundHeightMismatch);
         }
+
+        // Fetch the verifier of the coordinator and attempt to
+        // acquire the chunk lock for verification.
+        let verifier = self.environment.coordinator_verifier();
+        if !verifier.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+
+        current_round.try_lock_chunk(chunk_id, verifier.clone())?;
+        info!(
+            "Coordinator verifier acquired lock on round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+        Ok(())
+    }
+
+    /// Attempts to run verification in the current round for a given chunk ID and contribution ID.
+    /// On success, this function copies the current contribution into the next transcript locator,
+    /// which is the next contribution ID within a round, or the next round height if this round
+    /// is complete.
+    #[inline]
+    fn verify_contribution(&self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Fetch the current height from storage.
+        let round_height = self.current_round_height()?;
+
+        // Fetch the verifier of the coordinator and
+        // check that the chunk lock is currently held by this verifier.
+        let verifier = self.environment.coordinator_verifier();
+        if !self.get_round(round_height)?.is_chunk_locked_by(chunk_id, &verifier) {
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+        }
+
+        // Check that the contribution locator corresponding to this round and chunk exists.
+        let contribution_locator = self
+            .environment
+            .contribution_locator(round_height, chunk_id, contribution_id);
+        if !Path::new(&contribution_locator).exists() {
+            return Err(CoordinatorError::RoundTranscriptMissing);
+        }
+
+        // Fetch the number of contributors, which is used by `Verification` to determine
+        // whether the next transcript is a new contribution ID or a new round ID.
+        let num_contributors = self.current_round()?.num_contributors();
+
+        debug!("Coordinator is starting verification on chunk {}", chunk_id);
+        Verification::run(
+            &self.environment,
+            round_height,
+            chunk_id,
+            contribution_id,
+            num_contributors,
+        )?;
+        debug!("Coordinator completed verification on chunk {}", chunk_id);
+
+        // Load a mutable reference of the current round from storage.
+        let mut storage = self.storage_mut()?;
+        let mut current_round = match storage.get_mut(&Key::Round(round_height)) {
+            Some(Value::Round(round)) => round,
+            _ => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Check that the height set in `round` matches the current round height.
+        if current_round.get_height() != round_height {
+            return Err(CoordinatorError::RoundHeightMismatch);
+        }
+
+        // Attempts to set the current contribution as verified in the current round.
+        current_round.verify_contribution(chunk_id, contribution_id, &verifier)?;
+        info!("Verified chunk {} contribution {}", chunk_id, contribution_id);
+        Ok(())
+    }
+
+    /// Attempts to run aggregation for the current round.
+    #[inline]
+    fn aggregate_current_round(&self) -> Result<(), CoordinatorError> {
+        // Fetch the current round.
+        let current_round = self.current_round()?;
+        let current_round_height = current_round.get_height();
+
+        // Check that all current round chunks are fully contributed and verified.
+        if !current_round.is_complete() {
+            return Err(CoordinatorError::RoundNotComplete);
+        }
+
+        // TODO (howardwu): Do pre-check that all current chunk contributions are present
+        // Check that the transcript directory corresponding to this round exists.
+        let round_directory = self.environment.round_directory(current_round_height);
+        let path = Path::new(&round_directory);
+        if !path.exists() {
+            return Err(CoordinatorError::RoundTranscriptMissing);
+        }
+
+        // TODO (howardwu): Add aggregate verification logic.
+        // Execute aggregation to combine on all chunks to finalize the round
+        // corresponding to the given round height.
+        debug!("Coordinator is starting aggregation");
+        Aggregation::run(&self.environment, &current_round)?;
+        debug!("Coordinator completed aggregation");
+
+        // Fetch the final round transcript locator for the given round.
+        let round_locator = self.environment.final_round_locator(current_round_height);
+
+        // Check that the final round transcript locator exists.
+        if !Path::new(&round_locator).exists() {
+            return Err(CoordinatorError::FinalRoundTranscriptMissing);
+        }
+
+        Ok(())
     }
 
     // /// Attempts to load a round contribution into storage.
