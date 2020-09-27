@@ -1,10 +1,14 @@
-use crate::environment::Environment;
+use crate::{environment::Environment, CoordinatorError};
 use phase1::{helpers::CurveKind, Phase1Parameters};
 use phase1_cli::new_challenge;
 use setup_utils::calculate_hash;
 
 use memmap::*;
-use std::{fs::OpenOptions, time::Instant};
+use std::{
+    fs::{self, OpenOptions},
+    panic,
+    time::Instant,
+};
 use tracing::{debug, info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -17,7 +21,7 @@ impl Initialization {
     /// Executes the round initialization on a given chunk ID using phase1-cli logic.
     ///
     pub fn run(environment: &Environment, round_height: u64, chunk_id: u64) -> anyhow::Result<Vec<u8>> {
-        info!("Starting initialization on chunk {}", chunk_id);
+        info!("Starting initialization and migration on chunk {}", chunk_id);
         let now = Instant::now();
 
         // Fetch the parameter settings.
@@ -28,25 +32,50 @@ impl Initialization {
         trace!("Storing round {} chunk {} in {}", round_height, chunk_id, transcript);
 
         // Execute ceremony initialization on chunk.
-        let (_, _, curve, _, _, _) = settings;
-        match curve {
-            CurveKind::Bls12_377 => {
-                new_challenge(&transcript, &phase1_chunked_parameters!(Bls12_377, settings, chunk_id))
-            }
-            CurveKind::BW6 => new_challenge(&transcript, &phase1_chunked_parameters!(BW6_761, settings, chunk_id)),
-        };
+        let result = panic::catch_unwind(|| {
+            let (_, _, curve, _, _, _) = settings;
+            match curve {
+                CurveKind::Bls12_377 => {
+                    new_challenge(&transcript, &phase1_chunked_parameters!(Bls12_377, settings, chunk_id))
+                }
+                CurveKind::BW6 => new_challenge(&transcript, &phase1_chunked_parameters!(BW6_761, settings, chunk_id)),
+            };
+        });
+        if result.is_err() {
+            return Err(CoordinatorError::InitializationFailed.into());
+        }
 
-        // Open the transcript file.
+        // Copy the current transcript to the next transcript.
+        // This operation will *overwrite* the contents of `next_transcript`.
+        let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0);
+        trace!("Copying chunk {} to {}", chunk_id, next_transcript);
+        fs::copy(&transcript, &next_transcript);
+        trace!("Copied chunk {} to {}", chunk_id, next_transcript);
+
+        // Open the transcript files.
         let file = OpenOptions::new().read(true).open(&transcript)?;
-        let reader = unsafe { MmapOptions::new().map(&file)? };
+        let next_file = OpenOptions::new().read(true).open(&next_transcript)?;
 
-        // Compute the contribution hash.
-        let contribution_hash = calculate_hash(&reader);
-        Self::log_hash(&contribution_hash, chunk_id);
+        // Compare the contribution hashes of both files to ensure the copy succeeded.
+        let contribution_hash_0 = {
+            let reader = unsafe { MmapOptions::new().map(&file)? };
+            calculate_hash(&reader)
+        };
+        let contribution_hash_1 = {
+            let reader = unsafe { MmapOptions::new().map(&next_file)? };
+            calculate_hash(&reader)
+        };
+        Self::log_hash(&contribution_hash_1, chunk_id);
+        if contribution_hash_0 != contribution_hash_1 {
+            return Err(CoordinatorError::InitializationTranscriptsDiffer.into());
+        }
 
         let elapsed = Instant::now().duration_since(now);
-        info!("Completed initialization on chunk {} in {:?}", chunk_id, elapsed);
-        Ok(contribution_hash.to_vec())
+        info!(
+            "Completed initialization and migration on chunk {} in {:?}",
+            chunk_id, elapsed
+        );
+        Ok(contribution_hash_1.to_vec())
     }
 
     /// Logs the contribution hash.

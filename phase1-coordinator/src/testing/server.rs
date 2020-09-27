@@ -15,10 +15,10 @@ pub fn test_coordinator() -> anyhow::Result<Coordinator> {
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(
             *TEST_STARTED_AT,
-            TEST_CONTRIBUTOR_IDS,
-            TEST_VERIFIER_IDS,
-            TEST_CHUNK_VERIFIER_IDS,
-            TEST_CHUNK_VERIFIED_BASE_URLS,
+            TEST_CONTRIBUTOR_IDS.to_vec(),
+            TEST_VERIFIER_IDS.to_vec(),
+            TEST_CHUNK_VERIFIER_IDS.to_vec(),
+            TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
         )?;
     }
     info!("Coordinator is ready");

@@ -6,9 +6,13 @@ use rocket::{
     Outcome::*,
     Request,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_diff::SerdeDiff;
-use std::{fmt, io::Read};
+use std::{
+    fmt::{self, Display},
+    io::Read,
+    str::FromStr,
+};
 
 pub type ContributorId = String;
 pub type VerifierId = String;
@@ -17,6 +21,7 @@ pub type VerifierId = String;
 const DATA_LIMIT: u64 = 256;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
+#[serde(untagged)]
 pub enum Participant {
     Contributor(ContributorId),
     Verifier(VerifierId),
@@ -44,6 +49,12 @@ impl Participant {
     }
 }
 
+// impl AsRef<[u8]> for Participant {
+//     fn as_ref(&self) -> &[u8] {
+//         bincode::serialize(self).unwrap()
+//     }
+// }
+
 impl FromDataSimple for Participant {
     type Error = String;
 
@@ -69,6 +80,70 @@ impl fmt::Display for Participant {
         match self {
             Participant::Contributor(contributor_id) => write!(f, "{}", contributor_id),
             Participant::Verifier(verifier_id) => write!(f, "{}", verifier_id),
+        }
+    }
+}
+
+/// Deserializes a list of contributors from a list of strings.
+pub fn deserialize_contributors_from_strings<'de, D>(deserializer: D) -> Result<Vec<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        List(Vec<String>),
+        Monolith(String),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::List(ids) => {
+            let mut result = Vec::with_capacity(ids.len());
+            for id in ids {
+                result.push(Participant::Contributor(id))
+            }
+            Ok(result)
+        }
+        ParticipantString::Monolith(ids) => {
+            let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
+
+            let mut result = Vec::with_capacity(ids.len());
+            for id in ids {
+                result.push(Participant::Contributor(id))
+            }
+            Ok(result)
+        }
+    }
+}
+
+/// Deserializes a list of verifiers from a list of strings.
+pub fn deserialize_verifiers_from_strings<'de, D>(deserializer: D) -> Result<Vec<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        List(Vec<String>),
+        Monolith(String),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::List(ids) => {
+            let mut result = Vec::with_capacity(ids.len());
+            for id in ids {
+                result.push(Participant::Verifier(id))
+            }
+            Ok(result)
+        }
+        ParticipantString::Monolith(ids) => {
+            let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
+
+            let mut result = Vec::with_capacity(ids.len());
+            for id in ids {
+                result.push(Participant::Verifier(id))
+            }
+            Ok(result)
         }
     }
 }

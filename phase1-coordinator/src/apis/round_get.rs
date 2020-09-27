@@ -6,7 +6,7 @@ use rocket_contrib::json::Json;
 #[get("/ceremony")]
 pub fn round_get(coordinator: State<Coordinator>) -> Result<Json<Round>, Status> {
     match coordinator.current_round() {
-        Ok(round) => Ok(Json(round)),
+        Ok(round) => Ok(Json(round.clone())),
         _ => return Err(Status::InternalServerError),
     }
 }
@@ -27,7 +27,7 @@ mod test {
         assert!(response_body.is_some());
 
         let candidate: Round = serde_json::from_str(&response_body.unwrap()).unwrap();
-        let expected = test_round_0().unwrap();
+        let expected = test_round_1_json().unwrap();
         if candidate != expected {
             print_diff(&expected, &candidate);
         }

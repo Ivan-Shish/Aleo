@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    objects::{Chunk, Participant},
+    objects::{participant::*, Chunk},
     CoordinatorError,
 };
 
@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
-use tracing::{error, info};
+use tracing::{debug, error, trace};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
@@ -22,7 +22,9 @@ pub struct Round {
     started_at: Option<DateTime<Utc>>,
     #[serde_diff(opaque)]
     finished_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_contributors_from_strings")]
     contributor_ids: Vec<Participant>,
+    #[serde(deserialize_with = "deserialize_verifiers_from_strings")]
     verifier_ids: Vec<Participant>,
     chunks: Vec<Chunk>,
 }
@@ -37,9 +39,9 @@ impl Round {
         contributor_ids: Vec<Participant>,
         verifier_ids: Vec<Participant>,
         chunk_verifier_ids: Vec<Participant>,
-        chunk_verified_base_url: Vec<&str>,
+        chunk_verified_base_url: Vec<String>,
     ) -> Result<Self, CoordinatorError> {
-        info!("Creating round {}", height);
+        debug!("Creating round {}", height);
 
         // Check that the contributor correspond to the contributor participant type.
         let num_noncontributors = contributor_ids
@@ -85,7 +87,7 @@ impl Round {
         }
 
         // Construct the chunks for this round.
-        let verifier_entries: Vec<(&Participant, &str)> = chunk_verifier_ids
+        let verifier_entries: Vec<(&Participant, String)> = chunk_verifier_ids
             .par_iter()
             .zip(chunk_verified_base_url)
             .map(|(a, b)| (a, b))
@@ -98,7 +100,7 @@ impl Round {
             })
             .collect();
 
-        info!("Created round {}", height);
+        debug!("Created round {}", height);
 
         Ok(Self {
             version,
@@ -137,10 +139,11 @@ impl Round {
         self.verifier_ids.contains(participant)
     }
 
-    /// Returns a reference to a list of contributors.
+    /// Returns the number of contributors, and therefore,
+    /// the number of expected contributions for this round.
     #[inline]
-    pub fn get_contributors(&self) -> &Vec<Participant> {
-        &self.contributor_ids
+    pub fn num_contributors(&self) -> u64 {
+        self.contributor_ids.len() as u64
     }
 
     /// Returns a reference to a list of verifiers.
@@ -197,6 +200,61 @@ impl Round {
         Ok(())
     }
 
+    /// Returns `true` if the chunk corresponding to the given chunk ID is
+    /// locked by the given participant. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
+        match self.get_chunk(chunk_id) {
+            Ok(chunk) => chunk.is_locked_by(participant),
+            _ => false,
+        }
+    }
+
+    ///
+    /// Attempts to acquire the lock of a given chunk ID from storage
+    /// for a given participant.
+    ///
+    #[inline]
+    pub fn try_lock_chunk(&mut self, chunk_id: u64, participant: Participant) -> Result<(), CoordinatorError> {
+        // If the participant is a contributor ID, check they are authorized to acquire the lock as a contributor.
+        if participant.is_contributor() {
+            // Check that the contributor is an authorized contributor in this round.
+            if !self.is_authorized_contributor(&participant) {
+                error!("{} is not an authorized contributor", &participant);
+                return Err(CoordinatorError::UnauthorizedChunkContributor);
+            }
+
+            // Check that the contributor does not currently hold a lock to any chunk.
+            if self
+                .get_chunks()
+                .iter()
+                .filter(|chunk| chunk.is_locked_by(&participant))
+                .next()
+                .is_some()
+            {
+                error!("{} already holds the lock on chunk {}", &participant, chunk_id);
+                return Err(CoordinatorError::ChunkLockAlreadyAcquired);
+            }
+        }
+
+        // If the participant is a verifier ID, check they are authorized to acquire the lock as a verifier.
+        if participant.is_verifier() {
+            // Check that the verifier is an authorized verifier in this round.
+            if !self.is_authorized_verifier(&participant) {
+                error!("{} is not an authorized verifier", &participant);
+                return Err(CoordinatorError::UnauthorizedChunkVerifier);
+            }
+        }
+
+        // Attempt to acquire the lock for the given participant ID.
+        let num_contributors = self.num_contributors();
+        self.get_chunk_mut(chunk_id)?
+            .acquire_lock(participant.clone(), num_contributors)?;
+
+        debug!("{} acquired lock on chunk {}", participant, chunk_id);
+        Ok(())
+    }
+
     ///
     /// Updates the contribution corresponding to a given chunk ID and
     /// contribution ID as verified.
@@ -228,7 +286,7 @@ impl Round {
     /// Otherwise, returns `false`.
     #[inline]
     pub fn is_complete(&self) -> bool {
-        let num_contributors = self.contributor_ids.len() as u64;
+        let num_contributors = self.num_contributors();
         self.chunks
             .par_iter()
             .filter(|chunk| !chunk.is_complete(num_contributors))
@@ -246,13 +304,13 @@ mod tests {
     fn test_round_0_matches() {
         let expected = test_round_0().unwrap();
         let candidate = Round::new(
-            TEST_VERSION, /* version */
-            0,            /* height */
+            &TEST_ENVIRONMENT,
+            0, /* height */
             *TEST_STARTED_AT,
-            TEST_CONTRIBUTOR_IDS,
-            TEST_VERIFIER_IDS,
-            TEST_CHUNK_VERIFIER_IDS,
-            TEST_CHUNK_VERIFIED_BASE_URLS,
+            TEST_CONTRIBUTOR_IDS.to_vec(),
+            TEST_VERIFIER_IDS.to_vec(),
+            TEST_CHUNK_VERIFIER_IDS.to_vec(),
+            TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
         )
         .unwrap();
 
@@ -271,13 +329,13 @@ mod tests {
     #[test]
     fn test_is_authorized_contributor() {
         let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_contributor(TEST_CONTRIBUTOR_ID_1.to_string()));
+        assert!(round_0.is_authorized_contributor(&TEST_CONTRIBUTOR_ID_1));
     }
 
     #[test]
     fn test_is_authorized_verifier() {
         let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_verifier(TEST_VERIFIER_ID_1.to_string()));
+        assert!(round_0.is_authorized_verifier(&TEST_VERIFIER_ID_1));
     }
 
     #[test]
@@ -290,10 +348,14 @@ mod tests {
     #[test]
     fn test_get_chunk_mut() {
         let mut expected = test_round_0_json().unwrap().chunks[0].clone();
-        expected.acquire_lock("test_updated_contributor").unwrap();
+        expected
+            .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
+            .unwrap();
 
         let mut candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
-        candidate.acquire_lock("test_updated_contributor").unwrap();
+        candidate
+            .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
+            .unwrap();
 
         assert_eq!(expected, candidate);
     }
@@ -302,7 +364,9 @@ mod tests {
     fn test_set_chunk() {
         let locked_chunk = {
             let mut locked_chunk = test_round_0_json().unwrap().chunks[0].clone();
-            locked_chunk.acquire_lock("test_updated_contributor").unwrap();
+            locked_chunk
+                .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
+                .unwrap();
             locked_chunk
         };
 
@@ -313,7 +377,7 @@ mod tests {
         };
 
         let mut candidate = test_round_0().unwrap();
-        assert!(candidate.set_chunk(0, locked_chunk));
+        assert!(candidate.set_chunk(0, locked_chunk).is_ok());
         assert_eq!(expected, candidate);
     }
 

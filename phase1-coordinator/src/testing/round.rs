@@ -7,38 +7,34 @@ use crate::{
 use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
-use tracing::warn;
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest);
-
-/// Version number for testing purposes only.
-pub static TEST_VERSION: u64 = TEST_ENVIRONMENT.version();
-
-/// Contributor ID 1 for testing purposes only.
-pub static TEST_CONTRIBUTOR_ID_1: Participant = Participant::Contributor("test_contributor".to_string());
-
-/// Verifier ID 1 for testing purposes only.
-pub static TEST_VERIFIER_ID_1: &str = "test_verifier";
-
-/// Verified base URL 1 for testing purposes only.
-pub static TEST_VERIFIED_BASE_URL_1: &str = "http://localhost:8080";
 
 lazy_static! {
     /// Round start datetime for testing purposes only.
     pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);
 
+    /// Contributor ID 1 for testing purposes only.
+    pub static ref TEST_CONTRIBUTOR_ID_1: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("test_contributor")));
+
+    /// Verifier ID 1 for testing purposes only.
+    pub static ref TEST_VERIFIER_ID_1: Lazy<Participant> = Lazy::new(|| Participant::Verifier(format!("test_verifier")));
+
+    /// Verified base URL 1 for testing purposes only.
+    pub static ref TEST_VERIFIED_BASE_URL_1: Lazy<String> = Lazy::new(|| format!("http://localhost:8080"));
+
     /// Contributor IDs for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_IDS: Lazy<Vec<String>> = Lazy::new(|| vec![TEST_CONTRIBUTOR_ID_1.to_string()]);
+    pub static ref TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID_1).clone()]);
 
     /// Verifier IDs for testing purposes only.
-    pub static ref TEST_VERIFIER_IDS: Lazy<Vec<String>> =  Lazy::new(|| vec![TEST_VERIFIER_ID_1.to_string()]);
+    pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID_1).clone()]);
 
     /// Chunk verifier IDs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<String>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| TEST_VERIFIER_IDS[0].clone()).collect());
+    pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| Lazy::force(&TEST_VERIFIER_IDS)[0].clone()).collect());
 
     /// Chunk verified base URLs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIED_BASE_URLS: Lazy<Vec<&'static str>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| TEST_VERIFIED_BASE_URL_1).collect());
+    pub static ref TEST_CHUNK_VERIFIED_BASE_URLS: Lazy<Vec<String>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| Lazy::force(&TEST_VERIFIED_BASE_URL_1).clone()).collect());
 }
 
 /// Clears the transcript directory for testing purposes only.
@@ -59,16 +55,21 @@ pub fn test_round_0_json() -> anyhow::Result<Round> {
     Ok(serde_json::from_str(include_str!("resources/test_round_0.json"))?)
 }
 
+/// Loads the reference JSON object with a serialized round for testing purposes only.
+pub fn test_round_1_json() -> anyhow::Result<Round> {
+    Ok(serde_json::from_str(include_str!("resources/test_round_1.json"))?)
+}
+
 /// Creates the initial round for testing purposes only.
 pub fn test_round_0() -> anyhow::Result<Round> {
     Ok(Round::new(
-        TEST_VERSION,
+        &TEST_ENVIRONMENT,
         0, /* height */
         *TEST_STARTED_AT,
-        TEST_CONTRIBUTOR_IDS,
-        TEST_VERIFIER_IDS,
-        TEST_CHUNK_VERIFIER_IDS,
-        TEST_CHUNK_VERIFIED_BASE_URLS,
+        TEST_CONTRIBUTOR_IDS.to_vec(),
+        TEST_VERIFIER_IDS.to_vec(),
+        TEST_CHUNK_VERIFIER_IDS.to_vec(),
+        TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
     )?)
 }
 

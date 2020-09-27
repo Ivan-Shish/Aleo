@@ -31,13 +31,18 @@ impl Chunk {
     /// contribution ID of `0`.
     ///
     #[inline]
-    pub fn new(chunk_id: u64, participant: Participant, verifier_base_url: &str) -> Result<Self, CoordinatorError> {
+    pub fn new(chunk_id: u64, participant: Participant, verifier_base_url: String) -> Result<Self, CoordinatorError> {
         match participant.is_verifier() {
             // Construct the starting contribution template for this chunk.
             true => Ok(Self {
                 chunk_id,
                 lock_holder: None,
-                contributions: vec![Contribution::new_verifier(chunk_id, 0, participant, verifier_base_url)?],
+                contributions: vec![Contribution::new_verifier(
+                    chunk_id,
+                    0,
+                    participant,
+                    &verifier_base_url,
+                )?],
             }),
             false => Err(CoordinatorError::ExpectedVerifier),
         }
@@ -49,19 +54,19 @@ impl Chunk {
         self.chunk_id
     }
 
-    /// Returns `true` if the current chunk is locked. Otherwise, returns `false`.
+    /// Returns `true` if this chunk is locked. Otherwise, returns `false`.
     #[inline]
     pub fn is_locked(&self) -> bool {
         self.lock_holder.is_some()
     }
 
-    /// Returns `true` if the current chunk is unlocked. Otherwise, returns `false`.
+    /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
     #[inline]
     pub fn is_unlocked(&self) -> bool {
         !self.is_locked()
     }
 
-    /// Returns `true` if the current chunk is locked by the given participant.
+    /// Returns `true` if this chunk is locked by the given participant.
     /// Otherwise, returns `false`.
     #[inline]
     pub fn is_locked_by(&self, participant: &Participant) -> bool {
@@ -115,6 +120,8 @@ impl Chunk {
     ///
     /// If the chunk is locked already, returns a `CoordinatorError`.
     ///
+    /// If the chunk is already complete, returns a `CoordinatorError`.
+    ///
     /// If the participant is a contributor, check that they have not
     /// contributed to this chunk before and that the current contribution
     /// is already verified.
@@ -123,10 +130,20 @@ impl Chunk {
     /// has not been verified yet.
     ///
     #[inline]
-    pub(crate) fn acquire_lock(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+    pub(crate) fn acquire_lock(
+        &mut self,
+        participant: Participant,
+        num_contributors: u64,
+    ) -> Result<(), CoordinatorError> {
         // Check that this chunk is not locked before attempting to acquire the lock.
         if self.is_locked() {
             return Err(CoordinatorError::ChunkLockAlreadyAcquired);
+        }
+
+        // Check that this chunk is still incomplete before attempting to acquire the lock.
+        if self.is_complete(num_contributors) {
+            trace!("{} {:#?}", num_contributors, self);
+            return Err(CoordinatorError::ChunkAlreadyComplete);
         }
 
         // If the participant is a contributor, check that they have not already contributed to this chunk before.
@@ -201,7 +218,7 @@ impl Chunk {
 
         // Check that this chunk is locked by the contributor before attempting to add the contribution.
         if !self.is_locked_by(&participant) {
-            return Err(CoordinatorError::ChunkNotLockedOrWrongParticipant);
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
         // Construct the starting contribution template for this chunk.
@@ -211,7 +228,8 @@ impl Chunk {
 
         // Add the contribution to this chunk.
         self.contributions.push(contribution);
-        // Releases the lock on this chunk.
+
+        // Release the lock on this chunk from the contributor.
         self.lock_holder = None;
 
         Ok(())
@@ -238,7 +256,7 @@ impl Chunk {
 
         // Check that this chunk is locked by the verifier before attempting to verify contribution.
         if !self.is_locked_by(participant) {
-            return Err(CoordinatorError::ChunkNotLockedOrWrongParticipant);
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
         // Fetch the contribution to be verified from the chunk.
@@ -251,6 +269,10 @@ impl Chunk {
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
                 contribution.try_verify(participant)?;
+
+                // Release the lock on this chunk from the verifier.
+                self.lock_holder = None;
+
                 trace!("Verification of contribution {} succeeded", contribution_id);
                 Ok(())
             }
@@ -280,16 +302,21 @@ impl Chunk {
     ///
     #[inline]
     pub fn is_complete(&self, num_contributors: u64) -> bool {
-        let missing_contributions = (self.current_contribution_id() + 1) < num_contributors;
-        let extraneous_contributions = (self.current_contribution_id() + 1) > num_contributors;
-        let missing_verifications = !self
+        let contributions_complete = self.current_contribution_id() + 1 == num_contributors;
+        let verifications_complete = (self
             .get_contributions()
             .par_iter()
-            .filter(|contribution| !contribution.is_verified())
-            .collect::<Vec<_>>()
-            .is_empty();
+            .filter(|contribution| contribution.is_verified())
+            .count() as u64)
+            == num_contributors;
 
-        !(missing_contributions || extraneous_contributions || missing_verifications)
+        trace!(
+            "Contributions complete ({}) and verifications complete ({})",
+            contributions_complete,
+            verifications_complete
+        );
+
+        contributions_complete && verifications_complete
     }
 }
 
