@@ -183,7 +183,8 @@ impl Chunk {
             == expected_contributions;
 
         trace!(
-            "Contributions complete ({}) and verifications complete ({})",
+            "Chunk {} contributions complete ({}) and verifications complete ({})",
+            self.chunk_id(),
             contributions_complete,
             verifications_complete
         );
@@ -246,7 +247,7 @@ impl Chunk {
         }
 
         // If the participant is a contributor, check that they have not already contributed to this chunk before.
-        if let Participant::Contributor(contributor_id) = &participant {
+        if participant.is_contributor() {
             // Fetch all contributions with this contributor ID.
             let matches: Vec<_> = self
                 .contributions

@@ -7,46 +7,47 @@ use crate::{
 use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
+use serial_test::serial;
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest);
+
+/// Environment for testing purposes only.
+pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20);
 
 lazy_static! {
     /// Round start datetime for testing purposes only.
     pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);
 
-    /// Contributor ID 1 for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_ID_1: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("test_contributor")));
+    /// Contributor ID for testing purposes only.
+    pub static ref TEST_CONTRIBUTOR_ID: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("test-coordinator-contributor")));
 
-    /// Verifier ID 1 for testing purposes only.
-    pub static ref TEST_VERIFIER_ID_1: Lazy<Participant> = Lazy::new(|| Participant::Verifier(format!("test_verifier")));
+    /// Contributor ID 2 for testing purposes only.
+    pub static ref TEST_CONTRIBUTOR_ID_2: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("test-coordinator-contributor-2")));
 
-    /// Verified base URL 1 for testing purposes only.
-    pub static ref TEST_VERIFIED_BASE_URL_1: Lazy<String> = Lazy::new(|| format!("http://localhost:8080"));
+    /// Contributor ID 3 for testing purposes only.
+    pub static ref TEST_CONTRIBUTOR_ID_3: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("test-coordinator-contributor-3")));
+
+    /// Verifier ID for testing purposes only.
+    pub static ref TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| Participant::Verifier(format!("test-coordinator-verifier")));
+
+    /// Verifier ID 2 for testing purposes only.
+    pub static ref TEST_VERIFIER_ID_2: Lazy<Participant> = Lazy::new(|| Participant::Verifier(format!("test-coordinator-verifier-2")));
 
     /// Contributor IDs for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID_1).clone()]);
+    pub static ref TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
 
     /// Verifier IDs for testing purposes only.
-    pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID_1).clone()]);
+    pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 
     /// Chunk verifier IDs for testing purposes only.
     pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| Lazy::force(&TEST_VERIFIER_IDS)[0].clone()).collect());
-
-    /// Chunk verified base URLs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIED_BASE_URLS: Lazy<Vec<String>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| Lazy::force(&TEST_VERIFIED_BASE_URL_1).clone()).collect());
 }
 
 /// Clears the transcript directory for testing purposes only.
 pub fn clear_test_transcript() {
-    // std::thread::sleep(1000);
     for round_height in 0..10 {
-        let path = TEST_ENVIRONMENT.round_directory(round_height);
-        if std::path::Path::new(&path).exists() {
-            // warn!("Test is clearing {:?}", &path);
-            std::fs::remove_dir_all(&path).expect("unable to remove transcript directory");
-            // warn!("Test cleared {:?}", &path);
-        }
+        TEST_ENVIRONMENT.round_directory_reset(round_height);
     }
 }
 
@@ -56,8 +57,10 @@ pub fn test_round_0_json() -> anyhow::Result<Round> {
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.
-pub fn test_round_1_json() -> anyhow::Result<Round> {
-    Ok(serde_json::from_str(include_str!("resources/test_round_1.json"))?)
+pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
+    Ok(serde_json::from_str(include_str!(
+        "resources/test_round_1_initial.json"
+    ))?)
 }
 
 /// Creates the initial round for testing purposes only.
@@ -69,7 +72,6 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         TEST_CONTRIBUTOR_IDS.to_vec(),
         TEST_VERIFIER_IDS.to_vec(),
         TEST_CHUNK_VERIFIER_IDS.to_vec(),
-        TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
     )?)
 }
 
@@ -82,6 +84,7 @@ pub fn print_diff<S: SerdeDiff>(a: &S, b: &S) {
 }
 
 #[test]
+#[serial]
 fn test_round_0_matches() {
     let expected = test_round_0_json().unwrap();
     let candidate = test_round_0().unwrap();

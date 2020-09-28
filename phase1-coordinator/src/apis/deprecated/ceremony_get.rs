@@ -18,7 +18,7 @@ mod test {
     #[test]
     #[serial]
     fn test_ceremony_get() {
-        let client = test_client().unwrap();
+        let (client, coordinator) = test_client(&TEST_ENVIRONMENT).unwrap();
 
         let mut response = client.get("/ceremony").dispatch();
         let response_body = response.body_string();
@@ -27,7 +27,7 @@ mod test {
         assert!(response_body.is_some());
 
         let candidate: Round = serde_json::from_str(&response_body.unwrap()).unwrap();
-        let expected = test_round_1_json().unwrap();
+        let expected = test_round_1_initial_json().unwrap();
         if candidate != expected {
             print_diff(&expected, &candidate);
         }

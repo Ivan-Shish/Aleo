@@ -43,12 +43,12 @@ impl Round {
         debug!("Creating round {}", height);
 
         // Check that the contributor correspond to the contributor participant type.
-        let num_noncontributors = contributor_ids
+        let num_non_contributors = contributor_ids
             .par_iter()
             .filter(|participant_id| !participant_id.is_contributor())
             .count();
-        if num_noncontributors > 0 {
-            error!("Found {} participants who are not contributors", num_noncontributors);
+        if num_non_contributors > 0 {
+            error!("Found {} participants who are not contributors", num_non_contributors);
             return Err(CoordinatorError::ExpectedContributor);
         }
         // Check that the verifier correspond to the verifier participant type.
@@ -296,6 +296,7 @@ mod tests {
     use crate::testing::prelude::*;
 
     #[test]
+    #[serial]
     fn test_round_0_matches() {
         let expected = test_round_0().unwrap();
         let candidate = Round::new(
@@ -315,31 +316,47 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_height() {
         let round = test_round_0().unwrap();
         assert_eq!(0, round.get_height());
     }
 
     #[test]
+    #[serial]
     fn test_is_authorized_contributor() {
         let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_contributor(&TEST_CONTRIBUTOR_ID_1));
+        assert!(round_0.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
     }
 
     #[test]
+    #[serial]
     fn test_is_authorized_verifier() {
         let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_verifier(&TEST_VERIFIER_ID_1));
+        assert!(round_0.is_authorized_verifier(&TEST_VERIFIER_ID));
     }
 
     #[test]
+    #[serial]
     fn test_get_chunk() {
         let expected = test_round_0_json().unwrap().chunks[0].clone();
         let candidate = test_round_0().unwrap().get_chunk(0).unwrap().clone();
+        print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
 
     #[test]
+    #[serial]
+    fn test_get_chunk_mut_basic() {
+        let mut expected = test_round_0_json().unwrap().chunks[0].clone();
+        let mut candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
+        print_diff(&expected, &candidate);
+        assert_eq!(expected, candidate);
+    }
+
+    #[test]
+    #[ignore]
+    #[serial]
     fn test_get_chunk_mut() {
         let mut expected = test_round_0_json().unwrap().chunks[0].clone();
         expected
@@ -351,10 +368,13 @@ mod tests {
             .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
             .unwrap();
 
+        print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
 
     #[test]
+    #[serial]
+    #[ignore]
     fn test_set_chunk() {
         let locked_chunk = {
             let mut locked_chunk = test_round_0_json().unwrap().chunks[0].clone();
@@ -372,10 +392,12 @@ mod tests {
 
         let mut candidate = test_round_0().unwrap();
         assert!(candidate.set_chunk(0, locked_chunk).is_ok());
+        print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
 
     #[test]
+    #[serial]
     fn test_get_verifiers() {
         let candidates = test_round_0().unwrap().get_verifiers().clone();
         for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
@@ -384,9 +406,12 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_are_chunks_verified() {
+        test_logger();
+
         // TODO (howardwu): Add tests for a full completeness check.
-        let round = test_round_0().unwrap();
-        assert!(!round.is_complete());
+        let round = test_round_0_json().unwrap();
+        assert!(round.is_complete());
     }
 }

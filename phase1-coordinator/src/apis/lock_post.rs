@@ -58,7 +58,7 @@ pub fn lock_post(
 //         test_logger();
 //         let client = test_client().unwrap();
 //
-//         let mut response = client.post("/chunks/0/lock").body(TEST_CONTRIBUTOR_ID_1).dispatch();
+//         let mut response = client.post("/chunks/0/lock").body(TEST_CONTRIBUTOR_ID).dispatch();
 //         let response_body = response.body_string();
 //         println!("{:#?}", response_body);
 //         assert_eq!(Status::Ok, response.status());

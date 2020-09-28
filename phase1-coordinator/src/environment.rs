@@ -1,5 +1,4 @@
 use crate::{
-    locators::*,
     objects::Participant,
     storage::{InMemory, InMemory2, Storage},
     CoordinatorError,
@@ -7,7 +6,6 @@ use crate::{
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
-use std::path::Path;
 use url::Url;
 
 type BatchSize = usize;
@@ -25,6 +23,7 @@ pub enum Parameters {
     AleoOuter,
     AleoUniversal,
     AleoTest,
+    AleoTest20,
     Simple,
     Custom(Settings),
 }
@@ -37,6 +36,7 @@ impl Parameters {
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
             Parameters::AleoTest => Self::aleo_test(),
+            Parameters::AleoTest20 => Self::aleo_test_20(),
             Parameters::Simple => Self::simple(),
             Parameters::Custom(settings) => settings.clone(),
         }
@@ -82,7 +82,18 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(14_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(8192_usize),
+            ChunkSize::from(4095_usize),
+        )
+    }
+
+    fn aleo_test_20() -> Settings {
+        (
+            ContributionMode::Chunked,
+            ProvingSystem::Groth16,
+            CurveKind::Bls12_377,
+            Power::from(14_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(1637_usize),
         )
     }
 

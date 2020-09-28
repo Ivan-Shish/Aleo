@@ -6,10 +6,10 @@
     "finishedAt": null,
     "durationInSeconds": -1,
     "contributorIds": [
-        "test_contributor"
+        "test-coordinator-contributor"
     ],
     "verifierIds": [
-        "test_verifier"
+        "test-coordinator-verifier"
     ],
     "chunks": [
         {
@@ -19,9 +19,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/0/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_0/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -32,9 +32,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/1/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_1/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -45,9 +45,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/2/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_2/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -58,9 +58,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/3/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_3/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -71,9 +71,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/4/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_4/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -84,9 +84,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/5/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_5/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -97,9 +97,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/6/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_6/contribution_0",
+                    "verified": true
                 }
             ]
         },
@@ -110,9 +110,9 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test_verifier",
-                    "verifiedLocation": "http://localhost:8080/chunks/7/contribution/0",
-                    "verified": false
+                    "verifierId": "test-coordinator-verifier",
+                    "verifiedLocation": "./transcript/test/round_1/chunk_7/contribution_0",
+                    "verified": true
                 }
             ]
         }
