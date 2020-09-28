@@ -13,8 +13,6 @@ type ChunkSize = usize;
 type Curve = CurveKind;
 type Power = usize;
 
-pub type StorageType = InMemory;
-
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
 
 #[derive(Debug, Clone)]

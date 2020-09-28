@@ -6,10 +6,8 @@ use crate::{
 };
 
 use chrono::{DateTime, Utc};
-use rayon::prelude::*;
 use std::{
     fmt,
-    path::Path,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tracing::{debug, error, info, trace};
@@ -547,6 +545,7 @@ impl Coordinator {
     /// control of their session.
     ///
     #[inline]
+    #[allow(dead_code)]
     fn run_computation(
         &self,
         chunk_id: u64,
@@ -656,7 +655,7 @@ impl Coordinator {
         {
             // Load a mutable reference of the current round from storage.
             let mut storage = self.storage_mut()?;
-            let mut current_round = match storage.get_mut(&Key::Round(round_height)) {
+            let current_round = match storage.get_mut(&Key::Round(round_height)) {
                 Some(Value::Round(round)) => round,
                 _ => return Err(CoordinatorError::RoundDoesNotExist),
             };
@@ -711,6 +710,7 @@ impl Coordinator {
     /// Attempts to acquire the lock on a given chunk ID for a given participant
     /// in order to perform verification.
     #[inline]
+    #[allow(dead_code)]
     fn try_lock_verify(
         &self,
         chunk_id: u64,
@@ -737,7 +737,7 @@ impl Coordinator {
         {
             // Load a mutable reference of the current round from storage.
             let mut storage = self.storage_mut()?;
-            let mut current_round = match storage.get_mut(&Key::Round(round_height)) {
+            let current_round = match storage.get_mut(&Key::Round(round_height)) {
                 Some(Value::Round(round)) => round,
                 _ => return Err(CoordinatorError::RoundDoesNotExist),
             };
@@ -766,6 +766,7 @@ impl Coordinator {
     /// is complete.
     ///
     #[inline]
+    #[allow(dead_code)]
     fn verify_contribution(
         &self,
         chunk_id: u64,
@@ -846,7 +847,7 @@ impl Coordinator {
         {
             // Load a mutable reference of the current round from storage.
             let mut storage = self.storage_mut()?;
-            let mut current_round = match storage.get_mut(&Key::Round(round_height)) {
+            let current_round = match storage.get_mut(&Key::Round(round_height)) {
                 Some(Value::Round(round)) => round,
                 _ => return Err(CoordinatorError::RoundDoesNotExist),
             };

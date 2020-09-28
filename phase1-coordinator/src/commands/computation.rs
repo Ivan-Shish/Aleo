@@ -1,16 +1,10 @@
 use crate::{environment::Environment, CoordinatorError};
 use phase1::{helpers::CurveKind, Phase1Parameters};
 use phase1_cli::contribute;
-use setup_utils::calculate_hash;
 
-use memmap::*;
 use rand::thread_rng;
-use std::{
-    fs::{self, OpenOptions},
-    panic,
-    time::Instant,
-};
-use tracing::{debug, info, trace};
+use std::{panic, time::Instant};
+use tracing::{info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
 pub struct Computation;
@@ -80,11 +74,14 @@ impl Computation {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{commands::Initialization, testing::prelude::*};
-    use setup_utils::{blank_hash, GenericArray};
+    use crate::{
+        commands::{Computation, Initialization},
+        testing::prelude::*,
+    };
 
-    use tracing::trace;
+    use memmap::MmapOptions;
+    use std::fs::OpenOptions;
+    use tracing::{debug, trace};
 
     #[test]
     #[serial]
@@ -105,8 +102,7 @@ mod tests {
             // Run computation on chunk.
             Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
 
-            // Fetch the contribution locators.
-            let previous = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 0);
+            // Fetch the current contribution locator.
             let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1);
 
             // Check that the current contribution was generated based on the previous contribution hash.

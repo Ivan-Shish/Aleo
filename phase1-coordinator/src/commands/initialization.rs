@@ -4,11 +4,7 @@ use phase1_cli::new_challenge;
 use setup_utils::calculate_hash;
 
 use memmap::*;
-use std::{
-    fs::{self, OpenOptions},
-    panic,
-    time::Instant,
-};
+use std::{fs, fs::OpenOptions, panic, time::Instant};
 use tracing::{debug, info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -108,11 +104,12 @@ impl Initialization {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::testing::prelude::*;
-    use setup_utils::{blank_hash, GenericArray};
+    use crate::{commands::Initialization, testing::prelude::*};
+    use setup_utils::{blank_hash, calculate_hash, GenericArray};
 
-    use tracing::trace;
+    use memmap::MmapOptions;
+    use std::fs::OpenOptions;
+    use tracing::{debug, trace};
 
     #[test]
     #[serial]
@@ -142,7 +139,7 @@ mod tests {
             // Check that the contribution chunk was generated based on the blank hash.
             let hash = blank_hash();
             for (i, (expected, candidate)) in hash.iter().zip(reader.chunks(64).next().unwrap()).enumerate() {
-                // trace!("Checking byte {} of expected hash", i);
+                trace!("Checking byte {} of expected hash", i);
                 assert_eq!(expected, candidate);
             }
 

@@ -20,7 +20,7 @@ impl Locator for Remote {
     }
 
     /// Initializes the round directory for a given environment and round height.
-    fn round_directory_init(environment: &Environment, round_height: u64)
+    fn round_directory_init(_environment: &Environment, _round_height: u64)
     where
         Self: Sized,
     {
@@ -55,7 +55,7 @@ impl Locator for Remote {
     }
 
     /// Initializes the chunk directory for a given environment, round height, and chunk ID.
-    fn chunk_directory_init(environment: &Environment, round_height: u64, chunk_id: u64) {
+    fn chunk_directory_init(_environment: &Environment, _round_height: u64, _chunk_id: u64) {
         unimplemented!()
     }
 
@@ -84,7 +84,12 @@ impl Locator for Remote {
 
     /// Initializes the contribution locator file for a given round, chunk ID, and
     /// contribution ID from the coordinator.
-    fn contribution_locator_init(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) {
+    fn contribution_locator_init(
+        _environment: &Environment,
+        _round_height: u64,
+        _chunk_id: u64,
+        _contribution_id: u64,
+    ) {
         unimplemented!()
     }
 

@@ -1,16 +1,9 @@
 use crate::{environment::Environment, CoordinatorError};
-use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
+use phase1::{helpers::CurveKind, Phase1Parameters};
 use phase1_cli::transform_pok_and_correctness;
-use setup_utils::{blank_hash, calculate_hash, BatchSerializer, CheckForCorrectness, GenericArray, UseCompression};
 
-use memmap::*;
-use std::{
-    fs::OpenOptions,
-    io::{Read, Write},
-    panic,
-};
-use tracing::{debug, error, info};
-use typenum::consts::U64;
+use std::panic;
+use tracing::info;
 use zexe_algebra::{Bls12_377, BW6_761};
 
 pub struct Verification;

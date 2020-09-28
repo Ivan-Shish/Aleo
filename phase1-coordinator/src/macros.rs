@@ -70,8 +70,6 @@ macro_rules! round_filesize {
 #[macro_export]
 macro_rules! storage {
     ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
-        use crate::storage::*;
-
         match $env {
             Environment::Test(_) => Box::new($l1::load()?),
             Environment::Development(_) => Box::new($l2::load()?),

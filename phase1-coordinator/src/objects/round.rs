@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
@@ -153,7 +153,7 @@ impl Round {
     #[inline]
     pub fn get_chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
         // Fetch the chunk with the given chunk ID.
-        let mut chunk = match self.chunks.get(chunk_id as usize) {
+        let chunk = match self.chunks.get(chunk_id as usize) {
             Some(chunk) => chunk,
             _ => return Err(CoordinatorError::ChunkMissing),
         };
@@ -170,7 +170,7 @@ impl Round {
     #[inline]
     pub fn get_chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
         // Fetch the chunk with the given chunk ID.
-        let mut chunk = match self.chunks.get_mut(chunk_id as usize) {
+        let chunk = match self.chunks.get_mut(chunk_id as usize) {
             Some(chunk) => chunk,
             _ => return Err(CoordinatorError::ChunkMissing),
         };
@@ -180,14 +180,6 @@ impl Round {
             true => Ok(chunk),
             false => Err(CoordinatorError::ChunkIdMismatch),
         }
-    }
-
-    /// Updates the chunk at a given chunk ID to a given updated chunk, if the chunk ID exists.
-    #[inline]
-    pub(crate) fn set_chunk(&mut self, chunk_id: u64, updated_chunk: Chunk) -> Result<(), CoordinatorError> {
-        let mut chunk = self.get_chunk_mut(chunk_id)?;
-        *chunk = updated_chunk;
-        Ok(())
     }
 
     /// Returns `true` if the chunk corresponding to the given chunk ID is
@@ -343,8 +335,8 @@ mod tests {
     #[test]
     #[serial]
     fn test_get_chunk_mut_basic() {
-        let mut expected = test_round_0_json().unwrap().chunks[0].clone();
-        let mut candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
+        let expected = test_round_0_json().unwrap().chunks[0].clone();
+        let candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
@@ -363,30 +355,6 @@ mod tests {
             .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
             .unwrap();
 
-        print_diff(&expected, &candidate);
-        assert_eq!(expected, candidate);
-    }
-
-    #[test]
-    #[serial]
-    #[ignore]
-    fn test_set_chunk() {
-        let locked_chunk = {
-            let mut locked_chunk = test_round_0_json().unwrap().chunks[0].clone();
-            locked_chunk
-                .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
-                .unwrap();
-            locked_chunk
-        };
-
-        let expected = {
-            let mut expected = test_round_0_json().unwrap();
-            expected.chunks[0] = locked_chunk.clone();
-            expected
-        };
-
-        let mut candidate = test_round_0().unwrap();
-        assert!(candidate.set_chunk(0, locked_chunk).is_ok());
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
