@@ -30,7 +30,7 @@ pub struct Round {
 }
 
 impl Round {
-    /// Creates a new instance of `Ceremony`.
+    /// Creates a new instance of `Round`.
     #[inline]
     pub fn new(
         environment: &Environment,
@@ -39,7 +39,6 @@ impl Round {
         contributor_ids: Vec<Participant>,
         verifier_ids: Vec<Participant>,
         chunk_verifier_ids: Vec<Participant>,
-        chunk_verified_base_url: Vec<String>,
     ) -> Result<Self, CoordinatorError> {
         debug!("Creating round {}", height);
 
@@ -74,10 +73,6 @@ impl Round {
         if num_chunks != chunk_verifier_ids.len() as u64 {
             return Err(CoordinatorError::NumberOfChunkVerifierIdsInvalid);
         }
-        // Check that the number of chunks matches the given number of chunk verified base URLs.
-        if num_chunks != chunk_verified_base_url.len() as u64 {
-            return Err(CoordinatorError::NumberOfChunkVerifiedBaseUrlsInvalid);
-        }
 
         // Check that the chunk verifier IDs all exist in the list of verifier IDs.
         for id in &chunk_verifier_ids {
@@ -87,16 +82,16 @@ impl Round {
         }
 
         // Construct the chunks for this round.
-        let verifier_entries: Vec<(&Participant, String)> = chunk_verifier_ids
-            .par_iter()
-            .zip(chunk_verified_base_url)
-            .map(|(a, b)| (a, b))
-            .collect();
         let chunks: Vec<Chunk> = (0..num_chunks as usize)
             .into_par_iter()
-            .zip(verifier_entries)
-            .map(|(chunk_id, (verifier, verifier_base_url))| {
-                Chunk::new(chunk_id as u64, verifier.clone(), verifier_base_url).expect("failed to create chunk")
+            .zip(chunk_verifier_ids)
+            .map(|(chunk_id, verifier)| {
+                Chunk::new(
+                    chunk_id as u64,
+                    verifier.clone(),
+                    environment.contribution_locator(height, chunk_id as u64, 0),
+                )
+                .expect("failed to create chunk")
             })
             .collect();
 
@@ -310,7 +305,6 @@ mod tests {
             TEST_CONTRIBUTOR_IDS.to_vec(),
             TEST_VERIFIER_IDS.to_vec(),
             TEST_CHUNK_VERIFIER_IDS.to_vec(),
-            TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
         )
         .unwrap();
 

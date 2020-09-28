@@ -31,18 +31,13 @@ impl Chunk {
     /// contribution ID of `0`.
     ///
     #[inline]
-    pub fn new(chunk_id: u64, participant: Participant, verifier_base_url: String) -> Result<Self, CoordinatorError> {
+    pub fn new(chunk_id: u64, participant: Participant, verifier_locator: String) -> Result<Self, CoordinatorError> {
         match participant.is_verifier() {
             // Construct the starting contribution template for this chunk.
             true => Ok(Self {
                 chunk_id,
                 lock_holder: None,
-                contributions: vec![Contribution::new_verifier(
-                    chunk_id,
-                    0,
-                    participant,
-                    &verifier_base_url,
-                )?],
+                contributions: vec![Contribution::new_verifier(0, participant, verifier_locator)?],
             }),
             false => Err(CoordinatorError::ExpectedVerifier),
         }
@@ -52,36 +47,6 @@ impl Chunk {
     #[inline]
     pub fn chunk_id(&self) -> u64 {
         self.chunk_id
-    }
-
-    /// Returns `true` if this chunk is locked. Otherwise, returns `false`.
-    #[inline]
-    pub fn is_locked(&self) -> bool {
-        self.lock_holder.is_some()
-    }
-
-    /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
-    #[inline]
-    pub fn is_unlocked(&self) -> bool {
-        !self.is_locked()
-    }
-
-    /// Returns `true` if this chunk is locked by the given participant.
-    /// Otherwise, returns `false`.
-    #[inline]
-    pub fn is_locked_by(&self, participant: &Participant) -> bool {
-        // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
-        match &self.lock_holder {
-            Some(lock_holder) => *lock_holder == *participant,
-            None => false,
-        }
-    }
-
-    /// Returns the current number of contributions in this chunk,
-    /// irrespective of the state of each contribution.
-    #[inline]
-    pub fn current_contribution_id(&self) -> u64 {
-        (self.contributions.len() - 1) as u64
     }
 
     /// Returns a reference to the current contribution in this chunk,
@@ -113,6 +78,140 @@ impl Chunk {
     #[inline]
     pub fn get_contributions(&self) -> &Vec<Contribution> {
         &self.contributions
+    }
+
+    ///
+    /// Returns the current number of contributions in this chunk.
+    ///
+    /// This function does NOT consider the state of the current contribution.
+    ///
+    #[inline]
+    pub fn current_contribution_id(&self) -> u64 {
+        (self.contributions.len() - 1) as u64
+    }
+
+    ///
+    /// Returns `true` if the given next contribution ID is valid, based on the
+    /// given expected number of contributions as a basis for computing it.
+    ///
+    /// This function does NOT consider the *verified status* of the current contribution.
+    ///
+    /// If the contributions are complete, returns `false`.
+    ///
+    #[inline]
+    pub fn is_next_contribution_id(&self, next_contribution_id: u64, expected_contributions: u64) -> bool {
+        // Check that the current and next contribution ID differ by 1.
+        let current_contribution_id = self.current_contribution_id();
+        if current_contribution_id + 1 != next_contribution_id {
+            return false;
+        }
+
+        // Check if the contributions for this chunk are complete.
+        if self.only_contributions_complete(expected_contributions) {
+            return false;
+        }
+
+        true
+    }
+
+    ///
+    /// Returns the next number of contributions in this chunk, using
+    /// the given expected number of contributions as a basis for computing it.
+    ///
+    /// This function should only be used to legitimately get the next
+    /// contribution ID.
+    ///
+    /// If the current contribution is not verified, returns `CoordinatorError`.
+    /// If the contributions are complete, returns `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn next_contribution_id(&self, expected_contributions: u64) -> Result<u64, CoordinatorError> {
+        // Check if the current contribution is verified.
+        if !self.current_contribution()?.is_verified() {
+            return Err(CoordinatorError::ContributionMissingVerification);
+        }
+        // Check if all contributions for this chunk are present.
+        match !self.only_contributions_complete(expected_contributions) {
+            true => Ok(self.current_contribution_id() + 1),
+            false => Err(CoordinatorError::ContributionsComplete),
+        }
+    }
+
+    ///
+    /// Returns `true` if the current number of contributions in this chunk
+    /// matches the given expected number of contributions. Otherwise,
+    /// returns `false`.
+    ///
+    /// Note that this does NOT mean the contributions in this chunk have
+    /// been verified. To account for that, use `Chunk::is_complete`.
+    ///
+    #[inline]
+    pub fn only_contributions_complete(&self, expected_contributions: u64) -> bool {
+        (self.contributions.len() as u64) == expected_contributions
+    }
+
+    ///
+    /// Returns `true` if the current contributions in this chunk have been verified.
+    /// Otherwise, returns `false`.
+    ///
+    /// Note that this does NOT mean all expected contributions in this chunk
+    /// are present and have have been verified.  To account for that,
+    /// use `Chunk::is_complete`.
+    ///
+    #[inline]
+    pub fn only_current_verifications_complete(&self) -> bool {
+        self.get_contributions()
+            .par_iter()
+            .filter(|contribution| !contribution.is_verified())
+            .count() as u64
+            == 0
+    }
+
+    ///
+    /// Returns `true` if the given expected number of contributions for
+    /// this chunk is complete and all contributions have been verified.
+    /// Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn is_complete(&self, expected_contributions: u64) -> bool {
+        let contributions_complete = self.only_contributions_complete(expected_contributions);
+        let verifications_complete = (self
+            .get_contributions()
+            .par_iter()
+            .filter(|contribution| contribution.is_verified())
+            .count() as u64)
+            == expected_contributions;
+
+        trace!(
+            "Contributions complete ({}) and verifications complete ({})",
+            contributions_complete,
+            verifications_complete
+        );
+
+        contributions_complete && verifications_complete
+    }
+
+    /// Returns `true` if this chunk is locked. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_locked(&self) -> bool {
+        self.lock_holder.is_some()
+    }
+
+    /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_unlocked(&self) -> bool {
+        !self.is_locked()
+    }
+
+    /// Returns `true` if this chunk is locked by the given participant.
+    /// Otherwise, returns `false`.
+    #[inline]
+    pub fn is_locked_by(&self, participant: &Participant) -> bool {
+        // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
+        match &self.lock_holder {
+            Some(lock_holder) => *lock_holder == *participant,
+            None => false,
+        }
     }
 
     ///
@@ -200,16 +299,18 @@ impl Chunk {
     /// Upon success, releases the lock on this chunk to allow a verifier to
     /// check the contribution for correctness.
     ///
-    /// This function is intended to be called by an authorized contributor
-    /// holding a lock on the chunk.
+    /// This function is intended to be used only by an authorized contributor
+    /// currently holding the lock on this chunk.
     ///
     /// If the operations succeed, returns `Ok(())`. Otherwise, returns `CoordinatorError`.
     ///
     #[inline]
     pub fn add_contribution(
         &mut self,
+        contribution_id: u64,
         participant: Participant,
-        contributor_base_url: &str,
+        contributed_locator: String,
+        expected_contributions: u64,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -221,13 +322,14 @@ impl Chunk {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Construct the starting contribution template for this chunk.
-        let contribution_id = self.current_contribution_id();
-        let contribution =
-            Contribution::new_contributor(self.chunk_id(), contribution_id, participant, contributor_base_url)?;
+        // Check that the contribution ID is one above the current contribution ID.
+        if self.is_next_contribution_id(contribution_id, expected_contributions) {
+            return Err(CoordinatorError::ContributionIdMismatch);
+        }
 
         // Add the contribution to this chunk.
-        self.contributions.push(contribution);
+        self.contributions
+            .push(Contribution::new_contributor(participant, contributed_locator)?);
 
         // Release the lock on this chunk from the contributor.
         self.lock_holder = None;
@@ -293,30 +395,6 @@ impl Chunk {
             .map(|contribution| contribution.get_verifier().is_some() as u32)
             .sum();
         return matching_contributions + matching_verifications;
-    }
-
-    ///
-    /// Returns `true` if contributions have been added by all contributors
-    /// to this chunk and all contributions have been verified.
-    /// Otherwise, returns `false`.
-    ///
-    #[inline]
-    pub fn is_complete(&self, num_contributors: u64) -> bool {
-        let contributions_complete = self.current_contribution_id() + 1 == num_contributors;
-        let verifications_complete = (self
-            .get_contributions()
-            .par_iter()
-            .filter(|contribution| contribution.is_verified())
-            .count() as u64)
-            == num_contributors;
-
-        trace!(
-            "Contributions complete ({}) and verifications complete ({})",
-            contributions_complete,
-            verifications_complete
-        );
-
-        contributions_complete && verifications_complete
     }
 }
 

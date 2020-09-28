@@ -38,20 +38,10 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
         .into_iter()
         .map(|_| verifiers[0].clone())
         .collect();
-    let chunk_verifier_base_urls = (0..environment.number_of_chunks())
-        .into_iter()
-        .map(|_| "http://localhost:8080".to_string())
-        .collect();
 
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
-        coordinator.next_round(
-            Utc::now(),
-            contributors,
-            verifiers,
-            chunk_verifiers,
-            chunk_verifier_base_urls,
-        )?;
+        coordinator.next_round(Utc::now(), contributors, verifiers, chunk_verifiers)?;
     }
     info!("Coordinator is ready");
     info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
