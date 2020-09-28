@@ -18,7 +18,6 @@ pub fn test_coordinator() -> anyhow::Result<Coordinator> {
             TEST_CONTRIBUTOR_IDS.to_vec(),
             TEST_VERIFIER_IDS.to_vec(),
             TEST_CHUNK_VERIFIER_IDS.to_vec(),
-            TEST_CHUNK_VERIFIED_BASE_URLS.to_vec(),
         )?;
     }
     info!("Coordinator is ready");

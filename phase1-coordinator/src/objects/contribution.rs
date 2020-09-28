@@ -5,21 +5,6 @@ use tracing::trace;
 use url::Url;
 use url_serde;
 
-// TODO (howardwu): Change this to match.
-// #[derive(Debug, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Contributor {
-//     #[serde(flatten)]
-//     address: String
-// }
-
-// TODO (howardwu): Change this to match.
-// #[derive(Debug, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Verifier {
-//     address: String
-// }
-
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contribution {
@@ -44,10 +29,8 @@ impl Contribution {
     ///
     #[inline]
     pub(crate) fn new_contributor(
-        chunk_id: u64,
-        contribution_id: u64,
         participant: Participant,
-        contributed_base_url: &str,
+        contributed_locator: String,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -56,10 +39,7 @@ impl Contribution {
 
         Ok(Self {
             contributor_id: Some(participant),
-            contributed_locator: Some(format!(
-                "{}/chunks/{}/contribution/{}",
-                contributed_base_url, chunk_id, contribution_id
-            )),
+            contributed_locator: Some(contributed_locator),
             verifier_id: None,
             verified_locator: None,
             verified: false,
@@ -77,10 +57,9 @@ impl Contribution {
     ///
     #[inline]
     pub(crate) fn new_verifier(
-        chunk_id: u64,
         contribution_id: u64,
         participant: Participant,
-        verified_base_url: &str,
+        verifier_locator: String,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -100,10 +79,7 @@ impl Contribution {
             contributor_id: None,
             contributed_locator: None,
             verifier_id: Some(participant),
-            verified_locator: Some(format!(
-                "{}/chunks/{}/contribution/{}",
-                verified_base_url, chunk_id, contribution_id
-            )),
+            verified_locator: Some(verifier_locator),
             verified: true,
         };
 
@@ -125,10 +101,8 @@ impl Contribution {
     #[inline]
     pub(crate) fn assign_verifier(
         &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
         participant: Participant,
-        verified_base_url: &str,
+        verifier_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -151,10 +125,7 @@ impl Contribution {
         }
 
         self.verifier_id = Some(participant);
-        self.verified_locator = Some(format!(
-            "{}/chunks/{}/contribution/{}",
-            verified_base_url, chunk_id, contribution_id
-        ));
+        self.verified_locator = Some(verifier_locator);
         Ok(())
     }
 

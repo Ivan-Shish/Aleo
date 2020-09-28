@@ -26,7 +26,9 @@ impl Verification {
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
-        num_contributors: u64,
+        previous_locator: String,
+        current_locator: String,
+        next_locator: String,
     ) -> anyhow::Result<()> {
         // Check that this is not the initial contribution.
         if (round_height == 0 || round_height == 1) && contribution_id == 0 {
@@ -61,19 +63,6 @@ impl Verification {
         // Fetch the parameter settings.
         let settings = environment.to_settings();
 
-        // Fetch the transcript locators.
-        let (previous, current, next) = if contribution_id == num_contributors - 1 {
-            let previous = environment.contribution_locator(round_height, chunk_id, contribution_id - 1);
-            let current = environment.contribution_locator(round_height, chunk_id, contribution_id);
-            let next = environment.contribution_locator(round_height + 1, chunk_id, 0);
-            (previous, current, next)
-        } else {
-            let previous = environment.contribution_locator(round_height, chunk_id, contribution_id - 1);
-            let current = environment.contribution_locator(round_height, chunk_id, contribution_id);
-            let next = environment.contribution_locator(round_height, chunk_id, contribution_id + 1);
-            (previous, current, next)
-        };
-
         info!(
             "Starting verification of round {} chunk {} contribution {}",
             round_height, chunk_id, contribution_id
@@ -84,15 +73,15 @@ impl Verification {
         let result = panic::catch_unwind(|| {
             match curve {
                 CurveKind::Bls12_377 => transform_pok_and_correctness(
-                    &previous,
-                    &current,
-                    &next,
+                    &previous_locator,
+                    &current_locator,
+                    &next_locator,
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 ),
                 CurveKind::BW6 => transform_pok_and_correctness(
-                    &previous,
-                    &current,
-                    &next,
+                    &previous_locator,
+                    &current_locator,
+                    &next_locator,
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 ),
             };

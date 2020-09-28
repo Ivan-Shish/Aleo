@@ -23,25 +23,19 @@ pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant: Pa
         Err(_) => return Err(Status::InternalServerError),
     }
 
-    // Fetch the current round height from storage.
-    let round_height = match coordinator.current_round_height() {
-        Ok(height) => height,
-        _ => return Err(Status::InternalServerError),
-    };
-
-    // Return the chunk locator hash for the given chunk ID.
-    match coordinator.get_chunk_locator(round_height, chunk_id) {
-        Ok(chunk_locator) => {
+    // Return the next contribution locator for the given chunk ID.
+    match coordinator.next_contribution_locator_strict(chunk_id) {
+        Ok(contribution_locator) => {
             let response = json!({
                 "status": "ok",
                 "result": {
                     "chunkId": chunk_id,
                     "participantId": participant,
-                    "writeUrl": chunk_locator.to_string()
+                    "writeUrl": contribution_locator.to_string()
                 }
             });
             Ok(response.to_string())
         }
-        _ => return Err(Status::InternalServerError),
+        _ => return Err(Status::Unauthorized),
     }
 }
