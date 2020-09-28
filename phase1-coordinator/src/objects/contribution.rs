@@ -21,7 +21,6 @@ pub struct Contribution {
 }
 
 impl Contribution {
-    /// TODO (howardwu): Extract URL out to environment.
     ///
     /// Creates a new contributor instance of `Contribution`.
     ///
@@ -49,7 +48,6 @@ impl Contribution {
         })
     }
 
-    /// TODO (howardwu): Extract URL out to environment.
     ///
     /// Creates a new verifier instance of `Contribution`.
     ///
@@ -62,7 +60,7 @@ impl Contribution {
     pub(crate) fn new_verifier(
         contribution_id: u64,
         participant: Participant,
-        verifier_locator: String,
+        verified_locator: String,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -82,14 +80,13 @@ impl Contribution {
             contributor_id: None,
             contributed_locator: None,
             verifier_id: Some(participant),
-            verified_locator: Some(verifier_locator),
+            verified_locator: Some(verified_locator),
             verified: true,
         };
 
         Ok(contribution)
     }
 
-    /// TODO (howardwu): Extract URL out to environment.
     ///
     /// Assign a verifier to this instance of `Contribution`.
     ///
@@ -105,7 +102,7 @@ impl Contribution {
     pub(crate) fn assign_verifier(
         &mut self,
         participant: Participant,
-        verifier_locator: String,
+        verified_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -128,7 +125,7 @@ impl Contribution {
         }
 
         self.verifier_id = Some(participant);
-        self.verified_locator = Some(verifier_locator);
+        self.verified_locator = Some(verified_locator);
         Ok(())
     }
 

@@ -4,8 +4,11 @@ use rocket::{local::Client, Rocket};
 use tracing::{info, Level};
 
 pub fn test_logger() {
+    std::thread::sleep(std::time::Duration::from_secs(1));
     let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
+    std::thread::sleep(std::time::Duration::from_secs(1));
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    std::thread::sleep(std::time::Duration::from_secs(1));
 }
 
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {

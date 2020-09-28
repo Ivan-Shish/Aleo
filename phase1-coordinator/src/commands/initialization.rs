@@ -27,7 +27,8 @@ impl Initialization {
         // Fetch the parameter settings.
         let settings = environment.to_settings();
 
-        // Fetch the transcript locator.
+        // Initialize and fetch the contribution locator.
+        environment.chunk_directory_init(round_height, chunk_id);
         let contribution_locator = environment.contribution_locator(round_height, chunk_id, 0);
         trace!(
             "Storing round {} chunk {} in {}",
@@ -56,6 +57,7 @@ impl Initialization {
 
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
+        environment.chunk_directory_init(round_height + 1, chunk_id);
         let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0);
         trace!("Copying chunk {} to {}", chunk_id, next_transcript);
         fs::copy(&contribution_locator, &next_transcript)?;

@@ -257,11 +257,12 @@ impl Round {
         &mut self,
         chunk_id: u64,
         contribution_id: u64,
-        participant: &Participant,
+        participant: Participant,
+        verified_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Set the current contribution as verified for the given chunk ID.
         self.get_chunk_mut(chunk_id)?
-            .verify_contribution(contribution_id, participant)?;
+            .verify_contribution(contribution_id, participant, verified_locator)?;
 
         // If the chunk is complete and the finished at timestamp has not been set yet,
         // then set it with the current UTC timestamp.
@@ -402,8 +403,6 @@ mod tests {
     #[test]
     #[serial]
     fn test_are_chunks_verified() {
-        test_logger();
-
         // TODO (howardwu): Add tests for a full completeness check.
         let round = test_round_0_json().unwrap();
         assert!(round.is_complete());

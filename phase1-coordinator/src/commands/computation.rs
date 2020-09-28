@@ -89,7 +89,6 @@ mod tests {
     #[test]
     #[serial]
     fn test_computation_run() {
-        test_logger();
         clear_test_transcript();
 
         // Define test parameters.

@@ -240,6 +240,11 @@ impl Environment {
         round_directory!(self, Local, Remote, Remote, round_height)
     }
 
+    /// Initializes the round directory for a given round height.
+    pub fn round_directory_init(&self, round_height: u64) {
+        round_directory_init!(self, Local, Remote, Remote, round_height)
+    }
+
     /// Returns `true` if the round directory exists for a given round height.
     pub fn round_directory_exists(&self, round_height: u64) -> bool {
         round_directory_exists!(self, Local, Remote, Remote, round_height)
@@ -255,6 +260,11 @@ impl Environment {
         chunk_directory!(self, Local, Remote, Remote, round_height, chunk_id)
     }
 
+    /// Initializes the chunk directory for a given round height and chunk ID.
+    pub fn chunk_directory_init(&self, round_height: u64, chunk_id: u64) {
+        chunk_directory_init!(self, Local, Remote, Remote, round_height, chunk_id)
+    }
+
     /// Returns `true` if the chunk directory exists for a given round height and chunk ID.
     pub fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
         chunk_directory_exists!(self, Local, Remote, Remote, round_height, chunk_id)
@@ -263,6 +273,11 @@ impl Environment {
     /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
     pub fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> String {
         contribution_locator!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
+    }
+
+    /// Initializes the contribution locator file for a given round, chunk ID, and contribution ID.
+    pub fn contribution_locator_init(&self, round_height: u64, chunk_id: u64, contribution_id: u64) {
+        contribution_locator_init!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
     }
 
     /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
