@@ -24,9 +24,11 @@ use url_serde;
 #[serde(rename_all = "camelCase")]
 pub struct Contribution {
     contributor_id: Option<Participant>,
-    contributed_location: Option<String>,
+    #[serde(rename = "contributed_location")]
+    contributed_locator: Option<String>,
     verifier_id: Option<Participant>,
-    verified_location: Option<String>,
+    #[serde(rename = "verified_location")]
+    verified_locator: Option<String>,
     verified: bool,
 }
 
@@ -54,12 +56,12 @@ impl Contribution {
 
         Ok(Self {
             contributor_id: Some(participant),
-            contributed_location: Some(format!(
+            contributed_locator: Some(format!(
                 "{}/chunks/{}/contribution/{}",
                 contributed_base_url, chunk_id, contribution_id
             )),
             verifier_id: None,
-            verified_location: None,
+            verified_locator: None,
             verified: false,
         })
     }
@@ -96,9 +98,9 @@ impl Contribution {
         // we can safely set `verified` to `true`.
         let mut contribution = Self {
             contributor_id: None,
-            contributed_location: None,
+            contributed_locator: None,
             verifier_id: Some(participant),
-            verified_location: Some(format!(
+            verified_locator: Some(format!(
                 "{}/chunks/{}/contribution/{}",
                 verified_base_url, chunk_id, contribution_id
             )),
@@ -139,7 +141,7 @@ impl Contribution {
         }
 
         // Check that this contribution does not have a verified locator.
-        if self.verified_location.is_some() {
+        if self.verified_locator.is_some() {
             return Err(CoordinatorError::ContributionAlreadyAssignedVerifiedLocator);
         }
 
@@ -149,7 +151,7 @@ impl Contribution {
         }
 
         self.verifier_id = Some(participant);
-        self.verified_location = Some(format!(
+        self.verified_locator = Some(format!(
             "{}/chunks/{}/contribution/{}",
             verified_base_url, chunk_id, contribution_id
         ));
@@ -183,7 +185,7 @@ impl Contribution {
         }
 
         // Check that this contribution has a verified locator.
-        if self.verified_location.is_none() {
+        if self.verified_locator.is_none() {
             return Err(CoordinatorError::ContributionMissingVerifiedLocator);
         }
 
@@ -215,7 +217,7 @@ impl Contribution {
     /// Otherwise returns `None`.
     #[inline]
     pub fn get_contributed_location(&self) -> &Option<String> {
-        &self.contributed_location
+        &self.contributed_locator
     }
 
     /// Returns a reference to the verifier, if it exists.
@@ -229,6 +231,6 @@ impl Contribution {
     /// Otherwise returns `None`.
     #[inline]
     pub fn get_verified_location(&self) -> &Option<String> {
-        &self.verified_location
+        &self.verified_locator
     }
 }

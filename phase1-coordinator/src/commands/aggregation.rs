@@ -142,11 +142,11 @@ impl Aggregation {
         let round_height = round.get_height();
 
         // Fetch the round transcript locator for the given round.
-        let round_locator = environment.final_round_locator(round_height);
+        let round_locator = environment.round_locator(round_height);
 
         // Check that the round transcript locator does not already exist.
-        if Path::new(&round_locator).exists() {
-            return Err(CoordinatorError::FinalTranscriptAlreadyExists.into());
+        if environment.round_locator_exists(round_height) {
+            return Err(CoordinatorError::RoundLocatorAlreadyExists.into());
         }
 
         // Fetch the round height.

@@ -66,8 +66,156 @@ macro_rules! round_filesize {
     }};
 }
 
-/// Returns an error logging message using `tracing`,
-/// then returns the error itself.
+/// Returns an instance of storage based on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! storage {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
+        use crate::storage::*;
+
+        match $env {
+            Environment::Test(_) => Box::new($l1::load()?),
+            Environment::Development(_) => Box::new($l2::load()?),
+            Environment::Production(_) => Box::new($l3::load()?),
+        }
+    }};
+}
+
+/// Returns the round directory using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_directory {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory($env, $round_height),
+            Environment::Development(_) => $l2::round_directory($env, $round_height),
+            Environment::Production(_) => $l3::round_directory($env, $round_height),
+        }
+    }};
+}
+
+/// Returns `true` if the round directory exists using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_directory_exists {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory_exists($env, $round_height),
+            Environment::Development(_) => $l2::round_directory_exists($env, $round_height),
+            Environment::Production(_) => $l3::round_directory_exists($env, $round_height),
+        }
+    }};
+}
+
+/// Resets the round directory if permitted using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_directory_reset {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory_reset($env, $round_height),
+            Environment::Development(_) => $l2::round_directory_reset($env, $round_height),
+            Environment::Production(_) => $l3::round_directory_reset($env, $round_height),
+        }
+    }};
+}
+
+/// Returns the chunk directory using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! chunk_directory {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::chunk_directory($env, $round_height, $chunk_id),
+            Environment::Development(_) => $l2::chunk_directory($env, $round_height, $chunk_id),
+            Environment::Production(_) => $l3::chunk_directory($env, $round_height, $chunk_id),
+        }
+    }};
+}
+
+/// Returns `true` if the chunk directory exists using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! chunk_directory_exists {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::chunk_directory_exists($env, $round_height, $chunk_id),
+            Environment::Development(_) => $l2::chunk_directory_exists($env, $round_height, $chunk_id),
+            Environment::Production(_) => $l3::chunk_directory_exists($env, $round_height, $chunk_id),
+        }
+    }};
+}
+
+/// Returns the contribution locator using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! contribution_locator {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::contribution_locator($env, $round_height, $chunk_id, $cont_id),
+            Environment::Development(_) => $l2::contribution_locator($env, $round_height, $chunk_id, $cont_id),
+            Environment::Production(_) => $l3::contribution_locator($env, $round_height, $chunk_id, $cont_id),
+        }
+    }};
+}
+
+/// Returns `true` if the contribution locator exists using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! contribution_locator_exists {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
+            Environment::Development(_) => $l2::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
+            Environment::Production(_) => $l3::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
+        }
+    }};
+}
+
+/// Returns the round locator using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_locator {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => <$l1 as Locator>::round_locator($env, $round_height),
+            Environment::Development(_) => <$l2 as Locator>::round_locator($env, $round_height),
+            Environment::Production(_) => <$l3 as Locator>::round_locator($env, $round_height),
+        }
+    }};
+}
+
+/// Returns `true` if the round locator exists using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_locator_exists {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_locator_exists($env, $round_height),
+            Environment::Development(_) => $l2::round_locator_exists($env, $round_height),
+            Environment::Production(_) => $l3::round_locator_exists($env, $round_height),
+        }
+    }};
+}
+
+/// Returns an error logging message using `tracing`, then returns the error itself.
 #[macro_export]
 macro_rules! return_error {
     ($error:ident, $message:ident) => {{

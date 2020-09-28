@@ -82,6 +82,7 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
             ping_get,
             timestamp_get, // transcript_get,
             round_get,
+            deprecated::ceremony_get,
         ])
         .attach(environment.cors());
     info!("Server is ready");

@@ -49,12 +49,6 @@ impl Participant {
     }
 }
 
-// impl AsRef<[u8]> for Participant {
-//     fn as_ref(&self) -> &[u8] {
-//         bincode::serialize(self).unwrap()
-//     }
-// }
-
 impl FromDataSimple for Participant {
     type Error = String;
 
