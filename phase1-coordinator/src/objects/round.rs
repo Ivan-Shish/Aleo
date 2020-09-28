@@ -38,7 +38,6 @@ impl Round {
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
         verifier_ids: Vec<Participant>,
-        chunk_verifier_ids: Vec<Participant>,
     ) -> Result<Self, CoordinatorError> {
         debug!("Creating round {}", height);
 
@@ -69,22 +68,18 @@ impl Round {
         if num_chunks == 0 {
             return Err(CoordinatorError::NumberOfChunksInvalid);
         }
-        // Check that the number of chunks matches the given number of chunk verifier IDs.
-        if num_chunks != chunk_verifier_ids.len() as u64 {
-            return Err(CoordinatorError::NumberOfChunkVerifierIdsInvalid);
-        }
 
-        // Check that the chunk verifier IDs all exist in the list of verifier IDs.
-        for id in &chunk_verifier_ids {
-            if !verifier_ids.contains(id) {
-                return Err(CoordinatorError::MissingVerifierIds);
-            }
-        }
+        // Initialize the chunk verifiers as a list comprising only the coordinator verifier,
+        // as this is for initialization.
+        let chunk_verifiers = (0..num_chunks)
+            .into_par_iter()
+            .map(|_| environment.coordinator_verifier())
+            .collect::<Vec<_>>();
 
         // Construct the chunks for this round.
         let chunks: Vec<Chunk> = (0..num_chunks as usize)
             .into_par_iter()
-            .zip(chunk_verifier_ids)
+            .zip(chunk_verifiers)
             .map(|(chunk_id, verifier)| {
                 Chunk::new(
                     chunk_id as u64,
@@ -305,7 +300,6 @@ mod tests {
             *TEST_STARTED_AT,
             TEST_CONTRIBUTOR_IDS.to_vec(),
             TEST_VERIFIER_IDS.to_vec(),
-            TEST_CHUNK_VERIFIER_IDS.to_vec(),
         )
         .unwrap();
 

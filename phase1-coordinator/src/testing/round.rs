@@ -13,6 +13,9 @@ use serial_test::serial;
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest);
 
 /// Environment for testing purposes only.
+pub static TEST_ENVIRONMENT_3: Environment = Environment::Test(Parameters::AleoTest3);
+
+/// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20);
 
 lazy_static! {
@@ -39,9 +42,6 @@ lazy_static! {
 
     /// Verifier IDs for testing purposes only.
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
-
-    /// Chunk verifier IDs for testing purposes only.
-    pub static ref TEST_CHUNK_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| (0..TEST_ENVIRONMENT.number_of_chunks()).into_iter().map(|_| Lazy::force(&TEST_VERIFIER_IDS)[0].clone()).collect());
 }
 
 /// Clears the transcript directory for testing purposes only.
@@ -71,7 +71,6 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         *TEST_STARTED_AT,
         TEST_CONTRIBUTOR_IDS.to_vec(),
         TEST_VERIFIER_IDS.to_vec(),
-        TEST_CHUNK_VERIFIER_IDS.to_vec(),
     )?)
 }
 
