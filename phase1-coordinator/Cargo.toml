@@ -24,6 +24,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenv = { version = "0.15" }
 lazy_static = { version = "1.4.0" }
 memmap = { version = "0.7.0" }
+rand = { version = "0.7.3" }
 rayon = { version = "1.4.0" }
 rocket = { version = "0.4.5" }
 rocket_contrib = { version = "0.4", features = ["json"] }

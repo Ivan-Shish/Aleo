@@ -34,14 +34,10 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
         "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
     )];
     let verifiers = vec![environment.coordinator_verifier()];
-    let chunk_verifiers = (0..environment.number_of_chunks())
-        .into_iter()
-        .map(|_| verifiers[0].clone())
-        .collect();
 
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
-        coordinator.next_round(Utc::now(), contributors, verifiers, chunk_verifiers)?;
+        coordinator.next_round(Utc::now(), contributors, verifiers)?;
     }
     info!("Coordinator is ready");
     info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);

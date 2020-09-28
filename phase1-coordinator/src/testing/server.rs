@@ -19,7 +19,6 @@ pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator
             *TEST_STARTED_AT,
             TEST_CONTRIBUTOR_IDS.to_vec(),
             TEST_VERIFIER_IDS.to_vec(),
-            TEST_CHUNK_VERIFIER_IDS.to_vec(),
         )?;
     }
     info!("Coordinator is ready");

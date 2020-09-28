@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Aggregation, Initialization, Verification},
+    commands::{Aggregation, Computation, Initialization, Verification},
     environment::Environment,
     objects::{Participant, Round},
     storage::{Key, Storage, Value},
@@ -27,6 +27,7 @@ pub enum CoordinatorError {
     ChunkNotLockedOrByWrongParticipant,
     ChunkUpdateFailed,
     ChunkVerifierMissing,
+    ComputationFailed,
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
@@ -341,7 +342,6 @@ impl Coordinator {
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
         verifiers: Vec<Participant>,
-        chunk_verifiers: Vec<Participant>,
     ) -> Result<u64, CoordinatorError> {
         // Fetch the current height of the ceremony.
         let round_height = self.current_round_height()?;
@@ -373,7 +373,7 @@ impl Coordinator {
 
         // Execute the round initialization as the coordinator.
         // On success, the new round will have been saved to storage.
-        self.run_initialization(round_height, started_at, contributors, verifiers, chunk_verifiers)?;
+        self.run_initialization(round_height, started_at, contributors, verifiers)?;
 
         // Fetch the new round height.
         let new_height = self.current_round_height()?;
@@ -402,7 +402,6 @@ impl Coordinator {
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
         verifiers: Vec<Participant>,
-        chunk_verifiers: Vec<Participant>,
     ) -> Result<(), CoordinatorError> {
         trace!("Received call to initialize round {}", round_height);
 
@@ -440,27 +439,13 @@ impl Coordinator {
                 // as this is for initialization.
                 let verifiers = vec![self.environment.coordinator_verifier()];
 
-                // Initialize the chunk verifiers as a list comprising only the coordinator verifier,
-                // as this is for initialization.
-                let chunk_verifiers = (0..self.environment.number_of_chunks())
-                    .into_par_iter()
-                    .map(|_| self.environment.coordinator_verifier())
-                    .collect::<Vec<_>>();
-
                 match self.storage()?.get(&Key::Round(round_height)) {
                     // Check that the round does not exist in storage.
                     // If it exists, this means the round was already initialized.
                     Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
                     Some(_) => return Err(CoordinatorError::StorageFailed),
                     // Create a new round instance and save it to storage.
-                    _ => Round::new(
-                        &self.environment,
-                        round_height,
-                        started_at,
-                        contributors,
-                        verifiers,
-                        chunk_verifiers,
-                    )?,
+                    _ => Round::new(&self.environment, round_height, started_at, contributors, verifiers)?,
                 }
             };
 
@@ -521,14 +506,7 @@ impl Coordinator {
         }
 
         // Instantiate the new round and height.
-        let new_round = Round::new(
-            &self.environment,
-            new_height,
-            started_at,
-            contributors,
-            verifiers,
-            chunk_verifiers,
-        )?;
+        let new_round = Round::new(&self.environment, new_height, started_at, contributors, verifiers)?;
 
         #[cfg(test)]
         {
@@ -543,10 +521,69 @@ impl Coordinator {
     }
 
     ///
+    /// Attempts to run computation for a given chunk ID and contribution ID in the current round.
+    ///
+    /// This function is primarily used for testing purposes. This can also be purposed for
+    /// completing contributions of participants who may have dropped off and handed over
+    /// control of their session.
+    ///
+    #[inline]
+    fn run_computation(
+        &self,
+        chunk_id: u64,
+        contribution_id: u64,
+        participant: &Participant,
+    ) -> Result<(), CoordinatorError> {
+        // Fetch the current height from storage.
+        let round_height = self.current_round_height()?;
+
+        // Check that the chunk lock is currently held by this contributor.
+        let round = self.get_round(round_height)?;
+        if !round.is_chunk_locked_by(chunk_id, &participant) {
+            error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+        }
+
+        // Check that the contribution locator corresponding to this round and chunk exists.
+        if self
+            .environment
+            .contribution_locator_exists(round_height, chunk_id, contribution_id)
+        {
+            error!("Locator for contribution {} already exists", contribution_id);
+            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
+        }
+
+        // Fetch the current round and given chunk ID and check that
+        // the given contribution ID has not been verified yet.
+        let chunk = round.get_chunk(chunk_id)?;
+        if chunk.get_contribution(contribution_id)?.is_verified() {
+            return Err(CoordinatorError::ContributionAlreadyVerified);
+        }
+
+        debug!(
+            "Coordinator is starting computation on chunk {} contribution {}",
+            chunk_id, contribution_id
+        );
+        Computation::run(&self.environment, round_height, chunk_id, contribution_id)?;
+        debug!(
+            "Coordinator completed computation on chunk {} contribution {}",
+            chunk_id, contribution_id
+        );
+
+        // Attempts to set the current contribution as verified in the current round.
+        // self.add_contribution(chunk_id, contributor)?;
+
+        info!("Computed chunk {} contribution {}", chunk_id, contribution_id);
+        Ok(())
+    }
+
+    ///
     /// Attempts to add a contribution for a given chunk ID from a given participant.
     ///
-    /// On success, this function returns the chunk locator.
-    /// Otherwise, it returns a `CoordinatorError`.
+    /// On success, this function releases the lock from the contributor and returns
+    /// the chunk locator.
+    ///
+    /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
     pub(crate) fn add_contribution(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
@@ -719,6 +756,7 @@ impl Coordinator {
         // check that the chunk lock is currently held by this verifier.
         let verifier = self.environment.coordinator_verifier();
         if !self.get_round(round_height)?.is_chunk_locked_by(chunk_id, &verifier) {
+            error!("{} should have lock on chunk {} but does not", &verifier, chunk_id);
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
@@ -898,9 +936,26 @@ mod test {
     use chrono::Utc;
     use once_cell::sync::Lazy;
 
-    fn coordinator_initialization_test() -> anyhow::Result<()> {
-        test_logger();
+    fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
 
+        // Run initialization.
+        coordinator.next_round(
+            Utc::now(),
+            vec![
+                Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+                Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+            ],
+            vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+        )?;
+
+        // Check current round height is now 1.
+        assert_eq!(1, coordinator.current_round_height()?);
+        Ok(())
+    }
+
+    fn coordinator_initialization_test() -> anyhow::Result<()> {
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
 
         // Ensure the ceremony has not started.
@@ -914,16 +969,6 @@ mod test {
                 Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
             ],
             vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
-            vec![
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-            ],
         )?;
 
         {
@@ -943,19 +988,79 @@ mod test {
             // Check round 1 verifiers.
             assert_eq!(1, coordinator.current_round()?.get_verifiers().len());
             assert!(coordinator.is_current_verifier(&TEST_VERIFIER_ID));
-            // assert!(!coordinator.is_current_verifier(&TEST_VERIFIER_ID_2));
-            // assert!(!coordinator.is_current_verifier(&TEST_CONTRIBUTOR_ID));
+            assert!(!coordinator.is_current_verifier(&TEST_VERIFIER_ID_2));
+            assert!(!coordinator.is_current_verifier(&TEST_CONTRIBUTOR_ID));
 
             // Check round 1 is NOT complete.
             assert!(!coordinator.current_round()?.is_complete());
         }
 
-        // Check round 1 contributors.
+        Ok(())
+    }
 
-        // Contributor 1
-        // {
-        //     coordinator.try_lock_chunk(coordinator.)
-        // }
+    fn coordinator_contributor_try_lock_test() -> anyhow::Result<()> {
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        initialize_coordinator(&coordinator)?;
+
+        {
+            // Acquire the lock for chunk 0 as contributor 1.
+            let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+            assert!(coordinator.try_lock_chunk(0, contributor.clone()).is_ok());
+
+            // Attempt to acquire the lock for chunk 0 again.
+            assert!(coordinator.try_lock_chunk(0, contributor.clone()).is_err());
+
+            // Attempt to acquire the lock for chunk 1.
+            assert!(coordinator.try_lock_chunk(1, contributor.clone()).is_err());
+
+            // Attempt to acquire the lock for chunk 0 as contributor 2.
+            let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone();
+            assert!(coordinator.try_lock_chunk(0, contributor_2.clone()).is_err());
+
+            // Attempt to acquire the lock for chunk 1 as contributor 2.
+            assert!(coordinator.try_lock_chunk(0, contributor_2).is_ok());
+        }
+
+        Ok(())
+    }
+
+    fn coordinator_contributor_add_contribution_test() -> anyhow::Result<()> {
+        test_logger();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        initialize_coordinator(&coordinator)?;
+
+        // Acquire the lock for chunk 0 as contributor 1.
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+        assert!(coordinator.try_lock_chunk(0, contributor.clone()).is_ok());
+
+        // Run computation on round 1 chunk 0 contribution 1.
+        {
+            // Check current round is 1.
+            let round = coordinator.current_round()?;
+            assert_eq!(1, round.get_height());
+
+            // Check chunk 0 is not verified.
+            let chunk_id = 0;
+            let chunk = round.get_chunk(chunk_id)?;
+            assert!(!chunk.is_complete(round.num_contributors()));
+
+            // Check next contribution is 1.
+            let contribution_id = 1;
+            assert!(chunk.is_next_contribution_id(contribution_id, round.num_contributors()));
+
+            // Run the computation
+            assert!(
+                coordinator
+                    .run_computation(chunk_id, contribution_id, contributor)
+                    .is_ok()
+            );
+        }
+
+        // Add contribution for round 1 chunk 0 contribution 1.
+        {
+            assert!(coordinator.add_contribution(0, contributor.clone()).is_ok());
+        }
 
         Ok(())
     }
@@ -964,5 +1069,17 @@ mod test {
     #[serial]
     fn test_coordinator_initialization() {
         coordinator_initialization_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_contributor_try_lock() {
+        coordinator_contributor_try_lock_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_contributor_add_contribution() {
+        coordinator_contributor_add_contribution_test().unwrap();
     }
 }

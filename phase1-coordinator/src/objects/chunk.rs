@@ -115,11 +115,14 @@ impl Chunk {
     }
 
     ///
-    /// Returns the next number of contributions in this chunk, using
-    /// the given expected number of contributions as a basis for computing it.
+    /// Returns the next number of contributions in this chunk.
     ///
-    /// This function should only be used to legitimately get the next
-    /// contribution ID.
+    /// This function uses the given expected number of contributions
+    /// as a basis for determining the next contribution ID.
+    ///
+    /// This function should only be used to get the next contribution ID when
+    /// the next contribution ID is ready to be computed. It should not be used
+    /// for polling or querying, as it is too restrictive for those purposes.
     ///
     /// If the current contribution is not verified, returns `CoordinatorError`.
     /// If the contributions are complete, returns `CoordinatorError`.
