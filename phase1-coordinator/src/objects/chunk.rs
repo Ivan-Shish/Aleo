@@ -111,6 +111,13 @@ impl Chunk {
             return false;
         }
 
+        // Check that this chunk is not yet complete. If so, it means there is
+        // no more contribution IDs to increment on here. The coordinator should
+        // start the next round and reset the contribution ID.
+        if self.is_complete(expected_contributions) {
+            return false;
+        }
+
         true
     }
 
@@ -327,7 +334,7 @@ impl Chunk {
         }
 
         // Check that the contribution ID is one above the current contribution ID.
-        if self.is_next_contribution_id(contribution_id, expected_contributions) {
+        if !self.is_next_contribution_id(contribution_id, expected_contributions) {
             return Err(CoordinatorError::ContributionIdMismatch);
         }
 
@@ -353,7 +360,8 @@ impl Chunk {
     pub fn verify_contribution(
         &mut self,
         contribution_id: u64,
-        participant: &Participant,
+        participant: Participant,
+        verified_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -361,12 +369,15 @@ impl Chunk {
         }
 
         // Check that this chunk is locked by the verifier before attempting to verify contribution.
-        if !self.is_locked_by(participant) {
+        if !self.is_locked_by(&participant) {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
         // Fetch the contribution to be verified from the chunk.
         let mut contribution = self.get_contribution_mut(contribution_id)?;
+
+        // Attempt to assign the verifier to the contribution.
+        contribution.assign_verifier(participant.clone(), verified_locator)?;
 
         // Attempt to verify the contribution.
         match contribution.is_verified() {
@@ -374,7 +385,7 @@ impl Chunk {
             true => Err(CoordinatorError::ContributionAlreadyVerified),
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
-                contribution.try_verify(participant)?;
+                contribution.try_verify(&participant)?;
 
                 // Release the lock on this chunk from the verifier.
                 self.lock_holder = None;

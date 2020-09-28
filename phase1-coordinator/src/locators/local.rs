@@ -7,7 +7,7 @@ use tracing::warn;
 pub struct Local;
 
 impl Locator for Local {
-    /// Returns the transcript directory for a given round from the coordinator.
+    /// Returns the round directory for a given round height from the coordinator.
     fn round_directory(environment: &Environment, round_height: u64) -> String
     where
         Self: Sized,
@@ -19,6 +19,18 @@ impl Locator for Local {
         }
     }
 
+    /// Initializes the round directory for a given environment and round height.
+    fn round_directory_init(environment: &Environment, round_height: u64) {
+        // If the path does not exist, attempt to initialize the directory path.
+        let path = Self::round_directory(environment, round_height);
+
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
+        }
+    }
+
+    /// Returns `true` if the round directory for a given round height exists.
+    /// Otherwise, returns `false`.
     fn round_directory_exists(environment: &Environment, round_height: u64) -> bool
     where
         Self: Sized,
@@ -27,6 +39,7 @@ impl Locator for Local {
         Path::new(&path).exists()
     }
 
+    /// Resets the round directory for a given environment and round height.
     fn round_directory_reset(environment: &Environment, round_height: u64) {
         // If this is a test environment, attempt to clear it for the coordinator.
         let directory = Self::round_directory(environment, round_height);
@@ -44,7 +57,7 @@ impl Locator for Local {
         }
     }
 
-    /// Returns the chunk transcript directory for a given round and chunk ID from the coordinator.
+    /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
     fn chunk_directory(environment: &Environment, round_height: u64, chunk_id: u64) -> String
     where
         Self: Sized,
@@ -56,6 +69,18 @@ impl Locator for Local {
         format!("{}/chunk_{}", path, chunk_id)
     }
 
+    /// Initializes the chunk directory for a given environment, round height, and chunk ID.
+    fn chunk_directory_init(environment: &Environment, round_height: u64, chunk_id: u64) {
+        // If the path does not exist, attempt to initialize the directory path.
+        let path = Self::chunk_directory(environment, round_height, chunk_id);
+
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
+        }
+    }
+
+    /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
+    /// Otherwise, returns `false`.
     fn chunk_directory_exists(environment: &Environment, round_height: u64, chunk_id: u64) -> bool
     where
         Self: Sized,
@@ -64,7 +89,8 @@ impl Locator for Local {
         Path::new(&path).exists()
     }
 
-    /// Returns the contribution locator for a given round, chunk ID, and contribution ID from the coordinator.
+    /// Returns the contribution locator for a given round, chunk ID, and
+    /// contribution ID from the coordinator.
     fn contribution_locator(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) -> String
     where
         Self: Sized,
@@ -72,15 +98,24 @@ impl Locator for Local {
         // Fetch the chunk directory path.
         let path = Self::chunk_directory(environment, round_height, chunk_id);
 
-        // If the path does not exist, attempt to initialize the directory path.
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
-        }
-
         // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}`.
         format!("{}/contribution_{}", path, contribution_id)
     }
 
+    /// Initializes the contribution locator file for a given round, chunk ID, and
+    /// contribution ID from the coordinator.
+    fn contribution_locator_init(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) {
+        // If the path does not exist, attempt to initialize the file path.
+        let path = Self::contribution_locator(environment, round_height, chunk_id, contribution_id);
+
+        let directory = Path::new(&path).parent().expect("unable to create parent directory");
+        if !directory.exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the contribution directory");
+        }
+    }
+
+    /// Returns `true` if the contribution locator for a given round height, chunk ID,
+    /// and contribution ID exists. Otherwise, returns `false`.
     fn contribution_locator_exists(
         environment: &Environment,
         round_height: u64,
@@ -94,7 +129,7 @@ impl Locator for Local {
         Path::new(&path).exists()
     }
 
-    /// Returns the round transcript locator for a given round from the coordinator.
+    /// Returns the round locator for a given round from the coordinator.
     fn round_locator(environment: &Environment, round_height: u64) -> String
     where
         Self: Sized,
@@ -102,15 +137,12 @@ impl Locator for Local {
         // Create the transcript directory path.
         let path = Self::round_directory(environment, round_height);
 
-        // If the path does not exist, attempt to initialize the directory path.
-        // if !Path::new(&path).exists() {
-        //     std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
-        // }
-
         // Create the round locator located at `{round_directory}/output`.
         format!("{}/output", path)
     }
 
+    /// Returns `true` if the round locator for a given round height exists.
+    /// Otherwise, returns `false`.
     fn round_locator_exists(environment: &Environment, round_height: u64) -> bool
     where
         Self: Sized,

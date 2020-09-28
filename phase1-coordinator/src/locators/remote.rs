@@ -19,6 +19,16 @@ impl Locator for Remote {
         }
     }
 
+    /// Initializes the round directory for a given environment and round height.
+    fn round_directory_init(environment: &Environment, round_height: u64)
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    /// Returns `true` if the round directory for a given round height exists.
+    /// Otherwise, returns `false`.
     fn round_directory_exists(environment: &Environment, round_height: u64) -> bool
     where
         Self: Sized,
@@ -27,23 +37,12 @@ impl Locator for Remote {
         unimplemented!()
     }
 
+    /// Resets the round directory for a given environment and round height.
     fn round_directory_reset(_environment: &Environment, _round_height: u64) {
-        // If this is a test environment, attempt to clear it for the coordinator.
-        // let directory = Self::round_directory(environment, round_height);
-        // let path = Path::new(&directory);
-        // match environment {
-        //     Environment::Test(_) => {
-        //         warn!("Coordinator is clearing {:?}", &path);
-        //         std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-        //         warn!("Coordinator cleared {:?}", &path);
-        //     }
-        //     Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
-        //     Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
-        // }
         unimplemented!()
     }
 
-    /// Returns the chunk transcript directory for a given round and chunk ID from the coordinator.
+    /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
     fn chunk_directory(environment: &Environment, round_height: u64, chunk_id: u64) -> String
     where
         Self: Sized,
@@ -55,6 +54,13 @@ impl Locator for Remote {
         format!("{}/chunk/{}", url, chunk_id)
     }
 
+    /// Initializes the chunk directory for a given environment, round height, and chunk ID.
+    fn chunk_directory_init(environment: &Environment, round_height: u64, chunk_id: u64) {
+        unimplemented!()
+    }
+
+    /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
+    /// Otherwise, returns `false`.
     fn chunk_directory_exists(environment: &Environment, round_height: u64, chunk_id: u64) -> bool
     where
         Self: Sized,
@@ -63,7 +69,8 @@ impl Locator for Remote {
         Path::new(&path).exists()
     }
 
-    /// Returns the contribution locator for a given round, chunk ID, and contribution ID from the coordinator.
+    /// Returns the contribution locator for a given round, chunk ID, and
+    /// contribution ID from the coordinator.
     fn contribution_locator(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) -> String
     where
         Self: Sized,
@@ -71,15 +78,18 @@ impl Locator for Remote {
         // Fetch the chunk directory path.
         let path = Self::chunk_directory(environment, round_height, chunk_id);
 
-        // If the path does not exist, attempt to initialize the directory path.
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
-        }
-
         // Set the contribution locator as `{chunk_directory}/contribution/{contribution_id}`.
         format!("{}/contribution/{}", path, contribution_id)
     }
 
+    /// Initializes the contribution locator file for a given round, chunk ID, and
+    /// contribution ID from the coordinator.
+    fn contribution_locator_init(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) {
+        unimplemented!()
+    }
+
+    /// Returns `true` if the contribution locator for a given round height, chunk ID,
+    /// and contribution ID exists. Otherwise, returns `false`.
     fn contribution_locator_exists(
         environment: &Environment,
         round_height: u64,
@@ -93,7 +103,7 @@ impl Locator for Remote {
         Path::new(&path).exists()
     }
 
-    /// Returns the round transcript locator for a given round from the coordinator.
+    /// Returns the round locator for a given round from the coordinator.
     fn round_locator(environment: &Environment, round_height: u64) -> String
     where
         Self: Sized,
@@ -101,15 +111,12 @@ impl Locator for Remote {
         // Create the transcript directory path.
         let path = Self::round_directory(environment, round_height);
 
-        // If the path does not exist, attempt to initialize the directory path.
-        // if !Path::new(&path).exists() {
-        //     std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
-        // }
-
         // Create the round locator located at `{round_directory}/round`.
         format!("{}/round", path)
     }
 
+    /// Returns `true` if the round locator for a given round height exists.
+    /// Otherwise, returns `false`.
     fn round_locator_exists(environment: &Environment, round_height: u64) -> bool
     where
         Self: Sized,

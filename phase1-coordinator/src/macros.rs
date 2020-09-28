@@ -95,6 +95,21 @@ macro_rules! round_directory {
     }};
 }
 
+/// Initializes the round directory for a given round height using a locator that is
+/// determined based on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_directory_init {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory_init($env, $round_height),
+            Environment::Development(_) => $l2::round_directory_init($env, $round_height),
+            Environment::Production(_) => $l3::round_directory_init($env, $round_height),
+        }
+    }};
+}
+
 /// Returns `true` if the round directory exists using a locator that is determined based
 /// on the environment the coordinator is operating in.
 #[macro_export]
@@ -140,6 +155,21 @@ macro_rules! chunk_directory {
     }};
 }
 
+/// Initializes the chunk directory for a given round height and chunk ID using a locator
+/// that is determined based on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! chunk_directory_init {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::chunk_directory_init($env, $round_height, $chunk_id),
+            Environment::Development(_) => $l2::chunk_directory_init($env, $round_height, $chunk_id),
+            Environment::Production(_) => $l3::chunk_directory_init($env, $round_height, $chunk_id),
+        }
+    }};
+}
+
 /// Returns `true` if the chunk directory exists using a locator that is determined based
 /// on the environment the coordinator is operating in.
 #[macro_export]
@@ -166,6 +196,21 @@ macro_rules! contribution_locator {
             Environment::Test(_) => $l1::contribution_locator($env, $round_height, $chunk_id, $cont_id),
             Environment::Development(_) => $l2::contribution_locator($env, $round_height, $chunk_id, $cont_id),
             Environment::Production(_) => $l3::contribution_locator($env, $round_height, $chunk_id, $cont_id),
+        }
+    }};
+}
+
+/// Initializes the contribution locator using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! contribution_locator_init {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
+            Environment::Development(_) => $l2::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
+            Environment::Production(_) => $l3::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
         }
     }};
 }
