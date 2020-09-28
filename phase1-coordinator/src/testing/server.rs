@@ -15,7 +15,7 @@ pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator
     clear_test_transcript();
 
     info!("Starting coordinator");
-    let mut coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone())?;
     // If this is the first time running the ceremony, start by initializing one round.
     if coordinator.current_round_height()? == 0 {
         coordinator.next_round(

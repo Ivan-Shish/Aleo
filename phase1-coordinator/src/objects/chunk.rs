@@ -374,7 +374,7 @@ impl Chunk {
         }
 
         // Fetch the contribution to be verified from the chunk.
-        let mut contribution = self.get_contribution_mut(contribution_id)?;
+        let contribution = self.get_contribution_mut(contribution_id)?;
 
         // Attempt to assign the verifier to the contribution.
         contribution.assign_verifier(participant.clone(), verified_locator)?;
@@ -385,6 +385,7 @@ impl Chunk {
             true => Err(CoordinatorError::ContributionAlreadyVerified),
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
+                // Attempt verification of the contribution.
                 contribution.try_verify(&participant)?;
 
                 // Release the lock on this chunk from the verifier.

@@ -76,7 +76,7 @@ impl Contribution {
         // Create a new contribution instance.
         // As this is function is only used for initialization,
         // we can safely set `verified` to `true`.
-        let mut contribution = Self {
+        let contribution = Self {
             contributor_id: None,
             contributed_locator: None,
             verifier_id: Some(participant),

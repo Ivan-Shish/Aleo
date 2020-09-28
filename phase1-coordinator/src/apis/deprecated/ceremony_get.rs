@@ -18,7 +18,7 @@ mod test {
     #[test]
     #[serial]
     fn test_ceremony_get() {
-        let (client, coordinator) = test_client(&TEST_ENVIRONMENT).unwrap();
+        let (client, _) = test_client(&TEST_ENVIRONMENT).unwrap();
 
         let mut response = client.get("/ceremony").dispatch();
         let response_body = response.body_string();

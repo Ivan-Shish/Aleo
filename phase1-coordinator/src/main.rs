@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate rocket;
-#[macro_use]
-extern crate serde_json;
 
 use phase1_coordinator::{
     apis::*,
@@ -28,7 +26,7 @@ fn logger() {
 #[inline]
 fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
-    let mut coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone())?;
 
     let contributors = vec![Participant::Contributor(
         "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4".to_string(),
