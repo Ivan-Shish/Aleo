@@ -14,7 +14,7 @@ mod test {
     #[test]
     #[serial]
     fn test_timestamp_get() {
-        let client = test_client().unwrap();
+        let (client, _) = test_client(&TEST_ENVIRONMENT).unwrap();
 
         let mut response = client.get("/timestamp").dispatch();
         assert_eq!(Status::Ok, response.status());

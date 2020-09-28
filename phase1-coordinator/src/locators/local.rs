@@ -1,11 +1,6 @@
-use crate::{
-    environment::Environment,
-    locators::Locator,
-    objects::{Chunk, Round},
-    CoordinatorError,
-};
+use crate::{environment::Environment, locators::Locator};
 
-use std::{collections::HashMap, path::Path};
+use std::path::Path;
 use tracing::warn;
 
 #[derive(Debug)]
@@ -18,9 +13,9 @@ impl Locator for Local {
         Self: Sized,
     {
         match environment {
-            Environment::Test(_) => format!("./transcript/test/round-{}", round_height),
-            Environment::Development(_) => format!("./transcript/development/round-{}", round_height),
-            Environment::Production(_) => format!("./transcript/production/round-{}", round_height),
+            Environment::Test(_) => format!("./transcript/test/round_{}", round_height),
+            Environment::Development(_) => format!("./transcript/development/round_{}", round_height),
+            Environment::Production(_) => format!("./transcript/production/round_{}", round_height),
         }
     }
 
@@ -38,9 +33,11 @@ impl Locator for Local {
         let path = Path::new(&directory);
         match environment {
             Environment::Test(_) => {
-                warn!("Coordinator is clearing {:?}", &path);
-                std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-                warn!("Coordinator cleared {:?}", &path);
+                if Self::round_directory_exists(environment, round_height) {
+                    warn!("Coordinator is clearing {:?}", &path);
+                    std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
+                    warn!("Coordinator cleared {:?}", &path);
+                }
             }
             Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
             Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
@@ -55,8 +52,8 @@ impl Locator for Local {
         // Create the transcript directory path.
         let path = Self::round_directory(environment, round_height);
 
-        // Create the chunk directory as `{round_directory}/{chunk_id}`.
-        format!("{}/{}", path, chunk_id)
+        // Create the chunk directory as `{round_directory}/chunk_{chunk_id}`.
+        format!("{}/chunk_{}", path, chunk_id)
     }
 
     fn chunk_directory_exists(environment: &Environment, round_height: u64, chunk_id: u64) -> bool
@@ -80,8 +77,8 @@ impl Locator for Local {
             std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
         }
 
-        // Set the contribution locator as `{chunk_directory}/{contribution_id}`.
-        format!("{}/{}", path, contribution_id)
+        // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}`.
+        format!("{}/contribution_{}", path, contribution_id)
     }
 
     fn contribution_locator_exists(
@@ -110,8 +107,8 @@ impl Locator for Local {
         //     std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
         // }
 
-        // Create the round locator located at `{round_directory}/round`.
-        format!("{}/round", path)
+        // Create the round locator located at `{round_directory}/output`.
+        format!("{}/output", path)
     }
 
     fn round_locator_exists(environment: &Environment, round_height: u64) -> bool

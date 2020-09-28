@@ -3,7 +3,7 @@ use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::UseCompression;
 
 use memmap::*;
-use std::{fs::OpenOptions, panic, path::Path};
+use std::fs::OpenOptions;
 use tracing::{debug, error, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 

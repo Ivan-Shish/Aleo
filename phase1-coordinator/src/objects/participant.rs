@@ -9,9 +9,8 @@ use rocket::{
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_diff::SerdeDiff;
 use std::{
-    fmt::{self, Display},
+    fmt::{self},
     io::Read,
-    str::FromStr,
 };
 
 pub type ContributorId = String;
@@ -78,6 +77,43 @@ impl fmt::Display for Participant {
     }
 }
 
+/// Deserializes a contributor from a string.
+pub fn deserialize_contributor_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Contributor(String),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Contributor(id) => Ok(Participant::Contributor(id)),
+    }
+}
+
+/// Deserializes a optional contributor from a string.
+pub fn deserialize_optional_contributor_from_string<'de, D>(deserializer: D) -> Result<Option<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Contributor(String),
+        MaybeContributor(Option<String>),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Contributor(id) => Ok(Some(Participant::Contributor(id))),
+        ParticipantString::MaybeContributor(id) => match id {
+            Some(id) => Ok(Some(Participant::Contributor(id))),
+            None => Ok(None),
+        },
+    }
+}
+
 /// Deserializes a list of contributors from a list of strings.
 pub fn deserialize_contributors_from_strings<'de, D>(deserializer: D) -> Result<Vec<Participant>, D::Error>
 where
@@ -87,7 +123,7 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        Monolith(String),
+        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -97,16 +133,52 @@ where
                 result.push(Participant::Contributor(id))
             }
             Ok(result)
-        }
-        ParticipantString::Monolith(ids) => {
-            let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
+        } // ParticipantString::Monolith(ids) => {
+          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
+          //
+          //     let mut result = Vec::with_capacity(ids.len());
+          //     for id in ids {
+          //         result.push(Participant::Contributor(id))
+          //     }
+          //     Ok(result)
+          // }
+    }
+}
 
-            let mut result = Vec::with_capacity(ids.len());
-            for id in ids {
-                result.push(Participant::Contributor(id))
-            }
-            Ok(result)
-        }
+/// Deserializes a verifier from a string.
+pub fn deserialize_verifier_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Verifier(String),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Verifier(id) => Ok(Participant::Verifier(id)),
+    }
+}
+
+/// Deserializes a optional verifier from a string.
+pub fn deserialize_optional_verifier_from_string<'de, D>(deserializer: D) -> Result<Option<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Verifier(String),
+        MaybeVerifier(Option<String>),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Verifier(id) => Ok(Some(Participant::Verifier(id))),
+        ParticipantString::MaybeVerifier(id) => match id {
+            Some(id) => Ok(Some(Participant::Verifier(id))),
+            None => Ok(None),
+        },
     }
 }
 
@@ -119,7 +191,7 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        Monolith(String),
+        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -129,15 +201,14 @@ where
                 result.push(Participant::Verifier(id))
             }
             Ok(result)
-        }
-        ParticipantString::Monolith(ids) => {
-            let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
-
-            let mut result = Vec::with_capacity(ids.len());
-            for id in ids {
-                result.push(Participant::Verifier(id))
-            }
-            Ok(result)
-        }
+        } // ParticipantString::Monolith(ids) => {
+          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
+          //
+          //     let mut result = Vec::with_capacity(ids.len());
+          //     for id in ids {
+          //         result.push(Participant::Verifier(id))
+          //     }
+          //     Ok(result)
+          // }
     }
 }

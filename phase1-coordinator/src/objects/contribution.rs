@@ -1,18 +1,21 @@
-use crate::{objects::Participant, CoordinatorError};
+use crate::{
+    objects::{participant::*, Participant},
+    CoordinatorError,
+};
 
 use serde::{Deserialize, Serialize};
 use tracing::trace;
-use url::Url;
-use url_serde;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contribution {
+    #[serde(deserialize_with = "deserialize_optional_contributor_from_string")]
     contributor_id: Option<Participant>,
-    #[serde(rename = "contributed_location")]
+    #[serde(rename = "contributedLocation")]
     contributed_locator: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_verifier_from_string")]
     verifier_id: Option<Participant>,
-    #[serde(rename = "verified_location")]
+    #[serde(rename = "verifiedLocation")]
     verified_locator: Option<String>,
     verified: bool,
 }

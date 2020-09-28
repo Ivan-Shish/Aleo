@@ -9,18 +9,12 @@ pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant: Pa
     // Check that the participant ID is authorized.
     match coordinator.is_current_contributor(&participant) {
         // Case 1 - Participant is authorized.
-        Ok(true) => (),
+        true => (),
         // Case 2 - Participant is not authorized.
-        Ok(false) => {
-            error!(
-                "{} is not authorized for /chunks/{}/lock",
-                participant.clone(),
-                chunk_id
-            );
+        false => {
+            error!("{} is not authorized for chunk {}", participant, chunk_id);
             return Err(Status::Unauthorized);
         }
-        // Case 3 - Ceremony has not started, or storage has been corrupted.
-        Err(_) => return Err(Status::InternalServerError),
     }
 
     // Return the next contribution locator for the given chunk ID.

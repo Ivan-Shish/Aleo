@@ -1,8 +1,8 @@
 use crate::{
     commands::{Aggregation, Initialization, Verification},
-    environment::{Environment, StorageType},
+    environment::Environment,
     objects::{Participant, Round},
-    storage::{InMemory, Key, Storage, Value},
+    storage::{Key, Storage, Value},
 };
 
 use chrono::{DateTime, Utc};
@@ -12,8 +12,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tracing::{debug, error, info, trace, warn};
-use url::Url;
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -107,6 +106,7 @@ impl From<CoordinatorError> for anyhow::Error {
 }
 
 /// A core structure for operating the Phase 1 ceremony.
+#[derive(Clone)]
 pub struct Coordinator {
     storage: Arc<RwLock<Box<dyn Storage>>>,
     environment: Environment,
@@ -133,14 +133,19 @@ impl Coordinator {
     /// Returns `true` if the given participant is a contributor and included
     /// in the list of contributors for the current round of the ceremony.
     ///
-    /// If the contributor is not a contributor, or if there are
-    /// no prior rounds, returns a `CoordinatorError`.
+    /// If the participant is not a contributor, or if there are
+    /// no prior rounds, returns `false`.
     ///
     #[inline]
-    pub fn is_current_contributor(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
-        match participant {
-            Participant::Contributor(_) => Ok(self.current_round()?.is_authorized_contributor(participant)),
-            Participant::Verifier(_) => Err(CoordinatorError::ExpectedContributor),
+    pub fn is_current_contributor(&self, participant: &Participant) -> bool {
+        // Check participant is not a verifier.
+        if participant.is_verifier() {
+            return false;
+        }
+        // Check participant is a contributor in the current round.
+        match self.current_round() {
+            Ok(round) => round.is_authorized_contributor(participant),
+            _ => false,
         }
     }
 
@@ -148,14 +153,19 @@ impl Coordinator {
     /// Returns `true` if the given participant is a verifier and included
     /// in the list of verifiers for the current round of the ceremony.
     ///
-    /// If the contributor is not a contributor, or if there are
-    /// no prior rounds, returns a `CoordinatorError`.
+    /// If the participant is not a verifier, or if there are
+    /// no prior rounds, returns a `false`.
     ///
     #[inline]
-    pub fn is_current_verifier(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
-        match participant {
-            Participant::Contributor(contributor_id) => Err(CoordinatorError::ExpectedVerifier),
-            Participant::Verifier(_) => Ok(self.current_round()?.is_authorized_verifier(participant)),
+    pub fn is_current_verifier(&self, participant: &Participant) -> bool {
+        // Check participant is not a contributor.
+        if participant.is_contributor() {
+            return false;
+        }
+        // Check participant is a verifier in the current round.
+        match self.current_round() {
+            Ok(round) => round.is_authorized_verifier(participant),
+            _ => false,
         }
     }
 
@@ -327,7 +337,7 @@ impl Coordinator {
     ///
     #[inline]
     pub fn next_round(
-        &mut self,
+        &self,
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
         verifiers: Vec<Participant>,
@@ -345,7 +355,7 @@ impl Coordinator {
         // should be nothing to aggregate and we may continue.
         if round_height != 0 {
             // Attempt to fetch the current round directly.
-            let mut current_round = self.get_round(round_height);
+            let current_round = self.get_round(round_height);
             trace!("Check current round exists in storage ({})", current_round.is_ok());
 
             // Check that all chunks in the current round are verified,
@@ -520,8 +530,13 @@ impl Coordinator {
             chunk_verifiers,
         )?;
 
+        #[cfg(test)]
+        {
+            trace!("{:?}", &new_round);
+        }
+
         // Insert and save the new round into storage.
-        self.save_round_to_storage(new_height, new_round);
+        self.save_round_to_storage(new_height, new_round)?;
 
         debug!("Completed initialization of round {}", new_height);
         Ok(())
@@ -543,7 +558,7 @@ impl Coordinator {
         }
 
         // Check that the participant is an authorized contributor to the round.
-        if !self.is_current_contributor(&participant)? {
+        if !self.is_current_contributor(&participant) {
             error!("{} is unauthorized to contribute to chunk {})", &participant, chunk_id);
             return Err(CoordinatorError::UnauthorizedChunkContributor);
         }
@@ -857,12 +872,6 @@ impl Coordinator {
         }
     }
 
-    /// Returns a reference to the environment variable.
-    #[inline]
-    pub(crate) fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
     /// Attempts to acquire the read lock for storage.
     #[inline]
     fn storage(&self) -> Result<RwLockReadGuard<Box<dyn Storage>>, CoordinatorError> {
@@ -879,5 +888,81 @@ impl Coordinator {
             Ok(storage) => Ok(storage),
             _ => Err(CoordinatorError::StorageFailed),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{testing::prelude::*, Coordinator};
+
+    use chrono::Utc;
+    use once_cell::sync::Lazy;
+
+    fn coordinator_initialization_test() -> anyhow::Result<()> {
+        test_logger();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
+
+        // Run initialization.
+        coordinator.next_round(
+            Utc::now(),
+            vec![
+                Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+                Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+            ],
+            vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+            vec![
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+            ],
+        )?;
+
+        {
+            // Check round 0 is complete.
+            assert!(coordinator.get_round(0)?.is_complete());
+
+            // Check current round height is now 1.
+            assert_eq!(1, coordinator.current_round_height()?);
+
+            // Check round 1 contributors.
+            assert_eq!(2, coordinator.current_round()?.num_contributors());
+            assert!(coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID));
+            assert!(coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID_2));
+            assert!(!coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID_3));
+            assert!(!coordinator.is_current_contributor(&TEST_VERIFIER_ID));
+
+            // Check round 1 verifiers.
+            assert_eq!(1, coordinator.current_round()?.get_verifiers().len());
+            assert!(coordinator.is_current_verifier(&TEST_VERIFIER_ID));
+            // assert!(!coordinator.is_current_verifier(&TEST_VERIFIER_ID_2));
+            // assert!(!coordinator.is_current_verifier(&TEST_CONTRIBUTOR_ID));
+
+            // Check round 1 is NOT complete.
+            assert!(!coordinator.current_round()?.is_complete());
+        }
+
+        // Check round 1 contributors.
+
+        // Contributor 1
+        // {
+        //     coordinator.try_lock_chunk(coordinator.)
+        // }
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_initialization() {
+        coordinator_initialization_test().unwrap();
     }
 }

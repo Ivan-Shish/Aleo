@@ -58,7 +58,7 @@ impl Initialization {
         // This operation will *overwrite* the contents of `next_transcript`.
         let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0);
         trace!("Copying chunk {} to {}", chunk_id, next_transcript);
-        fs::copy(&contribution_locator, &next_transcript);
+        fs::copy(&contribution_locator, &next_transcript)?;
         trace!("Copied chunk {} to {}", chunk_id, next_transcript);
 
         // Open the transcript files.
@@ -115,7 +115,6 @@ mod tests {
     #[test]
     #[serial]
     fn test_initialization_run() {
-        test_logger();
         clear_test_transcript();
 
         // Define test parameters.
@@ -141,7 +140,7 @@ mod tests {
             // Check that the contribution chunk was generated based on the blank hash.
             let hash = blank_hash();
             for (i, (expected, candidate)) in hash.iter().zip(reader.chunks(64).next().unwrap()).enumerate() {
-                trace!("Checking byte {} of expected hash", i);
+                // trace!("Checking byte {} of expected hash", i);
                 assert_eq!(expected, candidate);
             }
 

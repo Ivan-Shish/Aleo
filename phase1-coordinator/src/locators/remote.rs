@@ -1,12 +1,6 @@
-use crate::{
-    environment::Environment,
-    locators::Locator,
-    objects::{Chunk, Round},
-    CoordinatorError,
-};
+use crate::{environment::Environment, locators::Locator};
 
-use std::{collections::HashMap, path::Path};
-use tracing::warn;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct Remote;
@@ -29,11 +23,11 @@ impl Locator for Remote {
     where
         Self: Sized,
     {
-        let url = Self::round_directory(environment, round_height);
+        let _url = Self::round_directory(environment, round_height);
         unimplemented!()
     }
 
-    fn round_directory_reset(environment: &Environment, round_height: u64) {
+    fn round_directory_reset(_environment: &Environment, _round_height: u64) {
         // If this is a test environment, attempt to clear it for the coordinator.
         // let directory = Self::round_directory(environment, round_height);
         // let path = Path::new(&directory);
