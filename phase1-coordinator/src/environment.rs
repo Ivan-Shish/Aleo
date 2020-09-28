@@ -1,8 +1,14 @@
-use crate::{objects::Participant, storage::InMemory};
+use crate::{
+    locators::*,
+    objects::Participant,
+    storage::{InMemory, InMemory2, Storage},
+    CoordinatorError,
+};
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
 use std::path::Path;
+use url::Url;
 
 type BatchSize = usize;
 type ChunkSize = usize;
@@ -101,14 +107,10 @@ pub enum Environment {
 
 impl Environment {
     // // TODO (howardwu): Change storage type
-    // /// Returns the storage system of the coordinator.
-    // pub fn storage(&self) -> impl Storage {
-    //     match self {
-    //         Environment::Test(_) => InMemory::load(),
-    //         Environment::Development(_) => InMemory::load(),
-    //         Environment::Production(_) => InMemory::load(),
-    //     }
-    // }
+    /// Returns the storage system of the coordinator.
+    pub fn storage(&self) -> Result<Box<dyn Storage>, CoordinatorError> {
+        Ok(storage!(self, InMemory, InMemory2, InMemory2))
+    }
 
     /// Returns the appropriate number of chunks for the coordinator
     /// to run given a proof system, power and chunk size.
@@ -162,6 +164,13 @@ impl Environment {
         }
     }
 
+    /// Returns an instantiation of the base URL for the coordinator.
+    pub fn base_url(&self) -> Url {
+        format!("http://{}:{}", self.address(), self.port())
+            .parse()
+            .expect("Unable to parse base URL")
+    }
+
     /// Returns the network address of the coordinator.
     pub const fn address(&self) -> &str {
         match self {
@@ -178,11 +187,6 @@ impl Environment {
             Environment::Development(_) => 8080,
             Environment::Production(_) => 8080,
         }
-    }
-
-    /// Returns an unchecked instantiation for the base URL of the coordinator.
-    pub fn base_url(&self) -> String {
-        format!("http://{}:{}", self.address(), self.port())
     }
 
     /// Returns the CORS policy of the server.
@@ -207,50 +211,49 @@ impl Environment {
         }
     }
 
-    /// Returns the transcript directory for a given round from the coordinator.
+    /// Returns the round directory for a given round height.
     pub fn round_directory(&self, round_height: u64) -> String {
-        match self {
-            Environment::Test(_) => format!("./transcript/test/round-{}", round_height),
-            Environment::Development(_) => format!("./transcript/development/round-{}", round_height),
-            Environment::Production(_) => format!("./transcript/production/round-{}", round_height),
-        }
+        round_directory!(self, Local, Remote, Remote, round_height)
     }
 
-    /// Returns the chunk transcript directory for a given round and chunk ID from the coordinator.
+    /// Returns `true` if the round directory exists for a given round height.
+    pub fn round_directory_exists(&self, round_height: u64) -> bool {
+        round_directory_exists!(self, Local, Remote, Remote, round_height)
+    }
+
+    /// Resets the round directory for a given round height, if permitted.
+    pub fn round_directory_reset(&self, round_height: u64) {
+        round_directory_reset!(self, Local, Remote, Remote, round_height)
+    }
+
+    /// Returns the chunk directory for a given round height and chunk ID.
     pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
-        // Create the transcript directory path.
-        let path = self.round_directory(round_height);
-
-        // Create the chunk transcript locator as `{round_directory}/{chunk_id}`.
-        format!("{}/{}", path, chunk_id)
+        chunk_directory!(self, Local, Remote, Remote, round_height, chunk_id)
     }
 
-    /// Returns the contribution locator for a given round, chunk ID, and contribution ID from the coordinator.
+    /// Returns `true` if the chunk directory exists for a given round height and chunk ID.
+    pub fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
+        chunk_directory_exists!(self, Local, Remote, Remote, round_height, chunk_id)
+    }
+
+    /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
     pub fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> String {
-        // Create the chunk transcript directory path.
-        let path = self.chunk_directory(round_height, chunk_id);
-
-        // If the path does not exist, attempt to initialize the directory path.
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
-        }
-
-        // Create the transcript locator as `{chunk_round_directory}/{contribution_id}`.
-        format!("{}/{}", path, contribution_id)
+        contribution_locator!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
     }
 
-    /// Returns the final round transcript locator for a given round from the coordinator.
-    pub fn final_round_locator(&self, round_height: u64) -> String {
-        // Create the transcript directory path.
-        let path = self.round_directory(round_height);
+    /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
+    pub fn contribution_locator_exists(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> bool {
+        contribution_locator_exists!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
+    }
 
-        // If the path does not exist, attempt to initialize the directory path.
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk transcript directory");
-        }
+    /// Returns the round locator for a given round height.
+    pub fn round_locator(&self, round_height: u64) -> String {
+        round_locator!(self, Local, Remote, Remote, round_height)
+    }
 
-        // Create the final round transcript locator located at `{round_directory}/contribution`.
-        format!("{}/contribution", path)
+    /// Returns `true` if the round locator exists for a given round height.
+    pub fn round_locator_exists(&self, round_height: u64) -> bool {
+        round_locator_exists!(self, Local, Remote, Remote, round_height)
     }
 
     ///

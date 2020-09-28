@@ -21,6 +21,7 @@ pub use coordinator::*;
 pub use objects::Participant;
 pub use storage::Storage;
 
+mod locators;
 mod objects;
 mod storage;
 

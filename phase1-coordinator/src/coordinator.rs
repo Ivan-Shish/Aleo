@@ -43,8 +43,6 @@ pub enum CoordinatorError {
     ExpectedContributor,
     ExpectedVerifier,
     Error(anyhow::Error),
-    FinalRoundTranscriptMissing,
-    FinalTranscriptAlreadyExists,
     InitializationFailed,
     InitializationTranscriptsDiffer,
     InvalidUrl,
@@ -61,6 +59,8 @@ pub enum CoordinatorError {
     RoundDoesNotExist,
     RoundHeightIsZero,
     RoundHeightMismatch,
+    RoundLocatorAlreadyExists,
+    RoundLocatorMissing,
     RoundNotComplete,
     RoundNotVerified,
     RoundSkipped,
@@ -105,7 +105,7 @@ impl From<CoordinatorError> for anyhow::Error {
 
 /// A core structure for operating the Phase 1 ceremony.
 pub struct Coordinator {
-    storage: Arc<RwLock<StorageType>>,
+    storage: Arc<RwLock<Box<dyn Storage>>>,
     environment: Environment,
 }
 
@@ -121,8 +121,7 @@ impl Coordinator {
     #[inline]
     pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
         Ok(Self {
-            storage: Arc::new(RwLock::new(InMemory::load()?)),
-            // storage: Arc::new(RwLock::new(environment.storage())),
+            storage: Arc::new(RwLock::new(environment.storage()?)),
             environment,
         })
     }
@@ -326,14 +325,14 @@ impl Coordinator {
         }
 
         // Check that the ceremony started and exists in storage.
-        let height = self.current_round_height()?;
-        if height == 0 {
+        let round_height = self.current_round_height()?;
+        if round_height == 0 {
             error!("The ceremony has not started");
             return Err(CoordinatorError::RoundHeightIsZero);
         }
 
         // Fetch a local copy of the current round from storage.
-        let mut current_round = self.get_round(height)?.clone();
+        let mut current_round = self.get_round(round_height)?.clone();
 
         // Check that the participant is an authorized contributor to the round.
         if !self.is_current_contributor(&participant)? {
@@ -351,7 +350,7 @@ impl Coordinator {
         }
 
         // Fetch the chunk locator for the current round height.
-        let locator = self.get_chunk_locator(height, chunk_id)?;
+        let locator = self.get_chunk_locator(round_height, chunk_id)?;
 
         // TODO (howardwu): Make a dedicated endpoint and method for checking verifiers.
         // match current_round.verifier_ids.contains(&participant_id) {
@@ -507,17 +506,8 @@ impl Coordinator {
         // and run `Initialization` to start the ceremony.
         if round_height == 0 {
             // If the path exists, this means a prior *ceremony* is stored as a transcript.
-            let round_directory = self.environment.round_directory(round_height);
-            let path = Path::new(&round_directory);
-            if path.exists() {
-                // If this is a test environment, attempt to clear it for the coordinator.
-                if let Environment::Test(_) = self.environment {
-                    warn!("Coordinator is clearing {:?}", &path);
-                    std::fs::remove_dir_all(&path).expect("unable to remove transcript directory");
-                    warn!("Coordinator cleared {:?}", &path);
-                } else {
-                    return Err(CoordinatorError::RoundAlreadyInitialized);
-                }
+            if self.environment.round_directory_exists(round_height) {
+                self.environment.round_directory_reset(round_height);
             }
 
             // Create an instantiation of `Round` for round 0.
@@ -573,14 +563,15 @@ impl Coordinator {
                 info!("Coordinator completed initialization on chunk {}", chunk_id);
 
                 // Check that the contribution locator corresponding to this round's chunk now exists.
-                let contribution_locator = self.environment.contribution_locator(round_height, chunk_id, 0);
-                if !Path::new(&contribution_locator).exists() {
+                if !self.environment.contribution_locator_exists(round_height, chunk_id, 0) {
                     return Err(CoordinatorError::RoundTranscriptMissing);
                 }
 
                 // Check that the contribution locator corresponding to the next round's chunk now exists.
-                let contribution_locator = self.environment.contribution_locator(round_height + 1, chunk_id, 0);
-                if !Path::new(&contribution_locator).exists() {
+                if !self
+                    .environment
+                    .contribution_locator_exists(round_height + 1, chunk_id, 0)
+                {
                     return Err(CoordinatorError::RoundTranscriptMissing);
                 }
 
@@ -641,8 +632,7 @@ impl Coordinator {
         // Check that each contribution transcript for the next round exists.
         for chunk_id in 0..self.environment.number_of_chunks() {
             debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
-            let contribution_locator = self.environment.contribution_locator(new_height, chunk_id, 0);
-            if !Path::new(&contribution_locator).exists() {
+            if !self.environment.contribution_locator_exists(new_height, chunk_id, 0) {
                 return Err(CoordinatorError::RoundTranscriptMissing);
             }
         }
@@ -727,10 +717,10 @@ impl Coordinator {
         }
 
         // Check that the contribution locator corresponding to this round and chunk exists.
-        let contribution_locator = self
+        if !self
             .environment
-            .contribution_locator(round_height, chunk_id, contribution_id);
-        if !Path::new(&contribution_locator).exists() {
+            .contribution_locator_exists(round_height, chunk_id, contribution_id)
+        {
             return Err(CoordinatorError::RoundTranscriptMissing);
         }
 
@@ -779,10 +769,8 @@ impl Coordinator {
         }
 
         // TODO (howardwu): Do pre-check that all current chunk contributions are present
-        // Check that the transcript directory corresponding to this round exists.
-        let round_directory = self.environment.round_directory(current_round_height);
-        let path = Path::new(&round_directory);
-        if !path.exists() {
+        // Check that the round directory corresponding to this round exists.
+        if !self.environment.round_directory_exists(current_round_height) {
             return Err(CoordinatorError::RoundTranscriptMissing);
         }
 
@@ -793,12 +781,9 @@ impl Coordinator {
         Aggregation::run(&self.environment, &current_round)?;
         debug!("Coordinator completed aggregation");
 
-        // Fetch the final round transcript locator for the given round.
-        let round_locator = self.environment.final_round_locator(current_round_height);
-
-        // Check that the final round transcript locator exists.
-        if !Path::new(&round_locator).exists() {
-            return Err(CoordinatorError::FinalRoundTranscriptMissing);
+        // Check that the round locator exists.
+        if !self.environment.round_locator_exists(current_round_height) {
+            return Err(CoordinatorError::RoundLocatorMissing);
         }
 
         Ok(())
@@ -825,7 +810,7 @@ impl Coordinator {
 
     /// Attempts to acquire the read lock for storage.
     #[inline]
-    fn storage(&self) -> Result<RwLockReadGuard<StorageType>, CoordinatorError> {
+    fn storage(&self) -> Result<RwLockReadGuard<Box<dyn Storage>>, CoordinatorError> {
         match self.storage.read() {
             Ok(storage) => Ok(storage),
             _ => Err(CoordinatorError::StorageFailed),
@@ -834,7 +819,7 @@ impl Coordinator {
 
     /// Attempts to acquire the write lock for storage.
     #[inline]
-    fn storage_mut(&self) -> Result<RwLockWriteGuard<StorageType>, CoordinatorError> {
+    fn storage_mut(&self) -> Result<RwLockWriteGuard<Box<dyn Storage>>, CoordinatorError> {
         match self.storage.write() {
             Ok(storage) => Ok(storage),
             _ => Err(CoordinatorError::StorageFailed),

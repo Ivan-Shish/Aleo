@@ -19,9 +19,11 @@ pub enum Value {
 }
 
 /// A standard model for storage.
-pub trait Storage: Sized + Send + Sync {
+pub trait Storage: Send + Sync {
     /// Loads a new instance of `Storage`.
-    fn load() -> Result<Self, CoordinatorError>;
+    fn load() -> Result<Self, CoordinatorError>
+    where
+        Self: Sized;
 
     /// Stores an instance of `Storage`.
     /// If successful, returns `true`. Otherwise, returns `false`.

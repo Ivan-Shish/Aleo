@@ -3,9 +3,9 @@ use crate::{objects::Round, Coordinator};
 use rocket::{http::Status, State};
 use rocket_contrib::json::Json;
 
-#[get("/round/<height>")]
-pub fn round_get(coordinator: State<Coordinator>, height: u64) -> Result<Json<Round>, Status> {
-    match coordinator.get_round(height) {
+#[get("/ceremony")]
+pub fn ceremony_get(coordinator: State<Coordinator>) -> Result<Json<Round>, Status> {
+    match coordinator.current_round() {
         Ok(round) => Ok(Json(round.clone())),
         _ => return Err(Status::InternalServerError),
     }
@@ -17,10 +17,10 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_round_get() {
+    fn test_ceremony_get() {
         let client = test_client().unwrap();
 
-        let mut response = client.get("/round/1").dispatch();
+        let mut response = client.get("/ceremony").dispatch();
         let response_body = response.body_string();
         assert_eq!(Status::Ok, response.status());
         assert_eq!(Some(ContentType::JSON), response.content_type());

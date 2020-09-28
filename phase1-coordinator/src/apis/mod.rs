@@ -1,3 +1,5 @@
+pub mod deprecated;
+
 pub mod chunk_get;
 pub use chunk_get::*;
 
