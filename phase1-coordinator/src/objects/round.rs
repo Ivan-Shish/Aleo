@@ -115,6 +115,14 @@ impl Round {
         self.height
     }
 
+    /// Returns the expected number of contributions.
+    pub fn expected_num_contributions(&self) -> u64 {
+        // The expected number of contributions is one more than
+        // the total number of authorized contributions to account
+        // for the initialization contribution in each round.
+        self.num_contributors() + 1
+    }
+
     /// Returns `true` if the given participant is authorized as a contributor.
     /// Otherwise returns `false`.
     #[inline]
@@ -129,8 +137,7 @@ impl Round {
         self.verifier_ids.contains(participant)
     }
 
-    /// Returns the number of contributors, and therefore,
-    /// the number of expected contributions for this round.
+    /// Returns the number of contributors authorized in this round.
     #[inline]
     pub fn num_contributors(&self) -> u64 {
         self.contributor_ids.len() as u64
@@ -229,9 +236,9 @@ impl Round {
         }
 
         // Attempt to acquire the lock for the given participant ID.
-        let num_contributors = self.num_contributors();
+        let expected_num_contributions = self.expected_num_contributions();
         self.get_chunk_mut(chunk_id)?
-            .acquire_lock(participant.clone(), num_contributors)?;
+            .acquire_lock(participant.clone(), expected_num_contributions)?;
 
         debug!("{} acquired lock on chunk {}", participant, chunk_id);
         Ok(())
@@ -269,10 +276,10 @@ impl Round {
     /// Otherwise, returns `false`.
     #[inline]
     pub fn is_complete(&self) -> bool {
-        let num_contributors = self.num_contributors();
+        let expected_num_contributions = self.expected_num_contributions();
         self.chunks
             .par_iter()
-            .filter(|chunk| !chunk.is_complete(num_contributors))
+            .filter(|chunk| !chunk.is_complete(expected_num_contributions))
             .collect::<Vec<_>>()
             .is_empty()
     }
@@ -291,7 +298,7 @@ mod tests {
             &TEST_ENVIRONMENT,
             0, /* height */
             *TEST_STARTED_AT,
-            TEST_CONTRIBUTOR_IDS.to_vec(),
+            vec![],
             TEST_VERIFIER_IDS.to_vec(),
         )
         .unwrap();
@@ -305,15 +312,21 @@ mod tests {
     #[test]
     #[serial]
     fn test_get_height() {
-        let round = test_round_0().unwrap();
-        assert_eq!(0, round.get_height());
+        let round_0 = test_round_0_json().unwrap();
+        assert_eq!(0, round_0.get_height());
+
+        let round_0 = test_round_0().unwrap();
+        assert_eq!(0, round_0.get_height());
+
+        let round_1 = test_round_1_initial_json().unwrap();
+        assert_eq!(1, round_1.get_height());
     }
 
     #[test]
     #[serial]
     fn test_is_authorized_contributor() {
-        let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
+        let round_1 = test_round_1_initial_json().unwrap();
+        assert!(round_1.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
     }
 
     #[test]
@@ -321,6 +334,9 @@ mod tests {
     fn test_is_authorized_verifier() {
         let round_0 = test_round_0().unwrap();
         assert!(round_0.is_authorized_verifier(&TEST_VERIFIER_ID));
+
+        let round_1 = test_round_1_initial_json().unwrap();
+        assert!(round_1.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
     }
 
     #[test]
@@ -345,14 +361,14 @@ mod tests {
     #[ignore]
     #[serial]
     fn test_get_chunk_mut() {
-        let mut expected = test_round_0_json().unwrap().chunks[0].clone();
+        let mut expected = test_round_1_initial_json().unwrap().chunks[0].clone();
         expected
-            .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
+            .acquire_lock(Participant::Contributor("test-coordinator-contributor".to_string()), 2)
             .unwrap();
 
         let mut candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
         candidate
-            .acquire_lock(Participant::Contributor("test_updated_contributor".to_string()), 1)
+            .acquire_lock(Participant::Contributor("test-coordinator-contributor".to_string()), 2)
             .unwrap();
 
         print_diff(&expected, &candidate);
@@ -370,9 +386,15 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_are_chunks_verified() {
+    fn test_is_complete() {
         // TODO (howardwu): Add tests for a full completeness check.
-        let round = test_round_0_json().unwrap();
-        assert!(round.is_complete());
+        let round_0 = test_round_0_json().unwrap();
+        assert!(round_0.is_complete());
+
+        let round_0 = test_round_0().unwrap();
+        assert!(round_0.is_complete());
+
+        let round_1 = test_round_1_initial_json().unwrap();
+        assert!(!round_1.is_complete());
     }
 }

@@ -266,7 +266,7 @@ impl Coordinator {
         let chunk = round.get_chunk(chunk_id)?;
 
         // Fetch the next contribution ID.
-        let next_contribution_id = chunk.next_contribution_id(round.num_contributors())?;
+        let next_contribution_id = chunk.next_contribution_id(round.expected_num_contributions())?;
 
         Ok(self
             .environment
@@ -290,7 +290,7 @@ impl Coordinator {
         let chunk = round.get_chunk(chunk_id)?;
 
         // Fetch the next contribution ID.
-        let next_contribution_id = chunk.next_contribution_id(round.num_contributors())?;
+        let next_contribution_id = chunk.next_contribution_id(round.expected_num_contributions())?;
 
         // Check that the contribution locator corresponding to the next
         // contribution ID does NOT exist for the current round and chunk.
@@ -448,9 +448,8 @@ impl Coordinator {
 
             // Create an instantiation of `Round` for round 0.
             let round = {
-                // Initialize the contributors as a list comprising only the coordinator contributor,
-                // as this is for initialization.
-                let contributors = vec![self.environment.coordinator_contributor()];
+                // Initialize the contributors as an empty list as this is for initialization.
+                let contributors = vec![];
 
                 // Initialize the verifiers as a list comprising only the coordinator verifier,
                 // as this is for initialization.
@@ -633,11 +632,11 @@ impl Coordinator {
         }
 
         // Fetch the next contribution ID of the chunk.
-        let num_contributors = round.num_contributors();
+        let expected_num_contributions = round.expected_num_contributions();
         let next_contribution_id = self
             .current_round()?
             .get_chunk(chunk_id)?
-            .next_contribution_id(num_contributors)?;
+            .next_contribution_id(expected_num_contributions)?;
 
         // Fetch the contribution locator for the next contribution ID corresponding to
         // the current round height and chunk ID.
@@ -670,7 +669,7 @@ impl Coordinator {
                 next_contribution_id,
                 participant,
                 next_contributed_locator.clone(),
-                num_contributors,
+                expected_num_contributions,
             )?;
         }
 
@@ -805,7 +804,7 @@ impl Coordinator {
         }
 
         // Fetch the contribution locators for `Verification`.
-        let (previous, current, next) = if chunk.only_contributions_complete(round.num_contributors()) {
+        let (previous, current, next) = if chunk.only_contributions_complete(round.expected_num_contributions()) {
             let previous = self
                 .environment
                 .contribution_locator(round_height, chunk_id, contribution_id - 1);
@@ -902,7 +901,7 @@ impl Coordinator {
     }
 
     ///
-    /// Updates the round corresponding to the given height from storage.
+    /// Updates the round corresponding to the given height in storage.
     ///
     #[inline]
     fn save_round_to_storage(&self, round_height: u64, round: Round) -> Result<(), CoordinatorError> {
@@ -961,7 +960,7 @@ mod test {
 
         // Run initialization.
         coordinator.next_round(
-            Utc::now(),
+            *TEST_STARTED_AT,
             vec![
                 Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
                 Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
@@ -1090,11 +1089,11 @@ mod test {
             // Check chunk 0 is not verified.
             let chunk_id = 0;
             let chunk = round.get_chunk(chunk_id)?;
-            assert!(!chunk.is_complete(round.num_contributors()));
+            assert!(!chunk.is_complete(round.expected_num_contributions()));
 
             // Check next contribution is 1.
             let contribution_id = 1;
-            assert!(chunk.is_next_contribution_id(contribution_id, round.num_contributors()));
+            assert!(chunk.is_next_contribution_id(contribution_id, round.expected_num_contributions()));
 
             // Run the computation
             assert!(
@@ -1171,6 +1170,24 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_initialization_matches_json() {
+        clear_test_transcript();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone()).unwrap();
+        initialize_coordinator(&coordinator).unwrap();
+
+        // Check that round 0 matches the round 0 JSON specification.
+        {
+            // Fetch round 0 from coordinator.
+            let expected = test_round_0_json().unwrap();
+            let candidate = coordinator.get_round(0).unwrap();
+            print_diff(&expected, &candidate);
+            assert_eq!(expected, candidate);
+        }
     }
 
     #[test]
