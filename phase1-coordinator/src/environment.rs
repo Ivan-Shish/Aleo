@@ -1,7 +1,6 @@
 use crate::{
     objects::Participant,
     storage::{InMemory, InMemory2, Storage},
-    CoordinatorError,
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
@@ -130,7 +129,7 @@ pub enum Environment {
 impl Environment {
     // // TODO (howardwu): Change storage type
     /// Returns the storage system of the coordinator.
-    pub fn storage(&self) -> Result<Box<dyn Storage>, CoordinatorError> {
+    pub fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
         Ok(storage!(self, InMemory, InMemory2, InMemory2))
     }
 
