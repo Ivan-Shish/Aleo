@@ -69,7 +69,7 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         &TEST_ENVIRONMENT,
         0, /* height */
         *TEST_STARTED_AT,
-        TEST_CONTRIBUTOR_IDS.to_vec(),
+        vec![],
         TEST_VERIFIER_IDS.to_vec(),
     )?)
 }

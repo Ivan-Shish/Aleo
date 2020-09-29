@@ -243,7 +243,7 @@ impl Chunk {
     pub(crate) fn acquire_lock(
         &mut self,
         participant: Participant,
-        num_contributors: u64,
+        expected_num_contributions: u64,
     ) -> Result<(), CoordinatorError> {
         // Check that this chunk is not locked before attempting to acquire the lock.
         if self.is_locked() {
@@ -251,8 +251,8 @@ impl Chunk {
         }
 
         // Check that this chunk is still incomplete before attempting to acquire the lock.
-        if self.is_complete(num_contributors) {
-            trace!("{} {:#?}", num_contributors, self);
+        if self.is_complete(expected_num_contributions) {
+            trace!("{} {:#?}", expected_num_contributions, self);
             return Err(CoordinatorError::ChunkAlreadyComplete);
         }
 
