@@ -130,6 +130,15 @@ impl Coordinator {
     }
 
     ///
+    /// Returns a reference to the instantiation of `Environment` that this
+    /// coordinator is using.
+    ///
+    #[inline]
+    pub fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    ///
     /// Returns `true` if the given participant is a contributor and included
     /// in the list of contributors for the current round of the ceremony.
     ///
@@ -926,12 +935,6 @@ impl Coordinator {
             true => Ok(()),
             false => Err(CoordinatorError::StorageFailed),
         }
-    }
-
-    /// Returns a reference to the environment of the coordinator.
-    #[inline]
-    fn environment(&self) -> &Environment {
-        &self.environment
     }
 
     /// Attempts to acquire the read lock for storage.

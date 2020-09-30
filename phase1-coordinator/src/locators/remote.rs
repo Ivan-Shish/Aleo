@@ -42,6 +42,11 @@ impl Locator for Remote {
         unimplemented!()
     }
 
+    /// Resets the entire round directory for a given environment.
+    fn round_directory_reset_all(_environment: &Environment) {
+        unimplemented!()
+    }
+
     /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
     fn chunk_directory(environment: &Environment, round_height: u64, chunk_id: u64) -> String
     where
