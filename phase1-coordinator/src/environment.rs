@@ -19,9 +19,9 @@ pub enum Parameters {
     AleoInner,
     AleoOuter,
     AleoUniversal,
-    AleoTest,
-    AleoTest3,
-    AleoTest20,
+    AleoTest3Chunks,
+    AleoTest8Chunks,
+    AleoTest20Chunks,
     Simple,
     Custom(Settings),
 }
@@ -33,9 +33,9 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::AleoTest => Self::aleo_test(),
-            Parameters::AleoTest3 => Self::aleo_test_3(),
-            Parameters::AleoTest20 => Self::aleo_test_20(),
+            Parameters::AleoTest3Chunks => Self::aleo_test_3_chunks(),
+            Parameters::AleoTest8Chunks => Self::aleo_test_8_chunks(),
+            Parameters::AleoTest20Chunks => Self::aleo_test_20_chunks(),
             Parameters::Simple => Self::simple(),
             Parameters::Custom(settings) => settings.clone(),
         }
@@ -74,18 +74,7 @@ impl Parameters {
         )
     }
 
-    fn aleo_test() -> Settings {
-        (
-            ContributionMode::Chunked,
-            ProvingSystem::Groth16,
-            CurveKind::Bls12_377,
-            Power::from(14_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(4095_usize),
-        )
-    }
-
-    fn aleo_test_3() -> Settings {
+    fn aleo_test_3_chunks() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
@@ -96,7 +85,18 @@ impl Parameters {
         )
     }
 
-    fn aleo_test_20() -> Settings {
+    fn aleo_test_8_chunks() -> Settings {
+        (
+            ContributionMode::Chunked,
+            ProvingSystem::Groth16,
+            CurveKind::Bls12_377,
+            Power::from(14_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(4095_usize),
+        )
+    }
+
+    fn aleo_test_20_chunks() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
