@@ -10,13 +10,13 @@ use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
 
 /// Environment for testing purposes only.
-pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest);
+pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest8Chunks);
 
 /// Environment for testing purposes only.
-pub static TEST_ENVIRONMENT_3: Environment = Environment::Test(Parameters::AleoTest3);
+pub static TEST_ENVIRONMENT_3: Environment = Environment::Test(Parameters::AleoTest3Chunks);
 
 /// Environment for testing purposes only.
-pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20);
+pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20Chunks);
 
 lazy_static! {
     /// Round start datetime for testing purposes only.
