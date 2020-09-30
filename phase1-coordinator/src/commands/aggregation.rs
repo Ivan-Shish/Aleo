@@ -1,5 +1,5 @@
 use crate::{environment::Environment, objects::Round, CoordinatorError};
-use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
+use phase1::{helpers::CurveKind, Phase1};
 use setup_utils::UseCompression;
 
 use memmap::*;
@@ -121,7 +121,7 @@ impl Aggregation {
             // Check that contribution filesize is correct.
             let metadata = reader.metadata().expect("unable to retrieve metadata");
             let found = metadata.len();
-            debug!("Round {} contribution {} filesize is {}", round_height, chunk_id, found);
+            debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
             if found != expected {
                 error!("Contribution file size should be {} but found {}", expected, found);
                 return Err(CoordinatorError::ContributionFileSizeMismatch.into());
@@ -181,5 +181,65 @@ impl Aggregation {
                 .map_mut(&writer)
                 .expect("unable to create a memory map for output"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        commands::{Aggregation, Computation, Initialization, Verification},
+        testing::prelude::*,
+        Coordinator,
+    };
+
+    use memmap::MmapOptions;
+    use once_cell::sync::Lazy;
+    use std::fs::OpenOptions;
+    use tracing::debug;
+
+    fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
+
+        // Run initialization.
+        coordinator.next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
+            Lazy::force(&TEST_VERIFIER_ID).clone(),
+        ])?;
+
+        // Check current round height is now 1.
+        assert_eq!(1, coordinator.current_round_height()?);
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn test_aggregation_run() {
+        clear_test_transcript();
+
+        // Initialize round 0 and 1.
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
+        initialize_coordinator(&coordinator).unwrap();
+
+        // Generate a new contribution for each chunk in round 1.
+        let round_height = 1;
+        let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
+        // let mut locators = vec![];
+
+        // Run computation for all chunks in round 1.
+        for chunk_id in 0..number_of_chunks {
+            debug!("Running computation on test chunk {}", chunk_id);
+            // Run computation on chunk.
+            Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
+
+            let previous = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 0);
+            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1);
+            let next = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 2);
+
+            Verification::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1, previous, current, next).unwrap();
+        }
+
+        // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
+
+        // Aggregation::run(&TEST_ENVIRONMENT_3, &coordinator.get_round(round_height).unwrap()).unwrap();
     }
 }

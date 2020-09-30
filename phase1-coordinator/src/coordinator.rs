@@ -958,10 +958,11 @@ impl Coordinator {
 
 #[cfg(test)]
 mod test {
-    use crate::{testing::prelude::*, Coordinator};
+    use crate::{environment::*, testing::prelude::*, Coordinator};
 
     use chrono::Utc;
     use once_cell::sync::Lazy;
+    use tracing::trace;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
@@ -1128,8 +1129,7 @@ mod test {
         Ok(())
     }
 
-    fn coordinator_contributor_verify_contribution_test() -> anyhow::Result<()> {
-        test_logger();
+    fn coordinator_verifier_verify_contribution_test() -> anyhow::Result<()> {
         clear_test_transcript();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
@@ -1181,6 +1181,188 @@ mod test {
         Ok(())
     }
 
+    // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
+    fn coordinator_aggregation_test() -> anyhow::Result<()> {
+        test_logger();
+        clear_test_transcript();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        initialize_coordinator(&coordinator)?;
+
+        // Run computation and verification on each contribution in each chunk.
+        let contributors = vec![
+            Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+            Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+        ];
+
+        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+
+        // Iterate over all chunk IDs.
+        for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
+            // As contribution ID 0 is initialized by the coordinator, iterate from
+            // contribution ID 1 up to the expected number of contributions.
+            for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
+                let contributor = &contributors[contribution_id as usize - 1];
+                println!("@@@@@{} {:?}", contribution_id, contributor.clone());
+                {
+                    // Acquire the lock as contributor.
+                    let try_lock = coordinator.try_lock_chunk(chunk_id, contributor.clone());
+                    if try_lock.is_err() {
+                        println!(
+                            "Failed to acquire lock as contributor {:?}\n{}",
+                            contributor.clone(),
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                        try_lock?;
+                    }
+
+                    // Run computation as contributor.
+                    let contribute = coordinator.run_computation(chunk_id, contribution_id, &contributor);
+                    if contribute.is_err() {
+                        println!(
+                            "Failed to run computation as contributor {:?}\n{}",
+                            contributor.clone(),
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                        contribute?;
+                    }
+
+                    // Add the contribution as the contributor.
+                    let contribute = coordinator.add_contribution(chunk_id, contributor.clone());
+                    if contribute.is_err() {
+                        println!(
+                            "Failed to add contribution as contributor {:?}\n{}",
+                            contributor.clone(),
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                        contribute?;
+                    }
+                }
+                {
+                    // Acquire the lock as the verifier.
+                    let try_lock = coordinator.try_lock_verify(chunk_id, contribution_id, verifier.clone());
+                    if try_lock.is_err() {
+                        println!(
+                            "Failed to acquire lock as verifier {:?}\n{}",
+                            contributor.clone(),
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                        try_lock?;
+                    }
+
+                    // Run verification as the verifier.
+                    let verify = coordinator.verify_contribution(chunk_id, contribution_id, verifier.clone());
+                    if verify.is_err() {
+                        println!(
+                            "Failed to run verification as verifier {:?}\n{}",
+                            contributor.clone(),
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                        verify?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn coordinator_next_round_test() -> anyhow::Result<()> {
+        test_logger();
+        clear_test_transcript();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+        {
+            // Ensure the ceremony has not started.
+            assert_eq!(0, coordinator.current_round_height()?);
+            // Run initialization.
+            coordinator.next_round(*TEST_STARTED_AT, vec![contributor.clone()], vec![verifier.clone()])?;
+            // Check current round height is now 1.
+            assert_eq!(1, coordinator.current_round_height()?);
+        }
+
+        // Run computation and verification on each contribution in each chunk.
+        for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
+            // Ensure contribution ID 0 is already verified by the coordinator.
+            assert!(
+                coordinator
+                    .current_round()?
+                    .get_chunk(chunk_id)?
+                    .get_contribution(0)?
+                    .is_verified()
+            );
+
+            // As contribution ID 0 is initialized by the coordinator, iterate from
+            // contribution ID 1 up to the expected number of contributions.
+            for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
+                {
+                    // Acquire the lock as contributor.
+                    if coordinator.try_lock_chunk(chunk_id, contributor.clone()).is_err() {
+                        panic!(
+                            "Failed to acquire lock as contributor {}",
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                    }
+                    // Run computation as contributor.
+                    if coordinator
+                        .run_computation(chunk_id, contribution_id, &contributor)
+                        .is_err()
+                    {
+                        panic!(
+                            "Failed to run computation as contributor {}",
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                    }
+                    // Add the contribution as the contributor.
+                    if coordinator.add_contribution(chunk_id, contributor.clone()).is_err() {
+                        panic!(
+                            "Failed to add contribution as contributor {}",
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                    }
+                }
+                {
+                    // Acquire the lock as the verifier.
+                    if coordinator
+                        .try_lock_verify(chunk_id, contribution_id, verifier.clone())
+                        .is_err()
+                    {
+                        panic!(
+                            "Failed to acquire lock as verifier {}",
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                    }
+                    // Run verification as the verifier.
+                    if coordinator
+                        .verify_contribution(chunk_id, contribution_id, verifier.clone())
+                        .is_err()
+                    {
+                        panic!(
+                            "Failed to run verification as verifier {}",
+                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                        );
+                    }
+                }
+            }
+        }
+
+        println!(
+            "Starting aggregation with this transcript {}",
+            serde_json::to_string_pretty(&coordinator.current_round()?)?
+        );
+
+        coordinator.next_round(Utc::now(), vec![contributor.clone()], vec![verifier.clone()]);
+
+        println!(
+            "Finished aggregation with this transcript {}",
+            serde_json::to_string_pretty(&coordinator.current_round()?)?
+        );
+
+        Ok(())
+    }
+
     #[test]
     #[serial]
     fn test_coordinator_initialization_matches_json() {
@@ -1220,12 +1402,35 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_contributor_verify_contribution() {
-        coordinator_contributor_verify_contribution_test().unwrap();
+        coordinator_verifier_verify_contribution_test().unwrap();
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_coordinator_contributor_aggregate_contribution() {
-    //     coordinator_contributor_verify_contribution_test().unwrap();
-    // }
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_coordinator_aggregation() {
+        coordinator_aggregation_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_next_round() {
+        coordinator_next_round_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_number_of_chunks() {
+        clear_test_transcript();
+
+        let environment = Environment::Test(Parameters::AleoTestChunks(4096));
+
+        let coordinator = Coordinator::new(environment.clone()).unwrap();
+        initialize_coordinator(&coordinator).unwrap();
+
+        assert_eq!(
+            environment.number_of_chunks(),
+            coordinator.get_round(0).unwrap().get_chunks().len() as u64
+        );
+    }
 }
