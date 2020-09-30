@@ -1,6 +1,6 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -18,12 +18,12 @@ pub mod coordinator;
 pub mod environment;
 
 pub use coordinator::*;
-pub use objects::Participant;
+pub use objects::{Participant, Round};
 pub use storage::Storage;
 
 mod locators;
 mod objects;
 mod storage;
 
-#[cfg(test)]
-mod testing;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

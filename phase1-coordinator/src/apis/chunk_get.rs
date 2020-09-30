@@ -13,7 +13,7 @@ pub fn chunk_get(coordinator: State<Coordinator>, chunk_id: u64, participant: Pa
     }
 
     // Return the next contribution locator for the given chunk ID.
-    match coordinator.next_contribution_locator_strict(chunk_id) {
+    match coordinator.next_contribution_locator(chunk_id) {
         Ok(contribution_locator) => {
             let response = json!({
                 "status": "ok",

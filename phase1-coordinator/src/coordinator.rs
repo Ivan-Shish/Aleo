@@ -258,24 +258,6 @@ impl Coordinator {
     ///
     /// Returns the next contribution locator for a given chunk ID.
     ///
-    #[inline]
-    pub fn next_contribution_locator(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
-        // Fetch the current round and chunk for the given chunk ID.
-        let round_height = self.current_round_height()?;
-        let round = self.current_round()?;
-        let chunk = round.get_chunk(chunk_id)?;
-
-        // Fetch the next contribution ID.
-        let next_contribution_id = chunk.next_contribution_id(round.expected_num_contributions())?;
-
-        Ok(self
-            .environment
-            .contribution_locator(round_height, chunk_id, next_contribution_id))
-    }
-
-    ///
-    /// Returns the next contribution locator for a given chunk ID.
-    ///
     /// If the current contribution is NOT contributed OR verified yet,
     /// this function will return a `CoordinatorError`.
     ///
@@ -283,7 +265,7 @@ impl Coordinator {
     /// will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_contribution_locator_strict(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
+    pub fn next_contribution_locator(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
         // Fetch the current round and chunk for the given chunk ID.
         let round_height = self.current_round_height()?;
         let round = self.current_round()?;
@@ -300,6 +282,24 @@ impl Coordinator {
         {
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
+
+        Ok(self
+            .environment
+            .contribution_locator(round_height, chunk_id, next_contribution_id))
+    }
+
+    ///
+    /// Returns the next contribution locator for a given chunk ID.
+    ///
+    #[inline]
+    pub fn next_contribution_locator_unchecked(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
+        // Fetch the current round and chunk for the given chunk ID.
+        let round_height = self.current_round_height()?;
+        let round = self.current_round()?;
+        let chunk = round.get_chunk(chunk_id)?;
+
+        // Fetch the next contribution ID.
+        let next_contribution_id = chunk.next_contribution_id(round.expected_num_contributions())?;
 
         Ok(self
             .environment
@@ -603,7 +603,7 @@ impl Coordinator {
     /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
-    pub(crate) fn add_contribution(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
+    pub fn add_contribution(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
         info!("Attempting to add contribution to a chunk");
 
         // Check that the participant is a contributor.
@@ -640,7 +640,7 @@ impl Coordinator {
 
         // Fetch the contribution locator for the next contribution ID corresponding to
         // the current round height and chunk ID.
-        let next_contributed_locator = self.next_contribution_locator(chunk_id)?;
+        let next_contributed_locator = self.next_contribution_locator_unchecked(chunk_id)?;
         trace!("Next contribution locator is {}", next_contributed_locator);
 
         {
@@ -928,6 +928,12 @@ impl Coordinator {
         }
     }
 
+    /// Returns a reference to the environment of the coordinator.
+    #[inline]
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
     /// Attempts to acquire the read lock for storage.
     #[inline]
     fn storage(&self) -> Result<RwLockReadGuard<Box<dyn Storage>>, CoordinatorError> {
@@ -1213,4 +1219,10 @@ mod test {
     fn test_coordinator_contributor_verify_contribution() {
         coordinator_contributor_verify_contribution_test().unwrap();
     }
+
+    // #[test]
+    // #[serial]
+    // fn test_coordinator_contributor_aggregate_contribution() {
+    //     coordinator_contributor_verify_contribution_test().unwrap();
+    // }
 }
