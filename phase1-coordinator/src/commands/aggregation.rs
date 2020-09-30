@@ -187,14 +187,12 @@ impl Aggregation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Aggregation, Computation, Initialization, Verification},
+        commands::{Aggregation, Computation, Verification},
         testing::prelude::*,
         Coordinator,
     };
 
-    use memmap::MmapOptions;
     use once_cell::sync::Lazy;
-    use std::fs::OpenOptions;
     use tracing::debug;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
