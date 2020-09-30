@@ -962,7 +962,6 @@ mod test {
 
     use chrono::Utc;
     use once_cell::sync::Lazy;
-    use tracing::trace;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
@@ -1353,7 +1352,8 @@ mod test {
             serde_json::to_string_pretty(&coordinator.current_round()?)?
         );
 
-        coordinator.next_round(Utc::now(), vec![contributor.clone()], vec![verifier.clone()]);
+        // Run aggregation and transition from round 1 to round 2.
+        coordinator.next_round(Utc::now(), vec![contributor.clone()], vec![verifier.clone()])?;
 
         println!(
             "Finished aggregation with this transcript {}",
