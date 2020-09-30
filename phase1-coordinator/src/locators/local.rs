@@ -12,10 +12,11 @@ impl Locator for Local {
     where
         Self: Sized,
     {
+        let base_directory = environment.local_base_directory();
         match environment {
-            Environment::Test(_) => format!("./transcript/test/round_{}", round_height),
-            Environment::Development(_) => format!("./transcript/development/round_{}", round_height),
-            Environment::Production(_) => format!("./transcript/production/round_{}", round_height),
+            Environment::Test(_) => format!("{}/round_{}", base_directory, round_height),
+            Environment::Development(_) => format!("{}/round_{}", base_directory, round_height),
+            Environment::Production(_) => format!("{}/round_{}", base_directory, round_height),
         }
     }
 
@@ -46,7 +47,25 @@ impl Locator for Local {
         let path = Path::new(&directory);
         match environment {
             Environment::Test(_) => {
-                if Self::round_directory_exists(environment, round_height) {
+                if path.exists() {
+                    warn!("Coordinator is clearing {:?}", &path);
+                    std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
+                    warn!("Coordinator cleared {:?}", &path);
+                }
+            }
+            Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
+            Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
+        }
+    }
+
+    /// Resets the entire round directory for a given environment.
+    fn round_directory_reset_all(environment: &Environment) {
+        // If this is a test environment, attempt to clear it for the coordinator.
+        let base_directory = environment.local_base_directory();
+        let path = Path::new(&base_directory);
+        match environment {
+            Environment::Test(_) => {
+                if path.exists() {
                     warn!("Coordinator is clearing {:?}", &path);
                     std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
                     warn!("Coordinator cleared {:?}", &path);

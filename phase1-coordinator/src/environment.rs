@@ -252,6 +252,11 @@ impl Environment {
         round_directory_reset!(self, Local, Remote, Remote, round_height)
     }
 
+    /// Resets the entire round directory for all rounds, if permitted.
+    pub fn round_directory_reset_all(&self) {
+        round_directory_reset_all!(self, Local, Remote, Remote)
+    }
+
     /// Returns the chunk directory for a given round height and chunk ID.
     pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
         chunk_directory!(self, Local, Remote, Remote, round_height, chunk_id)
@@ -290,6 +295,15 @@ impl Environment {
     /// Returns `true` if the round locator exists for a given round height.
     pub fn round_locator_exists(&self, round_height: u64) -> bool {
         round_locator_exists!(self, Local, Remote, Remote, round_height)
+    }
+
+    /// Returns the base directory for the local locator of this coordinator.
+    pub fn local_base_directory(&self) -> &str {
+        match self {
+            Environment::Test(_) => "./transcript/test",
+            Environment::Development(_) => "./transcript/development",
+            Environment::Production(_) => "./transcript",
+        }
     }
 
     ///

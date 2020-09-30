@@ -123,8 +123,8 @@ macro_rules! round_directory_exists {
     }};
 }
 
-/// Resets the round directory if permitted using a locator that is determined based
-/// on the environment the coordinator is operating in.
+/// Resets the round directory for a given round height if permitted using a locator
+/// that is determined based on the environment the coordinator is operating in.
 #[macro_export]
 macro_rules! round_directory_reset {
     ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
@@ -134,6 +134,21 @@ macro_rules! round_directory_reset {
             Environment::Test(_) => $l1::round_directory_reset($env, $round_height),
             Environment::Development(_) => $l2::round_directory_reset($env, $round_height),
             Environment::Production(_) => $l3::round_directory_reset($env, $round_height),
+        }
+    }};
+}
+
+/// Resets the entire round directory if permitted using a locator that is determined based
+/// on the environment the coordinator is operating in.
+#[macro_export]
+macro_rules! round_directory_reset_all {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory_reset_all($env),
+            Environment::Development(_) => $l2::round_directory_reset_all($env),
+            Environment::Production(_) => $l3::round_directory_reset_all($env),
         }
     }};
 }
