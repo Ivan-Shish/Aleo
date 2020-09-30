@@ -1,5 +1,5 @@
 use crate::{environment::Environment, CoordinatorError};
-use phase1::{helpers::CurveKind, Phase1Parameters};
+use phase1::helpers::CurveKind;
 use phase1_cli::contribute;
 
 use rand::thread_rng;

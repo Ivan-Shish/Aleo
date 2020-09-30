@@ -3,6 +3,8 @@
 #[macro_export]
 macro_rules! phase1_chunked_parameters {
     ($curve:ident, $settings:ident, $chunk_id:ident) => {{
+        use phase1::Phase1Parameters;
+
         let (contribution_mode, proving_system, _, power, batch_size, chunk_size) = $settings;
         Phase1Parameters::<$curve>::new_chunk(
             contribution_mode,
@@ -20,6 +22,8 @@ macro_rules! phase1_chunked_parameters {
 #[macro_export]
 macro_rules! phase1_full_parameters {
     ($curve:ident, $settings:ident) => {{
+        use phase1::Phase1Parameters;
+
         let (_, proving_system, _, power, batch_size, _) = $settings;
         Phase1Parameters::<$curve>::new_full(proving_system, power, batch_size)
     }};
@@ -42,12 +46,34 @@ macro_rules! contribution_filesize {
     }};
 }
 
+/// Returns the total number of powers of tau G1 given a proving system and the number of powers.
+#[macro_export]
+macro_rules! total_size_in_g1 {
+    ($proving_system:ident, $power:ident) => {{
+        use phase1::ProvingSystem;
+
+        match $proving_system {
+            ProvingSystem::Groth16 => ((1 << ($power + 1)) - 1),
+            ProvingSystem::Marlin => (1 << $power),
+        }
+    }};
+}
+
+/// Returns the chunk size given the desired number of chunks, the proving system,
+/// and the number of powers.
+#[macro_export]
+macro_rules! chunk_size {
+    ($num_chunks:ident, $proving_system:ident, $power:ident) => {{ (total_size_in_g1!($proving_system, $power) / $num_chunks) }};
+}
+
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
 /// an instance of `Settings`, a chunk ID, a compressed setting, and whether
 /// this is the initialization round.
 #[macro_export]
 macro_rules! round_filesize {
     ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident, $init:ident) => {{
+        use phase1::Phase1Parameters;
+
         let full_parameters = phase1_full_parameters!($curve, $settings);
         let parameters = Phase1Parameters::<$curve>::new(
             full_parameters.contribution_mode,
