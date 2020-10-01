@@ -19,7 +19,7 @@ pub type VerifierId = String;
 // Always use a limit to prevent DoS attacks.
 const DATA_LIMIT: u64 = 256;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(untagged)]
 pub enum Participant {
     Contributor(ContributorId),

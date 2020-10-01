@@ -2,9 +2,10 @@ use crate::{objects::Round, Coordinator};
 
 use rocket::{http::Status, State};
 use rocket_contrib::json::Json;
+use std::sync::Arc;
 
 #[get("/ceremony")]
-pub fn ceremony_get(coordinator: State<Coordinator>) -> Result<Json<Round>, Status> {
+pub fn ceremony_get(coordinator: State<Arc<Coordinator>>) -> Result<Json<Round>, Status> {
     match coordinator.current_round() {
         Ok(round) => Ok(Json(round.clone())),
         _ => return Err(Status::InternalServerError),
@@ -18,7 +19,10 @@ mod test {
     #[test]
     #[serial]
     fn test_ceremony_get() {
-        let (client, _) = test_client(&TEST_ENVIRONMENT).unwrap();
+        clear_test_transcript();
+
+        let (client, coordinator) = test_client(&TEST_ENVIRONMENT).unwrap();
+        test_initialize_to_round_1(&coordinator).unwrap();
 
         let mut response = client.get("/ceremony").dispatch();
         let response_body = response.body_string();

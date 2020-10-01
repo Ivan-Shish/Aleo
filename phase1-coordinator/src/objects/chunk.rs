@@ -9,7 +9,7 @@ use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
 use tracing::trace;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
 pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
@@ -191,23 +191,6 @@ impl Chunk {
     #[inline]
     pub(crate) fn only_contributions_complete(&self, expected_contributions: u64) -> bool {
         (self.contributions.len() as u64) == expected_contributions
-    }
-
-    ///
-    /// Returns `true` if the current contributions in this chunk have been verified.
-    /// Otherwise, returns `false`.
-    ///
-    /// Note that this does NOT mean all expected contributions in this chunk
-    /// are present and have have been verified.  To account for that,
-    /// use `Chunk::is_complete`.
-    ///
-    #[inline]
-    pub(crate) fn only_current_verifications_complete(&self) -> bool {
-        self.get_contributions()
-            .par_iter()
-            .filter(|contribution| !contribution.is_verified())
-            .count() as u64
-            == 0
     }
 
     ///

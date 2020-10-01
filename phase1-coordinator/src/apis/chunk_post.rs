@@ -1,12 +1,13 @@
 use crate::{objects::Participant, Coordinator};
 
 use rocket::{http::Status, State};
+use std::sync::Arc;
 use tracing::error;
 
 // TODO (howardwu): Add authentication.
 #[post("/chunks/<chunk_id>/contribution", data = "<participant>")]
 pub fn chunk_post(
-    coordinator: State<Coordinator>,
+    coordinator: State<Arc<Coordinator>>,
     chunk_id: u64,
     participant: Participant,
     // contribution_id: u64,
@@ -18,5 +19,4 @@ pub fn chunk_post(
             Err(Status::BadRequest)
         }
     }
-    // Err(Status::BadRequest)
 }

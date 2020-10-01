@@ -6,7 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contribution {
     #[serde(deserialize_with = "deserialize_optional_contributor_from_string")]

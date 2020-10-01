@@ -77,6 +77,6 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 #[inline]
 pub fn main() -> anyhow::Result<()> {
     logger();
-    server(&Environment::Test(Parameters::AleoTestCustom(8, 12, 64)))?.launch();
+    server(&Environment::Test(Parameters::AleoTestCustom(16, 12, 64)))?.launch();
     Ok(())
 }
