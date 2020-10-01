@@ -13,7 +13,7 @@ impl Aggregation {
     /// Runs aggregation for a given environment and round.
     pub fn run(environment: &Environment, round: &Round) -> anyhow::Result<()> {
         // Fetch the round height.
-        let round_height = round.get_height();
+        let round_height = round.round_height();
 
         // Fetch the compressed output setting based on the round height.
         let compressed_output = match round_height != 0 && environment.compressed_outputs() {
@@ -71,7 +71,7 @@ impl Aggregation {
         let mut readers = vec![];
 
         // Fetch the round height.
-        let round_height = round.get_height();
+        let round_height = round.round_height();
 
         // Fetch the round height.
         let is_initial = round_height == 0;
@@ -139,7 +139,7 @@ impl Aggregation {
     /// returns a writer to it.
     fn writer(environment: &Environment, round: &Round) -> anyhow::Result<MmapMut> {
         // Fetch the round height.
-        let round_height = round.get_height();
+        let round_height = round.round_height();
 
         // Fetch the round transcript locator for the given round.
         let round_locator = environment.round_locator(round_height);

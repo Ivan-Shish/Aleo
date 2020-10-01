@@ -12,7 +12,6 @@ extern crate serde_json;
 mod macros;
 
 pub mod apis;
-pub mod authentication;
 pub mod commands;
 pub mod coordinator;
 pub mod environment;

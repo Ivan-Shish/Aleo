@@ -46,6 +46,7 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 #[inline]
 fn server(environment: &Environment) -> anyhow::Result<Rocket> {
     info!("Starting server...");
+    info!("Chunk size is {}", environment.to_settings().5);
     let builder = match environment {
         Environment::Test(_) => Config::build(RocketEnvironment::Development),
         Environment::Development(_) => Config::build(RocketEnvironment::Production),
@@ -76,6 +77,6 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 #[inline]
 pub fn main() -> anyhow::Result<()> {
     logger();
-    server(&Environment::Test(Parameters::AleoTest8Chunks))?.launch();
+    server(&Environment::Test(Parameters::AleoTestCustom(8, 12, 64)))?.launch();
     Ok(())
 }
