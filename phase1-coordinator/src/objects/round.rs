@@ -34,30 +34,37 @@ impl Round {
     #[inline]
     pub fn new(
         environment: &Environment,
-        height: u64,
+        round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
         verifier_ids: Vec<Participant>,
     ) -> Result<Self, CoordinatorError> {
-        debug!("Creating round {}", height);
+        debug!("Creating round {}", round_height);
 
-        // Check that the contributor correspond to the contributor participant type.
-        let num_non_contributors = contributor_ids
-            .par_iter()
-            .filter(|participant_id| !participant_id.is_contributor())
-            .count();
-        if num_non_contributors > 0 {
-            error!("Found {} participants who are not contributors", num_non_contributors);
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-        // Check that the verifier correspond to the verifier participant type.
-        if verifier_ids
-            .par_iter()
-            .filter(|participant_id| !participant_id.is_verifier())
-            .count()
-            > 0
+        // Check that each contributor ID is a contributor participant type.
         {
-            return Err(CoordinatorError::ExpectedVerifier);
+            let number_of_non_contributors = contributor_ids
+                .par_iter()
+                .filter(|participant_id| !participant_id.is_contributor())
+                .count();
+            if number_of_non_contributors > 0 {
+                error!(
+                    "Found {} participants who are not contributors",
+                    number_of_non_contributors
+                );
+                return Err(CoordinatorError::ExpectedContributor);
+            }
+        }
+        // Check that each verifier ID is a verifier participant type.
+        {
+            let number_of_non_verifiers = verifier_ids
+                .par_iter()
+                .filter(|participant_id| !participant_id.is_verifier())
+                .count();
+            if number_of_non_verifiers > 0 {
+                error!("Found {} participants who are not verifiers", number_of_non_verifiers);
+                return Err(CoordinatorError::ExpectedVerifier);
+            }
         }
 
         // Fetch the version number and number of chunks from the given environment.
@@ -84,17 +91,17 @@ impl Round {
                 Chunk::new(
                     chunk_id as u64,
                     verifier.clone(),
-                    environment.contribution_locator(height, chunk_id as u64, 0),
+                    environment.contribution_locator(round_height, chunk_id as u64, 0),
                 )
                 .expect("failed to create chunk")
             })
             .collect();
 
-        debug!("Created round {}", height);
+        debug!("Created round {}", round_height);
 
         Ok(Self {
             version,
-            height,
+            height: round_height,
             started_at: Some(started_at),
             finished_at: None,
             contributor_ids,
@@ -105,54 +112,32 @@ impl Round {
 
     /// Returns the version number set in the round.
     #[inline]
-    pub fn get_version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         self.version
     }
 
     /// Returns the height of the round.
     #[inline]
-    pub fn get_height(&self) -> u64 {
+    pub fn round_height(&self) -> u64 {
         self.height
     }
 
-    /// Returns the expected number of contributions.
-    pub fn expected_num_contributions(&self) -> u64 {
-        // The expected number of contributions is one more than
-        // the total number of authorized contributions to account
-        // for the initialization contribution in each round.
-        self.num_contributors() + 1
-    }
-
-    /// Returns `true` if the given participant is authorized as a contributor.
-    /// Otherwise returns `false`.
+    /// Returns the number of contributors authorized for this round.
     #[inline]
-    pub fn is_authorized_contributor(&self, participant: &Participant) -> bool {
-        self.contributor_ids.contains(participant)
-    }
-
-    /// Returns `true` if the given participant is authorized as a verifier.
-    /// Otherwise returns `false`.
-    #[inline]
-    pub fn is_authorized_verifier(&self, participant: &Participant) -> bool {
-        self.verifier_ids.contains(participant)
-    }
-
-    /// Returns the number of contributors authorized in this round.
-    #[inline]
-    pub fn num_contributors(&self) -> u64 {
+    pub fn number_of_contributors(&self) -> u64 {
         self.contributor_ids.len() as u64
+    }
+
+    /// Returns a reference to a list of contributors.
+    #[inline]
+    pub fn get_contributors(&self) -> &Vec<Participant> {
+        &self.contributor_ids
     }
 
     /// Returns a reference to a list of verifiers.
     #[inline]
     pub fn get_verifiers(&self) -> &Vec<Participant> {
         &self.verifier_ids
-    }
-
-    /// Returns a reference to a list of the chunks.
-    #[inline]
-    pub fn get_chunks(&self) -> &Vec<Chunk> {
-        &self.chunks
     }
 
     /// Returns a reference to the chunk, if it exists.
@@ -172,21 +157,32 @@ impl Round {
         }
     }
 
-    /// Returns a mutable reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
+    /// Returns a reference to a list of the chunks.
     #[inline]
-    pub fn get_chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
-        // Fetch the chunk with the given chunk ID.
-        let chunk = match self.chunks.get_mut(chunk_id as usize) {
-            Some(chunk) => chunk,
-            _ => return Err(CoordinatorError::ChunkMissing),
-        };
+    pub fn get_chunks(&self) -> &Vec<Chunk> {
+        &self.chunks
+    }
 
-        // Check the ID in the chunk matches the given chunk ID.
-        match chunk.chunk_id() == chunk_id {
-            true => Ok(chunk),
-            false => Err(CoordinatorError::ChunkIdMismatch),
-        }
+    /// Returns the expected number of contributions.
+    pub fn expected_num_contributions(&self) -> u64 {
+        // The expected number of contributions is one more than
+        // the total number of authorized contributions to account
+        // for the initialization contribution in each round.
+        self.number_of_contributors() + 1
+    }
+
+    /// Returns `true` if the given participant is authorized as a contributor.
+    /// Otherwise returns `false`.
+    #[inline]
+    pub fn is_authorized_contributor(&self, participant: &Participant) -> bool {
+        self.contributor_ids.contains(participant)
+    }
+
+    /// Returns `true` if the given participant is authorized as a verifier.
+    /// Otherwise returns `false`.
+    #[inline]
+    pub fn is_authorized_verifier(&self, participant: &Participant) -> bool {
+        self.verifier_ids.contains(participant)
     }
 
     /// Returns `true` if the chunk corresponding to the given chunk ID is
@@ -199,30 +195,30 @@ impl Round {
         }
     }
 
+    /// Returns `true` if all contributions in all chunks are verified.
+    /// Otherwise, returns `false`.
+    #[inline]
+    pub fn is_complete(&self) -> bool {
+        let expected_num_contributions = self.expected_num_contributions();
+        self.chunks
+            .par_iter()
+            .filter(|chunk| !chunk.is_complete(expected_num_contributions))
+            .collect::<Vec<_>>()
+            .is_empty()
+    }
+
     ///
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
     ///
     #[inline]
-    pub fn try_lock_chunk(&mut self, chunk_id: u64, participant: Participant) -> Result<(), CoordinatorError> {
+    pub(crate) fn try_lock_chunk(&mut self, chunk_id: u64, participant: Participant) -> Result<(), CoordinatorError> {
         // If the participant is a contributor ID, check they are authorized to acquire the lock as a contributor.
         if participant.is_contributor() {
             // Check that the contributor is an authorized contributor in this round.
             if !self.is_authorized_contributor(&participant) {
                 error!("{} is not an authorized contributor", &participant);
                 return Err(CoordinatorError::UnauthorizedChunkContributor);
-            }
-
-            // Check that the contributor does not currently hold a lock to any chunk.
-            if self
-                .get_chunks()
-                .iter()
-                .filter(|chunk| chunk.is_locked_by(&participant))
-                .next()
-                .is_some()
-            {
-                error!("{} already holds the lock on chunk {}", &participant, chunk_id);
-                return Err(CoordinatorError::ChunkLockAlreadyAcquired);
             }
         }
 
@@ -233,6 +229,17 @@ impl Round {
                 error!("{} is not an authorized verifier", &participant);
                 return Err(CoordinatorError::UnauthorizedChunkVerifier);
             }
+        }
+
+        // Check that the participant does not currently hold a lock to any chunk.
+        let number_of_locks_held = self
+            .get_chunks()
+            .par_iter()
+            .filter(|chunk| chunk.is_locked_by(&participant))
+            .count();
+        if number_of_locks_held > 0 {
+            error!("{} already holds the lock on chunk {}", &participant, chunk_id);
+            return Err(CoordinatorError::ChunkLockAlreadyAcquired);
         }
 
         // Attempt to acquire the lock for the given participant ID.
@@ -252,7 +259,7 @@ impl Round {
     /// a verifier assigned to it.
     ///
     #[inline]
-    pub fn verify_contribution(
+    pub(crate) fn verify_contribution(
         &mut self,
         chunk_id: u64,
         contribution_id: u64,
@@ -272,16 +279,21 @@ impl Round {
         Ok(())
     }
 
-    /// Returns `true` if all contributions in all chunks are verified.
-    /// Otherwise, returns `false`.
+    /// Returns a mutable reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
     #[inline]
-    pub fn is_complete(&self) -> bool {
-        let expected_num_contributions = self.expected_num_contributions();
-        self.chunks
-            .par_iter()
-            .filter(|chunk| !chunk.is_complete(expected_num_contributions))
-            .collect::<Vec<_>>()
-            .is_empty()
+    pub(crate) fn get_chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
+        // Fetch the chunk with the given chunk ID.
+        let chunk = match self.chunks.get_mut(chunk_id as usize) {
+            Some(chunk) => chunk,
+            _ => return Err(CoordinatorError::ChunkMissing),
+        };
+
+        // Check the ID in the chunk matches the given chunk ID.
+        match chunk.chunk_id() == chunk_id {
+            true => Ok(chunk),
+            false => Err(CoordinatorError::ChunkIdMismatch),
+        }
     }
 }
 
@@ -311,15 +323,15 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_height() {
+    fn test_round_height() {
         let round_0 = test_round_0_json().unwrap();
-        assert_eq!(0, round_0.get_height());
+        assert_eq!(0, round_0.round_height());
 
         let round_0 = test_round_0().unwrap();
-        assert_eq!(0, round_0.get_height());
+        assert_eq!(0, round_0.round_height());
 
         let round_1 = test_round_1_initial_json().unwrap();
-        assert_eq!(1, round_1.get_height());
+        assert_eq!(1, round_1.round_height());
     }
 
     #[test]

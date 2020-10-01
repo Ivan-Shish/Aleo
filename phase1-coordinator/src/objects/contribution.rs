@@ -21,6 +21,41 @@ pub struct Contribution {
 }
 
 impl Contribution {
+    /// Returns `true` if the contribution has been verified.
+    /// Otherwise returns `false`.
+    #[inline]
+    pub fn is_verified(&self) -> bool {
+        self.verified
+    }
+
+    /// Returns a reference to the contributor, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_contributor(&self) -> &Option<Participant> {
+        &self.contributor_id
+    }
+
+    /// Returns a reference to the contributor location, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_contributed_location(&self) -> &Option<String> {
+        &self.contributed_locator
+    }
+
+    /// Returns a reference to the verifier, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_verifier(&self) -> &Option<Participant> {
+        &self.verifier_id
+    }
+
+    /// Returns a reference to the verifier location, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_verified_location(&self) -> &Option<String> {
+        &self.verified_locator
+    }
+
     ///
     /// Creates a new contributor instance of `Contribution`.
     ///
@@ -168,40 +203,5 @@ impl Contribution {
         trace!("Setting contribution to verified");
         self.verified = true;
         Ok(())
-    }
-
-    /// Returns `true` if the contribution has been verified.
-    /// Otherwise returns `false`.
-    #[inline]
-    pub fn is_verified(&self) -> bool {
-        self.verified
-    }
-
-    /// Returns a reference to the contributor, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_contributor(&self) -> &Option<Participant> {
-        &self.contributor_id
-    }
-
-    /// Returns a reference to the contributor location, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_contributed_location(&self) -> &Option<String> {
-        &self.contributed_locator
-    }
-
-    /// Returns a reference to the verifier, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_verifier(&self) -> &Option<Participant> {
-        &self.verifier_id
-    }
-
-    /// Returns a reference to the verifier location, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn get_verified_location(&self) -> &Option<String> {
-        &self.verified_locator
     }
 }

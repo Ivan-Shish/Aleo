@@ -25,7 +25,6 @@ pub enum Parameters {
     AleoTest20Chunks,
     AleoTestChunks(NumberOfChunks),
     AleoTestCustom(NumberOfChunks, Power, BatchSize),
-    Simple,
     Custom(Settings),
 }
 
@@ -43,7 +42,6 @@ impl Parameters {
             Parameters::AleoTestCustom(number_of_chunks, power, batch_size) => {
                 Self::aleo_test_custom(number_of_chunks, power, batch_size)
             }
-            Parameters::Simple => Self::simple(),
             Parameters::Custom(settings) => settings.clone(),
         }
     }
@@ -137,17 +135,6 @@ impl Parameters {
             *power,
             *batch_size,
             chunk_size!(number_of_chunks, proving_system, power),
-        )
-    }
-
-    fn simple() -> Settings {
-        (
-            ContributionMode::Chunked,
-            ProvingSystem::Groth16,
-            CurveKind::Bls12_377,
-            Power::from(10_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(512_usize),
         )
     }
 }

@@ -43,10 +43,40 @@ impl Chunk {
         }
     }
 
-    /// Returns the assigned chunk ID.
+    /// Returns the assigned ID of this chunk.
     #[inline]
     pub fn chunk_id(&self) -> u64 {
         self.chunk_id
+    }
+
+    /// Returns the lock holder of this chunk, if the chunk is locked.
+    /// Otherwise, returns `None`.
+    #[inline]
+    pub fn lock_holder(&self) -> &Option<Participant> {
+        &self.lock_holder
+    }
+
+    /// Returns `true` if this chunk is locked. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_locked(&self) -> bool {
+        self.lock_holder.is_some()
+    }
+
+    /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_unlocked(&self) -> bool {
+        !self.is_locked()
+    }
+
+    /// Returns `true` if this chunk is locked by the given participant.
+    /// Otherwise, returns `false`.
+    #[inline]
+    pub fn is_locked_by(&self, participant: &Participant) -> bool {
+        // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
+        match &self.lock_holder {
+            Some(lock_holder) => *lock_holder == *participant,
+            None => false,
+        }
     }
 
     /// Returns a reference to the current contribution in this chunk,
@@ -65,15 +95,6 @@ impl Chunk {
         }
     }
 
-    /// Returns a mutable reference to a contribution given a contribution ID.
-    #[inline]
-    pub fn get_contribution_mut(&mut self, contribution_id: u64) -> Result<&mut Contribution, CoordinatorError> {
-        match self.contributions.get_mut(contribution_id as usize) {
-            Some(contribution) => Ok(contribution),
-            _ => Err(CoordinatorError::ContributionMissing),
-        }
-    }
-
     /// Returns a reference to a list of contributions in this chunk.
     #[inline]
     pub fn get_contributions(&self) -> &Vec<Contribution> {
@@ -81,7 +102,10 @@ impl Chunk {
     }
 
     ///
-    /// Returns the current number of contributions in this chunk.
+    /// Returns the current contribution ID in this chunk.
+    ///
+    /// This function returns the ID corresponding to the latest contributed
+    /// or verified contribution that is stored with the coordinator.
     ///
     /// This function does NOT consider the state of the current contribution.
     ///
@@ -122,25 +146,34 @@ impl Chunk {
     }
 
     ///
-    /// Returns the next number of contributions in this chunk.
+    /// Returns the next contribution ID for this chunk.
     ///
     /// This function uses the given expected number of contributions
-    /// as a basis for determining the next contribution ID.
+    /// to determine whether this chunk contains all contributions yet.
     ///
-    /// This function should only be used to get the next contribution ID when
-    /// the next contribution ID is ready to be computed. It should not be used
-    /// for polling or querying, as it is too restrictive for those purposes.
+    /// This function should be called only when a contributor intends
+    /// to acquire the lock for this chunk and compute the next contribution.
     ///
-    /// If the current contribution is not verified, returns `CoordinatorError`.
-    /// If the contributions are complete, returns `CoordinatorError`.
+    /// This function should NOT be called when attempting to poll or query
+    /// for the state of this chunk, as it is too restrictive for such purposes.
+    ///
+    /// If the current contribution is not verified,
+    /// this function returns a `CoordinatorError`.
+    ///
+    /// If the contributions are complete,
+    /// this function returns a `CoordinatorError`.
     ///
     #[inline]
     pub fn next_contribution_id(&self, expected_contributions: u64) -> Result<u64, CoordinatorError> {
+        // Fetch the current contribution.
+        let current_contribution = self.current_contribution()?;
+
         // Check if the current contribution is verified.
-        if !self.current_contribution()?.is_verified() {
+        if !current_contribution.is_verified() {
             return Err(CoordinatorError::ContributionMissingVerification);
         }
-        // Check if all contributions for this chunk are present.
+
+        // Check if all contributions in this chunk are present.
         match !self.only_contributions_complete(expected_contributions) {
             true => Ok(self.current_contribution_id() + 1),
             false => Err(CoordinatorError::ContributionsComplete),
@@ -156,7 +189,7 @@ impl Chunk {
     /// been verified. To account for that, use `Chunk::is_complete`.
     ///
     #[inline]
-    pub fn only_contributions_complete(&self, expected_contributions: u64) -> bool {
+    pub(crate) fn only_contributions_complete(&self, expected_contributions: u64) -> bool {
         (self.contributions.len() as u64) == expected_contributions
     }
 
@@ -169,7 +202,7 @@ impl Chunk {
     /// use `Chunk::is_complete`.
     ///
     #[inline]
-    pub fn only_current_verifications_complete(&self) -> bool {
+    pub(crate) fn only_current_verifications_complete(&self) -> bool {
         self.get_contributions()
             .par_iter()
             .filter(|contribution| !contribution.is_verified())
@@ -200,29 +233,6 @@ impl Chunk {
         );
 
         contributions_complete && verifications_complete
-    }
-
-    /// Returns `true` if this chunk is locked. Otherwise, returns `false`.
-    #[inline]
-    pub fn is_locked(&self) -> bool {
-        self.lock_holder.is_some()
-    }
-
-    /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
-    #[inline]
-    pub fn is_unlocked(&self) -> bool {
-        !self.is_locked()
-    }
-
-    /// Returns `true` if this chunk is locked by the given participant.
-    /// Otherwise, returns `false`.
-    #[inline]
-    pub fn is_locked_by(&self, participant: &Participant) -> bool {
-        // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
-        match &self.lock_holder {
-            Some(lock_holder) => *lock_holder == *participant,
-            None => false,
-        }
     }
 
     ///
@@ -316,7 +326,7 @@ impl Chunk {
     /// If the operations succeed, returns `Ok(())`. Otherwise, returns `CoordinatorError`.
     ///
     #[inline]
-    pub fn add_contribution(
+    pub(crate) fn add_contribution(
         &mut self,
         contribution_id: u64,
         participant: Participant,
@@ -357,7 +367,7 @@ impl Chunk {
     /// The underlying function checks that the contribution has a verifier assigned to it.
     ///
     #[inline]
-    pub fn verify_contribution(
+    pub(crate) fn verify_contribution(
         &mut self,
         contribution_id: u64,
         participant: Participant,
@@ -397,20 +407,13 @@ impl Chunk {
         }
     }
 
-    /// Generates an unique number representing the current state of the chunk.
+    /// Returns a mutable reference to a contribution given a contribution ID.
     #[inline]
-    pub fn version(&self) -> u32 {
-        let matching_contributions: u32 = self
-            .contributions
-            .par_iter()
-            .map(|contribution| contribution.get_contributor().is_some() as u32)
-            .sum();
-        let matching_verifications: u32 = self
-            .contributions
-            .par_iter()
-            .map(|contribution| contribution.get_verifier().is_some() as u32)
-            .sum();
-        return matching_contributions + matching_verifications;
+    fn get_contribution_mut(&mut self, contribution_id: u64) -> Result<&mut Contribution, CoordinatorError> {
+        match self.contributions.get_mut(contribution_id as usize) {
+            Some(contribution) => Ok(contribution),
+            _ => Err(CoordinatorError::ContributionMissing),
+        }
     }
 }
 
