@@ -76,15 +76,22 @@ impl Locator for Remote {
 
     /// Returns the contribution locator for a given round, chunk ID, and
     /// contribution ID from the coordinator.
-    fn contribution_locator(environment: &Environment, round_height: u64, chunk_id: u64, contribution_id: u64) -> String
+    fn contribution_locator(
+        environment: &Environment,
+        round_height: u64,
+        chunk_id: u64,
+        contribution_id: u64,
+        verified: bool,
+    ) -> String
     where
         Self: Sized,
     {
         // Fetch the chunk directory path.
         let path = Self::chunk_directory(environment, round_height, chunk_id);
 
-        // Set the contribution locator as `{chunk_directory}/contribution/{contribution_id}`.
-        format!("{}/contribution/{}", path, contribution_id)
+        let verified_str = if verified { "_verified" } else { "" };
+        // Set the contribution locator as `{chunk_directory}/contribution/{contribution_id}{verified_str}`.
+        format!("{}/contribution/{}{}", path, contribution_id, verified_str)
     }
 
     /// Initializes the contribution locator file for a given round, chunk ID, and
@@ -105,11 +112,12 @@ impl Locator for Remote {
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
+        verified: bool,
     ) -> bool
     where
         Self: Sized,
     {
-        let path = Self::contribution_locator(environment, round_height, chunk_id, contribution_id);
+        let path = Self::contribution_locator(environment, round_height, chunk_id, contribution_id, verified);
         Path::new(&path).exists()
     }
 

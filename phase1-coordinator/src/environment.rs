@@ -3,6 +3,7 @@ use crate::{
     storage::{ConcurrentMemory, InMemory, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
+use setup_utils::{CheckForCorrectness, UseCompression};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
 use url::Url;
@@ -175,11 +176,11 @@ impl Environment {
     /// By default, the coordinator returns `false` to minimize time
     /// spent by contributors on decompressing inputs.
     ///
-    pub const fn compressed_inputs(&self) -> bool {
+    pub const fn compressed_inputs(&self) -> UseCompression {
         match self {
-            Environment::Test(_) => false,
-            Environment::Development(_) => false,
-            Environment::Production(_) => false,
+            Environment::Test(_) => UseCompression::No,
+            Environment::Development(_) => UseCompression::No,
+            Environment::Production(_) => UseCompression::No,
         }
     }
 
@@ -189,11 +190,25 @@ impl Environment {
     /// By default, the coordinator returns `true` to minimize time
     /// spent by the coordinator and contributors on uploading chunks.
     ///
-    pub const fn compressed_outputs(&self) -> bool {
+    pub const fn compressed_outputs(&self) -> UseCompression {
         match self {
-            Environment::Test(_) => true,
-            Environment::Development(_) => true,
-            Environment::Production(_) => true,
+            Environment::Test(_) => UseCompression::Yes,
+            Environment::Development(_) => UseCompression::Yes,
+            Environment::Production(_) => UseCompression::Yes,
+        }
+    }
+
+    ///
+    /// Returns the input correctness check preference of the coordinator.
+    ///
+    /// By default, the coordinator returns `false` to minimize time
+    /// spent by the contributors on reading chunks.
+    ///
+    pub fn check_input_for_correctness(&self) -> CheckForCorrectness {
+        match self {
+            Environment::Test(_) => CheckForCorrectness::No,
+            Environment::Development(_) => CheckForCorrectness::No,
+            Environment::Production(_) => CheckForCorrectness::No,
         }
     }
 
@@ -294,8 +309,23 @@ impl Environment {
     }
 
     /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> String {
-        contribution_locator!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
+    pub fn contribution_locator(
+        &self,
+        round_height: u64,
+        chunk_id: u64,
+        contribution_id: u64,
+        verified: bool,
+    ) -> String {
+        contribution_locator!(
+            self,
+            Local,
+            Remote,
+            Remote,
+            round_height,
+            chunk_id,
+            contribution_id,
+            verified
+        )
     }
 
     /// Initializes the contribution locator file for a given round, chunk ID, and contribution ID.
@@ -304,8 +334,23 @@ impl Environment {
     }
 
     /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator_exists(&self, round_height: u64, chunk_id: u64, contribution_id: u64) -> bool {
-        contribution_locator_exists!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
+    pub fn contribution_locator_exists(
+        &self,
+        round_height: u64,
+        chunk_id: u64,
+        contribution_id: u64,
+        verified: bool,
+    ) -> bool {
+        contribution_locator_exists!(
+            self,
+            Local,
+            Remote,
+            Remote,
+            round_height,
+            chunk_id,
+            contribution_id,
+            verified
+        )
     }
 
     /// Returns the round locator for a given round height.
