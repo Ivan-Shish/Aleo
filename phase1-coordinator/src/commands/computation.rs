@@ -87,31 +87,30 @@ mod tests {
         testing::prelude::*,
     };
 
+    use crate::environment::{Environment, Parameters};
     use memmap::MmapOptions;
     use std::fs::OpenOptions;
     use tracing::{debug, trace};
 
-    #[test]
-    #[serial]
-    fn test_computation_run() {
+    fn test_computation_run(environment: &Environment) {
         clear_test_transcript();
 
         // Define test parameters.
         let round_height = 0;
-        let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
+        let number_of_chunks = environment.number_of_chunks();
 
         // Generate a new challenge for the given parameters.
         for chunk_id in 0..number_of_chunks {
             debug!("Initializing test chunk {}", chunk_id);
 
             // Run initialization on chunk.
-            let contribution_hash = Initialization::run(&TEST_ENVIRONMENT_3, round_height, chunk_id).unwrap();
+            let contribution_hash = Initialization::run(environment, round_height, chunk_id).unwrap();
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
+            Computation::run(environment, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
-            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1, false);
+            let current = environment.contribution_locator(round_height, chunk_id, 1, false);
 
             // Check that the current contribution was generated based on the previous contribution hash.
             let file = OpenOptions::new().read(true).open(current).unwrap();
@@ -125,5 +124,19 @@ mod tests {
                 assert_eq!(expected, candidate);
             }
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_computation_run_test_environment_3() {
+        test_computation_run(&TEST_ENVIRONMENT_3);
+    }
+
+    #[test]
+    #[serial]
+    fn test_computation_run_test_environment_from_file() {
+        test_computation_run(&Environment::Test(Parameters::ConfigFile(
+            include_str!("../testing/resources/config_test_coordinator.json").to_string(),
+        )));
     }
 }

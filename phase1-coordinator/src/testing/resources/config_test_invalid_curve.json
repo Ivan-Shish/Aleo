@@ -1,0 +1,8 @@
+{
+  "number_of_chunks": 20,
+  "curve": "bls12_378",
+  "contribution_mode": "chunked",
+  "power": 14,
+  "batch_size": 128,
+  "proving_system": "groth16"
+}

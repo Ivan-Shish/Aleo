@@ -6,6 +6,7 @@ use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 type BatchSize = usize;
@@ -15,6 +16,18 @@ type NumberOfChunks = usize;
 type Power = usize;
 
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
+
+#[derive(Serialize, Deserialize)]
+pub struct ConfigFile {
+    contribution_mode: String,
+    proving_system: String,
+    curve: String,
+    power: Power,
+    batch_size: BatchSize,
+    number_of_chunks: NumberOfChunks,
+}
+
+type ConfigFileContents = String;
 
 #[derive(Debug, Clone)]
 pub enum Parameters {
@@ -26,6 +39,7 @@ pub enum Parameters {
     AleoTest20Chunks,
     AleoTestChunks(NumberOfChunks),
     AleoTestCustom(NumberOfChunks, Power, BatchSize),
+    ConfigFile(ConfigFileContents),
     Custom(Settings),
 }
 
@@ -43,6 +57,7 @@ impl Parameters {
             Parameters::AleoTestCustom(number_of_chunks, power, batch_size) => {
                 Self::aleo_test_custom(number_of_chunks, power, batch_size)
             }
+            Parameters::ConfigFile(file_path) => Self::config_from_file_path(file_path),
             Parameters::Custom(settings) => settings.clone(),
         }
     }
@@ -123,6 +138,37 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(power),
             BatchSize::from(batch_size),
+            chunk_size!(number_of_chunks, proving_system, power),
+        )
+    }
+
+    fn config_from_file_path(file_contents: &str) -> Settings {
+        let config: ConfigFile = serde_json::from_str(file_contents).expect(&format!(
+            "Should have been able to read config from file: {}",
+            file_contents
+        ));
+        let contribution_mode = match config.contribution_mode.as_str() {
+            "chunked" => ContributionMode::Chunked,
+            "full" => ContributionMode::Full,
+            _ => panic!(format!("Invalid contribution mode: {}", config.contribution_mode)),
+        };
+        let proving_system = match config.proving_system.as_str() {
+            "groth16" => ProvingSystem::Groth16,
+            "marlin" => ProvingSystem::Marlin,
+            _ => panic!(format!("Invalid proving system: {}", config.proving_system)),
+        };
+        let curve = match config.curve.as_str() {
+            "bls12_377" => CurveKind::Bls12_377,
+            "bw6_761" => CurveKind::BW6,
+            _ => panic!(format!("Invalid curve: {}", config.curve)),
+        };
+        let (number_of_chunks, power) = (config.number_of_chunks, config.power);
+        (
+            contribution_mode,
+            proving_system,
+            curve,
+            config.power,
+            config.batch_size,
             chunk_size!(number_of_chunks, proving_system, power),
         )
     }
@@ -448,5 +494,27 @@ mod tests {
             number_of_chunks as u64,
             Environment::Test(parameters).number_of_chunks()
         );
+    }
+
+    #[test]
+    fn test_file_config_valid() {
+        let parameters = Parameters::ConfigFile(include_str!("testing/resources/config_test_valid.json").to_string());
+        let number_of_chunks = 20;
+
+        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        assert_eq!(Power::from(14_usize), power);
+        assert_eq!(ChunkSize::from(1638_usize), chunk_size);
+        assert_eq!(
+            number_of_chunks as u64,
+            Environment::Test(parameters).number_of_chunks()
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_file_config_invalid_curve() {
+        let parameters =
+            Parameters::ConfigFile(include_str!("testing/resources/config_test_invalid_curve.json").to_string());
+        parameters.to_settings();
     }
 }

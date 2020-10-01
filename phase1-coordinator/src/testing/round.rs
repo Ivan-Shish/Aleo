@@ -44,6 +44,10 @@ lazy_static! {
 
     /// Verifier IDs for testing purposes only.
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
+
+    /// Environment for testing purposes only.
+    pub static ref TEST_ENVIRONMENT_FILE: Lazy<Environment> = Lazy::new(|| Environment::Test(Parameters::ConfigFile(include_str!("resources/config_test_coordinator.json").to_string())));
+
 }
 
 /// Clears the transcript directory for testing purposes only.
