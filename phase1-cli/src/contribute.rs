@@ -10,13 +10,12 @@ use std::{
     io::{Read, Write},
 };
 
-const COMPRESSED_INPUT: UseCompression = UseCompression::No;
-const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
-const CHECK_INPUT_CORRECTNESS: CheckForCorrectness = CheckForCorrectness::No;
-
 pub fn contribute<T: Engine + Sync>(
+    compressed_input: UseCompression,
     challenge_filename: &str,
+    compressed_output: UseCompression,
     response_filename: &str,
+    check_input_correctness: CheckForCorrectness,
     parameters: &Phase1Parameters<T>,
     mut rng: impl Rng,
 ) {
@@ -29,8 +28,8 @@ pub fn contribute<T: Engine + Sync>(
         let metadata = reader
             .metadata()
             .expect("unable to get filesystem metadata for challenge file");
-        let expected_challenge_length = match COMPRESSED_INPUT {
-            UseCompression::Yes => parameters.contribution_size,
+        let expected_challenge_length = match compressed_input {
+            UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
             UseCompression::No => parameters.accumulator_size,
         };
 
@@ -57,7 +56,7 @@ pub fn contribute<T: Engine + Sync>(
         .open(response_filename)
         .expect("unable to create response file");
 
-    let required_output_length = match COMPRESSED_OUTPUT {
+    let required_output_length = match compressed_output {
         UseCompression::Yes => parameters.contribution_size,
         UseCompression::No => parameters.accumulator_size + parameters.public_key_size,
     };
@@ -75,7 +74,7 @@ pub fn contribute<T: Engine + Sync>(
     println!("Calculating previous contribution hash...");
 
     assert!(
-        UseCompression::No == COMPRESSED_INPUT,
+        UseCompression::No == compressed_input,
         "Hashing the compressed file in not yet defined"
     );
     let current_accumulator_hash = calculate_hash(&readable_map);
@@ -115,9 +114,9 @@ pub fn contribute<T: Engine + Sync>(
     Phase1::computation(
         &readable_map,
         &mut writable_map,
-        COMPRESSED_INPUT,
-        COMPRESSED_OUTPUT,
-        CHECK_INPUT_CORRECTNESS,
+        compressed_input,
+        compressed_output,
+        check_input_correctness,
         &private_key,
         &parameters,
     )
@@ -127,7 +126,7 @@ pub fn contribute<T: Engine + Sync>(
 
     // Write the public key
     public_key
-        .write(&mut writable_map, COMPRESSED_OUTPUT, &parameters)
+        .write(&mut writable_map, compressed_output, &parameters)
         .expect("unable to write public key");
 
     writable_map.flush().expect("must flush a memory map");

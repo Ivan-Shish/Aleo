@@ -34,14 +34,13 @@ macro_rules! phase1_full_parameters {
 /// this is the initialization round.
 #[macro_export]
 macro_rules! contribution_filesize {
-    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident, $init:ident) => {{
+    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident) => {{
         use setup_utils::UseCompression;
 
         let parameters = phase1_chunked_parameters!($curve, $settings, $chunk_id);
-        match ($compressed, $init) {
-            (UseCompression::Yes, true) => (parameters.contribution_size - parameters.public_key_size) as u64,
-            (UseCompression::Yes, false) => parameters.contribution_size as u64,
-            (UseCompression::No, _) => parameters.accumulator_size as u64,
+        match $compressed {
+            UseCompression::Yes => parameters.contribution_size as u64,
+            UseCompression::No => (parameters.accumulator_size + parameters.public_key_size) as u64,
         }
     }};
 }
@@ -228,13 +227,17 @@ macro_rules! chunk_directory_exists {
 /// on the environment the coordinator is operating in.
 #[macro_export]
 macro_rules! contribution_locator {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident, $verified:ident) => {{
         use crate::locators::*;
 
         match $env {
-            Environment::Test(_) => $l1::contribution_locator($env, $round_height, $chunk_id, $cont_id),
-            Environment::Development(_) => $l2::contribution_locator($env, $round_height, $chunk_id, $cont_id),
-            Environment::Production(_) => $l3::contribution_locator($env, $round_height, $chunk_id, $cont_id),
+            Environment::Test(_) => $l1::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified),
+            Environment::Development(_) => {
+                $l2::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified)
+            }
+            Environment::Production(_) => {
+                $l3::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified)
+            }
         }
     }};
 }
@@ -258,13 +261,19 @@ macro_rules! contribution_locator_init {
 /// on the environment the coordinator is operating in.
 #[macro_export]
 macro_rules! contribution_locator_exists {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident, $verified:ident) => {{
         use crate::locators::*;
 
         match $env {
-            Environment::Test(_) => $l1::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
-            Environment::Development(_) => $l2::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
-            Environment::Production(_) => $l3::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id),
+            Environment::Test(_) => {
+                $l1::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
+            }
+            Environment::Development(_) => {
+                $l2::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
+            }
+            Environment::Production(_) => {
+                $l3::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
+            }
         }
     }};
 }
