@@ -1,6 +1,5 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[cfg(any(test, feature = "testing"))]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

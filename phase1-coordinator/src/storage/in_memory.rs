@@ -1,4 +1,5 @@
 use crate::{
+    environment::Environment,
     storage::{Key, Storage, Value},
     CoordinatorError,
 };
@@ -14,18 +15,7 @@ pub struct InMemory {
 impl Storage for InMemory {
     /// Loads a new instance of `InMemory`.
     #[inline]
-    fn load() -> Result<Self, CoordinatorError> {
-        // Initialize the data structure for storage.
-        // let mut storage = HashMap::default();
-
-        // Load all rounds from transcript into storage.
-        // for chunk_id in 0..environment.number_of_chunks() {
-        //     // Open the transcript file for round 0.
-        //     let transcript = environment.transcript_locator(0, chunk_id);
-        //     let file = OpenOptions::new().read(true).open(&transcript)?;
-        //     let reader = unsafe { MmapOptions::new().map(&file)? };
-        // }
-
+    fn load(_: &Environment) -> Result<Self, CoordinatorError> {
         Ok(Self {
             storage: HashMap::default(),
         })
@@ -41,14 +31,11 @@ impl Storage for InMemory {
 
     /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
-    fn get(&self, key: &Key) -> Option<&Value> {
-        self.storage.get(key)
-    }
-
-    /// Returns the mutable value reference for a given key from storage, if it exists.
-    #[inline]
-    fn get_mut(&mut self, key: &Key) -> Option<&mut Value> {
-        self.storage.get_mut(key)
+    fn get(&self, key: &Key) -> Option<Value> {
+        match self.storage.get(key) {
+            Some(key) => Some(key.clone()),
+            None => None,
+        }
     }
 
     /// Returns `true` if a given key exists in storage. Otherwise, returns `false`.

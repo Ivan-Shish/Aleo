@@ -1,6 +1,6 @@
 use crate::{
     objects::Participant,
-    storage::{InMemory, InMemory2, Storage},
+    storage::{ConcurrentMemory, InMemory, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
@@ -147,14 +147,19 @@ pub enum Environment {
 }
 
 impl Environment {
-    // // TODO (howardwu): Change storage type
-    /// Returns the storage system of the coordinator.
-    pub fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
-        Ok(storage!(self, InMemory, InMemory2, InMemory2))
+    /// Returns the parameter settings of the coordinator.
+    pub fn to_settings(&self) -> Settings {
+        match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        }
     }
 
+    ///
     /// Returns the appropriate number of chunks for the coordinator
     /// to run given a proof system, power and chunk size.
+    ///
     pub fn number_of_chunks(&self) -> u64 {
         let (_, proving_system, _, power, _, chunk_size) = match self {
             Environment::Test(parameters) => parameters.to_settings(),
@@ -170,7 +175,7 @@ impl Environment {
     /// By default, the coordinator returns `false` to minimize time
     /// spent by contributors on decompressing inputs.
     ///
-    pub fn compressed_inputs(&self) -> bool {
+    pub const fn compressed_inputs(&self) -> bool {
         match self {
             Environment::Test(_) => false,
             Environment::Development(_) => false,
@@ -184,7 +189,7 @@ impl Environment {
     /// By default, the coordinator returns `true` to minimize time
     /// spent by the coordinator and contributors on uploading chunks.
     ///
-    pub fn compressed_outputs(&self) -> bool {
+    pub const fn compressed_outputs(&self) -> bool {
         match self {
             Environment::Test(_) => true,
             Environment::Development(_) => true,
@@ -192,16 +197,7 @@ impl Environment {
         }
     }
 
-    /// Returns the version number of the coordinator.
-    pub const fn version(&self) -> u64 {
-        match self {
-            Environment::Test(_) => 1,
-            Environment::Development(_) => 1,
-            Environment::Production(_) => 1,
-        }
-    }
-
-    /// Returns an instantiation of the base URL for the coordinator.
+    /// Returns the base URL for the coordinator.
     pub fn base_url(&self) -> Url {
         format!("http://{}:{}", self.address(), self.port())
             .parse()
@@ -245,6 +241,15 @@ impl Environment {
             allowed_headers,
             allow_credentials: true,
             ..Default::default()
+        }
+    }
+
+    /// Returns the base directory for the local locator of this coordinator.
+    pub const fn local_base_directory(&self) -> &str {
+        match self {
+            Environment::Test(_) => "./transcript/test",
+            Environment::Development(_) => "./transcript/development",
+            Environment::Production(_) => "./transcript",
         }
     }
 
@@ -313,15 +318,6 @@ impl Environment {
         round_locator_exists!(self, Local, Remote, Remote, round_height)
     }
 
-    /// Returns the base directory for the local locator of this coordinator.
-    pub fn local_base_directory(&self) -> &str {
-        match self {
-            Environment::Test(_) => "./transcript/test",
-            Environment::Development(_) => "./transcript/development",
-            Environment::Production(_) => "./transcript",
-        }
-    }
-
     ///
     /// Returns the contributor managed by the coordinator.
     ///
@@ -348,13 +344,18 @@ impl Environment {
         }
     }
 
-    /// Returns the parameter settings of the coordinator.
-    pub fn to_settings(&self) -> Settings {
+    /// Returns the version number of the coordinator.
+    pub const fn version(&self) -> u64 {
         match self {
-            Environment::Test(parameters) => parameters.to_settings(),
-            Environment::Development(parameters) => parameters.to_settings(),
-            Environment::Production(parameters) => parameters.to_settings(),
+            Environment::Test(_) => 1,
+            Environment::Development(_) => 1,
+            Environment::Production(_) => 1,
         }
+    }
+
+    /// Returns the storage system of the coordinator.
+    pub(crate) fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
+        Ok(storage!(self, InMemory, ConcurrentMemory, ConcurrentMemory))
     }
 }
 

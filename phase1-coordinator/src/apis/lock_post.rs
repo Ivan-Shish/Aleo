@@ -4,6 +4,7 @@ use rocket::{http::Status, State};
 use rocket_contrib::json::Json;
 use serde::{Deserialize, Serialize};
 use serde_diff::SerdeDiff;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize, SerdeDiff)]
 pub struct InnerLockResponse {
@@ -20,7 +21,7 @@ pub struct LockResponse {
 // TODO (howardwu): Add authentication.
 #[post("/chunks/<chunk_id>/lock", data = "<participant>")]
 pub fn lock_post(
-    coordinator: State<Coordinator>,
+    coordinator: State<Arc<Coordinator>>,
     chunk_id: u64,
     participant: Participant,
 ) -> Result<Json<LockResponse>, Status> {

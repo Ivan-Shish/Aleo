@@ -8,6 +8,8 @@ use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
+use std::path::Path;
+use tracing::warn;
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest8Chunks);
@@ -46,8 +48,11 @@ lazy_static! {
 
 /// Clears the transcript directory for testing purposes only.
 pub fn clear_test_transcript() {
-    for round_height in 0..10 {
-        TEST_ENVIRONMENT.round_directory_reset(round_height);
+    let path = TEST_ENVIRONMENT.local_base_directory();
+    if Path::new(path).exists() {
+        warn!("Coordinator is clearing {:?}", &path);
+        std::fs::remove_dir_all(&path).expect("Unable to reset base directory");
+        warn!("Coordinator cleared {:?}", &path);
     }
 }
 
