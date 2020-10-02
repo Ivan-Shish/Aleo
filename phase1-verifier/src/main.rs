@@ -23,6 +23,7 @@ async fn ws_client_connection(ws: WebSocket, id: String) {
 
     let verifier = Verifier::new(coordinator_api_url.to_string(), view_key.to_string()).unwrap();
 
+    // The server listens for websocket messages
     while let Some(result) = client_ws_rcv.next().await {
         match result {
             Ok(msg) => {

@@ -8,9 +8,9 @@ use tracing::error;
 
 #[derive(Debug, Clone)]
 pub struct Verifier {
-    pub coordinator_api_url: String,
-    pub view_key: String,
-    pub verifier_id: Participant,
+    pub(crate) coordinator_api_url: String,
+    pub(crate) view_key: String,
+    pub(crate) verifier_id: Participant,
 }
 
 /// Request to the verifier to run a verification operation on the contribution
@@ -35,7 +35,7 @@ impl Verifier {
     ///
     /// Attempts to acquire the lock of a given chunk ID for a given verifier.
     ///
-    /// On success, this function returns the `LockResponse`
+    /// On success, this function returns the `LockResponse`.
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
@@ -75,6 +75,8 @@ impl Verifier {
     /// On success, this function copies the current contribution into the next transcript locator,
     /// which is the next contribution ID within a round, or the next round height if this round
     /// is complete.
+    ///
+    /// On failure, this function returns a `VerifierError`.
     ///
     pub async fn verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
