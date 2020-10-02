@@ -1,4 +1,4 @@
-use crate::{authentication::authenticate, errors::VerifierError};
+use crate::{errors::VerifierError, utils::authenticate};
 use phase1_coordinator::{apis::LockResponse, Participant};
 use snarkos_toolkit::account::{Address, ViewKey};
 

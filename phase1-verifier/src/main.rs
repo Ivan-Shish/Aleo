@@ -1,5 +1,5 @@
 use phase1_verifier::{
-    logger::init_logger,
+    utils::init_logger,
     verifier::{Verifier, VerifierRequest},
 };
 
