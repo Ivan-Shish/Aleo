@@ -14,7 +14,6 @@ pub fn init_logger(verbosity: &str) {
             "TRACE" => tracing::Level::TRACE,
             _ => tracing::Level::INFO,
         })
-        // .without_time()
         .with_target(false)
         .event_format(Format::default())
         .finish();

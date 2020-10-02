@@ -8,7 +8,7 @@ use snarkos_toolkit::account::{Address, ViewKey};
 use futures_util::StreamExt;
 use std::{env, str::FromStr};
 use tokio::task;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use warp::{ws::WebSocket, Filter, Rejection, Reply};
 
 async fn ws_client_connection(ws: WebSocket, id: String) {
@@ -26,24 +26,26 @@ async fn ws_client_connection(ws: WebSocket, id: String) {
     while let Some(result) = client_ws_rcv.next().await {
         match result {
             Ok(msg) => {
-                println!("received message: {:?}", msg);
+                debug!("Received message: {:?}", msg);
 
                 if let Ok(message_string) = msg.to_str() {
-                    // Check if the message can be deserialized into a verifier request
+                    // Check if the message string can be deserialized into a verifier request
                     if let Ok(verifier_request) = serde_json::from_str::<VerifierRequest>(&message_string) {
                         if verifier_request.method.to_lowercase() == "lock" {
+                            info!("Attempting to lock chunk {:?}", verifier_request.chunk_id);
+
                             // Spawn a task to lock the chunk
                             let verifier_clone = verifier.clone();
-                            info!("Attempting to lock chunk {:?}", verifier_request.chunk_id);
                             task::spawn(async move {
                                 if let Err(err) = verifier_clone.lock_chunk(verifier_request.chunk_id).await {
                                     debug!("Failed to lock chunk (error {})", err);
                                 }
                             });
                         } else if verifier_request.method.to_lowercase() == "verify" {
+                            info!("Attempting to verify chunk {:?}", verifier_request.chunk_id);
+
                             // Spawn a task to verify a contribution in the chunk
                             let verifier_clone = verifier.clone();
-                            info!("Attempting to verify chunk {:?}", verifier_request.chunk_id);
                             task::spawn(async move {
                                 if let Err(err) = verifier_clone.verify_contribution(verifier_request.chunk_id).await {
                                     debug!("Failed to verify chunk (error {})", err);
@@ -54,7 +56,7 @@ async fn ws_client_connection(ws: WebSocket, id: String) {
                 }
             }
             Err(e) => {
-                eprintln!("error receiving ws message for id: {}): {}", id.clone(), e);
+                error!("error receiving ws message for id: {}): {}", id.clone(), e);
                 break;
             }
         };
