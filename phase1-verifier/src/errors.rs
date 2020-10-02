@@ -19,6 +19,12 @@ impl From<std::io::Error> for VerifierError {
     }
 }
 
+impl From<serde_json::Error> for VerifierError {
+    fn from(error: serde_json::Error) -> Self {
+        VerifierError::Crate("serde_json", format!("{:?}", error))
+    }
+}
+
 impl From<snarkos_toolkit::errors::AddressError> for VerifierError {
     fn from(error: snarkos_toolkit::errors::AddressError) -> Self {
         VerifierError::Crate("snarkos", format!("{:?}", error))
