@@ -1,0 +1,31 @@
+[package]
+name = "phase1-verifier"
+version = "0.3.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "Verifier implementation of Phase 1"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "MIT/Apache-2.0"
+edition = "2018"
+
+[[bin]]
+name = "phase1-verifier"
+path = "src/main.rs"
+
+[dependencies]
+phase1-coordinator = { path = "../phase1-coordinator" }
+snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
+
+dotenv = { version = "0.15" }
+rand = { version = "0.7.3" }
+failure = { version = "0.1.7" }
+futures-util = { version = "0.3.5" }
+reqwest = { version = "0.10", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+serde_derive = { version = "1.0" }
+thiserror = { version = "1.0" }
+tracing = { version = "0.1.19" }
+tracing-subscriber = { version = "0.2" }
+tokio = { version = "0.2.22", features = ["full"] }
+warp = "0.2"
