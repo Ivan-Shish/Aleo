@@ -1,10 +1,10 @@
 use crate::{authentication::authenticate, errors::VerifierError};
-use phase1_coordinator::Participant;
+use phase1_coordinator::{apis::LockResponse, Participant};
 use snarkos_toolkit::account::{Address, ViewKey};
 
 use reqwest::Client;
 use std::str::FromStr;
-use tracing::debug;
+use tracing::error;
 
 #[derive(Debug, Clone)]
 pub struct Verifier {
@@ -33,15 +33,13 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to acquire the lock of a given chunk ID from storage
-    /// for a given verifier.
+    /// Attempts to acquire the lock of a given chunk ID for a given verifier.
     ///
-    /// On success, this function returns the current
-    /// contribution locator.
+    /// On success, this function returns the `LockResponse`
     ///
-    /// On failure, this function returns a `CoordinatorError`.
+    /// On failure, this function returns a `VerifierError`.
     ///
-    pub async fn lock_chunk(&self, chunk_id: u64) -> Result<bool, VerifierError> {
+    pub async fn lock_chunk(&self, chunk_id: u64) -> Result<LockResponse, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post".to_string();
         let path = format!("/api/coordinator/chunks/{}/lock", chunk_id);
@@ -57,14 +55,12 @@ impl Verifier {
             .await
         {
             Ok(response) => {
-                debug!("RESPONSE WAS: {:?}", response);
-                // let lock_response = serde_json::from_value::<LockResponse>(response.json().await?)?;
+                let lock_response = serde_json::from_value::<LockResponse>(response.json().await?)?;
 
-                Ok(true)
-
-                // Ok(lock_response.result.locked)
+                Ok(lock_response)
             }
             Err(_) => {
+                error!("Verifier failed to lock chunk");
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -74,9 +70,7 @@ impl Verifier {
     }
 
     ///
-    /// Wrapper around the Coordinator `verify_contribution` function.
-    ///
-    /// Attempts to run verification in the current round for a given chunk ID and contribution ID.
+    /// Attempts to run verification in the current round for a given chunk ID
     ///
     /// On success, this function copies the current contribution into the next transcript locator,
     /// which is the next contribution ID within a round, or the next round height if this round
@@ -98,6 +92,7 @@ impl Verifier {
         {
             Ok(response) => Ok(response.text().await?),
             Err(_) => {
+                error!("Verifier failed to verify contribution");
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
