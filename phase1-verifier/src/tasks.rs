@@ -20,7 +20,7 @@ pub async fn task_executor(verifier_tasks: TaskQueue) {
     task::spawn(async move {
         let tasks = verifier_tasks.clone();
         loop {
-            // Wrap a closure around decing
+            // Wrap a closure around verifier task operations to enforce locks are dropped
             {
                 let mut tasks_lock = tasks.write().await;
 
@@ -30,43 +30,34 @@ pub async fn task_executor(verifier_tasks: TaskQueue) {
                     if verifier_request.method.to_lowercase() == "lock" {
                         info!("Attempting to lock chunk {:?}", verifier_request.chunk_id);
 
-                        // Spawn a task to lock the chunk
-                        let verifier_clone = verifier.clone();
-                        task::spawn(async move {
-                            match verifier_clone.lock_chunk(verifier_request.chunk_id).await {
-                                Ok(_) => {
-                                    info!("Locked chunk {:?}", verifier_request.chunk_id);
-                                }
-                                Err(err) => {
-                                    debug!("Failed to lock chunk (error {})", err);
-                                }
+                        match verifier.lock_chunk(verifier_request.chunk_id).await {
+                            Ok(_) => {
+                                info!("Locked chunk {:?}", verifier_request.chunk_id);
                             }
-                        });
+                            Err(err) => {
+                                debug!("Failed to lock chunk {} (error {})", verifier_request.chunk_id, err);
+                            }
+                        }
                     } else if verifier_request.method.to_lowercase() == "verify" {
                         info!("Attempting to verify chunk {:?}", verifier_request.chunk_id);
 
                         // Spawn a task to verify the chunk
-                        let verifier_clone = verifier.clone();
-                        task::spawn(async move {
-                            match verifier_clone.verify_contribution(verifier_request.chunk_id).await {
-                                Ok(_) => {
-                                    info!("Verified chunk {:?}", verifier_request.chunk_id);
-                                }
-                                Err(err) => {
-                                    debug!("Failed to verify chunk (error {})", err);
-                                }
+                        match verifier.verify_contribution(verifier_request.chunk_id).await {
+                            Ok(_) => {
+                                info!("Verified chunk {:?}", verifier_request.chunk_id);
                             }
-                        });
+                            Err(err) => {
+                                debug!("Failed to verify chunk {} (error {})", verifier_request.chunk_id, err);
+                            }
+                        }
                     }
                     // Remove the task from the task queue
-                    tasks_lock.pop();
+                    tasks_lock.remove(0);
+                    drop(tasks_lock);
                 }
-
-                // Drop the tasks write lock
-                drop(tasks_lock)
             }
-            // Sleep for 2 seconds
-            sleep(Duration::from_secs(2));
+            // Sleep for 3 seconds
+            sleep(Duration::from_secs(3));
         }
     });
 }

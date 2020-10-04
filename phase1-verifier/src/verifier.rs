@@ -1,5 +1,5 @@
 use crate::{errors::VerifierError, utils::authenticate};
-use phase1_coordinator::{apis::LockResponse, Participant};
+use phase1_coordinator::Participant;
 use snarkos_toolkit::account::{Address, ViewKey};
 
 use reqwest::Client;
@@ -39,7 +39,7 @@ impl Verifier {
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
-    pub async fn lock_chunk(&self, chunk_id: u64) -> Result<LockResponse, VerifierError> {
+    pub async fn lock_chunk(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post".to_string();
         let path = format!("/coordinator/verify/chunks/{}/lock", chunk_id);
@@ -54,11 +54,7 @@ impl Verifier {
             .send()
             .await
         {
-            Ok(response) => {
-                let lock_response = serde_json::from_value::<LockResponse>(response.json().await?)?;
-
-                Ok(lock_response)
-            }
+            Ok(response) => Ok(response.text().await?),
             Err(_) => {
                 error!("Verifier failed to lock chunk");
                 return Err(VerifierError::FailedRequest(

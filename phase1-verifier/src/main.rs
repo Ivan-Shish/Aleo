@@ -29,38 +29,34 @@ async fn ws_client_connection(ws: WebSocket, verifier_tasks: TaskQueue) {
     while let Some(result) = client_ws_rcv.next().await {
         match result {
             Ok(msg) => {
-                info!("Received message: {:?}", msg);
+                debug!("Received message: {:?}", msg);
 
                 if let Ok(message_string) = msg.to_str() {
                     // Check if the message string can be deserialized into a verifier request
                     if let Ok(verifier_request) = serde_json::from_str::<VerifierRequest>(&message_string) {
                         // Add the verifier request to the task queue
                         {
-                            info!("Writing verifier request to task_queue");
+                            debug!("Writing verifier request to task_queue");
                             let mut tasks_lock = verifier_tasks.write().await;
                             tasks_lock.push(verifier_request);
                             drop(tasks_lock);
-                            info!("Wrote verifier request to task_queue");
+                            debug!("Wrote verifier request to task_queue");
                         }
                     }
                 }
             }
             Err(e) => {
-                info!("error receiving ws message: {}", e);
+                error!("error receiving ws message: {}", e);
                 break;
             }
         };
     }
 }
 
-pub async fn ws_handler(ws: warp::ws::Ws, tasks: TaskQueue) -> Result<impl Reply, Rejection> {
-    Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, tasks)))
-}
-
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
-    init_logger("INFO");
+    init_logger("DEBUG");
 
     // Fetch the coordinator api url and verifier view key from the `.env` file
     let _coordinator_api_url =
@@ -82,7 +78,7 @@ async fn main() {
     // Create the websocket route
     let ws_route = warp::path("ws")
         .and(warp::ws())
-        .and(tasks)
+        .and(tasks) // Pass through the task queue as a state to each connection
         .map(|ws: warp::ws::Ws, tasks| {
             // This will call our function if the handshake succeeds.
             ws.on_upgrade(move |socket| ws_client_connection(socket, tasks))
