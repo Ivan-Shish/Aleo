@@ -42,6 +42,7 @@ tracing = { version = "0.1.19" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "1.0" }
 url_serde = { version = "0.2.0" }
+websocket = { version = "0.26.2" }
 
 [dev-dependencies]
 lazy_static = { version = "1.4.0" }
