@@ -42,7 +42,7 @@ impl Verifier {
     pub async fn lock_chunk(&self, chunk_id: u64) -> Result<LockResponse, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post".to_string();
-        let path = format!("/api/coordinator/chunks/{}/lock", chunk_id);
+        let path = format!("/coordinator/verify/chunks/{}/lock", chunk_id);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
