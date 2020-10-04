@@ -11,12 +11,24 @@ use tokio::task;
 use tracing::{debug, error, info};
 use warp::{ws::WebSocket, Filter, Rejection, Reply};
 
+///
+/// Client connection to the coordinator
+///
+/// Basic message handler logic:
+/// 1. Listens for messages that match the request format - `VerifierRequest`
+///     Requests:
+///         - Lock a chunk with a given `chunk_id`
+///         - Verify a chunk with a given `chunk_id`
+/// 2. Spawns a tokio task to send a request to the coordinator API endpoints to lock/verify.
+/// 3. Return to step 1.
+///
 async fn ws_client_connection(ws: WebSocket, id: String) {
     let (_client_ws_sender, mut client_ws_rcv) = ws.split();
 
     dotenv::dotenv().ok();
 
     // Fetch the coordinator api url and verifier view key from the `.env` file
+    // TODO Remove hardcoded values
     let coordinator_api_url =
         env::var("COORDINATOR_API_URL").unwrap_or("http://localhost:8000/api/coordinator".to_string());
     let view_key = env::var("VIEW_KEY").unwrap_or("AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3".to_string());
@@ -58,6 +70,7 @@ async fn ws_client_connection(ws: WebSocket, id: String) {
             }
             Err(e) => {
                 error!("error receiving ws message for id: {}): {}", id.clone(), e);
+                // TODO re-establish the websocket connection
                 break;
             }
         };
