@@ -11,6 +11,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard},
 };
 use tracing::{debug, error, info, trace};
+use websocket::{client::ClientBuilder, OwnedMessage};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -495,8 +496,6 @@ impl Coordinator {
         {
             // TODO (howardwu): Check that the file size is nonzero, the structure is correct,
             //  and the starting hash is based on the previous contribution.
-
-            // TODO (howardwu): Send job to run verification on new chunk.
         }
 
         // Add the next contribution to the current chunk.
@@ -514,6 +513,27 @@ impl Coordinator {
 
             // Save the update to storage.
             self.save_round_to_storage(current_round_height, current_round)?;
+        }
+
+        // TODO (raychu86) Create a better message dispatch protocol. It is likely better to simply
+        //  maintain a single long-standing websocket connection.
+        // Dispatch a message to the coordinator verifier to lock and verify the completed contribution.
+        {
+            // Fetch the verifier websocket address
+            let verifier_ws_url = self.environment.coordinator_verifier_ws();
+
+            // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
+            if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
+                if let Ok(mut connection) = client.connect_insecure() {
+                    // Send the lock message to the verifier websocket
+                    let lock_message = format!(r#"{{"method": "lock", "chunk_id": {}}}"#, chunk_id);
+                    let _ = connection.send_message(&OwnedMessage::Text(lock_message));
+
+                    // Send the verify message to the verifier websocket
+                    let verify_message = format!(r#"{{"method": "verify", "chunk_id": {}}}"#, chunk_id);
+                    let _ = connection.send_message(&OwnedMessage::Text(verify_message));
+                }
+            }
         }
 
         Ok(next_contributed_locator)
