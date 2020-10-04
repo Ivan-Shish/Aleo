@@ -6,5 +6,6 @@ extern crate serde_derive;
 extern crate thiserror;
 
 pub mod errors;
+pub mod tasks;
 pub mod utils;
 pub mod verifier;
