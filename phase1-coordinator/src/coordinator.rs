@@ -495,8 +495,6 @@ impl Coordinator {
         {
             // TODO (howardwu): Check that the file size is nonzero, the structure is correct,
             //  and the starting hash is based on the previous contribution.
-
-            // TODO (howardwu): Send job to run verification on new chunk.
         }
 
         // Add the next contribution to the current chunk.
@@ -514,6 +512,10 @@ impl Coordinator {
 
             // Save the update to storage.
             self.save_round_to_storage(current_round_height, current_round)?;
+        }
+
+        {
+            // TODO (howardwu): Send job to run verification on new chunk.
         }
 
         Ok(next_contributed_locator)
@@ -1258,6 +1260,7 @@ mod test {
 
     // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
+        test_logger();
         clear_test_transcript();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
@@ -1475,7 +1478,6 @@ mod test {
 
     #[test]
     #[serial]
-    #[ignore]
     fn test_coordinator_aggregation() {
         coordinator_aggregation_test().unwrap();
     }
