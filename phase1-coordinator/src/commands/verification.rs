@@ -61,19 +61,28 @@ impl Verification {
             round_height, chunk_id, contribution_id
         );
 
+        let compressed_input = environment.compressed_inputs();
+        let compressed_output = environment.compressed_outputs();
+
         // Execute ceremony verification on chunk.
         let (_, _, curve, _, _, _) = settings.clone();
         let result = panic::catch_unwind(|| {
             match curve {
                 CurveKind::Bls12_377 => transform_pok_and_correctness(
+                    compressed_input,
                     &previous_locator,
+                    compressed_output,
                     &current_locator,
+                    compressed_input,
                     &next_locator,
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 ),
                 CurveKind::BW6 => transform_pok_and_correctness(
+                    compressed_input,
                     &previous_locator,
+                    compressed_output,
                     &current_locator,
+                    compressed_input,
                     &next_locator,
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 ),

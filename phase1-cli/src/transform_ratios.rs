@@ -8,7 +8,7 @@ use std::fs::OpenOptions;
 
 pub fn transform_ratios<T: Engine + Sync>(response_filename: &str, parameters: &Phase1Parameters<T>) {
     println!(
-        "Will verify and decompress a contribution to accumulator for 2^{} powers of tau",
+        "Will verify ratios in a contribution of accumulator for 2^{} powers of tau",
         parameters.total_size_in_log2
     );
 

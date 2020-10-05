@@ -25,7 +25,7 @@ impl Initialization {
 
         // Initialize and fetch the contribution locator.
         environment.chunk_directory_init(round_height, chunk_id);
-        let contribution_locator = environment.contribution_locator(round_height, chunk_id, 0);
+        let contribution_locator = environment.contribution_locator(round_height, chunk_id, 0, true);
         trace!(
             "Storing round {} chunk {} in {}",
             round_height,
@@ -33,15 +33,18 @@ impl Initialization {
             contribution_locator
         );
 
+        let compressed_input = environment.compressed_inputs();
         // Execute ceremony initialization on chunk.
         let result = panic::catch_unwind(|| {
             let (_, _, curve, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => new_challenge(
+                    compressed_input,
                     &contribution_locator,
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 ),
                 CurveKind::BW6 => new_challenge(
+                    compressed_input,
                     &contribution_locator,
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 ),
@@ -54,7 +57,7 @@ impl Initialization {
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
         environment.chunk_directory_init(round_height + 1, chunk_id);
-        let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0);
+        let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0, true);
         trace!("Copying chunk {} to {}", chunk_id, next_transcript);
         fs::copy(&contribution_locator, &next_transcript)?;
         trace!("Copied chunk {} to {}", chunk_id, next_transcript);
@@ -132,7 +135,7 @@ mod tests {
             let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, round_height, chunk_id).unwrap();
 
             // Open the transcript locator file.
-            let transcript = TEST_ENVIRONMENT.contribution_locator(round_height, chunk_id, 0);
+            let transcript = TEST_ENVIRONMENT.contribution_locator(round_height, chunk_id, 0, true);
             let file = OpenOptions::new().read(true).open(transcript).unwrap();
             let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
 

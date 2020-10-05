@@ -50,6 +50,7 @@ pub trait Locator {
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
+        verified: bool,
     ) -> String
     where
         Self: Sized;
@@ -67,6 +68,7 @@ pub trait Locator {
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
+        verified: bool,
     ) -> bool
     where
         Self: Sized;
