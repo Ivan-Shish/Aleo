@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, RwLock, RwLockReadGuard},
+    thread,
 };
 use tracing::{debug, error, info, trace};
 use websocket::{client::ClientBuilder, OwnedMessage};
@@ -522,18 +523,20 @@ impl Coordinator {
             // Fetch the verifier websocket address
             let verifier_ws_url = self.environment.coordinator_verifier_ws();
 
-            // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
-            if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
-                if let Ok(mut connection) = client.connect_insecure() {
-                    // Send the lock message to the verifier websocket
-                    let lock_message = format!(r#"{{"method": "lock", "chunk_id": {}}}"#, chunk_id);
-                    let _ = connection.send_message(&OwnedMessage::Text(lock_message));
+            thread::spawn(move || {
+                // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
+                if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
+                    if let Ok(mut connection) = client.connect_insecure() {
+                        // Send the lock message to the verifier websocket
+                        let lock_message = format!(r#"{{"method": "lock", "chunk_id": {}}}"#, chunk_id);
+                        let _ = connection.send_message(&OwnedMessage::Text(lock_message));
 
-                    // Send the verify message to the verifier websocket
-                    let verify_message = format!(r#"{{"method": "verify", "chunk_id": {}}}"#, chunk_id);
-                    let _ = connection.send_message(&OwnedMessage::Text(verify_message));
+                        // Send the verify message to the verifier websocket
+                        let verify_message = format!(r#"{{"method": "verify", "chunk_id": {}}}"#, chunk_id);
+                        let _ = connection.send_message(&OwnedMessage::Text(verify_message));
+                    }
                 }
-            }
+            });
         }
 
         Ok(next_contributed_locator)
