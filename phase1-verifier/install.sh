@@ -21,5 +21,6 @@ source $HOME/.cargo/env
 rustup default nightly
 rustup component add rust-src
 
-# Start Server
+# Start Verifier
+
 cargo run --release
