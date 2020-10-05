@@ -7,11 +7,11 @@ use std::fs::OpenOptions;
 use tracing::{debug, error, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
-pub struct Aggregation;
+pub(crate) struct Aggregation;
 
 impl Aggregation {
     /// Runs aggregation for a given environment and round.
-    pub fn run(environment: &Environment, round: &Round) -> anyhow::Result<()> {
+    pub(crate) fn run(environment: &Environment, round: &Round) -> anyhow::Result<()> {
         // Fetch the round height.
         let round_height = round.round_height();
 
@@ -67,16 +67,16 @@ impl Aggregation {
         // Fetch the round height.
         let round_height = round.round_height();
 
-        // Fetch the contribution ID.
+        // Fetch the compressed output setting.
         let compressed = environment.compressed_outputs();
 
+        // Create a variable to save the contribution ID of the previous iteration.
         let mut previous_chunk_contribution_id = 0;
 
         for chunk_id in 0..environment.number_of_chunks() {
             trace!("Loading contribution from chunk {}", chunk_id);
 
-            // When aggregating, the verified contribution ID will always be 0, since they'll be
-            // the first files in the next round.
+            // Fetch the contribution ID.
             let contribution_id = round.get_chunk(chunk_id)?.current_contribution_id();
 
             // Sanity check that each contribution ID is the same,
