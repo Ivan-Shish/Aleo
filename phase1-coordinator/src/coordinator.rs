@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, RwLock, RwLockReadGuard},
+    thread,
 };
 use tracing::{debug, error, info, trace};
 
@@ -1079,6 +1080,20 @@ mod test {
         Ok(())
     }
 
+    fn initialize_coordinator_single_contributor(coordinator: &Coordinator) -> anyhow::Result<()> {
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
+
+        // Run initialization.
+        coordinator.next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
+            Lazy::force(&TEST_VERIFIER_ID).clone(),
+        ])?;
+
+        // Check current round height is now 1.
+        assert_eq!(1, coordinator.current_round_height()?);
+        Ok(())
+    }
+
     fn coordinator_initialization_test() -> anyhow::Result<()> {
         clear_test_transcript();
 
@@ -1273,8 +1288,103 @@ mod test {
         Ok(())
     }
 
+    // TODO Fix this test
+    // This test runs a round with a single coordinator and single verifier
+    // The verifier instances are run on a separate thread to simulate an environment where
+    // verification and contribution happen concurrently.
+    fn coordinator_concurrent_aggregation_test() -> anyhow::Result<()> {
+        test_logger();
+
+        clear_test_transcript();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        initialize_coordinator_single_contributor(&coordinator)?;
+
+        let coordinator = std::sync::Arc::new(coordinator);
+
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+
+        let contribution_id = 1;
+        for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
+            {
+                // Acquire the lock as contributor.
+                let try_lock = coordinator.try_lock_chunk(chunk_id, contributor.clone());
+                if try_lock.is_err() {
+                    println!(
+                        "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        contributor.clone(),
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    try_lock?;
+                }
+
+                // Run computation as contributor.
+                let contribute = coordinator.run_computation(chunk_id, contribution_id, &contributor);
+                if contribute.is_err() {
+                    println!(
+                        "Failed to run computation for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        contributor.clone(),
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    contribute?;
+                }
+
+                // Add the contribution as the contributor.
+                let contribute = coordinator.add_contribution(chunk_id, contributor.clone());
+                if contribute.is_err() {
+                    println!(
+                        "Failed to add contribution for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        contributor.clone(),
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    contribute?;
+                }
+            }
+
+            // Spawn a thread to concurrently verify the contributions.
+            let coordinator_clone = coordinator.clone();
+            let verifier_clone = verifier.clone();
+            std::thread::spawn(move || {
+                {
+                    // Acquire the lock as the verifier.
+                    let try_lock = coordinator_clone.try_lock_chunk(chunk_id, verifier_clone.clone());
+                    if try_lock.is_err() {
+                        println!(
+                            "Failed to acquire lock as verifier {:?}\n{}",
+                            verifier.clone(),
+                            serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                        );
+                        if let Err(_) = try_lock {
+                            panic!()
+                        };
+                    }
+
+                    // Run verification as the verifier.
+                    let verify = coordinator_clone.verify_contribution(chunk_id, verifier_clone.clone());
+                    if verify.is_err() {
+                        println!(
+                            "Failed to run verification as verifier {:?}\n{}",
+                            verifier.clone(),
+                            serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                        );
+                        if let Err(_) = verify {
+                            panic!()
+                        };
+                    }
+                }
+            });
+        }
+
+        Ok(())
+    }
+
     // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
+        test_logger();
         clear_test_transcript();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
@@ -1493,6 +1603,13 @@ mod test {
     #[serial]
     fn test_coordinator_aggregation() {
         coordinator_aggregation_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_concurrent_aggregation() {
+        // TODO This test is currently breaking.
+        coordinator_concurrent_aggregation_test().unwrap();
     }
 
     #[test]
