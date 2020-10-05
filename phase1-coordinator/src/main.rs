@@ -15,6 +15,7 @@ use rocket::{
     config::{Config, Environment as RocketEnvironment},
     Rocket,
 };
+use std::sync::Arc;
 use tracing::{info, Level};
 
 #[inline]
@@ -59,7 +60,7 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
         .finalize()?;
 
     let server = rocket::custom(config)
-        .manage(coordinator(environment)?)
+        .manage(Arc::new(coordinator(environment)?))
         .mount("/", routes![
             chunk_get,
             chunk_post,
@@ -77,6 +78,6 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 #[inline]
 pub fn main() -> anyhow::Result<()> {
     logger();
-    server(&Environment::Test(Parameters::AleoTestCustom(16, 12, 64)))?.launch();
+    server(&Environment::Test(Parameters::AleoTestCustom(16, 12, 256)))?.launch();
     Ok(())
 }

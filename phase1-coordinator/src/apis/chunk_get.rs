@@ -18,7 +18,7 @@ pub fn chunk_get(
     }
 
     // Return the next contribution locator for the given chunk ID.
-    match coordinator.next_contribution_locator(chunk_id) {
+    match coordinator.next_contribution_locator(chunk_id, false) {
         Ok(contribution_locator) => {
             let response = json!({
                 "status": "ok",
