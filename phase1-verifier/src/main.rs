@@ -9,7 +9,7 @@ use snarkos_toolkit::account::{Address, ViewKey};
 use futures_util::StreamExt;
 use std::{env, str::FromStr};
 use tracing::{debug, error, info};
-use warp::{ws::WebSocket, Filter, Rejection, Reply};
+use warp::{ws::WebSocket, Filter};
 
 ///
 /// Client connection to the coordinator
