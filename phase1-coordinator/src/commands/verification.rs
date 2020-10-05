@@ -6,7 +6,7 @@ use std::panic;
 use tracing::info;
 use zexe_algebra::{Bls12_377, BW6_761};
 
-pub struct Verification;
+pub(crate) struct Verification;
 
 impl Verification {
     ///
@@ -14,7 +14,7 @@ impl Verification {
     ///
     /// Executes the round verification on a given chunk ID using phase1-cli logic.
     ///
-    pub fn run(
+    pub(crate) fn run(
         environment: &Environment,
         round_height: u64,
         chunk_id: u64,
