@@ -91,7 +91,7 @@ impl Round {
                 Chunk::new(
                     chunk_id as u64,
                     verifier.clone(),
-                    environment.contribution_locator(round_height, chunk_id as u64, 0),
+                    environment.contribution_locator(round_height, chunk_id as u64, 0, true),
                 )
                 .expect("failed to create chunk")
             })

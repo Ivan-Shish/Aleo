@@ -16,10 +16,7 @@ impl Aggregation {
         let round_height = round.round_height();
 
         // Fetch the compressed output setting based on the round height.
-        let compressed_output = match round_height != 0 && environment.compressed_outputs() {
-            true => UseCompression::Yes,
-            false => UseCompression::No,
-        };
+        let compressed_output = environment.compressed_outputs();
 
         // Load the contribution files.
         let readers = Self::readers(environment, round)?;
@@ -29,10 +26,7 @@ impl Aggregation {
             .collect::<Vec<_>>();
 
         // Fetch the compressed input setting for the final round file.
-        let compressed_input = match round_height != 0 && environment.compressed_inputs() {
-            true => UseCompression::Yes,
-            false => UseCompression::No,
-        };
+        let compressed_input = environment.compressed_inputs();
 
         // Load the final round file.
         let round_writer = (&mut *Self::writer(environment, round)?, compressed_input);
@@ -73,22 +67,16 @@ impl Aggregation {
         // Fetch the round height.
         let round_height = round.round_height();
 
-        // Fetch the round height.
-        let is_initial = round_height == 0;
+        // Fetch the contribution ID.
+        let compressed = environment.compressed_outputs();
 
-        // Fetch the previous compressed output setting based on the round height.
-        let compressed = match !is_initial && environment.compressed_outputs() {
-            true => UseCompression::Yes,
-            false => UseCompression::No,
-        };
-
-        // Create a variable to save the contribution ID of the prior iteration.
         let mut previous_chunk_contribution_id = 0;
 
         for chunk_id in 0..environment.number_of_chunks() {
             trace!("Loading contribution from chunk {}", chunk_id);
 
-            // Fetch the contribution ID.
+            // When aggregating, the verified contribution ID will always be 0, since they'll be
+            // the first files in the next round.
             let contribution_id = round.get_chunk(chunk_id)?.current_contribution_id();
 
             // Sanity check that each contribution ID is the same,
@@ -104,7 +92,7 @@ impl Aggregation {
             }
 
             // Fetch the reader with the contribution locator.
-            let locator = environment.contribution_locator(round_height, chunk_id, contribution_id);
+            let locator = environment.contribution_locator(round_height, chunk_id, contribution_id, false);
             let reader = OpenOptions::new()
                 .read(true)
                 .open(locator)
@@ -114,8 +102,8 @@ impl Aggregation {
             let settings = environment.to_settings();
             let (_, _, curve, _, _, _) = settings;
             let expected = match curve {
-                CurveKind::Bls12_377 => contribution_filesize!(Bls12_377, settings, chunk_id, compressed, is_initial),
-                CurveKind::BW6 => contribution_filesize!(BW6_761, settings, chunk_id, compressed, is_initial),
+                CurveKind::Bls12_377 => contribution_filesize!(Bls12_377, settings, chunk_id, compressed),
+                CurveKind::BW6 => contribution_filesize!(BW6_761, settings, chunk_id, compressed),
             };
 
             // Check that contribution filesize is correct.
@@ -153,10 +141,7 @@ impl Aggregation {
         let is_initial = round_height == 0;
 
         // Fetch the next compressed input setting based on the round height.
-        let compressed = match !is_initial && environment.compressed_inputs() {
-            true => UseCompression::Yes,
-            false => UseCompression::No,
-        };
+        let compressed = environment.compressed_inputs();
 
         // Create the writer for the round transcript locator.
         let writer = OpenOptions::new()
@@ -187,7 +172,7 @@ impl Aggregation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Aggregation, Computation, Verification},
+        commands::{Computation, Verification},
         testing::prelude::*,
         Coordinator,
     };
@@ -229,9 +214,9 @@ mod tests {
             // Run computation on chunk.
             Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
 
-            let previous = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 0);
-            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1);
-            let next = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 2);
+            let previous = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 0, true);
+            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1, false);
+            let next = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 2, true);
 
             Verification::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1, previous, current, next).unwrap();
         }

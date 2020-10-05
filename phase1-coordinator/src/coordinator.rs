@@ -118,6 +118,7 @@ impl From<CoordinatorError> for anyhow::Error {
 }
 
 /// A core structure for operating the Phase 1 ceremony.
+#[derive(Clone)]
 pub struct Coordinator {
     storage: Arc<RwLock<Box<dyn Storage>>>,
     environment: Environment,
@@ -280,7 +281,7 @@ impl Coordinator {
     /// this function will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn current_contribution_locator(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
+    pub fn current_contribution_locator(&self, chunk_id: u64, verified: bool) -> Result<String, CoordinatorError> {
         // Fetch the current round.
         let current_round = self.current_round()?;
         // Fetch the current round height.
@@ -292,10 +293,12 @@ impl Coordinator {
 
         // Check that the contribution locator corresponding to the current contribution ID
         // exists for the current round and given chunk ID.
-        if !self
-            .environment
-            .contribution_locator_exists(current_round_height, chunk_id, current_contribution_id)
-        {
+        if !self.environment.contribution_locator_exists(
+            current_round_height,
+            chunk_id,
+            current_contribution_id,
+            verified,
+        ) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -307,7 +310,7 @@ impl Coordinator {
         // Fetch the current contribution locator.
         let current_contribution_locator =
             self.environment
-                .contribution_locator(current_round_height, chunk_id, current_contribution_id);
+                .contribution_locator(current_round_height, chunk_id, current_contribution_id, verified);
 
         Ok(current_contribution_locator)
     }
@@ -329,7 +332,7 @@ impl Coordinator {
     /// this function will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_contribution_locator(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
+    pub fn next_contribution_locator(&self, chunk_id: u64, verified: bool) -> Result<String, CoordinatorError> {
         // Fetch the current round.
         let current_round = self.current_round()?;
         // Fetch the current round height.
@@ -350,7 +353,7 @@ impl Coordinator {
         // does NOT exist for the current round and given chunk ID.
         if self
             .environment
-            .contribution_locator_exists(current_round_height, chunk_id, next_contribution_id)
+            .contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, verified)
         {
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
@@ -358,7 +361,7 @@ impl Coordinator {
         // Fetch the next contribution locator.
         let next_contribution_locator =
             self.environment
-                .contribution_locator(current_round_height, chunk_id, next_contribution_id);
+                .contribution_locator(current_round_height, chunk_id, next_contribution_id, verified);
 
         Ok(next_contribution_locator)
     }
@@ -398,7 +401,7 @@ impl Coordinator {
                 // next contribution locator does NOT exist and
                 // that the current contribution locator exists
                 // and has already been verified.
-                self.next_contribution_locator(chunk_id)?
+                self.next_contribution_locator(chunk_id, false)?
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -409,14 +412,14 @@ impl Coordinator {
                 // This call enforces a strict check that the
                 // current contribution locator exist and
                 // has not been verified yet.
-                self.current_contribution_locator(chunk_id)?
+                self.current_contribution_locator(chunk_id, false)?
             }
         };
 
         // As a corollary, if the current contribution locator exists
         // and the current contribution has not been verified yet,
         // check that the given participant is not a contributor.
-        if self.current_contribution_locator(chunk_id).is_ok() && !current_contribution.is_verified() {
+        if self.current_contribution_locator(chunk_id, false).is_ok() && !current_contribution.is_verified() {
             // Check that the given participant is not a contributor.
             if participant.is_contributor() {
                 return Err(CoordinatorError::UnauthorizedChunkContributor);
@@ -556,7 +559,7 @@ impl Coordinator {
         // Check that the contribution locator corresponding to this round and chunk exists.
         if !self
             .environment
-            .contribution_locator_exists(current_round_height, chunk_id, current_contribution_id)
+            .contribution_locator_exists(current_round_height, chunk_id, current_contribution_id, false)
         {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
@@ -569,15 +572,18 @@ impl Coordinator {
         // Fetch the contribution locators for `Verification`.
         let (previous, current, next) = if chunk.only_contributions_complete(current_round.expected_num_contributions())
         {
-            let previous =
-                self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id - 1);
+            let previous = self.environment.contribution_locator(
+                current_round_height,
+                chunk_id,
+                current_contribution_id - 1,
+                true,
+            );
             let current =
                 self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id);
+                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, false);
             let next = self
                 .environment
-                .contribution_locator(current_round_height + 1, chunk_id, 0);
+                .contribution_locator(current_round_height + 1, chunk_id, 0, true);
 
             // Initialize the chunk directory of the new round so the next locator file will be saved.
             self.environment
@@ -585,15 +591,18 @@ impl Coordinator {
 
             (previous, current, next)
         } else {
-            let previous =
-                self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id - 1);
+            let previous = self.environment.contribution_locator(
+                current_round_height,
+                chunk_id,
+                current_contribution_id - 1,
+                true,
+            );
             let current =
                 self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id);
+                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, false);
             let next =
                 self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id + 1);
+                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, true);
             (previous, current, next)
         };
 
@@ -760,7 +769,7 @@ impl Coordinator {
         // Fetch the next contribution locator.
         let next_contribution_locator =
             self.environment
-                .contribution_locator(current_round_height, chunk_id, next_contribution_id);
+                .contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
 
         Ok(next_contribution_locator)
     }
@@ -836,14 +845,17 @@ impl Coordinator {
                 info!("Coordinator completed initialization on chunk {}", chunk_id);
 
                 // 1 - Check that the contribution locator corresponding to this round's chunk now exists.
-                if !self.environment.contribution_locator_exists(round_height, chunk_id, 0) {
+                if !self
+                    .environment
+                    .contribution_locator_exists(round_height, chunk_id, 0, true)
+                {
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
 
                 // 2 - Check that the contribution locator corresponding to the next round's chunk now exists.
                 if !self
                     .environment
-                    .contribution_locator_exists(round_height + 1, chunk_id, 0)
+                    .contribution_locator_exists(round_height + 1, chunk_id, 0, true)
                 {
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
@@ -876,7 +888,10 @@ impl Coordinator {
         // Check that each contribution transcript for the next round exists.
         for chunk_id in 0..self.environment.number_of_chunks() {
             debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
-            if !self.environment.contribution_locator_exists(new_height, chunk_id, 0) {
+            if !self
+                .environment
+                .contribution_locator_exists(new_height, chunk_id, 0, true)
+            {
                 return Err(CoordinatorError::ContributionLocatorMissing);
             }
         }
@@ -924,7 +939,7 @@ impl Coordinator {
         // Check that the contribution locator corresponding to this round and chunk exists.
         if self
             .environment
-            .contribution_locator_exists(round_height, chunk_id, contribution_id)
+            .contribution_locator_exists(round_height, chunk_id, contribution_id, false)
         {
             error!("Locator for contribution {} already exists", contribution_id);
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
@@ -1344,7 +1359,6 @@ mod test {
     }
 
     fn coordinator_next_round_test() -> anyhow::Result<()> {
-        test_logger();
         clear_test_transcript();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;

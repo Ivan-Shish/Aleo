@@ -5,17 +5,16 @@ use zexe_algebra::PairingEngine as Engine;
 
 use memmap::*;
 use std::{
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::{Read, Write},
 };
 
-const PREVIOUS_CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
-const CONTRIBUTION_IS_COMPRESSED: UseCompression = UseCompression::Yes;
-const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
-
 pub fn transform_pok_and_correctness<T: Engine + Sync>(
+    challenge_is_compressed: UseCompression,
     challenge_filename: &str,
+    contribution_is_compressed: UseCompression,
     response_filename: &str,
+    compress_new_challenge: UseCompression,
     new_challenge_filename: &str,
     parameters: &Phase1Parameters<T>,
 ) {
@@ -34,7 +33,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         let metadata = challenge_reader
             .metadata()
             .expect("unable to get filesystem metadata for challenge file");
-        let expected_challenge_length = match PREVIOUS_CHALLENGE_IS_COMPRESSED {
+        let expected_challenge_length = match challenge_is_compressed {
             UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
             UseCompression::No => parameters.accumulator_size,
         };
@@ -63,7 +62,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         let metadata = response_reader
             .metadata()
             .expect("unable to get filesystem metadata for response file");
-        let expected_response_length = match CONTRIBUTION_IS_COMPRESSED {
+        let expected_response_length = match contribution_is_compressed {
             UseCompression::Yes => parameters.contribution_size,
             UseCompression::No => parameters.accumulator_size + parameters.public_key_size,
         };
@@ -115,7 +114,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
     print_hash(&response_hash);
 
     // get the contributor's public key
-    let public_key = PublicKey::read(&response_readable_map, CONTRIBUTION_IS_COMPRESSED, &parameters)
+    let public_key = PublicKey::read(&response_readable_map, contribution_is_compressed, &parameters)
         .expect("wasn't able to deserialize the response file's public key");
 
     // check that it follows the protocol
@@ -127,8 +126,8 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         &response_readable_map,
         &public_key,
         current_accumulator_hash.as_slice(),
-        PREVIOUS_CHALLENGE_IS_COMPRESSED,
-        CONTRIBUTION_IS_COMPRESSED,
+        challenge_is_compressed,
+        contribution_is_compressed,
         CheckForCorrectness::No,
         CheckForCorrectness::Full,
         &parameters,
@@ -141,8 +140,31 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         println!("Verification succeeded!");
     }
 
-    if COMPRESS_NEW_CHALLENGE == UseCompression::Yes {
-        println!("Don't need to recompress the contribution, please copy response file as new challenge");
+    if compress_new_challenge == contribution_is_compressed {
+        println!("Don't need to recompress the contribution, copying the file without the public key...");
+        fs::copy(challenge_filename, new_challenge_filename)
+            .expect("Should have been able to copy the new challenge file");
+        let f = fs::File::open(new_challenge_filename).expect("Should have been able to open the new challenge file");
+        f.set_len((parameters.accumulator_size + parameters.public_key_size) as u64)
+            .expect("Should have been able to truncate the new challenge file");
+
+        let new_challenge_reader = OpenOptions::new()
+            .read(true)
+            .open(new_challenge_filename)
+            .expect("unable open new challenge file in this directory");
+
+        let new_challenge_readable_map = unsafe {
+            MmapOptions::new()
+                .map(&new_challenge_reader)
+                .expect("unable to create a memory map for new input")
+        };
+
+        let hash = calculate_hash(&new_challenge_readable_map);
+
+        println!("Here's the BLAKE2b hash of the decompressed participant's response as new_challenge file:");
+        print_hash(&hash);
+        println!("Done! new challenge file contains the new challenge file. The other files");
+        println!("were left alone.");
     } else {
         println!("Verification succeeded! Writing to new challenge file...");
 

@@ -31,8 +31,8 @@ impl Computation {
         let settings = environment.to_settings();
 
         // Fetch the contribution locators.
-        let previous_locator = environment.contribution_locator(round_height, chunk_id, contribution_id - 1);
-        let current_locator = environment.contribution_locator(round_height, chunk_id, contribution_id);
+        let previous_locator = environment.contribution_locator(round_height, chunk_id, contribution_id - 1, true);
+        let current_locator = environment.contribution_locator(round_height, chunk_id, contribution_id, false);
 
         trace!(
             "Storing round {} chunk {} in {}",
@@ -40,20 +40,28 @@ impl Computation {
             chunk_id,
             current_locator
         );
-
+        let compressed_input = environment.compressed_inputs();
+        let compressed_output = environment.compressed_outputs();
+        let check_input_for_correctness = environment.check_input_for_correctness();
         // Execute computation on chunk.
         let result = panic::catch_unwind(|| {
             let (_, _, curve, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => contribute(
+                    compressed_input,
                     &previous_locator,
+                    compressed_output,
                     &current_locator,
+                    check_input_for_correctness,
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                     &mut thread_rng(),
                 ),
                 CurveKind::BW6 => contribute(
+                    compressed_input,
                     &previous_locator,
+                    compressed_output,
                     &current_locator,
+                    check_input_for_correctness,
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                     &mut thread_rng(),
                 ),
@@ -103,7 +111,7 @@ mod tests {
             Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
-            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1);
+            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1, false);
 
             // Check that the current contribution was generated based on the previous contribution hash.
             let file = OpenOptions::new().read(true).open(current).unwrap();
