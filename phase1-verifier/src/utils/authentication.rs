@@ -4,6 +4,7 @@ use snarkos_toolkit::account::{Address, ViewKey};
 use rand::thread_rng;
 use std::fmt;
 
+/// The header used for authenticating requests sent to the coordinator
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthenticationHeader {
     pub auth_type: String,
@@ -21,6 +22,7 @@ impl AuthenticationHeader {
     }
 }
 
+/// The authentication format in the header
 impl fmt::Display for AuthenticationHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}:{}", self.auth_type, self.address, self.signature)

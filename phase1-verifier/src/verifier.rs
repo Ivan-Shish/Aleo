@@ -6,18 +6,27 @@ use reqwest::Client;
 use std::str::FromStr;
 use tracing::error;
 
-#[derive(Debug, Clone)]
-pub struct Verifier {
-    pub(crate) coordinator_api_url: String,
-    pub(crate) view_key: String,
-    pub(crate) verifier_id: Participant,
-}
-
 /// Request to the verifier to run a verification operation on the contribution
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VerifierRequest {
     pub method: String,
     pub chunk_id: u64,
+}
+
+///
+/// The verifier used to manage and dispatch/execute verifier operations
+/// to the remote coordinator.
+///
+#[derive(Debug, Clone)]
+pub struct Verifier {
+    /// The url of the coordinator that will be
+    pub(crate) coordinator_api_url: String,
+
+    /// The view key that will be used for server authentication
+    pub(crate) view_key: String,
+
+    /// The identity of the verifier
+    pub(crate) verifier: Participant,
 }
 
 impl Verifier {
@@ -28,7 +37,7 @@ impl Verifier {
         Ok(Self {
             coordinator_api_url,
             view_key,
-            verifier_id: Participant::Verifier(verifier_id),
+            verifier: Participant::Verifier(verifier_id),
         })
     }
 
@@ -41,7 +50,7 @@ impl Verifier {
     ///
     pub async fn lock_chunk(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
-        let method = "post".to_string();
+        let method = "post";
         let path = format!("/coordinator/verify/chunks/{}/lock", chunk_id);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
@@ -76,7 +85,7 @@ impl Verifier {
     ///
     pub async fn verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
-        let method = "post".to_string();
+        let method = "post";
         let path = format!("/coordinator/verify/chunks/{}", chunk_id);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
