@@ -55,7 +55,8 @@ impl Verifier {
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
-        let authentication = authenticate(&view_key, &method, &path)?;
+        let signature_path = format!("/api{}", path);
+        let authentication = authenticate(&view_key, &method, &signature_path)?;
 
         match Client::new()
             .post(&format!("{}{}", &coordinator_api_url, &path))
@@ -90,7 +91,8 @@ impl Verifier {
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
-        let authentication = authenticate(&view_key, &method, &path)?;
+        let signature_path = format!("/api{}", path);
+        let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .post(&format!("{}{}", &coordinator_api_url, &path))
             .header("Authorization", authentication.to_string())
