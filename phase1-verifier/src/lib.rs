@@ -7,5 +7,6 @@ extern crate thiserror;
 
 pub mod errors;
 pub mod tasks;
+pub mod user_input;
 pub mod utils;
 pub mod verifier;

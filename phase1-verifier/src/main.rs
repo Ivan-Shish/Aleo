@@ -1,5 +1,6 @@
 use phase1_verifier::{
     tasks::{task_executor, TaskQueue},
+    user_input::input_listener,
     utils::init_logger,
     verifier::{Verifier, VerifierRequest},
 };
@@ -75,6 +76,9 @@ async fn main() {
 
     // Run the task executor
     let _ = task_executor(verifier.clone(), task_queue.clone()).await;
+
+    // Run the verifier cli listener
+    let _ = input_listener(verifier).await;
 
     // Turn our "task_queue" into a new filter
     let tasks = warp::any().map(move || task_queue.clone());
