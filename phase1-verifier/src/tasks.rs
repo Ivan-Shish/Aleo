@@ -1,21 +1,17 @@
 use crate::verifier::{Verifier, VerifierRequest};
 
-use std::{env, sync::Arc, thread::sleep, time::Duration};
-use tokio::{sync::RwLock, task};
+use std::{sync::Arc, time::Duration};
+use tokio::{sync::RwLock, task, time::delay_for};
 use tracing::{debug, info};
 
 pub type TaskQueue = Arc<RwLock<Vec<VerifierRequest>>>;
 
-pub async fn task_executor(verifier_tasks: TaskQueue) {
-    dotenv::dotenv().ok();
-
-    // Fetch the coordinator api url and verifier view key from the `.env` file
-    // TODO Remove hardcoded values
-    let coordinator_api_url = env::var("COORDINATOR_API_URL").unwrap_or("http://localhost:8000/api".to_string());
-    let view_key = env::var("VIEW_KEY").unwrap_or("AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3".to_string());
-
-    let verifier = Verifier::new(coordinator_api_url.to_string(), view_key.to_string()).unwrap();
-
+///
+/// The task executor reads from the list of VerifierRequest tasks
+/// and sequentially executes them. It dispatches a lock or verify
+/// request to the coordinator based on the VerifierRequest task
+///
+pub async fn task_executor(verifier: Verifier, verifier_tasks: TaskQueue) {
     // Spawn a thread to run the worker to run tasks from the queue.
     task::spawn(async move {
         let tasks = verifier_tasks.clone();
@@ -57,7 +53,7 @@ pub async fn task_executor(verifier_tasks: TaskQueue) {
                 }
             }
             // Sleep for 3 seconds
-            sleep(Duration::from_secs(3));
+            delay_for(Duration::from_secs(3)).await;
         }
     });
 }

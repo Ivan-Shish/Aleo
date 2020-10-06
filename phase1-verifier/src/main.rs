@@ -1,7 +1,7 @@
 use phase1_verifier::{
     tasks::{task_executor, TaskQueue},
     utils::init_logger,
-    verifier::VerifierRequest,
+    verifier::{Verifier, VerifierRequest},
 };
 
 use snarkos_toolkit::account::{Address, ViewKey};
@@ -59,18 +59,22 @@ async fn main() {
     init_logger("DEBUG");
 
     // Fetch the coordinator api url and verifier view key from the `.env` file
-    let _coordinator_api_url =
+    let coordinator_api_url =
         env::var("COORDINATOR_API_URL").expect("COORDINATOR_API_URL environment variable not set");
-    let view_key = env::var("VIEW_KEY").expect("VIEW_KEY environment variable not set");
+    let view_key = env::var("VIEW_KEY").unwrap_or("AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3".to_string());
 
     let view_key = ViewKey::from_str(&view_key).expect("Invalid view key");
     let address = Address::from_view_key(&view_key).expect("Invalid view key. Address not derived correctly");
+
+    // Initialize the verifier
+    let verifier =
+        Verifier::new(coordinator_api_url.to_string(), view_key.to_string()).expect("failed to initialize verifier");
 
     // Keep track of the verifier tasks
     let task_queue = TaskQueue::default();
 
     // Run the task executor
-    let _ = task_executor(task_queue.clone()).await;
+    let _ = task_executor(verifier.clone(), task_queue.clone()).await;
 
     // Turn our "task_queue" into a new filter
     let tasks = warp::any().map(move || task_queue.clone());
