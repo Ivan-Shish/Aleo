@@ -42,7 +42,7 @@ pub fn test_server(environment: &Environment) -> anyhow::Result<(Rocket, Arc<Coo
         chunk_post,
         lock_post,
         ping_get,
-        timestamp_get, // transcript_get,
+        timestamp_get,
         round_get,
         deprecated::ceremony_get,
     ]);

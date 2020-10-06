@@ -1,4 +1,5 @@
 use crate::{
+    environment::Environment,
     objects::{Contribution, Participant},
     CoordinatorError,
 };
@@ -200,6 +201,7 @@ impl Chunk {
     ///
     #[inline]
     pub fn is_complete(&self, expected_contributions: u64) -> bool {
+        // TODO (howardwu): Check that all chunks are not locked.
         let contributions_complete = self.only_contributions_complete(expected_contributions);
         let verifications_complete = (self
             .get_contributions()
@@ -312,7 +314,7 @@ impl Chunk {
     pub(crate) fn add_contribution(
         &mut self,
         contribution_id: u64,
-        participant: Participant,
+        participant: &Participant,
         contributed_locator: String,
         expected_contributions: u64,
     ) -> Result<(), CoordinatorError> {
@@ -333,7 +335,7 @@ impl Chunk {
 
         // Add the contribution to this chunk.
         self.contributions
-            .push(Contribution::new_contributor(participant, contributed_locator)?);
+            .push(Contribution::new_contributor(participant.clone(), contributed_locator)?);
 
         // Release the lock on this chunk from the contributor.
         self.lock_holder = None;
@@ -398,19 +400,4 @@ impl Chunk {
             _ => Err(CoordinatorError::ContributionMissing),
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // use crate::testing::prelude::*;
-
-    // #[test]
-    // fn test_update_chunk() {
-    //     let mut expected = test_round_1_json().unwrap().chunks[0].clone();
-    //     expected.acquire_lock("test_updated_contributor");
-    //
-    //     let candidate = test_round_1().unwrap().get_chunk_mut(0).unwrap();
-    //     assert!(candidate.update_chunk(0, &expected));
-    //     assert_eq!(expected, *candidate);
-    // }
 }

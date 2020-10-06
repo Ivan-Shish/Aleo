@@ -123,7 +123,6 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -133,15 +132,7 @@ where
                 result.push(Participant::Contributor(id))
             }
             Ok(result)
-        } // ParticipantString::Monolith(ids) => {
-          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
-          //
-          //     let mut result = Vec::with_capacity(ids.len());
-          //     for id in ids {
-          //         result.push(Participant::Contributor(id))
-          //     }
-          //     Ok(result)
-          // }
+        }
     }
 }
 
@@ -191,7 +182,6 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -201,14 +191,6 @@ where
                 result.push(Participant::Verifier(id))
             }
             Ok(result)
-        } // ParticipantString::Monolith(ids) => {
-          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
-          //
-          //     let mut result = Vec::with_capacity(ids.len());
-          //     for id in ids {
-          //         result.push(Participant::Verifier(id))
-          //     }
-          //     Ok(result)
-          // }
+        }
     }
 }

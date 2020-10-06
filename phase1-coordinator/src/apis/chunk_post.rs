@@ -12,7 +12,7 @@ pub fn chunk_post(
     participant: Participant,
     // contribution_id: u64,
 ) -> Result<String, Status> {
-    match coordinator.add_contribution(chunk_id, participant) {
+    match coordinator.add_contribution(chunk_id, &participant) {
         Ok(_) => Ok(json!({ "status": "ok" }).to_string()),
         Err(_) => {
             error!("Unable to store the contribution");
