@@ -1,6 +1,6 @@
 use crate::{
     objects::Participant,
-    storage::{ConcurrentMemory, InMemory, Storage},
+    storage::{Disk, InMemory, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
@@ -400,7 +400,7 @@ impl Environment {
 
     /// Returns the storage system of the coordinator.
     pub(crate) fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
-        Ok(storage!(self, InMemory, ConcurrentMemory, ConcurrentMemory))
+        Ok(storage!(self, InMemory, Disk, Disk))
     }
 }
 

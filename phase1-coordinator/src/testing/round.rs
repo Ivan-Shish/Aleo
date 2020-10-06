@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
 use std::path::Path;
-use tracing::warn;
+use tracing::{error, warn};
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest8Chunks);
@@ -51,7 +51,13 @@ pub fn clear_test_transcript() {
     let path = TEST_ENVIRONMENT.local_base_directory();
     if Path::new(path).exists() {
         warn!("Coordinator is clearing {:?}", &path);
-        std::fs::remove_dir_all(&path).expect("Unable to reset base directory");
+        match std::fs::remove_dir_all(&path) {
+            Ok(_) => (),
+            Err(error) => error!(
+                "The testing framework tried to clear the test transcript and failed. {}",
+                error
+            ),
+        }
         warn!("Coordinator cleared {:?}", &path);
     }
 }
