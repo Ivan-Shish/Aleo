@@ -1161,7 +1161,7 @@ mod test {
     // This test runs a round with a single coordinator and single verifier
     // The verifier instances are run on a separate thread to simulate an environment where
     // verification and contribution happen concurrently.
-    fn coordinator_concurrent_aggregation_test() -> anyhow::Result<()> {
+    fn coordinator_concurrent_contribution_verification_test() -> anyhow::Result<()> {
         clear_test_transcript();
 
         // take_hook() returns the default hook in case when a custom one is not set
@@ -1182,6 +1182,8 @@ mod test {
         let coordinator = std::sync::Arc::new(coordinator);
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let verifier = Lazy::force(&TEST_VERIFIER_ID);
+
+        let mut verifier_threads = vec![];
 
         let contribution_id = 1;
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
@@ -1225,7 +1227,7 @@ mod test {
 
             // Spawn a thread to concurrently verify the contributions.
             let coordinator_clone = coordinator.clone();
-            std::thread::spawn(move || {
+            let verifier_thread = std::thread::spawn(move || {
                 let verifier = verifier.clone();
 
                 // Acquire the lock as the verifier.
@@ -1250,12 +1252,16 @@ mod test {
                     panic!(format!("{:?}", verify.unwrap()))
                 }
             });
+            verifier_threads.push(verifier_thread);
+        }
+
+        for verifier_thread in verifier_threads {
+            verifier_thread.join().expect("Couldn't join on the verifier thread");
         }
 
         Ok(())
     }
 
-    // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
         clear_test_transcript();
 
@@ -1490,15 +1496,14 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_coordinator_aggregation() {
-        coordinator_aggregation_test().unwrap();
+    fn test_coordinator_concurrent_contribution_verification() {
+        coordinator_concurrent_contribution_verification_test().unwrap();
     }
 
     #[test]
     #[serial]
-    #[ignore]
-    fn test_coordinator_concurrent_aggregation() {
-        coordinator_concurrent_aggregation_test().unwrap();
+    fn test_coordinator_aggregation() {
+        coordinator_aggregation_test().unwrap();
     }
 
     #[test]
