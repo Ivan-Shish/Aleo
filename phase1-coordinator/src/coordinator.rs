@@ -1495,6 +1495,7 @@ mod test {
 
     #[test]
     #[serial]
+    #[ignore]
     fn test_coordinator_concurrent_aggregation() {
         coordinator_concurrent_aggregation_test().unwrap();
     }
