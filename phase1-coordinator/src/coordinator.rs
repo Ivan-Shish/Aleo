@@ -8,7 +8,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use std::{
     fmt,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 use tracing::{debug, error, info, trace};
 
@@ -19,6 +19,7 @@ pub enum CoordinatorError {
     ChunkIdInvalid,
     ChunkIdMismatch,
     ChunkLockAlreadyAcquired,
+    ChunkLockLimitReached,
     ChunkMissing,
     ChunkMissingVerification,
     ChunkNotLockedOrByWrongParticipant,
@@ -112,7 +113,7 @@ impl From<CoordinatorError> for anyhow::Error {
 
 /// A core structure for operating the Phase 1 ceremony.
 pub struct Coordinator {
-    storage: Arc<Mutex<Box<dyn Storage>>>,
+    storage: Arc<RwLock<Box<dyn Storage>>>,
     environment: Environment,
 }
 
@@ -128,7 +129,7 @@ impl Coordinator {
     #[inline]
     pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
         Ok(Self {
-            storage: Arc::new(Mutex::new(environment.storage()?)),
+            storage: Arc::new(RwLock::new(environment.storage()?)),
             environment,
         })
     }
@@ -141,7 +142,7 @@ impl Coordinator {
     #[inline]
     pub fn get_round(&self, round_height: u64) -> Result<Round, CoordinatorError> {
         // Acquire the storage lock.
-        let storage = self.storage.lock().unwrap();
+        let storage = self.storage.read().unwrap();
 
         // Fetch the round corresponding to the given round height from storage.
         match storage.get(&Key::RoundHeight) {
@@ -173,7 +174,7 @@ impl Coordinator {
     #[inline]
     pub fn current_round(&self) -> Result<Round, CoordinatorError> {
         // Acquire the storage lock.
-        let storage = self.storage.lock().unwrap();
+        let storage = self.storage.read().unwrap();
 
         // Fetch the current round from storage.
         match storage.get(&Key::RoundHeight) {
@@ -209,7 +210,7 @@ impl Coordinator {
     #[inline]
     pub fn current_round_height(&self) -> Result<u64, CoordinatorError> {
         // Acquire the storage lock.
-        let storage = self.storage.lock().unwrap();
+        let storage = self.storage.read().unwrap();
 
         // Fetch the current round height from storage.
         match storage.get(&Key::RoundHeight) {
@@ -248,7 +249,7 @@ impl Coordinator {
         }
 
         // Acquire the storage lock.
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
         let round_height = match storage.get(&Key::RoundHeight) {
@@ -310,7 +311,7 @@ impl Coordinator {
         }
 
         // Acquire the storage lock.
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
         let round_height = match storage.get(&Key::RoundHeight) {
@@ -410,7 +411,7 @@ impl Coordinator {
         }
 
         // Acquire the storage lock.
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
         let round_height = match storage.get(&Key::RoundHeight) {
@@ -560,7 +561,7 @@ impl Coordinator {
         }
 
         // Acquire the storage lock.
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
         let round_height = match storage.get(&Key::RoundHeight) {
@@ -816,7 +817,7 @@ impl Coordinator {
         }
 
         // Acquire the storage lock.
-        let storage = self.storage.lock().unwrap();
+        let storage = self.storage.read().unwrap();
 
         // Check that the ceremony is running and fetch the specified round from storage.
         let round = match round_height != 0 {

@@ -388,6 +388,27 @@ impl Round {
             }
         };
 
+        // Check that the participant is holding less than the chunk lock limit.
+        let number_of_locks_held = self
+            .chunks
+            .par_iter()
+            .filter(|chunk| chunk.is_locked_by(participant))
+            .count();
+        match participant {
+            Participant::Contributor(_) => {
+                if number_of_locks_held >= environment.contributor_lock_chunk_limit() {
+                    trace!("{} chunks are locked by {}", &number_of_locks_held, participant);
+                    return Err(CoordinatorError::ChunkLockLimitReached);
+                }
+            }
+            Participant::Verifier(_) => {
+                if number_of_locks_held >= environment.verifier_lock_chunk_limit() {
+                    trace!("{} chunks are locked by {}", &number_of_locks_held, participant);
+                    return Err(CoordinatorError::ChunkLockLimitReached);
+                }
+            }
+        };
+
         // Fetch the chunk corresponding to the given chunk ID.
         let chunk = self.get_chunk(chunk_id)?;
         // Fetch the next contribution ID.
