@@ -171,6 +171,30 @@ impl Environment {
     }
 
     ///
+    /// Returns the number of chunks a contributor is
+    /// authorized to lock in tandem at any point during a round.
+    ///
+    pub fn contributor_lock_chunk_limit(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of chunks a verifier is
+    /// authorized to lock in tandem at any point during a round.
+    ///
+    pub fn verifier_lock_chunk_limit(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
     /// Returns the compressed input preference of the coordinator.
     ///
     /// By default, the coordinator returns `false` to minimize time
