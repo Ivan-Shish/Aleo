@@ -524,13 +524,13 @@ impl Coordinator {
             chunk_id,
             current_contribution_id,
             previous,
-            current.clone(),
-            next,
+            current,
+            next.clone(),
         )?;
         debug!("Coordinator completed verification on chunk {}", chunk_id);
 
         // Attempts to set the current contribution as verified in the current round.
-        round.verify_contribution(chunk_id, current_contribution_id, participant.clone(), current)?;
+        round.verify_contribution(chunk_id, current_contribution_id, participant.clone(), next)?;
 
         // Add the updated round to storage.
         if storage.insert(Key::Round(round_height), Value::Round(round)) {
