@@ -776,7 +776,7 @@ impl Coordinator {
     /// coordinator is using.
     ///
     #[inline]
-    pub(crate) fn environment(&self) -> &Environment {
+    pub fn environment(&self) -> &Environment {
         &self.environment
     }
 

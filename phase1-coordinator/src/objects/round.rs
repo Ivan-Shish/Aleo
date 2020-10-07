@@ -296,6 +296,12 @@ impl Round {
         &self.verifier_ids
     }
 
+    /// Returns a reference to a list of contributors.
+    #[inline]
+    pub fn get_contributors(&self) -> &Vec<Participant> {
+        &self.contributor_ids
+    }
+
     /// Returns `true` if the chunk corresponding to the given chunk ID is
     /// locked by the given participant. Otherwise, returns `false`.
     #[inline]
@@ -309,7 +315,7 @@ impl Round {
     /// Returns a reference to the chunk, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub(crate) fn get_chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
+    pub fn get_chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
         // Fetch the chunk with the given chunk ID.
         let chunk = match self.chunks.get(chunk_id as usize) {
             Some(chunk) => chunk,
@@ -468,7 +474,7 @@ impl Round {
     /// have been verified. Otherwise, returns `false`.
     ///
     #[inline]
-    pub(crate) fn is_complete(&self) -> bool {
+    pub fn is_complete(&self) -> bool {
         // Check that all chunks are unlocked.
         let number_of_locks_held = self.chunks.par_iter().filter(|chunk| chunk.is_locked()).count();
         if number_of_locks_held > 0 {
