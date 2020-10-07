@@ -51,14 +51,6 @@ impl Storage for ConcurrentMemory {
         Ok(Self { reader, writer })
     }
 
-    /// Stores an instance of `ConcurrentMemory`.
-    /// If successful, returns `true`. Otherwise, returns `false`.
-    #[inline]
-    fn save(&mut self) -> bool {
-        // As this storage is in memory, we can always return `true`.
-        true
-    }
-
     /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
     fn get(&self, key: &Key) -> Option<Value> {

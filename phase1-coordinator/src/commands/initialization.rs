@@ -1,4 +1,8 @@
-use crate::{environment::Environment, CoordinatorError};
+use crate::{
+    environment::Environment,
+    storage::{storage::Locator, StorageWriter},
+    CoordinatorError,
+};
 use phase1::helpers::CurveKind;
 use phase1_cli::new_challenge;
 use setup_utils::calculate_hash;
@@ -16,7 +20,12 @@ impl Initialization {
     ///
     /// Executes the round initialization on a given chunk ID using phase1-cli logic.
     ///
-    pub(crate) fn run(environment: &Environment, round_height: u64, chunk_id: u64) -> anyhow::Result<Vec<u8>> {
+    pub(crate) fn run(
+        environment: &Environment,
+        storage: &mut StorageWriter,
+        round_height: u64,
+        chunk_id: u64,
+    ) -> anyhow::Result<Vec<u8>> {
         info!("Starting initialization and migration on chunk {}", chunk_id);
         let now = Instant::now();
 
@@ -24,8 +33,8 @@ impl Initialization {
         let settings = environment.to_settings();
 
         // Initialize and fetch the contribution locator.
-        environment.chunk_directory_init(round_height, chunk_id);
-        let contribution_locator = environment.contribution_locator(round_height, chunk_id, 0, true);
+        storage.chunk_directory_init(round_height, chunk_id);
+        let contribution_locator = storage.contribution_locator(round_height, chunk_id, 0, true);
         trace!(
             "Storing round {} chunk {} in {}",
             round_height,
@@ -56,8 +65,8 @@ impl Initialization {
 
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
-        environment.chunk_directory_init(round_height + 1, chunk_id);
-        let next_transcript = environment.contribution_locator(round_height + 1, chunk_id, 0, true);
+        storage.chunk_directory_init(round_height + 1, chunk_id);
+        let next_transcript = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
         trace!("Copying chunk {} to {}", chunk_id, next_transcript);
         fs::copy(&contribution_locator, &next_transcript)?;
         trace!("Copied chunk {} to {}", chunk_id, next_transcript);
@@ -107,11 +116,18 @@ impl Initialization {
 
 #[cfg(test)]
 mod tests {
-    use crate::{commands::Initialization, testing::prelude::*};
+    use crate::{
+        commands::Initialization,
+        storage::{InMemory, Storage},
+        testing::prelude::*,
+    };
     use setup_utils::{blank_hash, calculate_hash, GenericArray};
 
     use memmap::MmapOptions;
-    use std::fs::OpenOptions;
+    use std::{
+        fs::OpenOptions,
+        sync::{Arc, RwLock},
+    };
     use tracing::{debug, trace};
 
     #[test]
@@ -123,6 +139,10 @@ mod tests {
         let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT.number_of_chunks();
 
+        // Define test storage.
+        let test_storage = test_storage();
+        let mut storage = test_storage.write().unwrap();
+
         // Initialize the previous contribution hash with a no-op value.
         let mut previous_contribution_hash: GenericArray<u8, _> =
             GenericArray::from_slice(vec![0; 64].as_slice()).clone();
@@ -132,10 +152,10 @@ mod tests {
             debug!("Initializing test chunk {}", chunk_id);
 
             // Execute the ceremony initialization
-            let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, round_height, chunk_id).unwrap();
+            let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, &mut storage, round_height, chunk_id).unwrap();
 
             // Open the transcript locator file.
-            let transcript = TEST_ENVIRONMENT.contribution_locator(round_height, chunk_id, 0, true);
+            let transcript = storage.contribution_locator(round_height, chunk_id, 0, true);
             let file = OpenOptions::new().read(true).open(transcript).unwrap();
             let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
 

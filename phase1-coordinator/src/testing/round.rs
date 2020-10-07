@@ -1,6 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
+    storage::{InMemory, Storage},
     Participant,
 };
 
@@ -8,7 +9,10 @@ use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, RwLock},
+};
 use tracing::{error, warn};
 
 /// Environment for testing purposes only.
@@ -62,6 +66,11 @@ pub fn clear_test_transcript() {
     }
 }
 
+/// Provides a simple test storage object.
+pub fn test_storage() -> Arc<RwLock<Box<dyn Storage>>> {
+    Arc::new(RwLock::new(Box::new(InMemory::load(&TEST_ENVIRONMENT).unwrap())))
+}
+
 /// Loads the reference JSON object with a serialized round for testing purposes only.
 pub fn test_round_0_json() -> anyhow::Result<Round> {
     Ok(serde_json::from_str(include_str!("resources/test_round_0.json"))?)
@@ -76,8 +85,13 @@ pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
 
 /// Creates the initial round for testing purposes only.
 pub fn test_round_0() -> anyhow::Result<Round> {
+    // Define test storage.
+    let test_storage = test_storage();
+    let storage = test_storage.write().unwrap();
+
     Ok(Round::new(
         &TEST_ENVIRONMENT,
+        &storage,
         0, /* height */
         *TEST_STARTED_AT,
         vec![],

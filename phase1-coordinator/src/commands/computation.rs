@@ -1,4 +1,4 @@
-use crate::{environment::Environment, CoordinatorError};
+use crate::{environment::Environment, storage::StorageWriter, CoordinatorError};
 use phase1::helpers::CurveKind;
 use phase1_cli::contribute;
 
@@ -17,6 +17,7 @@ impl Computation {
     ///
     pub(crate) fn run(
         environment: &Environment,
+        storage: &StorageWriter,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
@@ -31,8 +32,8 @@ impl Computation {
         let settings = environment.to_settings();
 
         // Fetch the contribution locators.
-        let previous_locator = environment.contribution_locator(round_height, chunk_id, contribution_id - 1, true);
-        let current_locator = environment.contribution_locator(round_height, chunk_id, contribution_id, false);
+        let previous_locator = storage.contribution_locator(round_height, chunk_id, contribution_id - 1, true);
+        let current_locator = storage.contribution_locator(round_height, chunk_id, contribution_id, false);
 
         trace!(
             "Storing round {} chunk {} in {}",
@@ -84,11 +85,15 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
+        storage::{InMemory, Storage},
         testing::prelude::*,
     };
 
     use memmap::MmapOptions;
-    use std::fs::OpenOptions;
+    use std::{
+        fs::OpenOptions,
+        sync::{Arc, RwLock},
+    };
     use tracing::{debug, trace};
 
     #[test]
@@ -100,18 +105,23 @@ mod tests {
         let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
+        // Define test storage.
+        let test_storage = test_storage();
+        let mut storage = test_storage.write().unwrap();
+
         // Generate a new challenge for the given parameters.
         for chunk_id in 0..number_of_chunks {
             debug!("Initializing test chunk {}", chunk_id);
 
             // Run initialization on chunk.
-            let contribution_hash = Initialization::run(&TEST_ENVIRONMENT_3, round_height, chunk_id).unwrap();
+            let contribution_hash =
+                Initialization::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id).unwrap();
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
+            Computation::run(&TEST_ENVIRONMENT_3, &storage, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
-            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1, false);
+            let current = storage.contribution_locator(round_height, chunk_id, 1, false);
 
             // Check that the current contribution was generated based on the previous contribution hash.
             let file = OpenOptions::new().read(true).open(current).unwrap();

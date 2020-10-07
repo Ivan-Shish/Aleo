@@ -19,7 +19,6 @@ pub use coordinator::*;
 pub use objects::{Participant, Round};
 pub use storage::Storage;
 
-mod locators;
 mod objects;
 mod storage;
 

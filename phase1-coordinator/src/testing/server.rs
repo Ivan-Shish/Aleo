@@ -38,13 +38,13 @@ pub fn test_server(environment: &Environment) -> anyhow::Result<(Rocket, Arc<Coo
     let coordinator = Arc::new(test_coordinator(environment)?);
     std::thread::sleep(std::time::Duration::from_secs(1));
     let server = rocket::ignite().manage(coordinator.clone()).mount("/", routes![
-        chunk_get,
-        chunk_post,
-        lock_post,
+        // chunk_get,
+        // chunk_post,
+        // lock_post,
         ping_get,
-        timestamp_get,
-        round_get,
-        deprecated::ceremony_get,
+        // timestamp_get,
+        // round_get,
+        // deprecated::ceremony_get,
     ]);
     info!("Server is ready");
     Ok((server, coordinator))
