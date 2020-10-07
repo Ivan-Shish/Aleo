@@ -33,7 +33,7 @@ impl Initialization {
         let settings = environment.to_settings();
 
         // Initialize and fetch the contribution locator.
-        storage.chunk_directory_init(round_height, chunk_id);
+        storage.contribution_locator_init(round_height, chunk_id, 0, true);
         let contribution_locator = storage.contribution_locator(round_height, chunk_id, 0, true);
         trace!(
             "Storing round {} chunk {} in {}",
@@ -65,7 +65,7 @@ impl Initialization {
 
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
-        storage.chunk_directory_init(round_height + 1, chunk_id);
+        storage.contribution_locator_init(round_height + 1, chunk_id, 0, true);
         let next_transcript = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
         trace!("Copying chunk {} to {}", chunk_id, next_transcript);
         fs::copy(&contribution_locator, &next_transcript)?;
@@ -118,7 +118,7 @@ impl Initialization {
 mod tests {
     use crate::{
         commands::Initialization,
-        storage::{InMemory, Storage},
+        storage::{Memory, Storage},
         testing::prelude::*,
     };
     use setup_utils::{blank_hash, calculate_hash, GenericArray};

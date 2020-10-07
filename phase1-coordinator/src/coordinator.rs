@@ -456,37 +456,32 @@ impl Coordinator {
             return Err(CoordinatorError::ContributionAlreadyVerified);
         }
 
-        // Fetch the contribution locators for `Verification`.
-        let (previous, current, next) = if chunk.only_contributions_complete(round.expected_number_of_contributions()) {
-            let previous = storage.contribution_locator(round_height, chunk_id, current_contribution_id - 1, true);
-            let current = storage.contribution_locator(round_height, chunk_id, current_contribution_id, false);
-            let next = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
-
-            // Initialize the chunk directory of the new round so the next locator file will be saved.
-            storage.chunk_directory_init(round_height + 1, chunk_id);
-
-            (previous, current, next)
-        } else {
-            let previous = storage.contribution_locator(round_height, chunk_id, current_contribution_id - 1, true);
-            let current = storage.contribution_locator(round_height, chunk_id, current_contribution_id, false);
-            let next = storage.contribution_locator(round_height, chunk_id, current_contribution_id, true);
-            (previous, current, next)
-        };
+        // Fetch whether this is the final contribution of the specified chunk.
+        let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
         debug!("Coordinator is starting verification on chunk {}", chunk_id);
         Verification::run(
             &self.environment,
+            &mut storage,
             round_height,
             chunk_id,
             current_contribution_id,
-            previous,
-            current.clone(),
-            next,
+            is_final_contribution,
         )?;
         debug!("Coordinator completed verification on chunk {}", chunk_id);
 
         // Attempts to set the current contribution as verified in the current round.
-        round.verify_contribution(chunk_id, current_contribution_id, participant.clone(), current)?;
+        // Fetch the contribution locators for `Verification`.
+        let verified_contribution_locator = match is_final_contribution {
+            true => storage.contribution_locator(round_height + 1, chunk_id, 0, true),
+            false => storage.contribution_locator(round_height, chunk_id, current_contribution_id, true),
+        };
+        round.verify_contribution(
+            chunk_id,
+            current_contribution_id,
+            participant.clone(),
+            verified_contribution_locator,
+        )?;
 
         // Add the updated round to storage.
         if storage.insert(Key::Round(round_height), Value::Round(round)) {
@@ -572,15 +567,6 @@ impl Coordinator {
         // If there is no round in storage, proceed to create a new round instance,
         // and run `Initialization` to start the ceremony.
         if round_height == 0 {
-            // If the path exists, this means a prior *ceremony* is stored as a transcript.
-            //
-            // In a test environment, this step clears the transcript of the coordinator.
-            // In a development or production environment, this step does NOT reset
-            // the transcript of the coordinator.
-            if storage.round_directory_exists(round_height) {
-                storage.round_directory_reset(&self.environment, round_height);
-            }
-
             // Create an instantiation of `Round` for round 0.
             let round = {
                 // Initialize the contributors as an empty list as this is for initialization.
@@ -669,10 +655,20 @@ impl Coordinator {
 
             // Execute round aggregation and aggregate verification on the current round.
             {
-                // TODO (howardwu): Do pre-check that all current chunk contributions are present.
-                // Check that the round directory corresponding to this round exists.
-                if !storage.round_directory_exists(round_height) {
-                    return Err(CoordinatorError::RoundDirectoryMissing);
+                let contribution_id = round.expected_number_of_contributions() - 1;
+                for chunk_id in 0..self.environment.number_of_chunks() {
+                    // Check that the final unverified contribution locator exists.
+                    if !storage.contribution_locator_exists(round_height, chunk_id, contribution_id, false) {
+                        let locator = storage.contribution_locator(round_height, chunk_id, contribution_id, false);
+                        error!("Contribution locator is missing ({})", locator);
+                        return Err(CoordinatorError::ContributionMissing);
+                    }
+                    // Check that the final verified contribution locator exists.
+                    if !storage.contribution_locator_exists(round_height + 1, chunk_id, 0, true) {
+                        let locator = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
+                        error!("Contribution locator is missing ({})", locator);
+                        return Err(CoordinatorError::ContributionMissing);
+                    }
                 }
 
                 // Check that the round locator does not exist.
@@ -1471,6 +1467,7 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_aggregation() {
+        test_logger();
         coordinator_aggregation_test().unwrap();
     }
 
