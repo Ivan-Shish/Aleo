@@ -395,6 +395,7 @@ impl Coordinator {
             // Fetch the verifier websocket address
             let verifier_ws_url = self.environment.coordinator_verifier_ws();
 
+            info!("Dispatching requests to verifier: {}", verifier_ws_url);
             thread::spawn(move || {
                 // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
                 if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
