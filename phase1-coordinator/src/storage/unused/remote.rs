@@ -1,4 +1,4 @@
-use crate::{environment::Environment, locators::Locator};
+use crate::{environment::Environment, storage::locators::Locator};
 
 use std::path::Path;
 

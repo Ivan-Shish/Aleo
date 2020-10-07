@@ -5,6 +5,7 @@ use crate::{
     CoordinatorError,
 };
 
+use crate::storage::StorageWriter;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,7 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
+        storage: &StorageWriter,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
@@ -107,7 +109,7 @@ impl Round {
                 Chunk::new(
                     chunk_id as u64,
                     environment.coordinator_verifier(),
-                    environment.contribution_locator(round_height, chunk_id as u64, 0, true),
+                    storage.contribution_locator(round_height, chunk_id as u64, 0, true),
                 )
                 .expect("failed to create chunk")
             })
@@ -212,7 +214,7 @@ impl Round {
     #[inline]
     pub fn current_contribution_locator(
         &self,
-        environment: &Environment,
+        storage: &StorageWriter,
         chunk_id: u64,
         verified: bool,
     ) -> Result<String, CoordinatorError> {
@@ -225,7 +227,7 @@ impl Round {
 
         // Check that the contribution locator corresponding to the current contribution ID
         // exists for the current round and given chunk ID.
-        if !environment.contribution_locator_exists(current_round_height, chunk_id, current_contribution_id, verified) {
+        if !storage.contribution_locator_exists(current_round_height, chunk_id, current_contribution_id, verified) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -236,7 +238,7 @@ impl Round {
 
         // Fetch the current contribution locator.
         let current_contribution_locator =
-            environment.contribution_locator(current_round_height, chunk_id, current_contribution_id, verified);
+            storage.contribution_locator(current_round_height, chunk_id, current_contribution_id, verified);
 
         Ok(current_contribution_locator)
     }
@@ -260,7 +262,7 @@ impl Round {
     #[inline]
     pub fn next_contribution_locator(
         &self,
-        environment: &Environment,
+        storage: &StorageWriter,
         chunk_id: u64,
     ) -> Result<String, CoordinatorError> {
         // Fetch the current round height.
@@ -279,13 +281,13 @@ impl Round {
 
         // Check that the contribution locator corresponding to the next contribution ID
         // does NOT exist for the current round and given chunk ID.
-        if environment.contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, false) {
+        if storage.contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, false) {
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
         // Fetch the next contribution locator.
         let next_contribution_locator =
-            environment.contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
+            storage.contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
 
         Ok(next_contribution_locator)
     }
@@ -354,6 +356,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
+        storage: &StorageWriter,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<String, CoordinatorError> {
@@ -372,7 +375,7 @@ impl Round {
                 // next contribution locator does NOT exist and
                 // that the current contribution locator exists
                 // and has already been verified.
-                self.next_contribution_locator(&environment, chunk_id)?
+                self.next_contribution_locator(storage, chunk_id)?
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -384,7 +387,7 @@ impl Round {
                 // This call enforces a strict check that the
                 // current contribution locator exist and
                 // has not been verified yet.
-                self.current_contribution_locator(&environment, chunk_id, false)?
+                self.current_contribution_locator(storage, chunk_id, false)?
             }
         };
 
@@ -417,9 +420,7 @@ impl Round {
         // As a corollary, if the current contribution locator exists
         // and the current contribution has not been verified yet,
         // check that the given participant is not a contributor.
-        if self.current_contribution_locator(&environment, chunk_id, false).is_ok()
-            && !current_contribution.is_verified()
-        {
+        if self.current_contribution_locator(storage, chunk_id, false).is_ok() && !current_contribution.is_verified() {
             // Check that the given participant is not a contributor.
             if participant.is_contributor() {
                 return Err(CoordinatorError::UnauthorizedChunkContributor);
@@ -494,9 +495,14 @@ mod tests {
     #[test]
     #[serial]
     fn test_round_0_matches() {
+        // Define test storage.
+        let test_storage = test_storage();
+        let storage = test_storage.write().unwrap();
+
         let expected = test_round_0().unwrap();
         let candidate = Round::new(
             &TEST_ENVIRONMENT,
+            &storage,
             0, /* height */
             *TEST_STARTED_AT,
             vec![],

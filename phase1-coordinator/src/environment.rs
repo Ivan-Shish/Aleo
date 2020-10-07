@@ -292,100 +292,100 @@ impl Environment {
         }
     }
 
-    /// Returns the round directory for a given round height.
-    pub fn round_directory(&self, round_height: u64) -> String {
-        round_directory!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Initializes the round directory for a given round height.
-    pub fn round_directory_init(&self, round_height: u64) {
-        round_directory_init!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Returns `true` if the round directory exists for a given round height.
-    pub fn round_directory_exists(&self, round_height: u64) -> bool {
-        round_directory_exists!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Resets the round directory for a given round height, if permitted.
-    pub fn round_directory_reset(&self, round_height: u64) {
-        round_directory_reset!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Resets the entire round directory for all rounds, if permitted.
-    pub fn round_directory_reset_all(&self) {
-        round_directory_reset_all!(self, Local, Remote, Remote)
-    }
-
-    /// Returns the chunk directory for a given round height and chunk ID.
-    pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
-        chunk_directory!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Initializes the chunk directory for a given round height and chunk ID.
-    pub fn chunk_directory_init(&self, round_height: u64, chunk_id: u64) {
-        chunk_directory_init!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Returns `true` if the chunk directory exists for a given round height and chunk ID.
-    pub fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
-        chunk_directory_exists!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator(
-        &self,
-        round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
-        verified: bool,
-    ) -> String {
-        contribution_locator!(
-            self,
-            Local,
-            Remote,
-            Remote,
-            round_height,
-            chunk_id,
-            contribution_id,
-            verified
-        )
-    }
-
-    /// Initializes the contribution locator file for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator_init(&self, round_height: u64, chunk_id: u64, contribution_id: u64) {
-        contribution_locator_init!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
-    }
-
-    /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator_exists(
-        &self,
-        round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
-        verified: bool,
-    ) -> bool {
-        contribution_locator_exists!(
-            self,
-            Local,
-            Remote,
-            Remote,
-            round_height,
-            chunk_id,
-            contribution_id,
-            verified
-        )
-    }
-
-    /// Returns the round locator for a given round height.
-    pub fn round_locator(&self, round_height: u64) -> String {
-        round_locator!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Returns `true` if the round locator exists for a given round height.
-    pub fn round_locator_exists(&self, round_height: u64) -> bool {
-        round_locator_exists!(self, Local, Remote, Remote, round_height)
-    }
+    // /// Returns the round directory for a given round height.
+    // pub fn round_directory(&self, round_height: u64) -> String {
+    //     round_directory!(self, InMemory, Disk, Disk, round_height)
+    // }
+    //
+    // /// Initializes the round directory for a given round height.
+    // pub fn round_directory_init(&self, round_height: u64) {
+    //     round_directory_init!(self, InMemory, Disk, Disk, round_height)
+    // }
+    //
+    // /// Returns `true` if the round directory exists for a given round height.
+    // pub fn round_directory_exists(&self, round_height: u64) -> bool {
+    //     round_directory_exists!(self, InMemory, Disk, Disk, round_height)
+    // }
+    //
+    // /// Resets the round directory for a given round height, if permitted.
+    // pub fn round_directory_reset(&self, round_height: u64) {
+    //     round_directory_reset!(self, InMemory, Disk, Disk, round_height)
+    // }
+    //
+    // /// Resets the entire round directory for all rounds, if permitted.
+    // pub fn round_directory_reset_all(&self) {
+    //     round_directory_reset_all!(self, InMemory, Disk, Disk)
+    // }
+    //
+    // /// Returns the chunk directory for a given round height and chunk ID.
+    // pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
+    //     chunk_directory!(self, InMemory, Disk, Disk, round_height, chunk_id)
+    // }
+    //
+    // /// Initializes the chunk directory for a given round height and chunk ID.
+    // pub fn chunk_directory_init(&self, round_height: u64, chunk_id: u64) {
+    //     chunk_directory_init!(self, InMemory, Disk, Disk, round_height, chunk_id)
+    // }
+    //
+    // /// Returns `true` if the chunk directory exists for a given round height and chunk ID.
+    // pub fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
+    //     chunk_directory_exists!(self, InMemory, Disk, Disk, round_height, chunk_id)
+    // }
+    //
+    // /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
+    // pub fn contribution_locator(
+    //     &self,
+    //     round_height: u64,
+    //     chunk_id: u64,
+    //     contribution_id: u64,
+    //     verified: bool,
+    // ) -> String {
+    //     contribution_locator!(
+    //         self,
+    //         Local,
+    //         Remote,
+    //         Remote,
+    //         round_height,
+    //         chunk_id,
+    //         contribution_id,
+    //         verified
+    //     )
+    // }
+    //
+    // /// Initializes the contribution locator file for a given round, chunk ID, and contribution ID.
+    // pub fn contribution_locator_init(&self, round_height: u64, chunk_id: u64, contribution_id: u64) {
+    //     contribution_locator_init!(self, InMemory, Disk, Disk, round_height, chunk_id, contribution_id)
+    // }
+    //
+    // /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
+    // pub fn contribution_locator_exists(
+    //     &self,
+    //     round_height: u64,
+    //     chunk_id: u64,
+    //     contribution_id: u64,
+    //     verified: bool,
+    // ) -> bool {
+    //     contribution_locator_exists!(
+    //         self,
+    //         Local,
+    //         Remote,
+    //         Remote,
+    //         round_height,
+    //         chunk_id,
+    //         contribution_id,
+    //         verified
+    //     )
+    // }
+    //
+    // /// Returns the round locator for a given round height.
+    // pub fn round_locator(&self, round_height: u64) -> String {
+    //     round_locator!(self, InMemory, Disk, Disk, round_height)
+    // }
+    //
+    // /// Returns `true` if the round locator exists for a given round height.
+    // pub fn round_locator_exists(&self, round_height: u64) -> bool {
+    //     round_locator_exists!(self, InMemory, Disk, Disk, round_height)
+    // }
 
     ///
     /// Returns the contributor managed by the coordinator.
