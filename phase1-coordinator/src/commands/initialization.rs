@@ -8,7 +8,7 @@ use std::{fs, fs::OpenOptions, panic, time::Instant};
 use tracing::{debug, info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
-pub struct Initialization;
+pub(crate) struct Initialization;
 
 impl Initialization {
     ///
@@ -16,7 +16,7 @@ impl Initialization {
     ///
     /// Executes the round initialization on a given chunk ID using phase1-cli logic.
     ///
-    pub fn run(environment: &Environment, round_height: u64, chunk_id: u64) -> anyhow::Result<Vec<u8>> {
+    pub(crate) fn run(environment: &Environment, round_height: u64, chunk_id: u64) -> anyhow::Result<Vec<u8>> {
         info!("Starting initialization and migration on chunk {}", chunk_id);
         let now = Instant::now();
 
