@@ -85,7 +85,7 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
-        storage::{InMemory, Storage},
+        storage::{Memory, Storage},
         testing::prelude::*,
     };
 

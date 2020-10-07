@@ -67,36 +67,31 @@ impl Aggregation {
         // Fetch the round height.
         let round_height = round.round_height();
 
-        // Fetch the compressed output setting.
-        let compressed = environment.compressed_outputs();
-
-        // Create a variable to save the contribution ID of the previous iteration.
-        let mut previous_chunk_contribution_id = 0;
+        // Fetch the final contribution ID for each chunk in the given round.
+        let final_contribution_id = round.expected_number_of_contributions() - 1;
 
         for chunk_id in 0..environment.number_of_chunks() {
             trace!("Loading contribution from chunk {}", chunk_id);
 
             // Fetch the contribution ID.
-            let contribution_id = round.get_chunk(chunk_id)?.current_contribution_id();
+            let current_contribution_id = round.get_chunk(chunk_id)?.current_contribution_id();
 
             // Sanity check that each contribution ID is the same,
             // meaning all chunks have the same number of contributions
             // contributed to it.
-            match chunk_id == 0 {
-                true => previous_chunk_contribution_id = contribution_id,
-                false => {
-                    if previous_chunk_contribution_id != contribution_id {
-                        return Err(CoordinatorError::NumberOfContributionsDiffer.into());
-                    }
-                }
+            if current_contribution_id != final_contribution_id {
+                return Err(CoordinatorError::NumberOfContributionsDiffer.into());
             }
 
             // Fetch the reader with the contribution locator.
-            let locator = storage.contribution_locator(round_height, chunk_id, contribution_id, false);
+            let locator = storage.contribution_locator(round_height, chunk_id, current_contribution_id, false);
             let reader = OpenOptions::new()
                 .read(true)
                 .open(locator)
                 .expect("unable to open contribution");
+
+            // Fetch the compressed output setting.
+            let compressed = environment.compressed_outputs();
 
             // Derive the expected file size of the contribution.
             let settings = environment.to_settings();
@@ -129,43 +124,47 @@ impl Aggregation {
         // Fetch the round height.
         let round_height = round.round_height();
 
-        // Fetch the round transcript locator for the given round.
-        let round_locator = storage.round_locator(round_height);
-
-        // Check that the round transcript locator does not already exist.
+        // Check that the round locator does not already exist.
         if storage.round_locator_exists(round_height) {
             return Err(CoordinatorError::RoundLocatorAlreadyExists.into());
         }
 
-        // Fetch the round height.
-        let is_initial = round_height == 0;
+        // Fetch the round locator for the given round.
+        let round_locator = storage.round_locator(round_height);
 
-        // Fetch the next compressed input setting based on the round height.
-        let compressed = environment.compressed_inputs();
+        // Create the writer for the round locator.
+        let writer = {
+            let writer = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(round_locator)
+                .expect("unable to create new file");
 
-        // Create the writer for the round transcript locator.
-        let writer = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(round_locator)
-            .expect("unable to create new file");
+            // Fetch the round height.
+            let is_initial = round_height == 0;
 
-        // Check the round filesize will fit on the system.
-        let settings = environment.to_settings();
-        let (_, _, curve, _, _, _) = settings;
-        let round_size = match curve {
-            CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, chunk_id, compressed, is_initial),
-            CurveKind::BW6 => round_filesize!(BW6_761, settings, chunk_id, compressed, is_initial),
+            // Fetch the next compressed input setting based on the round height.
+            let compressed = environment.compressed_inputs();
+
+            // Check the round filesize will fit on the system.
+            let settings = environment.to_settings();
+            let (_, _, curve, _, _, _) = settings;
+            let round_size = match curve {
+                CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, chunk_id, compressed, is_initial),
+                CurveKind::BW6 => round_filesize!(BW6_761, settings, chunk_id, compressed, is_initial),
+            };
+            debug!("Round {} filesize will be {}", round_height, round_size);
+            writer.set_len(round_size).expect("round file must be large enough");
+
+            unsafe {
+                MmapOptions::new()
+                    .map_mut(&writer)
+                    .expect("unable to create a memory map for output")
+            }
         };
-        debug!("Round {} filesize will be {}", round_height, round_size);
-        writer.set_len(round_size).expect("round file must be large enough");
 
-        unsafe {
-            Ok(MmapOptions::new()
-                .map_mut(&writer)
-                .expect("unable to create a memory map for output"))
-        }
+        Ok(writer)
     }
 }
 

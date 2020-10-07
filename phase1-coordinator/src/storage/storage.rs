@@ -29,6 +29,8 @@ pub trait Storage: Send + Sync + Locator {
     where
         Self: Sized;
 
+    // fn locate(&self) -> dyn Locator;
+
     /// Returns the value for a given key from storage, if it exists.
     fn get(&self, key: &Key) -> Option<Value>;
 
@@ -46,30 +48,27 @@ pub trait Storage: Send + Sync + Locator {
 }
 
 pub trait Locator {
-    /// Returns the round directory for a given round height from the coordinator.
-    fn round_directory(&self, round_height: u64) -> String;
+    // /// Returns the round directory for a given round height from the coordinator.
+    // fn round_directory(&self, round_height: u64) -> String;
 
-    /// Initializes the round directory for a given round height.
+    // /// Initializes the round directory for a given round height.
     // fn round_directory_init(&mut self, round_height: u64);
 
-    /// Returns `true` if the round directory for a given round height exists.
-    /// Otherwise, returns `false`.
-    fn round_directory_exists(&self, round_height: u64) -> bool;
+    // /// Returns `true` if the round directory for a given round height exists.
+    // /// Otherwise, returns `false`.
+    // fn round_directory_exists(&self, round_height: u64) -> bool;
 
-    /// Resets the round directory for a given round height.
-    fn round_directory_reset(&mut self, environment: &Environment, round_height: u64);
+    // /// Resets the round directory for a given round height.
+    // fn round_directory_reset(&mut self, environment: &Environment, round_height: u64);
 
-    /// Resets the entire round directory.
+    // /// Resets the entire round directory.
     // fn round_directory_reset_all(&mut self, environment: &Environment);
 
-    /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
-    fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String;
+    // /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
+    // fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String;
 
-    /// Initializes the chunk directory, round height, and chunk ID.
-    fn chunk_directory_init(&mut self, round_height: u64, chunk_id: u64);
-
-    /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
-    /// Otherwise, returns `false`.
+    // /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
+    // /// Otherwise, returns `false`.
     // fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool;
 
     /// Returns the contribution locator for a given round, chunk ID, and
@@ -78,7 +77,7 @@ pub trait Locator {
 
     /// Initializes the contribution locator file for a given round, chunk ID, and
     /// contribution ID from the coordinator.
-    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64);
+    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64, verified: bool);
 
     /// Returns `true` if the contribution locator for a given round height, chunk ID,
     /// and contribution ID exists. Otherwise, returns `false`.

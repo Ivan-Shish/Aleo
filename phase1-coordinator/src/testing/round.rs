@@ -1,7 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
-    storage::{InMemory, Storage},
+    storage::{Memory, Storage},
     Participant,
 };
 
@@ -68,7 +68,7 @@ pub fn clear_test_transcript() {
 
 /// Provides a simple test storage object.
 pub fn test_storage() -> Arc<RwLock<Box<dyn Storage>>> {
-    Arc::new(RwLock::new(Box::new(InMemory::load(&TEST_ENVIRONMENT).unwrap())))
+    Arc::new(RwLock::new(TEST_ENVIRONMENT.storage().unwrap()))
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.

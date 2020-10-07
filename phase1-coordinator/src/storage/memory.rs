@@ -24,16 +24,16 @@ pub struct InMemoryEntry {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct InMemory {
+pub struct Memory {
     /// (Storage::Key, Storage::Value)
     storage: HashMap<Key, Value>,
     /// (round_height, (chunk_id, (contribution_id, verified))) // is_locked
-    rounds: HashMap<u64, HashMap<u64, HashMap<u64, Option<bool>>>>,
+    rounds: HashMap<u64, HashMap<u64, HashMap<u64, bool>>>,
     /// { round_heights }
     rounds_complete: HashSet<u64>,
 }
 
-impl Storage for InMemory {
+impl Storage for Memory {
     /// Loads a new instance of `InMemory`.
     #[inline]
     fn load(_: &Environment) -> Result<Self, CoordinatorError>
@@ -79,44 +79,11 @@ impl Storage for InMemory {
     }
 }
 
-impl Locator for InMemory {
+impl Memory {
     /// Returns the transcript directory for a given round from the coordinator.
     fn round_directory(&self, round_height: u64) -> String {
         format!("round.{}", round_height)
     }
-
-    // /// Initializes the round directory for a given round height.
-    // fn round_directory_init(&mut self, round_height: u64) {
-    //     if !self.rounds.contains_key(&round_height) {
-    //         self.rounds.insert(round_height, HashMap::default());
-    //     }
-    // }
-
-    /// Returns `true` if the round directory for a given round height exists.
-    /// Otherwise, returns `false`.
-    fn round_directory_exists(&self, round_height: u64) -> bool {
-        self.rounds.contains_key(&round_height)
-    }
-
-    /// Resets the round directory for a given round height.
-    fn round_directory_reset(&mut self, environment: &Environment, round_height: u64) {
-        match environment {
-            Environment::Test(_) => {
-                self.rounds.remove(&round_height);
-            }
-            Environment::Development(_) => warn!("Coordinator is attempting to reset round storage in development"),
-            Environment::Production(_) => warn!("Coordinator is attempting to reset round storage in production"),
-        };
-    }
-
-    // /// Resets the entire round directory.
-    // fn round_directory_reset_all(&mut self, environment: &Environment) {
-    //     match environment {
-    //         Environment::Test(_) => self.rounds = HashMap::default(),
-    //         Environment::Development(_) => warn!("Coordinator is attempting to reset round storage in development"),
-    //         Environment::Production(_) => warn!("Coordinator is attempting to reset round storage in production"),
-    //     };
-    // }
 
     /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
     fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
@@ -139,6 +106,41 @@ impl Locator for InMemory {
             }
         }
     }
+}
+
+impl Locator for Memory {
+    // /// Initializes the round directory for a given round height.
+    // fn round_directory_init(&mut self, round_height: u64) {
+    //     if !self.rounds.contains_key(&round_height) {
+    //         self.rounds.insert(round_height, HashMap::default());
+    //     }
+    // }
+
+    // /// Returns `true` if the round directory for a given round height exists.
+    // /// Otherwise, returns `false`.
+    // fn round_directory_exists(&self, round_height: u64) -> bool {
+    //     self.rounds.contains_key(&round_height)
+    // }
+
+    // /// Resets the round directory for a given round height.
+    // fn round_directory_reset(&mut self, environment: &Environment, round_height: u64) {
+    //     match environment {
+    //         Environment::Test(_) => {
+    //             self.rounds.remove(&round_height);
+    //         }
+    //         Environment::Development(_) => warn!("Coordinator is attempting to reset round storage in development"),
+    //         Environment::Production(_) => warn!("Coordinator is attempting to reset round storage in production"),
+    //     };
+    // }
+
+    // /// Resets the entire round directory.
+    // fn round_directory_reset_all(&mut self, environment: &Environment) {
+    //     match environment {
+    //         Environment::Test(_) => self.rounds = HashMap::default(),
+    //         Environment::Development(_) => warn!("Coordinator is attempting to reset round storage in development"),
+    //         Environment::Production(_) => warn!("Coordinator is attempting to reset round storage in production"),
+    //     };
+    // }
 
     // /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
     // /// Otherwise, returns `false`.
@@ -171,13 +173,13 @@ impl Locator for InMemory {
 
     /// Initializes the contribution locator file for a given round, chunk ID, and
     /// contribution ID from the coordinator.
-    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64) {
+    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64, verified: bool) {
         self.chunk_directory_init(round_height, chunk_id);
 
         if let Some(mut chunks) = self.rounds.get_mut(&round_height) {
             if let Some(mut contributions) = chunks.get_mut(&chunk_id) {
                 if !contributions.contains_key(&contribution_id) {
-                    contributions.insert(contribution_id, None);
+                    contributions.insert(contribution_id, verified);
                 }
             }
         }
@@ -197,11 +199,9 @@ impl Locator for InMemory {
             // Check that the specified chunk exists.
             if let Some(contributions) = chunks.get(&chunk_id) {
                 // Check that the specified contribution exists.
-                if let Some(contributed) = contributions.get(&contribution_id) {
-                    // Check that the specified contribution variant exists.
-                    if let Some(is_verified) = contributed {
-                        return (verified && *is_verified) || !verified;
-                    }
+                if let Some(is_verified_file_type) = contributions.get(&contribution_id) {
+                    // Check that the specified contribution file variant exists.
+                    return verified == *is_verified_file_type;
                 }
             }
         }
@@ -231,7 +231,7 @@ impl Serialize for Key {
     {
         serializer.serialize_str(&match self {
             Key::RoundHeight => "roundheight".to_string(),
-            Key::Round(round_height) => format!("round.{}", round_height),
+            Key::Round(round_height) => format!("round::{}", round_height),
             Key::Ping => "ping".to_string(),
             _ => return Err(ser::Error::custom("invalid serialization key")),
         })
@@ -244,7 +244,7 @@ impl<'de> Deserialize<'de> for Key {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let (variant, data) = match s.splitn(2, '.').collect_tuple() {
+        let (variant, data) = match s.splitn(2, "::").collect_tuple() {
             Some((variant, data)) => (variant, data),
             None => return Err(de::Error::custom("failed to parse serialization key")),
         };
@@ -263,8 +263,8 @@ impl Serialize for Value {
         S: Serializer,
     {
         serializer.serialize_str(&match self {
-            Value::RoundHeight(round_height) => format!("roundheight.{}", round_height),
-            Value::Round(round) => format!("round.{}", serde_json::to_string(round).map_err(ser::Error::custom)?),
+            Value::RoundHeight(round_height) => format!("roundheight::{}", round_height),
+            Value::Round(round) => format!("round::{}", serde_json::to_string(round).map_err(ser::Error::custom)?),
             Value::Pong => "pong".to_string(),
             _ => return Err(ser::Error::custom("invalid serialization value")),
         })
@@ -277,7 +277,7 @@ impl<'de> Deserialize<'de> for Value {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let (variant, data) = match s.splitn(2, '.').collect_tuple() {
+        let (variant, data) = match s.splitn(2, "::").collect_tuple() {
             Some((variant, data)) => (variant, data),
             None => return Err(de::Error::custom("failed to parse deserialization value")),
         };

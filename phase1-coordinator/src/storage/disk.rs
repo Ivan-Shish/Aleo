@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{InMemory, Key, Locator, Storage, Value},
+    storage::{Key, Locator, Memory, Storage, Value},
     CoordinatorError,
 };
 
@@ -16,7 +16,7 @@ use tracing::warn;
 #[derive(Debug)]
 pub struct Disk {
     file: File,
-    in_memory: Arc<RwLock<InMemory>>,
+    in_memory: Arc<RwLock<Memory>>,
     base_directory: String,
 }
 
@@ -46,13 +46,13 @@ impl Storage for Disk {
                     .create(true)
                     .open(&storage_file)
                     .expect("unable to open the storage file");
-                serde_json::to_writer_pretty(file, &InMemory::load(environment)?)?;
+                serde_json::to_writer_pretty(file, &Memory::load(environment)?)?;
             }
         }
 
         // Open the file in read-only mode and read the JSON contents
         // of the file as an instance of `InMemory`.
-        let in_memory: InMemory = serde_json::from_reader(BufReader::new(
+        let in_memory: Memory = serde_json::from_reader(BufReader::new(
             OpenOptions::new()
                 .read(true)
                 .open(&storage_file)
@@ -113,12 +113,38 @@ impl Storage for Disk {
     }
 }
 
-impl Locator for Disk {
+impl Disk {
     /// Returns the round directory for a given round height from the coordinator.
     fn round_directory(&self, round_height: u64) -> String {
         format!("{}/round_{}", self.base_directory, round_height)
     }
 
+    /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
+    fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
+        // Fetch the transcript directory path.
+        let path = self.round_directory(round_height);
+
+        // Format the chunk directory as `{round_directory}/chunk_{chunk_id}`.
+        format!("{}/chunk_{}", path, chunk_id)
+    }
+
+    /// Initializes the chunk directory for a given  round height, and chunk ID.
+    fn chunk_directory_init(&mut self, round_height: u64, chunk_id: u64) {
+        // If the round directory does not exist, attempt to initialize the directory path.
+        let path = self.round_directory(round_height);
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the round directory");
+        }
+
+        // If the chunk directory does not exist, attempt to initialize the directory path.
+        let path = self.chunk_directory(round_height, chunk_id);
+        if !Path::new(&path).exists() {
+            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
+        }
+    }
+}
+
+impl Locator for Disk {
     // /// Initializes the round directory for a given round height.
     // fn round_directory_init(&mut self, round_height: u64) {
     //     // If the path does not exist, attempt to initialize the directory path.
@@ -128,30 +154,30 @@ impl Locator for Disk {
     //     }
     // }
 
-    /// Returns `true` if the round directory for a given round height exists.
-    /// Otherwise, returns `false`.
-    fn round_directory_exists(&self, round_height: u64) -> bool {
-        let path = self.round_directory(round_height);
-        Path::new(&path).exists()
-    }
+    // /// Returns `true` if the round directory for a given round height exists.
+    // /// Otherwise, returns `false`.
+    // fn round_directory_exists(&self, round_height: u64) -> bool {
+    //     let path = self.round_directory(round_height);
+    //     Path::new(&path).exists()
+    // }
 
-    /// Resets the round directory for a given round height.
-    fn round_directory_reset(&mut self, environment: &Environment, round_height: u64) {
-        // If this is a test  attempt to clear it for the coordinator.
-        let directory = self.round_directory(round_height);
-        let path = Path::new(&directory);
-        match environment {
-            Environment::Test(_) => {
-                if path.exists() {
-                    warn!("Coordinator is clearing {:?}", &path);
-                    std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-                    warn!("Coordinator cleared {:?}", &path);
-                }
-            }
-            Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
-            Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
-        }
-    }
+    // /// Resets the round directory for a given round height.
+    // fn round_directory_reset(&mut self, environment: &Environment, round_height: u64) {
+    //     // If this is a test  attempt to clear it for the coordinator.
+    //     let directory = self.round_directory(round_height);
+    //     let path = Path::new(&directory);
+    //     match environment {
+    //         Environment::Test(_) => {
+    //             if path.exists() {
+    //                 warn!("Coordinator is clearing {:?}", &path);
+    //                 std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
+    //                 warn!("Coordinator cleared {:?}", &path);
+    //             }
+    //         }
+    //         Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
+    //         Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
+    //     }
+    // }
 
     // /// Resets the entire round directory.
     // fn round_directory_reset_all(&mut self, environment: &Environment) {
@@ -169,25 +195,6 @@ impl Locator for Disk {
     //         Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
     //     }
     // }
-
-    /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
-    fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
-        // Fetch the transcript directory path.
-        let path = self.round_directory(round_height);
-
-        // Format the chunk directory as `{round_directory}/chunk_{chunk_id}`.
-        format!("{}/chunk_{}", path, chunk_id)
-    }
-
-    /// Initializes the chunk directory for a given  round height, and chunk ID.
-    fn chunk_directory_init(&mut self, round_height: u64, chunk_id: u64) {
-        // If the path does not exist, attempt to initialize the directory path.
-        let path = self.chunk_directory(round_height, chunk_id);
-
-        if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
-        }
-    }
 
     // /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
     // /// Otherwise, returns `false`.
@@ -214,10 +221,11 @@ impl Locator for Disk {
 
     /// Initializes the contribution locator file for a given round, chunk ID, and
     /// contribution ID from the coordinator.
-    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64) {
+    fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64, _verified: bool) {
         // If the path does not exist, attempt to initialize the file path.
-        let path = self.contribution_locator(round_height, chunk_id, contribution_id, false);
+        self.chunk_directory_init(round_height, chunk_id);
 
+        let path = self.contribution_locator(round_height, chunk_id, contribution_id, false);
         let directory = Path::new(&path).parent().expect("unable to create parent directory");
         if !directory.exists() {
             std::fs::create_dir_all(&path).expect("unable to create the contribution directory");
