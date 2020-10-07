@@ -332,7 +332,7 @@ impl Coordinator {
     /// this function will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_contribution_locator(&self, chunk_id: u64, verified: bool) -> Result<String, CoordinatorError> {
+    pub fn next_contribution_locator(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
         // Fetch the current round.
         let current_round = self.current_round()?;
         // Fetch the current round height.
@@ -353,7 +353,7 @@ impl Coordinator {
         // does NOT exist for the current round and given chunk ID.
         if self
             .environment
-            .contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, verified)
+            .contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, false)
         {
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
@@ -361,7 +361,7 @@ impl Coordinator {
         // Fetch the next contribution locator.
         let next_contribution_locator =
             self.environment
-                .contribution_locator(current_round_height, chunk_id, next_contribution_id, verified);
+                .contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
 
         Ok(next_contribution_locator)
     }
@@ -401,7 +401,7 @@ impl Coordinator {
                 // next contribution locator does NOT exist and
                 // that the current contribution locator exists
                 // and has already been verified.
-                self.next_contribution_locator(chunk_id, false)?
+                self.next_contribution_locator(chunk_id)?
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -456,7 +456,7 @@ impl Coordinator {
     ///
     #[inline]
     pub fn add_contribution(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
-        info!("Attempting to add contribution to a chunk");
+        info!("Attempting to add a contribution to chunk {}", chunk_id);
 
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -1275,7 +1275,6 @@ mod test {
 
     // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
-        test_logger();
         clear_test_transcript();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;

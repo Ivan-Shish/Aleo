@@ -7,7 +7,7 @@ use std::{panic, time::Instant};
 use tracing::{info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
-pub struct Computation;
+pub(crate) struct Computation;
 
 impl Computation {
     ///
@@ -15,7 +15,7 @@ impl Computation {
     ///
     /// Executes the round computation on a given chunk ID and contribution ID using phase1-cli logic.
     ///
-    pub fn run(
+    pub(crate) fn run(
         environment: &Environment,
         round_height: u64,
         chunk_id: u64,
