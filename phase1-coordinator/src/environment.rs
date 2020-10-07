@@ -413,6 +413,16 @@ impl Environment {
         }
     }
 
+    // TODO (raychu86) Establish formal websocket addresses
+    /// Returns a verifier websocket address managed by the coordinator.
+    pub fn coordinator_verifier_ws(&self) -> String {
+        match self {
+            Environment::Test(_) => format!("ws://157.245.162.104:8080/ws"),
+            Environment::Development(_) => format!("ws://157.245.162.104:8080/ws"),
+            Environment::Production(_) => format!("ws://157.245.162.104:8080/ws"),
+        }
+    }
+
     /// Returns the version number of the coordinator.
     pub const fn version(&self) -> u64 {
         match self {

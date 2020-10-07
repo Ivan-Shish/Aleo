@@ -9,8 +9,10 @@ use chrono::{DateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, RwLock},
+    thread,
 };
 use tracing::{debug, error, info, trace};
+use websocket::{client::ClientBuilder, OwnedMessage};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -384,6 +386,29 @@ impl Coordinator {
                 info!("{} added a contribution to chunk {}", participant, chunk_id);
                 return Ok(next_contribution_locator);
             }
+        }
+
+        // TODO (raychu86) Create a better message dispatch protocol. It is likely better to simply
+        //  maintain a single long-standing websocket connection.
+        // Dispatch a message to the coordinator verifier to lock and verify the completed contribution.
+        {
+            // Fetch the verifier websocket address
+            let verifier_ws_url = self.environment.coordinator_verifier_ws();
+
+            thread::spawn(move || {
+                // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
+                if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
+                    if let Ok(mut connection) = client.connect_insecure() {
+                        // Send the lock message to the verifier websocket
+                        let lock_message = format!(r#"{{"method": "lock", "chunk_id": {}}}"#, chunk_id);
+                        let _ = connection.send_message(&OwnedMessage::Text(lock_message));
+
+                        // Send the verify message to the verifier websocket
+                        let verify_message = format!(r#"{{"method": "verify", "chunk_id": {}}}"#, chunk_id);
+                        let _ = connection.send_message(&OwnedMessage::Text(verify_message));
+                    }
+                }
+            });
         }
 
         Err(CoordinatorError::StorageUpdateFailed)
