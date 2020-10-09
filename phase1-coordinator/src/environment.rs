@@ -1,6 +1,6 @@
 use crate::{
     objects::Participant,
-    storage::{Disk, Memory, Storage},
+    storage::{Disk, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};

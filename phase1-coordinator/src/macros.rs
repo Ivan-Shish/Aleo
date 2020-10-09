@@ -66,12 +66,12 @@ macro_rules! chunk_size {
 }
 
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
-/// an instance of `Settings`, a chunk ID, a compressed setting, and whether
-/// this is the initialization round.
+/// an instance of `Settings`, a round height, and a compressed setting.
 #[macro_export]
 macro_rules! round_filesize {
-    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident, $init:ident) => {{
+    ($curve:ident, $settings:ident, $round:ident, $compressed:ident) => {{
         use phase1::Phase1Parameters;
+        use setup_utils::UseCompression;
 
         let full_parameters = phase1_full_parameters!($curve, $settings);
         let parameters = Phase1Parameters::<$curve>::new(
@@ -83,7 +83,7 @@ macro_rules! round_filesize {
             full_parameters.total_size_in_log2,
             full_parameters.batch_size,
         );
-        match ($compressed, $init) {
+        match ($compressed, $round == 0) {
             (UseCompression::Yes, true) => (parameters.contribution_size - parameters.public_key_size) as u64,
             (UseCompression::Yes, false) => parameters.contribution_size as u64,
             (UseCompression::No, _) => parameters.accumulator_size as u64,

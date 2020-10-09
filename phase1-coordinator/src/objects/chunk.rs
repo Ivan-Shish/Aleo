@@ -1,6 +1,7 @@
 use crate::{
     environment::Environment,
     objects::{Contribution, Participant},
+    storage::Locator,
     CoordinatorError,
 };
 

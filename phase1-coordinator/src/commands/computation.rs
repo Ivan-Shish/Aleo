@@ -1,4 +1,8 @@
-use crate::{environment::Environment, storage::StorageWriter, CoordinatorError};
+use crate::{
+    environment::Environment,
+    storage::{Locator, StorageWrite},
+    CoordinatorError,
+};
 use phase1::helpers::CurveKind;
 use phase1_cli::contribute;
 
@@ -17,14 +21,14 @@ impl Computation {
     ///
     pub(crate) fn run(
         environment: &Environment,
-        storage: &StorageWriter,
+        storage: &StorageWrite,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
     ) -> anyhow::Result<()> {
         info!(
-            "Starting computation on chunk {} contribution {}",
-            chunk_id, contribution_id
+            "Starting computation on round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
         );
         let now = Instant::now();
 
@@ -32,36 +36,40 @@ impl Computation {
         let settings = environment.to_settings();
 
         // Fetch the contribution locators.
-        let previous_locator = storage.contribution_locator(round_height, chunk_id, contribution_id - 1, true);
-        let current_locator = storage.contribution_locator(round_height, chunk_id, contribution_id, false);
+        let current_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
+        let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
 
         trace!(
-            "Storing round {} chunk {} in {}",
+            "Storing round {} chunk {} contribution {} in {}",
             round_height,
             chunk_id,
-            current_locator
+            contribution_id,
+            storage.to_path(next_locator)?
         );
-        let compressed_input = environment.compressed_inputs();
-        let compressed_output = environment.compressed_outputs();
-        let check_input_for_correctness = environment.check_input_for_correctness();
+
         // Execute computation on chunk.
+        let compressed_input = environment.compressed_inputs();
+        let challenge_path = &storage.to_path(current_locator)?;
+        let compressed_output = environment.compressed_outputs();
+        let response_path = &storage.to_path(next_locator)?;
+        let check_input_for_correctness = environment.check_input_for_correctness();
         let result = panic::catch_unwind(|| {
             let (_, _, curve, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => contribute(
                     compressed_input,
-                    &previous_locator,
+                    challenge_path,
                     compressed_output,
-                    &current_locator,
+                    response_path,
                     check_input_for_correctness,
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                     &mut thread_rng(),
                 ),
                 CurveKind::BW6 => contribute(
                     compressed_input,
-                    &previous_locator,
+                    challenge_path,
                     compressed_output,
-                    &current_locator,
+                    response_path,
                     check_input_for_correctness,
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                     &mut thread_rng(),
@@ -74,8 +82,8 @@ impl Computation {
 
         let elapsed = Instant::now().duration_since(now);
         info!(
-            "Completed computation on chunk {} contribution {} in {:?}",
-            chunk_id, contribution_id, elapsed
+            "Completed computation on round {} chunk {} contribution {} in {:?}",
+            round_height, chunk_id, contribution_id, elapsed
         );
         Ok(())
     }
@@ -85,7 +93,7 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
-        storage::{Memory, Storage},
+        storage::{Locator, Storage},
         testing::prelude::*,
     };
 
@@ -121,14 +129,13 @@ mod tests {
             Computation::run(&TEST_ENVIRONMENT_3, &storage, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
-            let current = storage.contribution_locator(round_height, chunk_id, 1, false);
+            let locator = Locator::ContributionFile(round_height, chunk_id, 1, false);
+            let reader = storage.reader(&locator).unwrap();
 
             // Check that the current contribution was generated based on the previous contribution hash.
-            let file = OpenOptions::new().read(true).open(current).unwrap();
-            let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
             for (i, (expected, candidate)) in contribution_hash
                 .iter()
-                .zip(reader.chunks(64).next().unwrap())
+                .zip(reader.as_ref().chunks(64).next().unwrap())
                 .enumerate()
             {
                 trace!("Checking byte {} of expected hash", i);
