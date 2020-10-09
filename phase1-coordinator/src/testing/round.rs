@@ -68,6 +68,7 @@ pub fn clear_test_transcript() {
 
 /// Provides a simple test storage object.
 pub fn test_storage() -> Arc<RwLock<Box<dyn Storage>>> {
+    clear_test_transcript();
     Arc::new(RwLock::new(TEST_ENVIRONMENT.storage().unwrap()))
 }
 

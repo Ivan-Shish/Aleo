@@ -6,7 +6,6 @@ use crate::{
 };
 
 use chrono::{DateTime, Utc};
-use serde::{de, ser};
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -56,8 +55,6 @@ pub enum CoordinatorError {
     NumberOfChunksInvalid,
     NumberOfContributionsDiffer,
     Phase1Setup(setup_utils::Error),
-    // PoisonedReadLock(PoisonedReadLock),
-    // PoisonedWriteLock(PoisonedWriteLock),
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundContributorsMissing,
@@ -90,9 +87,6 @@ pub enum CoordinatorError {
     VerifierMissing,
 }
 
-// pub type PoisonedReadLock = std::sync::PoisonError<std::sync::RwLockReadGuard<'_, std::fs::File>>;
-// pub type PoisonedWriteLock = std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, std::fs::File>>;
-
 impl From<anyhow::Error> for CoordinatorError {
     fn from(error: anyhow::Error) -> Self {
         CoordinatorError::Error(error)
@@ -122,18 +116,6 @@ impl From<std::num::ParseIntError> for CoordinatorError {
         CoordinatorError::Integer(error)
     }
 }
-
-// impl From<PoisonedReadLock> for CoordinatorError {
-//     fn from(error: PoisonedReadLock) -> Self {
-//         CoordinatorError::PoisonedReadLock(error)
-//     }
-// }
-//
-// impl From<PoisonedWriteLock> for CoordinatorError {
-//     fn from(error: PoisonedWriteLock) -> Self {
-//         CoordinatorError::PoisonedWriteLock(error)
-//     }
-// }
 
 impl From<url::ParseError> for CoordinatorError {
     fn from(error: url::ParseError) -> Self {
@@ -197,7 +179,7 @@ impl Coordinator {
         };
 
         // Check that the given round height is valid.
-        match round_height != 0 && round_height <= current_round_height {
+        match round_height <= current_round_height {
             // Fetch the round corresponding to the given round height from storage.
             true => Ok(serde_json::from_slice(
                 &*storage.reader(&Locator::RoundState(round_height))?.as_ref(),
@@ -343,7 +325,6 @@ impl Coordinator {
         // Add the updated round to storage.
         match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
-                debug!("Updated round {} in storage", current_round_height);
                 info!("{} acquired lock on chunk {}", participant, chunk_id);
                 storage.to_path(&contribution_locator)
             }
@@ -772,7 +753,7 @@ impl Coordinator {
                 // Execute aggregation to combine on all chunks to finalize the round
                 // corresponding to the given round height.
                 debug!("Coordinator is starting aggregation");
-                Aggregation::run(&self.environment, &storage, &round)?;
+                Aggregation::run(&self.environment, &mut storage, &round)?;
                 debug!("Coordinator completed aggregation");
 
                 // Check that the round locator now exists.
@@ -883,7 +864,7 @@ impl Coordinator {
 
         // TODO (howardwu): Switch to a storage reader.
         // Acquire the storage lock.
-        let storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
         let current_round_height = match storage.get(&Locator::RoundHeight)? {
@@ -932,7 +913,7 @@ impl Coordinator {
             chunk_id,
             contribution_id
         );
-        Computation::run(&self.environment, &storage, round_height, chunk_id, contribution_id)?;
+        Computation::run(&self.environment, &mut storage, round_height, chunk_id, contribution_id)?;
         trace!(
             "Contributor completed computation on round {} chunk {} contribution {}",
             round_height,
@@ -982,6 +963,7 @@ mod test {
     use chrono::Utc;
     use once_cell::sync::Lazy;
     use std::{panic, process};
+    use tracing::debug;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
@@ -1218,6 +1200,7 @@ mod test {
             assert!(!chunk.is_unlocked());
 
             // Check that chunk 0 is locked by the verifier.
+            debug!("{:#?}", round);
             assert!(chunk.is_locked_by(&verifier));
         }
 
@@ -1563,8 +1546,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_coordinator_contributor_verify_contribution() {
-        test_logger();
+    fn test_coordinator_verifier_verify_contribution() {
         coordinator_verifier_verify_contribution_test().unwrap();
     }
 
@@ -1584,11 +1566,14 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_next_round() {
+        test_logger();
+
         coordinator_next_round_test().unwrap();
     }
 
     #[test]
     #[serial]
+    #[ignore]
     fn test_coordinator_number_of_chunks() {
         clear_test_transcript();
 

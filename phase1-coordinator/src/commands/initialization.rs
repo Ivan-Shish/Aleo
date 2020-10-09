@@ -4,11 +4,10 @@ use crate::{
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
-use setup_utils::{blank_hash, calculate_hash, print_hash, UseCompression};
+use setup_utils::{blank_hash, calculate_hash, UseCompression};
 use zexe_algebra::PairingEngine as Engine;
 
-use memmap::*;
-use std::{fs, fs::OpenOptions, io::Write, panic, time::Instant};
+use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -18,7 +17,7 @@ impl Initialization {
     ///
     /// Runs chunk initialization for a given environment, round height, and chunk ID.
     ///
-    /// Executes the round initialization on a given chunk ID using phase1-cli logic.
+    /// Executes the round initialization on a given chunk ID.
     ///
     pub(crate) fn run(
         environment: &Environment,
@@ -82,7 +81,7 @@ impl Initialization {
         trace!("Initializing Powers of Tau on 2^{}", parameters.total_size_in_log2);
         trace!("In total will generate up to {} powers", parameters.powers_g1_length);
 
-        debug!("Blank BLAKE2s hash for an empty challenge:");
+        debug!("Blank BLAKE2b hash for an empty challenge:");
         let hash = blank_hash();
         (&mut writer[0..]).write_all(hash.as_slice())?;
         writer.flush()?;
@@ -134,18 +133,9 @@ impl Initialization {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        commands::Initialization,
-        storage::{Locator, Storage},
-        testing::prelude::*,
-    };
+    use crate::{commands::Initialization, storage::Locator, testing::prelude::*};
     use setup_utils::{blank_hash, calculate_hash, GenericArray};
 
-    use memmap::MmapOptions;
-    use std::{
-        fs::OpenOptions,
-        sync::{Arc, RwLock},
-    };
     use tracing::{debug, trace};
 
     #[test]

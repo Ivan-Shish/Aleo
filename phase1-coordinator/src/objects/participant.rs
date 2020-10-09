@@ -6,7 +6,7 @@ use rocket::{
     Outcome::*,
     Request,
 };
-use serde::{de::Deserializer, Deserialize, Serialize};
+use serde::{de::Deserializer, Deserialize, Serialize, Serializer};
 use serde_diff::SerdeDiff;
 use std::{
     fmt::{self},
@@ -74,6 +74,48 @@ impl fmt::Display for Participant {
             Participant::Contributor(contributor_id) => write!(f, "{}", contributor_id),
             Participant::Verifier(verifier_id) => write!(f, "{}", verifier_id),
         }
+    }
+}
+
+/// Serializes a optional contributor to an optional string.
+pub fn serialize_optional_participant_to_optional_string<S>(
+    participant: &Option<Participant>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match participant {
+        Some(participant) => serializer.serialize_some(&match participant {
+            Participant::Contributor(id) => Some(("contributor", id.as_str())),
+            Participant::Verifier(id) => Some(("verifier", id.as_str())),
+        }),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Deserializes a optional contributor to an optional string.
+pub fn deserialize_optional_participant_to_optional_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        OptionalParticipant(Option<(String, String)>),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::OptionalParticipant(participant) => match participant {
+            Some((variant, id)) => match variant.as_str() {
+                "contributor" => Ok(Some(Participant::Contributor(id))),
+                "verifier" => Ok(Some(Participant::Verifier(id))),
+                _ => Ok(None),
+            },
+            None => Ok(None),
+        },
     }
 }
 
