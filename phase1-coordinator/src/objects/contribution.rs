@@ -1,5 +1,6 @@
 use crate::{
     objects::{participant::*, Participant},
+    storage::Locator,
     CoordinatorError,
 };
 
@@ -35,7 +36,7 @@ impl Contribution {
         &self.contributor_id
     }
 
-    /// Returns a reference to the contributor location, if it exists.
+    /// Returns a reference to the contributor locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
     pub fn get_contributed_location(&self) -> &Option<String> {
@@ -49,7 +50,7 @@ impl Contribution {
         &self.verifier_id
     }
 
-    /// Returns a reference to the verifier location, if it exists.
+    /// Returns a reference to the verifier locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
     pub fn get_verified_location(&self) -> &Option<String> {

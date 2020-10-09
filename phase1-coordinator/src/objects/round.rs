@@ -1,11 +1,11 @@
 use crate::{
     environment::Environment,
     objects::{participant::*, Chunk},
+    storage::{Locator, StorageWrite},
     Coordinator,
     CoordinatorError,
 };
 
-use crate::storage::StorageWriter;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
-        storage: &StorageWriter,
+        storage: &StorageWrite,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
@@ -109,7 +109,9 @@ impl Round {
                 Chunk::new(
                     chunk_id as u64,
                     environment.coordinator_verifier(),
-                    storage.contribution_locator(round_height, chunk_id as u64, 0, true),
+                    storage
+                        .to_path(&Locator::ContributionFile(round_height, chunk_id as u64, 0, true))
+                        .expect("failed to create locator path"),
                 )
                 .expect("failed to create chunk")
             })
@@ -214,10 +216,10 @@ impl Round {
     #[inline]
     pub fn current_contribution_locator(
         &self,
-        storage: &StorageWriter,
+        storage: &StorageWrite,
         chunk_id: u64,
         verified: bool,
-    ) -> Result<String, CoordinatorError> {
+    ) -> Result<Locator, CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
@@ -227,7 +229,12 @@ impl Round {
 
         // Check that the contribution locator corresponding to the current contribution ID
         // exists for the current round and given chunk ID.
-        if !storage.contribution_locator_exists(current_round_height, chunk_id, current_contribution_id, verified) {
+        if !storage.exists(&Locator::ContributionFile(
+            current_round_height,
+            chunk_id,
+            current_contribution_id,
+            verified,
+        )) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -238,7 +245,7 @@ impl Round {
 
         // Fetch the current contribution locator.
         let current_contribution_locator =
-            storage.contribution_locator(current_round_height, chunk_id, current_contribution_id, verified);
+            Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, verified);
 
         Ok(current_contribution_locator)
     }
@@ -262,9 +269,9 @@ impl Round {
     #[inline]
     pub fn next_contribution_locator(
         &self,
-        storage: &StorageWriter,
+        storage: &StorageWrite,
         chunk_id: u64,
-    ) -> Result<String, CoordinatorError> {
+    ) -> Result<Locator, CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
@@ -281,13 +288,18 @@ impl Round {
 
         // Check that the contribution locator corresponding to the next contribution ID
         // does NOT exist for the current round and given chunk ID.
-        if storage.contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, false) {
+        if storage.exists(&Locator::ContributionFile(
+            current_round_height,
+            chunk_id,
+            next_contribution_id,
+            false,
+        )) {
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
         // Fetch the next contribution locator.
         let next_contribution_locator =
-            storage.contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
+            Locator::ContributionFile(current_round_height, chunk_id, next_contribution_id, false);
 
         Ok(next_contribution_locator)
     }
@@ -356,10 +368,10 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &StorageWriter,
+        storage: &StorageWrite,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<String, CoordinatorError> {
+    ) -> Result<Locator, CoordinatorError> {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.

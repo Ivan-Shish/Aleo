@@ -1,7 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
-    storage::{Memory, Storage},
+    storage::Storage,
     Participant,
 };
 

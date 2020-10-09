@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{storage::Locator, StorageWriter},
+    storage::{Locator, Object, StorageWrite},
     CoordinatorError,
 };
 use phase1::helpers::CurveKind;
@@ -22,7 +22,7 @@ impl Initialization {
     ///
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageWriter,
+        storage: &mut StorageWrite,
         round_height: u64,
         chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
@@ -32,29 +32,27 @@ impl Initialization {
         // Fetch the parameter settings.
         let settings = environment.to_settings();
 
-        // Initialize and fetch the contribution locator.
-        storage.contribution_locator_init(round_height, chunk_id, 0, true);
-        let contribution_locator = storage.contribution_locator(round_height, chunk_id, 0, true);
-        trace!(
-            "Storing round {} chunk {} in {}",
-            round_height,
-            chunk_id,
-            contribution_locator
-        );
+        // Initialize and fetch a writer for the contribution locator so the output is saved.
+        let contribution_locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+        storage.initialize(
+            contribution_locator.clone(),
+            Object::contribution_file_size(environment, chunk_id),
+        )?;
+        // let contribution = storage.writer(&contribution_locator)?;
 
-        let compressed_input = environment.compressed_inputs();
         // Execute ceremony initialization on chunk.
+        let compressed_input = environment.compressed_inputs();
         let result = panic::catch_unwind(|| {
             let (_, _, curve, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => new_challenge(
                     compressed_input,
-                    &contribution_locator,
+                    &storage.to_path(&contribution_locator).unwrap(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 ),
                 CurveKind::BW6 => new_challenge(
                     compressed_input,
-                    &contribution_locator,
+                    &storage.to_path(&contribution_locator).unwrap(),
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 ),
             };
@@ -63,37 +61,49 @@ impl Initialization {
             return Err(CoordinatorError::InitializationFailed.into());
         }
 
+        trace!(
+            "Storing round {} chunk {} in {}",
+            round_height,
+            chunk_id,
+            storage.to_path(&contribution_locator)?
+        );
+
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
-        storage.contribution_locator_init(round_height + 1, chunk_id, 0, true);
-        let next_transcript = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
-        trace!("Copying chunk {} to {}", chunk_id, next_transcript);
-        fs::copy(&contribution_locator, &next_transcript)?;
-        trace!("Copied chunk {} to {}", chunk_id, next_transcript);
+        let next_contribution_locator = Locator::ContributionFile(round_height + 1, chunk_id, 0, true);
+        if let Err(error) = storage.copy(&contribution_locator, &next_contribution_locator) {
+            return Err(error.into());
+        }
 
-        // Open the transcript files.
-        let file = OpenOptions::new().read(true).open(&contribution_locator)?;
-        let next_file = OpenOptions::new().read(true).open(&next_transcript)?;
+        // Check that the current and next contribution hash match.
+        let contribution_hash = Self::check(storage, &contribution_locator, &next_contribution_locator, chunk_id)?;
+
+        info!(
+            "Completed initialization and migration on chunk {} in {:?}",
+            chunk_id,
+            Instant::now().duration_since(now)
+        );
+        Ok(contribution_hash)
+    }
+
+    /// Compute both contribution hashes and check for equivalence.
+    fn check(
+        storage: &StorageWrite,
+        contribution_locator: &Locator,
+        next_contribution_locator: &Locator,
+        chunk_id: u64,
+    ) -> anyhow::Result<Vec<u8>> {
+        let current = storage.reader(contribution_locator)?;
+        let next = storage.reader(next_contribution_locator)?;
 
         // Compare the contribution hashes of both files to ensure the copy succeeded.
-        let contribution_hash_0 = {
-            let reader = unsafe { MmapOptions::new().map(&file)? };
-            calculate_hash(&reader)
-        };
-        let contribution_hash_1 = {
-            let reader = unsafe { MmapOptions::new().map(&next_file)? };
-            calculate_hash(&reader)
-        };
+        let contribution_hash_0 = calculate_hash(current.as_ref());
+        let contribution_hash_1 = calculate_hash(next.as_ref());
         Self::log_hash(&contribution_hash_1, chunk_id);
         if contribution_hash_0 != contribution_hash_1 {
             return Err(CoordinatorError::InitializationTranscriptsDiffer.into());
         }
 
-        let elapsed = Instant::now().duration_since(now);
-        info!(
-            "Completed initialization and migration on chunk {} in {:?}",
-            chunk_id, elapsed
-        );
         Ok(contribution_hash_1.to_vec())
     }
 
@@ -118,7 +128,7 @@ impl Initialization {
 mod tests {
     use crate::{
         commands::Initialization,
-        storage::{Memory, Storage},
+        storage::{Locator, Storage},
         testing::prelude::*,
     };
     use setup_utils::{blank_hash, calculate_hash, GenericArray};
@@ -154,14 +164,13 @@ mod tests {
             // Execute the ceremony initialization
             let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, &mut storage, round_height, chunk_id).unwrap();
 
-            // Open the transcript locator file.
-            let transcript = storage.contribution_locator(round_height, chunk_id, 0, true);
-            let file = OpenOptions::new().read(true).open(transcript).unwrap();
-            let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
+            // Open the contribution locator file.
+            let locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let reader = storage.reader(&locator).unwrap();
 
             // Check that the contribution chunk was generated based on the blank hash.
             let hash = blank_hash();
-            for (i, (expected, candidate)) in hash.iter().zip(reader.chunks(64).next().unwrap()).enumerate() {
+            for (i, (expected, candidate)) in hash.iter().zip(reader.as_ref().chunks(64).next().unwrap()).enumerate() {
                 trace!("Checking byte {} of expected hash", i);
                 assert_eq!(expected, candidate);
             }
@@ -170,7 +179,7 @@ mod tests {
             // of each iteration will match with Groth16 and Marlin.
             if chunk_id < (number_of_chunks / 2) as u64 {
                 // Sanity only - Check that the current contribution hash matches the previous one.
-                let contribution_hash = calculate_hash(&reader);
+                let contribution_hash = calculate_hash(reader.as_ref());
                 assert_eq!(contribution_hash.to_vec(), candidate_hash);
                 match chunk_id == 0 {
                     true => previous_contribution_hash = contribution_hash,

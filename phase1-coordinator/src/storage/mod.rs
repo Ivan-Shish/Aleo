@@ -4,8 +4,8 @@
 pub mod disk;
 pub use disk::*;
 
-pub mod memory;
-pub use memory::*;
+// pub mod memory;
+// pub use memory::*;
 
 pub mod storage;
 pub use storage::*;

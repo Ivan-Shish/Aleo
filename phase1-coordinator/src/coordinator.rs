@@ -2,10 +2,11 @@ use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
     environment::Environment,
     objects::{Participant, Round},
-    storage::{Key, Storage, Value},
+    storage::{Locator, Object, Storage},
 };
 
 use chrono::{DateTime, Utc};
+use serde::{de, ser};
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -46,17 +47,23 @@ pub enum CoordinatorError {
     Error(anyhow::Error),
     InitializationFailed,
     InitializationTranscriptsDiffer,
+    Integer(std::num::ParseIntError),
     IOError(std::io::Error),
     JsonError(serde_json::Error),
     Launch(rocket::error::LaunchError),
+    LocatorDeserializationFailed,
+    LocatorSerializationFailed,
     NumberOfChunksInvalid,
     NumberOfContributionsDiffer,
+    // PoisonedReadLock(PoisonedReadLock),
+    // PoisonedWriteLock(PoisonedWriteLock),
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundContributorsMissing,
     RoundContributorsNotUnique,
     RoundDirectoryMissing,
     RoundDoesNotExist,
+    RoundFileSizeMismatch,
     RoundHeightIsZero,
     RoundHeightMismatch,
     RoundLocatorAlreadyExists,
@@ -65,7 +72,14 @@ pub enum CoordinatorError {
     RoundShouldNotExist,
     RoundVerifiersMissing,
     RoundVerifiersNotUnique,
+    StorageCopyFailed,
     StorageFailed,
+    StorageInitializationFailed,
+    StorageLocatorAlreadyExists,
+    StorageLocatorFormatIncorrect,
+    StorageLocatorMissing,
+    StorageLockFailed,
+    StorageSizeLookupFailed,
     StorageUpdateFailed,
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
@@ -74,6 +88,9 @@ pub enum CoordinatorError {
     VerificationOnContributionIdZero,
     VerifierMissing,
 }
+
+// pub type PoisonedReadLock = std::sync::PoisonError<std::sync::RwLockReadGuard<'_, std::fs::File>>;
+// pub type PoisonedWriteLock = std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, std::fs::File>>;
 
 impl From<anyhow::Error> for CoordinatorError {
     fn from(error: anyhow::Error) -> Self {
@@ -92,6 +109,24 @@ impl From<std::io::Error> for CoordinatorError {
         CoordinatorError::IOError(error)
     }
 }
+
+impl From<std::num::ParseIntError> for CoordinatorError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        CoordinatorError::Integer(error)
+    }
+}
+
+// impl From<PoisonedReadLock> for CoordinatorError {
+//     fn from(error: PoisonedReadLock) -> Self {
+//         CoordinatorError::PoisonedReadLock(error)
+//     }
+// }
+//
+// impl From<PoisonedWriteLock> for CoordinatorError {
+//     fn from(error: PoisonedWriteLock) -> Self {
+//         CoordinatorError::PoisonedWriteLock(error)
+//     }
+// }
 
 impl From<url::ParseError> for CoordinatorError {
     fn from(error: url::ParseError) -> Self {
@@ -144,20 +179,22 @@ impl Coordinator {
         // Acquire the storage lock.
         let storage = self.storage.read().unwrap();
 
-        // Fetch the round corresponding to the given round height from storage.
-        match storage.get(&Key::RoundHeight) {
-            // Check that the given round height is valid
-            Some(Value::RoundHeight(current_round_height)) => match round_height <= current_round_height {
-                // Load the corresponding round data from storage.
-                true => match storage.get(&Key::Round(round_height)) {
-                    Some(Value::Round(round)) => Ok(round),
-                    _ => Err(CoordinatorError::StorageFailed),
-                },
-                // The given round height does not exist.
-                false => Err(CoordinatorError::RoundDoesNotExist),
-            },
-            // There are no prior rounds of the ceremony.
-            _ => Err(CoordinatorError::RoundDoesNotExist),
+        // Fetch the current round height from storage.
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
+            // Case 2 - There are no prior rounds of the ceremony.
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Check that the given round height is valid.
+        match round_height != 0 && round_height <= current_round_height {
+            // Fetch the round corresponding to the given round height from storage.
+            true => Ok(serde_json::from_slice(
+                &*storage.reader(&Locator::RoundState(round_height))?.as_ref(),
+            )?),
+            // The given round height does not exist.
+            false => Err(CoordinatorError::RoundDoesNotExist),
         }
     }
 
@@ -176,20 +213,23 @@ impl Coordinator {
         // Acquire the storage lock.
         let storage = self.storage.read().unwrap();
 
-        // Fetch the current round from storage.
-        match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => match round_height != 0 {
-                // Case 1 - This is a typical round of the ceremony.
-                // Load the corresponding round data from storage.
-                true => match storage.get(&Key::Round(round_height)) {
-                    Some(Value::Round(round)) => Ok(round),
-                    _ => return Err(CoordinatorError::StorageFailed),
-                },
-                // Case 2 - There are no prior rounds of the ceremony.
-                false => return Err(CoordinatorError::RoundDoesNotExist),
-            },
+        // Fetch the current round height from storage.
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Fetch the current round from storage.
+        match current_round_height != 0 {
+            // Case 1 - This is a typical round of the ceremony.
+            // Load the corresponding round data from storage.
+            true => Ok(serde_json::from_slice(
+                &*storage.reader(&Locator::RoundState(current_round_height))?.as_ref(),
+            )?),
+            // Case 2 - There are no prior rounds of the ceremony.
+            false => return Err(CoordinatorError::RoundDoesNotExist),
         }
     }
 
@@ -213,19 +253,19 @@ impl Coordinator {
         let storage = self.storage.read().unwrap();
 
         // Fetch the current round height from storage.
-        match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => match round_height != 0 {
-                // Case 1 - This is a typical round of the ceremony.
-                // Check that the corresponding round data exists in storage.
-                true => match storage.contains_key(&Key::Round(round_height)) {
-                    true => Ok(round_height),
-                    false => Err(CoordinatorError::StorageFailed),
-                },
-                // Case 2 - There are no prior rounds of the ceremony.
-                false => Ok(0),
+        let current_round_height = serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref())
+            // Case 2 - There are no prior rounds of the ceremony.
+            .unwrap_or_default();
+
+        match current_round_height != 0 {
+            // Case 1 - This is a typical round of the ceremony.
+            // Check that the corresponding round data exists in storage.
+            true => match storage.exists(&Locator::RoundState(current_round_height)) {
+                true => Ok(current_round_height),
+                false => Err(CoordinatorError::StorageFailed),
             },
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => Ok(0),
+            false => Ok(0),
         }
     }
 
@@ -252,22 +292,20 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let round_height = match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => round_height,
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        trace!("Current round height from storage is {}", round_height);
+        trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round = match round_height != 0 {
+        let mut round: Round = match current_round_height != 0 {
             // Case 1 - This is a typical round of the ceremony.
             // Load the corresponding round data from storage.
-            true => match storage.get(&Key::Round(round_height)) {
-                Some(Value::Round(round)) => round,
-                _ => return Err(CoordinatorError::StorageFailed),
-            },
+            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
             // Case 2 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
@@ -276,13 +314,14 @@ impl Coordinator {
         let contribution_locator = round.try_lock_chunk(&self.environment, &storage, chunk_id, &participant)?;
 
         // Add the updated round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(round)) {
-            debug!("Updated round {} in storage", round_height);
-            info!("{} acquired lock on chunk {}", participant, chunk_id);
-            return Ok(contribution_locator);
+        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                debug!("Updated round {} in storage", current_round_height);
+                info!("{} acquired lock on chunk {}", participant, chunk_id);
+                storage.to_path(&contribution_locator)
+            }
+            _ => Err(CoordinatorError::StorageUpdateFailed),
         }
-
-        Err(CoordinatorError::StorageUpdateFailed)
     }
 
     ///
@@ -311,22 +350,20 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let round_height = match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => round_height,
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        trace!("Current round height from storage is {}", round_height);
+        trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round = match round_height != 0 {
+        let mut round: Round = match current_round_height != 0 {
             // Case 1 - This is a typical round of the ceremony.
             // Load the corresponding round data from storage.
-            true => match storage.get(&Key::Round(round_height)) {
-                Some(Value::Round(round)) => round,
-                _ => return Err(CoordinatorError::StorageFailed),
-            },
+            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
             // Case 2 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
@@ -354,32 +391,34 @@ impl Coordinator {
         // Fetch the contribution locator for the next contribution ID corresponding to
         // the current round height and chunk ID.
         let next_contribution_locator =
-            storage.contribution_locator(round_height, chunk_id, next_contribution_id, false);
+            Locator::ContributionFile(current_round_height, chunk_id, next_contribution_id, false);
+        let next_contribution = storage.to_path(&next_contribution_locator)?;
 
         // Add the next contribution to the current chunk.
         round.get_chunk_mut(chunk_id)?.add_contribution(
             next_contribution_id,
             participant,
-            next_contribution_locator.clone(),
+            next_contribution.clone(),
             expected_num_contributions,
         )?;
 
-        trace!("Next contribution locator is {}", next_contribution_locator);
+        trace!("Next contribution locator is {}", next_contribution);
         {
             // TODO (howardwu): Check that the file size is nonzero, the structure is correct,
             //  and the starting hash is based on the previous contribution.
         }
         // Add the updated round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(round)) {
-            debug!("Updated round {} in storage", round_height);
-            {
-                // TODO (howardwu): Send job to run verification on new chunk.
+        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                debug!("Updated round {} in storage", current_round_height);
+                {
+                    // TODO (howardwu): Send job to run verification on new chunk.
+                }
+                info!("{} added a contribution to chunk {}", participant, chunk_id);
+                Ok(next_contribution)
             }
-            info!("{} added a contribution to chunk {}", participant, chunk_id);
-            return Ok(next_contribution_locator);
+            _ => Err(CoordinatorError::StorageUpdateFailed),
         }
-
-        Err(CoordinatorError::StorageUpdateFailed)
     }
 
     ///
@@ -407,22 +446,20 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let round_height = match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => round_height,
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        trace!("Current round height from storage is {}", round_height);
+        trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round = match round_height != 0 {
+        let mut round: Round = match current_round_height != 0 {
             // Case 1 - This is a typical round of the ceremony.
             // Load the corresponding round data from storage.
-            true => match storage.get(&Key::Round(round_height)) {
-                Some(Value::Round(round)) => round,
-                _ => return Err(CoordinatorError::StorageFailed),
-            },
+            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
             // Case 2 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
@@ -447,7 +484,12 @@ impl Coordinator {
         let current_contribution = chunk.current_contribution()?;
 
         // Check that the contribution locator corresponding to this round and chunk exists.
-        if !storage.contribution_locator_exists(round_height, chunk_id, current_contribution_id, false) {
+        if !storage.exists(&Locator::ContributionFile(
+            current_round_height,
+            chunk_id,
+            current_contribution_id,
+            false,
+        )) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -463,7 +505,7 @@ impl Coordinator {
         Verification::run(
             &self.environment,
             &mut storage,
-            round_height,
+            current_round_height,
             chunk_id,
             current_contribution_id,
             is_final_contribution,
@@ -473,27 +515,28 @@ impl Coordinator {
         // Attempts to set the current contribution as verified in the current round.
         // Fetch the contribution locators for `Verification`.
         let verified_contribution_locator = match is_final_contribution {
-            true => storage.contribution_locator(round_height + 1, chunk_id, 0, true),
-            false => storage.contribution_locator(round_height, chunk_id, current_contribution_id, true),
+            true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+            false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
         };
         round.verify_contribution(
             chunk_id,
             current_contribution_id,
             participant.clone(),
-            verified_contribution_locator,
+            storage.to_path(&verified_contribution_locator)?,
         )?;
 
         // Add the updated round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(round)) {
-            debug!("Updated round {} in storage", round_height);
-            info!(
-                "{} verified chunk {} contribution {}",
-                participant, chunk_id, current_contribution_id
-            );
-            return Ok(());
+        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                debug!("Updated round {} in storage", current_round_height);
+                info!(
+                    "{} verified chunk {} contribution {}",
+                    participant, chunk_id, current_contribution_id
+                );
+                Ok(())
+            }
+            _ => Err(CoordinatorError::StorageUpdateFailed),
         }
-
-        Err(CoordinatorError::StorageUpdateFailed)
     }
 
     ///
@@ -534,39 +577,30 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let round_height = match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => round_height,
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(current_round_height) => current_round_height,
             // Case 2 - There are no prior rounds of the ceremony.
-            _ => 0,
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        trace!("Current round height from storage is {}", round_height);
-
-        // Check that the round height corresponds to round data in storage.
-        {
-            if round_height == 0 {
-                // Check that the current round does not exist in storage.
-                if storage.get(&Key::Round(round_height)).is_some() {
-                    return Err(CoordinatorError::RoundShouldNotExist);
-                }
-            } else {
-                // Check that the current round exists in storage.
-                if storage.get(&Key::Round(round_height)).is_none() {
-                    return Err(CoordinatorError::RoundShouldNotExist);
-                }
-            }
-
-            // Check that the next round does not exist in storage.
-            if storage.get(&Key::Round(round_height + 1)).is_some() {
-                return Err(CoordinatorError::RoundShouldNotExist);
-            }
-        }
+        trace!("Current round height from storage is {}", current_round_height);
 
         // If this is the initial round, ensure the round does not exist yet.
         // Attempt to load the round corresponding to the given round height from storage.
         // If there is no round in storage, proceed to create a new round instance,
         // and run `Initialization` to start the ceremony.
-        if round_height == 0 {
+        if current_round_height == 0 {
+            // Check that the current round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
+            }
+
+            // Check that the next round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
+            }
+
             // Create an instantiation of `Round` for round 0.
             let round = {
                 // Initialize the contributors as an empty list as this is for initialization.
@@ -576,79 +610,96 @@ impl Coordinator {
                 // as this is for initialization.
                 let verifiers = vec![self.environment.coordinator_verifier()];
 
-                match storage.get(&Key::Round(round_height)) {
-                    // Check that the round does not exist in storage.
-                    // If it exists, this means the round was already initialized.
-                    Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
-                    Some(_) => return Err(CoordinatorError::StorageFailed),
-                    // Create a new round instance and save it to storage.
-                    _ => Round::new(
-                        &self.environment,
-                        &storage,
-                        round_height,
-                        started_at,
-                        contributors,
-                        verifiers,
-                    )?,
-                }
+                // Create a new round instance.
+                Round::new(
+                    &self.environment,
+                    &storage,
+                    current_round_height,
+                    started_at,
+                    contributors,
+                    verifiers,
+                )?
             };
 
-            debug!("Starting initialization of round {}", round_height);
+            debug!("Starting initialization of round {}", current_round_height);
 
             // Execute initialization of contribution 0 for all chunks
             // in the new round and check that the new locators exist.
             for chunk_id in 0..self.environment.number_of_chunks() {
                 // 1 - Check that the contribution locator corresponding to this round's chunk does not exist.
-                if storage.contribution_locator_exists(round_height, chunk_id, 0, true) {
+                let locator = Locator::ContributionFile(current_round_height, chunk_id, 0, true);
+                if storage.exists(&locator) {
+                    error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorAlreadyExists);
                 }
 
                 // 2 - Check that the contribution locator corresponding to the next round's chunk does not exists.
-                if storage.contribution_locator_exists(round_height + 1, chunk_id, 0, true) {
+                let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                if storage.exists(&locator) {
+                    error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorAlreadyExists);
                 }
 
                 info!("Coordinator is starting initialization on chunk {}", chunk_id);
                 // TODO (howardwu): Add contribution hash to `Round`.
-                let _contribution_hash = Initialization::run(&self.environment, &mut storage, round_height, chunk_id)?;
+                let _contribution_hash =
+                    Initialization::run(&self.environment, &mut storage, current_round_height, chunk_id)?;
                 info!("Coordinator completed initialization on chunk {}", chunk_id);
 
                 // 1 - Check that the contribution locator corresponding to this round's chunk now exists.
-                if !storage.contribution_locator_exists(round_height, chunk_id, 0, true) {
+                let locator = Locator::ContributionFile(current_round_height, chunk_id, 0, true);
+                if !storage.exists(&locator) {
+                    error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
 
                 // 2 - Check that the contribution locator corresponding to the next round's chunk now exists.
-                if !storage.contribution_locator_exists(round_height + 1, chunk_id, 0, true) {
+                let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                if !storage.exists(&locator) {
+                    error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
             }
 
             // Add the new round to storage.
-            if !storage.insert(Key::Round(round_height), Value::Round(round)) {
-                return Err(CoordinatorError::StorageUpdateFailed);
-            }
+            storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round))?;
 
-            debug!("Updated round {} in storage", round_height);
-            debug!("Completed initialization of round {}", round_height);
+            debug!("Updated round {} in storage", current_round_height);
+            debug!("Completed initialization of round {}", current_round_height);
         }
 
         // Execute aggregation of the current round in preparation for
         // transitioning to the next round. If this is the initial round,
         // there should be nothing to aggregate and we may continue.
-        if round_height != 0 {
+        if current_round_height != 0 {
+            // Check that the current round exists in storage.
+            if !storage.exists(&Locator::RoundState(current_round_height)) {
+                return Err(CoordinatorError::RoundLocatorMissing);
+            }
+
+            // Check that the next round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
+            }
+
             // TODO (howardwu): Check that all locks have been released.
 
-            // Load the current round from storage.
-            let round = match storage.get(&Key::Round(round_height)) {
-                Some(Value::Round(round)) => round,
-                _ => return Err(CoordinatorError::StorageFailed),
+            // Check that the ceremony has started and fetch the current round from storage.
+            let mut round: Round = match current_round_height != 0 {
+                // Case 1 - This is a typical round of the ceremony.
+                // Load the corresponding round data from storage.
+                true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
+                // Case 2 - There are no prior rounds of the ceremony.
+                false => return Err(CoordinatorError::RoundDoesNotExist),
             };
 
             // Check that all chunks in the current round are verified,
             // so that we may transition to the next round.
             if !&round.is_complete() {
-                error!("Round {} is not complete and next round is not starting", round_height);
+                error!(
+                    "Round {} is not complete and next round is not starting",
+                    current_round_height
+                );
                 trace!("{:#?}", &round);
                 return Err(CoordinatorError::RoundNotComplete);
             }
@@ -658,21 +709,23 @@ impl Coordinator {
                 let contribution_id = round.expected_number_of_contributions() - 1;
                 for chunk_id in 0..self.environment.number_of_chunks() {
                     // Check that the final unverified contribution locator exists.
-                    if !storage.contribution_locator_exists(round_height, chunk_id, contribution_id, false) {
-                        let locator = storage.contribution_locator(round_height, chunk_id, contribution_id, false);
-                        error!("Contribution locator is missing ({})", locator);
+                    let locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+                    if !storage.exists(&locator) {
+                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                         return Err(CoordinatorError::ContributionMissing);
                     }
                     // Check that the final verified contribution locator exists.
-                    if !storage.contribution_locator_exists(round_height + 1, chunk_id, 0, true) {
-                        let locator = storage.contribution_locator(round_height + 1, chunk_id, 0, true);
-                        error!("Contribution locator is missing ({})", locator);
+                    let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                    if !storage.exists(&locator) {
+                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                         return Err(CoordinatorError::ContributionMissing);
                     }
                 }
 
                 // Check that the round locator does not exist.
-                if storage.round_locator_exists(round_height) {
+                let round_locator = Locator::RoundFile(current_round_height);
+                if storage.exists(&round_locator) {
+                    error!("Round locator already exists ({})", storage.to_path(&round_locator)?);
                     return Err(CoordinatorError::RoundLocatorAlreadyExists);
                 }
 
@@ -684,29 +737,35 @@ impl Coordinator {
                 debug!("Coordinator completed aggregation");
 
                 // Check that the round locator now exists.
-                if !storage.round_locator_exists(round_height) {
+                if !storage.exists(&round_locator) {
+                    error!("Round locator is missing ({})", storage.to_path(&round_locator)?);
                     return Err(CoordinatorError::RoundLocatorMissing);
                 }
             }
         }
 
         // Create the new round height.
-        let new_height = round_height + 1;
+        let new_height = current_round_height + 1;
 
-        info!("Starting transition from round {} to {}", round_height, new_height);
+        info!(
+            "Starting transition from round {} to {}",
+            current_round_height, new_height
+        );
 
         // Check that the new round does not exist in storage.
         // If it exists, this means the round was already initialized.
-        match storage.get(&Key::Round(new_height)) {
-            Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
-            Some(_) => return Err(CoordinatorError::StorageFailed),
-            _ => (),
-        };
+        let locator = Locator::RoundState(new_height);
+        if storage.exists(&locator) {
+            error!("Round {} already exists ({})", new_height, storage.to_path(&locator)?);
+            return Err(CoordinatorError::RoundAlreadyInitialized);
+        }
 
         // Check that each contribution for the next round exists.
         for chunk_id in 0..self.environment.number_of_chunks() {
             debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
-            if !storage.contribution_locator_exists(new_height, chunk_id, 0, true) {
+            let locator = Locator::ContributionFile(new_height, chunk_id, 0, true);
+            if !storage.exists(&locator) {
+                error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorMissing);
             }
         }
@@ -725,16 +784,17 @@ impl Coordinator {
         trace!("{:#?}", &new_round);
 
         // Insert and save the new round into storage.
-        if storage.insert(Key::Round(new_height), Value::Round(new_round)) {
-            // Next, update the round height to reflect the new round.
-            if storage.insert(Key::RoundHeight, Value::RoundHeight(new_height)) {
-                debug!("Added round {} to storage", round_height);
-                info!("Completed transition from round {} to {}", round_height, new_height);
-                return Ok(new_height);
-            }
-        }
+        storage.insert(Locator::RoundState(new_height), Object::RoundState(new_round))?;
 
-        Err(CoordinatorError::StorageUpdateFailed)
+        // Next, update the round height to reflect the new round.
+        storage.update(&Locator::RoundHeight, Object::RoundHeight(new_height))?;
+
+        debug!("Added round {} to storage", current_round_height);
+        info!(
+            "Completed transition from round {} to {}",
+            current_round_height, new_height
+        );
+        Ok(new_height)
     }
 
     ///
@@ -782,19 +842,23 @@ impl Coordinator {
             return Err(CoordinatorError::ExpectedContributor);
         }
 
-        // TODO (howardwu): Switch to reader.
+        // TODO (howardwu): Switch to a storage reader.
         // Acquire the storage lock.
         let storage = self.storage.write().unwrap();
 
-        // Check that the ceremony is running and fetch the specified round from storage.
-        let round = match round_height != 0 {
+        // Fetch the current round height from storage.
+        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
             // Case 1 - This is a typical round of the ceremony.
-            // Load the corresponding round data from storage.
-            true => match storage.get(&Key::Round(round_height)) {
-                Some(Value::Round(round)) => round,
-                _ => return Err(CoordinatorError::StorageFailed),
-            },
-            // Case 2 - This round does not need a contributor.
+            Ok(current_round_height) => current_round_height,
+            // Case 2 - There are no prior rounds of the ceremony.
+            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Check that the given round height is valid.
+        let round: Round = match round_height != 0 && round_height <= current_round_height {
+            // Fetch the round corresponding to the given round height from storage.
+            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(round_height))?.as_ref())?,
+            // The given round height does not exist.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
@@ -805,8 +869,9 @@ impl Coordinator {
         }
 
         // Check that the contribution locator corresponding to this round and chunk exists.
-        if storage.contribution_locator_exists(round_height, chunk_id, contribution_id, false) {
-            error!("Locator for contribution {} already exists", contribution_id);
+        let locator = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        if storage.exists(&locator) {
+            error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
