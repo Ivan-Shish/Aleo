@@ -2,7 +2,6 @@ use crate::{
     environment::Environment,
     objects::{participant::*, Chunk},
     storage::{Locator, StorageWrite},
-    Coordinator,
     CoordinatorError,
 };
 

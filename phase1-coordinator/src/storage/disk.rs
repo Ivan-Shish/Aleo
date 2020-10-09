@@ -4,30 +4,19 @@ use crate::{
     storage::{Locator, Object, ObjectReader, ObjectWriter, Storage, StorageLocator, StorageObject},
     CoordinatorError,
 };
-use phase1::helpers::CurveKind;
 
-// use fs2::FileExt;
 use itertools::Itertools;
-use memmap::{Mmap, MmapMut, MmapOptions};
+use memmap::{MmapMut, MmapOptions};
 use rayon::prelude::*;
-use serde::{
-    de::{self, Deserializer},
-    ser::{self, Serializer},
-    Deserialize,
-    Serialize,
-};
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     fs::{self, File, OpenOptions},
-    io::{self, BufReader, BufWriter, Read, Write},
-    ops::Deref,
+    io::{BufReader, Write},
     path::Path,
     str::FromStr,
-    sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{Arc, RwLock},
 };
-use tracing::{debug, error, trace, warn};
-use zexe_algebra::{Bls12_377, BW6_761};
+use tracing::{debug, error, trace};
 
 #[derive(Debug)]
 pub struct Disk {
@@ -279,36 +268,13 @@ impl Storage for Disk {
         }
 
         // Fetch the source object.
-        let mut source_object = self.get(source_locator)?;
+        let source_object = self.get(source_locator)?;
 
         // Initialize the destination file with the source object size.
         self.initialize(destination_locator.clone(), source_object.size())?;
 
-        // Acquire the manifest file write lock.
-        // let mut manifest = self.manifest.write_lock()?;
-
         // Update the destination locator with the copied source object.
         self.update(destination_locator, source_object)?;
-
-        // // Acquire the destination file write lock.
-        // let mut destination_writer = self
-        //     .locators
-        //     .get(destination_locator)
-        //     .ok_or(CoordinatorError::StorageLockFailed)?
-        //     .write()
-        //     .unwrap();
-
-        // // Fetch the source and destination paths.
-        // let source_path = self.to_path(&source_locator)?;
-        // let destination_path = self.to_path(&destination_locator)?;
-        //
-        // // Copy the file to the destination locator.
-        // trace!("Copying {} to {}", source_path, destination_path);
-        // io::copy(&mut *source_reader, &mut *destination_writer)?;
-        // trace!("Copied {} to {}", source_path, destination_path);
-
-        // Sync all in-memory data to disk.
-        // destination_writer.sync_all()?;
 
         trace!("Copied to {}", self.to_path(destination_locator)?);
         Ok(())
@@ -351,7 +317,7 @@ impl Storage for Disk {
         let mut manifest = self.manifest.write().unwrap();
 
         // Acquire the file write lock.
-        let mut file = self
+        let file = self
             .locators
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
@@ -460,7 +426,7 @@ impl StorageObject for Disk {
 
         match locator {
             Locator::RoundHeight => Ok(writer),
-            Locator::RoundState(round_height) => Ok(writer),
+            Locator::RoundState(_) => Ok(writer),
             Locator::RoundFile(round_height) => {
                 // Check that the round size is correct.
                 let expected = Object::round_file_size(&self.environment, *round_height);
@@ -470,10 +436,9 @@ impl StorageObject for Disk {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::RoundFileSizeMismatch.into());
                 }
-
                 Ok(writer)
             }
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFile(round_height, chunk_id, _, verified) => {
                 // Check that the contribution size is correct.
                 let expected = Object::contribution_file_size(&self.environment, *chunk_id, *verified);
                 let found = self.size(&locator)?;
@@ -482,81 +447,11 @@ impl StorageObject for Disk {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
                 }
-
                 Ok(writer)
             }
-            _ => Err(CoordinatorError::StorageFailed),
         }
     }
 }
-
-// impl fmt::Display for Locator {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "{}", Disk::to_path(self)?)
-//     }
-// }
-
-// #[derive(Debug)]
-// struct DiskLocators {
-//     locators: ,
-// }
-//
-// impl Deref for DiskLocators {
-//     type Target = HashSet<Locator>;
-//
-//     #[inline]
-//     fn deref(&self) -> &HashSet<Locator> {
-//         &self.locators
-//     }
-// }
-
-// impl Serialize for DiskLocators {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // serializer.serialize_str(&match self {
-//         //     Locator::RoundHeight => "rh://".to_string(),
-//         //     Locator::Round(round_height) => format!("r://{}", round_height),
-//         //     Locator::RoundFile(round_height) => format!("rf://{}", round_height),
-//         //     Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => format!(
-//         //         "cf://{}.{}.{}.{}",
-//         //         round_height, chunk_id, contribution_id, *verified as u64
-//         //     ),
-//         //     // Locator::Ping => "ping://".to_string(),
-//         //     _ => return Err(ser::Error::custom("invalid serialization key")),
-//         // })
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for DiskLocators {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = String::deserialize(deserializer)?;
-//         let (variant, data) = match s.splitn(2, "://").collect_tuple() {
-//             Some((variant, data)) => (variant, data),
-//             None => return Err(de::Error::custom("failed to parse serialization key")),
-//         };
-//         match (variant, data) {
-//             ("rh", "") => Ok(Locator::RoundHeight),
-//             ("r", value) => Ok(Locator::Round(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("rf", value) => Ok(Locator::RoundFile(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("cf", value) => match s.splitn(4, ".").map(u64::from_str).collect_tuple() {
-//                 Some((round_height, chunk_id, contribution_id, verified)) => Ok(Locator::ContributionFile(
-//                     round_height.map_err(de::Error::custom)?,
-//                     chunk_id.map_err(de::Error::custom)?,
-//                     contribution_id.map_err(de::Error::custom)?,
-//                     verified.map_err(de::Error::custom)? as bool,
-//                 )),
-//                 None => Err(de::Error::custom("failed to parse serialization key")),
-//             },
-//             ("ping", "") => Ok(Locator::Ping),
-//             _ => Err(de::Error::custom("invalid deserialization key")),
-//         }
-//     }
-// }
 
 #[derive(Debug)]
 struct DiskManifest {
@@ -647,52 +542,6 @@ impl DiskManifest {
     fn contains(&self, locator: &Locator) -> bool {
         self.locators.contains(locator)
     }
-
-    // #[inline]
-    // fn read_lock(&self) -> Result<RwLockReadGuard<HashSet<Locator>>, CoordinatorError> {
-    //     Ok(self.read().unwrap())
-    // }
-    //
-    // #[inline]
-    // fn write_lock(&self) -> Result<RwLockWriteGuard<HashSet<Locator>>, CoordinatorError> {
-    //     Ok(self.locators.write().unwrap())
-    // }
-
-    // #[inline]
-    // fn add(&mut self, locator: Locator) -> Result<(), CoordinatorError> {
-    //     // Check the locator does not already exist in the manifest.
-    //     if self.contains(&locator) {
-    //         return Err(CoordinatorError::StorageLocatorAlreadyExists);
-    //     }
-    //
-    //     // Check the locator does not already exist on disk.
-    //     // if !Path::new(&path).exists() {
-    //     //     return Err(CoordinatorError::StorageLocatorAlreadyExists)
-    //     // }
-    //
-    //     *self.locators.insert(locator);
-    //     self.save()
-    // }
-    //
-    // #[inline]
-    // fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
-    //     // Check the locator does not already exist in the manifest.
-    //     if !self.contains(&locator) {
-    //         return Err(CoordinatorError::StorageLocatorMissing);
-    //     }
-    //
-    //     // if !Path::new(&path).exists() {
-    //     //      return Err(CoordinatorError::)
-    //     // }
-    //
-    //     *self.locators.remove(locator);
-    //     self.save()
-    // }
-
-    // #[inline]
-    // fn base(&self) -> &str {
-    //     &self.base
-    // }
 }
 
 #[derive(Debug)]
@@ -1096,3 +945,51 @@ mod tests {
 //     _ => return Err(CoordinatorError::LocatorSerializationFailed),
 // })
 // Ok(serde_json::to_string(locator)?)
+
+// impl Serialize for DiskLocators {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         // serializer.serialize_str(&match self {
+//         //     Locator::RoundHeight => "rh://".to_string(),
+//         //     Locator::Round(round_height) => format!("r://{}", round_height),
+//         //     Locator::RoundFile(round_height) => format!("rf://{}", round_height),
+//         //     Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => format!(
+//         //         "cf://{}.{}.{}.{}",
+//         //         round_height, chunk_id, contribution_id, *verified as u64
+//         //     ),
+//         //     // Locator::Ping => "ping://".to_string(),
+//         //     _ => return Err(ser::Error::custom("invalid serialization key")),
+//         // })
+//     }
+// }
+
+// impl<'de> Deserialize<'de> for DiskLocators {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         let s = String::deserialize(deserializer)?;
+//         let (variant, data) = match s.splitn(2, "://").collect_tuple() {
+//             Some((variant, data)) => (variant, data),
+//             None => return Err(de::Error::custom("failed to parse serialization key")),
+//         };
+//         match (variant, data) {
+//             ("rh", "") => Ok(Locator::RoundHeight),
+//             ("r", value) => Ok(Locator::Round(u64::from_str(value).map_err(de::Error::custom)?)),
+//             ("rf", value) => Ok(Locator::RoundFile(u64::from_str(value).map_err(de::Error::custom)?)),
+//             ("cf", value) => match s.splitn(4, ".").map(u64::from_str).collect_tuple() {
+//                 Some((round_height, chunk_id, contribution_id, verified)) => Ok(Locator::ContributionFile(
+//                     round_height.map_err(de::Error::custom)?,
+//                     chunk_id.map_err(de::Error::custom)?,
+//                     contribution_id.map_err(de::Error::custom)?,
+//                     verified.map_err(de::Error::custom)? as bool,
+//                 )),
+//                 None => Err(de::Error::custom("failed to parse serialization key")),
+//             },
+//             ("ping", "") => Ok(Locator::Ping),
+//             _ => Err(de::Error::custom("invalid deserialization key")),
+//         }
+//     }
+// }

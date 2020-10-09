@@ -1,6 +1,5 @@
 use crate::{
     objects::{participant::*, Participant},
-    storage::Locator,
     CoordinatorError,
 };
 

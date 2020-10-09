@@ -1,7 +1,5 @@
 use crate::{
-    environment::Environment,
-    objects::{Contribution, Participant},
-    storage::Locator,
+    objects::{participant::*, Contribution},
     CoordinatorError,
 };
 
@@ -16,6 +14,10 @@ use tracing::trace;
 pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     chunk_id: u64,
+    #[serde(
+        serialize_with = "serialize_optional_participant_to_optional_string",
+        deserialize_with = "deserialize_optional_participant_to_optional_string"
+    )]
     lock_holder: Option<Participant>,
     #[serde_diff(opaque)]
     contributions: Vec<Contribution>,

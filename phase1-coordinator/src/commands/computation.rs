@@ -1,15 +1,19 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, StorageWrite},
+    storage::{Locator, Object, StorageWrite},
     CoordinatorError,
 };
-use phase1::helpers::CurveKind;
-use phase1_cli::contribute;
+use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
+use setup_utils::{calculate_hash, UseCompression};
 
-use rand::thread_rng;
-use std::{panic, time::Instant};
-use tracing::{info, trace};
-use zexe_algebra::{Bls12_377, BW6_761};
+use rand::{thread_rng, Rng};
+use std::{
+    io::{Read, Write},
+    panic,
+    time::Instant,
+};
+use tracing::{debug, info, trace};
+use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 pub(crate) struct Computation;
 
@@ -17,11 +21,11 @@ impl Computation {
     ///
     /// Runs computation for a given environment, round height, chunk ID, and contribution ID.
     ///
-    /// Executes the round computation on a given chunk ID and contribution ID using phase1-cli logic.
+    /// Executes the round computation on a given chunk ID and contribution ID.
     ///
     pub(crate) fn run(
         environment: &Environment,
-        storage: &StorageWrite,
+        storage: &mut StorageWrite,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
@@ -35,50 +39,42 @@ impl Computation {
         // Fetch the parameter settings.
         let settings = environment.to_settings();
 
-        // Fetch the contribution locators.
+        // Fetch a contribution challenge locator.
         let current_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
-        let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
 
-        trace!(
-            "Storing round {} chunk {} contribution {} in {}",
-            round_height,
-            chunk_id,
-            contribution_id,
-            storage.to_path(next_locator)?
-        );
+        // Initialize and fetch a contribution response locator.
+        let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        let expected_contribution_size = Object::contribution_file_size(environment, chunk_id, false);
+        storage.initialize(next_locator.clone(), expected_contribution_size)?;
 
         // Execute computation on chunk.
-        let compressed_input = environment.compressed_inputs();
-        let challenge_path = &storage.to_path(current_locator)?;
-        let compressed_output = environment.compressed_outputs();
-        let response_path = &storage.to_path(next_locator)?;
-        let check_input_for_correctness = environment.check_input_for_correctness();
-        let result = panic::catch_unwind(|| {
-            let (_, _, curve, _, _, _) = settings;
-            match curve {
-                CurveKind::Bls12_377 => contribute(
-                    compressed_input,
-                    challenge_path,
-                    compressed_output,
-                    response_path,
-                    check_input_for_correctness,
-                    &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
-                    &mut thread_rng(),
-                ),
-                CurveKind::BW6 => contribute(
-                    compressed_input,
-                    challenge_path,
-                    compressed_output,
-                    response_path,
-                    check_input_for_correctness,
-                    &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
-                    &mut thread_rng(),
-                ),
-            };
-        });
-        if result.is_err() {
+        let (_, _, curve, _, _, _) = settings;
+        if let Err(error) = match curve {
+            CurveKind::Bls12_377 => Self::contribute(
+                environment,
+                storage.reader(current_locator)?.as_ref(),
+                storage.writer(next_locator)?.as_mut(),
+                &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
+                &mut thread_rng(),
+            ),
+            CurveKind::BW6 => Self::contribute(
+                environment,
+                storage.reader(current_locator)?.as_ref(),
+                storage.writer(next_locator)?.as_mut(),
+                &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
+                &mut thread_rng(),
+            ),
+        } {
             return Err(CoordinatorError::ComputationFailed.into());
         }
+
+        // Load a contribution response reader.
+        let mut reader = storage.reader(next_locator)?;
+        let contribution_hash = calculate_hash(reader.as_ref());
+
+        debug!("Done! Your contribution has been written. The BLAKE2b hash of response file is:\n");
+        Self::log_hash(&contribution_hash);
+        debug!("Thank you for your participation, much appreciated!");
 
         let elapsed = Instant::now().duration_since(start);
         info!(
@@ -87,21 +83,91 @@ impl Computation {
         );
         Ok(())
     }
+
+    fn contribute<T: Engine + Sync>(
+        environment: &Environment,
+        reader: &[u8],
+        mut writer: &mut [u8],
+        parameters: &Phase1Parameters<T>,
+        mut rng: impl Rng,
+    ) -> Result<(), CoordinatorError> {
+        // Fetch the environment settings.
+        let compressed_inputs = environment.compressed_inputs();
+        let compressed_outputs = environment.compressed_outputs();
+        let check_input_for_correctness = environment.check_input_for_correctness();
+
+        trace!("Calculating previous contribution hash and writing it to the response");
+        assert!(UseCompression::No == compressed_inputs, "Cannot hash a compressed file");
+        let current_accumulator_hash = calculate_hash(reader);
+        {
+            debug!("`challenge` file contains decompressed points and has a hash:");
+            Self::log_hash(&current_accumulator_hash);
+            (&mut writer[0..])
+                .write_all(current_accumulator_hash.as_slice())
+                .expect("unable to write a challenge hash to mmap");
+            writer.flush().expect("unable to write hash to response file");
+        }
+        {
+            let mut challenge_hash = [0; 64];
+            let mut memory_slice = reader.get(0..64).expect("must read point data from file");
+            memory_slice
+                .read_exact(&mut challenge_hash)
+                .expect("couldn't read hash of challenge file from response file");
+            debug!(
+                "`challenge` file claims (!!! Must not be blindly trusted) it was based on the original contribution with a hash:"
+            );
+            Self::log_hash(&challenge_hash);
+        }
+
+        // Construct our keypair using the RNG we created above.
+        let (public_key, private_key) =
+            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+
+        // Perform the transformation
+        trace!("Computing and writing your contribution, this could take a while");
+        Phase1::computation(
+            reader,
+            writer,
+            compressed_inputs,
+            compressed_outputs,
+            check_input_for_correctness,
+            &private_key,
+            &parameters,
+        )?;
+        writer.flush()?;
+        trace!("Finishing writing your contribution to response file");
+
+        // Write the public key.
+        public_key.write(writer, compressed_outputs, &parameters)?;
+
+        Ok(())
+    }
+
+    /// Logs the hash.
+    fn log_hash(hash: &[u8]) {
+        let mut output = format!("\n\n");
+        for line in hash.chunks(16) {
+            output += "\t";
+            for section in line.chunks(4) {
+                for b in section {
+                    output += &format!("{:02x}", b);
+                }
+                output += " ";
+            }
+            output += "\n";
+        }
+        debug!("{}", output);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
-        storage::{Locator, Storage},
+        storage::Locator,
         testing::prelude::*,
     };
 
-    use memmap::MmapOptions;
-    use std::{
-        fs::OpenOptions,
-        sync::{Arc, RwLock},
-    };
     use tracing::{debug, trace};
 
     #[test]
@@ -126,7 +192,7 @@ mod tests {
                 Initialization::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id).unwrap();
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, &storage, round_height, chunk_id, 1).unwrap();
+            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
             let locator = Locator::ContributionFile(round_height, chunk_id, 1, false);

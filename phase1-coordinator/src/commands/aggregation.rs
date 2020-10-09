@@ -5,10 +5,7 @@ use crate::{
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
-use setup_utils::UseCompression;
 
-use memmap::*;
-use std::fs::OpenOptions;
 use tracing::{debug, error, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -16,7 +13,7 @@ pub(crate) struct Aggregation;
 
 impl Aggregation {
     /// Runs aggregation for a given environment and round.
-    pub(crate) fn run(environment: &Environment, storage: &StorageWrite, round: &Round) -> anyhow::Result<()> {
+    pub(crate) fn run(environment: &Environment, mut storage: &mut StorageWrite, round: &Round) -> anyhow::Result<()> {
         // Fetch the round height.
         let round_height = round.round_height();
         // Fetch the compressed input setting for the final round file.
@@ -24,12 +21,23 @@ impl Aggregation {
         // Fetch the compressed output setting based on the round height.
         let compressed_output = environment.compressed_outputs();
 
+        // Fetch the round locator for the given round.
+        let round_locator = Locator::RoundFile(round_height);
+
+        // Check that the round locator does not already exist.
+        if storage.exists(&round_locator) {
+            return Err(CoordinatorError::RoundLocatorAlreadyExists.into());
+        }
+
+        // Initialize the round locator.
+        storage.initialize(
+            round_locator.clone(),
+            Object::round_file_size(environment, round_height),
+        )?;
+
         // Load the contribution files.
         let readers = Self::readers(environment, storage, round)?;
         let contribution_readers: Vec<_> = readers.iter().map(|r| (r.as_ref(), compressed_output)).collect();
-
-        // Load the final round file.
-        // let round_writer = ;
 
         debug!("Starting aggregation on round {}", round_height);
 
@@ -40,12 +48,12 @@ impl Aggregation {
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
                 &contribution_readers,
-                (Self::writer(storage, round)?.as_mut(), compressed_input),
+                (storage.writer(&round_locator)?.as_mut(), compressed_input),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
             ),
             CurveKind::BW6 => Phase1::aggregation(
                 &contribution_readers,
-                (Self::writer(storage, round)?.as_mut(), compressed_input),
+                (storage.writer(&round_locator)?.as_mut(), compressed_input),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
@@ -65,10 +73,7 @@ impl Aggregation {
         environment: &Environment,
         storage: &'a StorageWrite<'a>,
         round: &Round,
-    ) -> anyhow::Result<Vec<ObjectReader<'a>>>
-// where
-    //     dyn ObjectReader<'a>: Sized,
-    {
+    ) -> anyhow::Result<Vec<ObjectReader<'a>>> {
         let mut readers = vec![];
 
         // Fetch the round height.
@@ -100,36 +105,14 @@ impl Aggregation {
 
         Ok(readers)
     }
-
-    /// Attempts to create the contribution file for the given round and
-    /// returns a writer to it.
-    fn writer<'a>(storage: &'a StorageWrite<'a>, round: &Round) -> anyhow::Result<ObjectWriter<'a>> {
-        // Fetch the round height.
-        let round_height = round.round_height();
-
-        // Fetch the round locator for the given round.
-        let round_locator = Locator::RoundFile(round_height);
-
-        // Check that the round locator does not already exist.
-        if storage.exists(&round_locator) {
-            return Err(CoordinatorError::RoundLocatorAlreadyExists.into());
-        }
-
-        // Create the writer for the round locator.
-        Ok(storage.writer(&round_locator)?)
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        commands::{Computation, Verification},
-        testing::prelude::*,
-        Coordinator,
-    };
+    use crate::{testing::prelude::*, Coordinator};
 
     use once_cell::sync::Lazy;
-    use tracing::debug;
+    // use tracing::debug;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
