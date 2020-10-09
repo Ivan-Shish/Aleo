@@ -55,6 +55,7 @@ pub enum CoordinatorError {
     LocatorSerializationFailed,
     NumberOfChunksInvalid,
     NumberOfContributionsDiffer,
+    Phase1Setup(setup_utils::Error),
     // PoisonedReadLock(PoisonedReadLock),
     // PoisonedWriteLock(PoisonedWriteLock),
     RoundAggregationFailed,
@@ -104,6 +105,12 @@ impl From<serde_json::Error> for CoordinatorError {
     }
 }
 
+impl From<setup_utils::Error> for CoordinatorError {
+    fn from(error: setup_utils::Error) -> Self {
+        CoordinatorError::Phase1Setup(error)
+    }
+}
+
 impl From<std::io::Error> for CoordinatorError {
     fn from(error: std::io::Error) -> Self {
         CoordinatorError::IOError(error)
@@ -136,12 +143,14 @@ impl From<url::ParseError> for CoordinatorError {
 
 impl fmt::Display for CoordinatorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        error!("{}", self);
         write!(f, "{:?}", self)
     }
 }
 
 impl From<CoordinatorError> for anyhow::Error {
     fn from(error: CoordinatorError) -> Self {
+        error!("{}", error);
         Self::msg(error.to_string())
     }
 }
@@ -180,11 +189,11 @@ impl Coordinator {
         let storage = self.storage.read().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         // Check that the given round height is valid.
@@ -202,7 +211,7 @@ impl Coordinator {
     /// Returns a reference to the current round of the ceremony
     /// from storage, irrespective of the stage of its completion.
     ///
-    /// If there are no prior rounds in storage, returns `0`.
+    /// If there are no prior rounds in storage, returns `CoordinatorError`.
     ///
     /// When loading the current round from storage, this function
     /// checks that the current round height matches the height
@@ -210,26 +219,30 @@ impl Coordinator {
     ///
     #[inline]
     pub fn current_round(&self) -> Result<Round, CoordinatorError> {
+        trace!("Fetching the current round from storage");
+
         // Acquire the storage lock.
         let storage = self.storage.read().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         // Fetch the current round from storage.
         match current_round_height != 0 {
-            // Case 1 - This is a typical round of the ceremony.
             // Load the corresponding round data from storage.
-            true => Ok(serde_json::from_slice(
-                &*storage.reader(&Locator::RoundState(current_round_height))?.as_ref(),
-            )?),
-            // Case 2 - There are no prior rounds of the ceremony.
-            false => return Err(CoordinatorError::RoundDoesNotExist),
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => Ok(round),
+                // Case 2 - Storage failed to fetch the round height.
+                _ => Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => Err(CoordinatorError::RoundDoesNotExist),
         }
     }
 
@@ -249,22 +262,28 @@ impl Coordinator {
     ///
     #[inline]
     pub fn current_round_height(&self) -> Result<u64, CoordinatorError> {
+        trace!("Fetching the current round height from storage");
+
         // Acquire the storage lock.
         let storage = self.storage.read().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref())
-            // Case 2 - There are no prior rounds of the ceremony.
-            .unwrap_or_default();
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
+            // Case 1 - This is a typical round of the ceremony.
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
+        };
 
         match current_round_height != 0 {
-            // Case 1 - This is a typical round of the ceremony.
             // Check that the corresponding round data exists in storage.
             true => match storage.exists(&Locator::RoundState(current_round_height)) {
+                // Case 1 - This is a typical round of the ceremony.
                 true => Ok(current_round_height),
+                // Case 2 - Storage failed to locate the current round.
                 false => Err(CoordinatorError::StorageFailed),
             },
-            // Case 2 - There are no prior rounds of the ceremony.
+            // Case 3 - There are no prior rounds of the ceremony.
             false => Ok(0),
         }
     }
@@ -292,29 +311,37 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round: Round = match current_round_height != 0 {
-            // Case 1 - This is a typical round of the ceremony.
+        let mut round = match current_round_height != 0 {
             // Load the corresponding round data from storage.
-            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
-            // Case 2 - There are no prior rounds of the ceremony.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
+
+        trace!("Preparing to lock chunk {}", chunk_id);
 
         // Attempt to acquire the chunk lock for participant.
         let contribution_locator = round.try_lock_chunk(&self.environment, &storage, chunk_id, &participant)?;
 
+        trace!("Participant {} locked chunk {}", participant, chunk_id);
+
         // Add the updated round to storage.
-        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
                 info!("{} acquired lock on chunk {}", participant, chunk_id);
@@ -350,21 +377,25 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round: Round = match current_round_height != 0 {
-            // Case 1 - This is a typical round of the ceremony.
+        let mut round = match current_round_height != 0 {
             // Load the corresponding round data from storage.
-            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
-            // Case 2 - There are no prior rounds of the ceremony.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
@@ -408,7 +439,7 @@ impl Coordinator {
             //  and the starting hash is based on the previous contribution.
         }
         // Add the updated round to storage.
-        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
                 {
@@ -446,21 +477,25 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         trace!("Current round height from storage is {}", current_round_height);
 
         // Check that the ceremony has started and fetch the current round from storage.
-        let mut round: Round = match current_round_height != 0 {
-            // Case 1 - This is a typical round of the ceremony.
+        let mut round = match current_round_height != 0 {
             // Load the corresponding round data from storage.
-            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
-            // Case 2 - There are no prior rounds of the ceremony.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
@@ -526,7 +561,7 @@ impl Coordinator {
         )?;
 
         // Add the updated round to storage.
-        match storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
                 info!(
@@ -577,11 +612,11 @@ impl Coordinator {
         let mut storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         trace!("Current round height from storage is {}", current_round_height);
@@ -685,11 +720,15 @@ impl Coordinator {
             // TODO (howardwu): Check that all locks have been released.
 
             // Check that the ceremony has started and fetch the current round from storage.
-            let mut round: Round = match current_round_height != 0 {
-                // Case 1 - This is a typical round of the ceremony.
+            let mut round = match current_round_height != 0 {
                 // Load the corresponding round data from storage.
-                true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(current_round_height))?.as_ref())?,
-                // Case 2 - There are no prior rounds of the ceremony.
+                true => match storage.get(&Locator::RoundState(current_round_height))? {
+                    // Case 1 - The ceremony is running and the round state was fetched.
+                    Object::RoundState(round) => round,
+                    // Case 2 - Storage failed to fetch the round height.
+                    _ => return Err(CoordinatorError::StorageFailed),
+                },
+                // Case 3 - There are no prior rounds of the ceremony.
                 false => return Err(CoordinatorError::RoundDoesNotExist),
             };
 
@@ -783,7 +822,7 @@ impl Coordinator {
         #[cfg(test)]
         trace!("{:#?}", &new_round);
 
-        // Insert and save the new round into storage.
+        // Insert the new round into storage.
         storage.insert(Locator::RoundState(new_height), Object::RoundState(new_round))?;
 
         // Next, update the round height to reflect the new round.
@@ -847,18 +886,23 @@ impl Coordinator {
         let storage = self.storage.write().unwrap();
 
         // Fetch the current round height from storage.
-        let current_round_height = match serde_json::from_slice(&*storage.reader(&Locator::RoundHeight)?.as_ref()) {
+        let current_round_height = match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
-            Ok(current_round_height) => current_round_height,
-            // Case 2 - There are no prior rounds of the ceremony.
-            Err(_) => return Err(CoordinatorError::RoundDoesNotExist),
+            Object::RoundHeight(round_height) => round_height,
+            // Case 2 - Storage failed to fetch the round height.
+            _ => return Err(CoordinatorError::StorageFailed),
         };
 
         // Check that the given round height is valid.
-        let round: Round = match round_height != 0 && round_height <= current_round_height {
-            // Fetch the round corresponding to the given round height from storage.
-            true => serde_json::from_slice(&*storage.reader(&Locator::RoundState(round_height))?.as_ref())?,
-            // The given round height does not exist.
+        let round = match round_height != 0 && round_height <= current_round_height {
+            // Load the corresponding round data from storage.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
             false => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
@@ -1520,6 +1564,7 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_contributor_verify_contribution() {
+        test_logger();
         coordinator_verifier_verify_contribution_test().unwrap();
     }
 

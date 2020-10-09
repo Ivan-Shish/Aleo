@@ -30,7 +30,7 @@ impl Computation {
             "Starting computation on round {} chunk {} contribution {}",
             round_height, chunk_id, contribution_id
         );
-        let now = Instant::now();
+        let start = Instant::now();
 
         // Fetch the parameter settings.
         let settings = environment.to_settings();
@@ -80,7 +80,7 @@ impl Computation {
             return Err(CoordinatorError::ComputationFailed.into());
         }
 
-        let elapsed = Instant::now().duration_since(now);
+        let elapsed = Instant::now().duration_since(start);
         info!(
             "Completed computation on round {} chunk {} contribution {} in {:?}",
             round_height, chunk_id, contribution_id, elapsed

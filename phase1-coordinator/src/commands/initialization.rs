@@ -3,13 +3,13 @@ use crate::{
     storage::{Locator, Object, StorageWrite},
     CoordinatorError,
 };
-use phase1::helpers::CurveKind;
-use phase1_cli::new_challenge;
-use setup_utils::calculate_hash;
+use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
+use setup_utils::{blank_hash, calculate_hash, print_hash, UseCompression};
+use zexe_algebra::PairingEngine as Engine;
 
 use memmap::*;
-use std::{fs, fs::OpenOptions, panic, time::Instant};
-use tracing::{debug, info, trace};
+use std::{fs, fs::OpenOptions, io::Write, panic, time::Instant};
+use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
 pub(crate) struct Initialization;
@@ -27,46 +27,34 @@ impl Initialization {
         chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
         info!("Starting initialization and migration on chunk {}", chunk_id);
-        let now = Instant::now();
+        let start = Instant::now();
 
-        // Fetch the parameter settings.
-        let settings = environment.to_settings();
+        // Determine the expected challenge size.
+        let expected_challenge_size = Object::contribution_file_size(environment, chunk_id, true);
+        trace!("Expected challenge file size is {}", expected_challenge_size);
 
         // Initialize and fetch a writer for the contribution locator so the output is saved.
         let contribution_locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
-        storage.initialize(
-            contribution_locator.clone(),
-            Object::contribution_file_size(environment, chunk_id),
-        )?;
-        // let contribution = storage.writer(&contribution_locator)?;
+        storage.initialize(contribution_locator.clone(), expected_challenge_size as u64)?;
 
-        // Execute ceremony initialization on chunk.
-        let compressed_input = environment.compressed_inputs();
-        let result = panic::catch_unwind(|| {
-            let (_, _, curve, _, _, _) = settings;
-            match curve {
-                CurveKind::Bls12_377 => new_challenge(
-                    compressed_input,
-                    &storage.to_path(&contribution_locator).unwrap(),
-                    &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
-                ),
-                CurveKind::BW6 => new_challenge(
-                    compressed_input,
-                    &storage.to_path(&contribution_locator).unwrap(),
-                    &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
-                ),
-            };
-        });
-        if result.is_err() {
+        // Run ceremony initialization on chunk.
+        let settings = environment.to_settings();
+        let (_, _, curve, _, _, _) = settings;
+        if let Err(error) = match curve {
+            CurveKind::Bls12_377 => Self::initialization(
+                storage.writer(&contribution_locator)?.as_mut(),
+                environment.compressed_inputs(),
+                &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
+            ),
+            CurveKind::BW6 => Self::initialization(
+                storage.writer(&contribution_locator)?.as_mut(),
+                environment.compressed_inputs(),
+                &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
+            ),
+        } {
+            error!("Initialization failed with {}", error);
             return Err(CoordinatorError::InitializationFailed.into());
         }
-
-        trace!(
-            "Storing round {} chunk {} in {}",
-            round_height,
-            chunk_id,
-            storage.to_path(&contribution_locator)?
-        );
 
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
@@ -76,22 +64,43 @@ impl Initialization {
         }
 
         // Check that the current and next contribution hash match.
-        let contribution_hash = Self::check(storage, &contribution_locator, &next_contribution_locator, chunk_id)?;
+        trace!("The contribution hash of chunk {} is:", chunk_id);
+        let contribution_hash = Self::check_hash(storage, &contribution_locator, &next_contribution_locator)?;
+        Self::log_hash(&contribution_hash);
 
-        info!(
-            "Completed initialization and migration on chunk {} in {:?}",
-            chunk_id,
-            Instant::now().duration_since(now)
-        );
+        let elapsed = Instant::now().duration_since(start);
+        info!("Completed initialization on chunk {} in {:?}", chunk_id, elapsed);
         Ok(contribution_hash)
     }
 
+    /// Runs Phase 1 initialization on the given parameters.
+    fn initialization<T: Engine + Sync>(
+        mut writer: &mut [u8],
+        compressed: UseCompression,
+        parameters: &Phase1Parameters<T>,
+    ) -> Result<(), CoordinatorError> {
+        trace!("Initializing Powers of Tau on 2^{}", parameters.total_size_in_log2);
+        trace!("In total will generate up to {} powers", parameters.powers_g1_length);
+
+        debug!("Blank BLAKE2s hash for an empty challenge:");
+        let hash = blank_hash();
+        (&mut writer[0..]).write_all(hash.as_slice())?;
+        writer.flush()?;
+        Self::log_hash(&hash);
+
+        trace!("Starting Phase 1 initialization operation");
+        Phase1::initialization(&mut writer, compressed, &parameters)?;
+        writer.flush()?;
+        trace!("Completed Phase 1 initialization operation");
+
+        Ok(())
+    }
+
     /// Compute both contribution hashes and check for equivalence.
-    fn check(
+    fn check_hash(
         storage: &StorageWrite,
         contribution_locator: &Locator,
         next_contribution_locator: &Locator,
-        chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
         let current = storage.reader(contribution_locator)?;
         let next = storage.reader(next_contribution_locator)?;
@@ -99,7 +108,6 @@ impl Initialization {
         // Compare the contribution hashes of both files to ensure the copy succeeded.
         let contribution_hash_0 = calculate_hash(current.as_ref());
         let contribution_hash_1 = calculate_hash(next.as_ref());
-        Self::log_hash(&contribution_hash_1, chunk_id);
         if contribution_hash_0 != contribution_hash_1 {
             return Err(CoordinatorError::InitializationTranscriptsDiffer.into());
         }
@@ -107,9 +115,9 @@ impl Initialization {
         Ok(contribution_hash_1.to_vec())
     }
 
-    /// Logs the contribution hash.
-    fn log_hash(hash: &[u8], chunk_id: u64) {
-        let mut output = format!("The contribution hash of chunk {} is:\n\n", chunk_id);
+    /// Logs the hash.
+    fn log_hash(hash: &[u8]) {
+        let mut output = format!("\n\n");
         for line in hash.chunks(16) {
             output += "\t";
             for section in line.chunks(4) {
@@ -188,7 +196,8 @@ mod tests {
                         previous_contribution_hash = contribution_hash;
                     }
                 }
-                Initialization::log_hash(&contribution_hash, chunk_id);
+                trace!("The contribution hash of chunk {} is:", chunk_id);
+                Initialization::log_hash(&contribution_hash);
             }
         }
     }
