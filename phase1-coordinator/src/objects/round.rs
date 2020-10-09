@@ -227,25 +227,25 @@ impl Round {
         // Fetch the current contribution ID.
         let current_contribution_id = chunk.current_contribution_id();
 
+        // Fetch the current contribution locator.
+        let current_contribution_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, verified);
+
         // Check that the contribution locator corresponding to the current contribution ID
         // exists for the current round and given chunk ID.
-        if !storage.exists(&Locator::ContributionFile(
-            current_round_height,
-            chunk_id,
-            current_contribution_id,
-            verified,
-        )) {
+        if !storage.exists(&current_contribution_locator) {
+            error!("{} is missing", storage.to_path(&current_contribution_locator)?);
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
         // Check that the current contribution ID is NOT verified yet.
         if chunk.get_contribution(current_contribution_id)?.is_verified() {
+            error!(
+                "{} is already verified",
+                storage.to_path(&current_contribution_locator)?
+            );
             return Err(CoordinatorError::ContributionAlreadyVerified);
         }
-
-        // Fetch the current contribution locator.
-        let current_contribution_locator =
-            Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, verified);
 
         Ok(current_contribution_locator)
     }
@@ -372,6 +372,8 @@ impl Round {
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<Locator, CoordinatorError> {
+        debug!("{} is attempting to lock chunk {}", participant, chunk_id);
+
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
@@ -402,6 +404,8 @@ impl Round {
                 self.current_contribution_locator(storage, chunk_id, false)?
             }
         };
+
+        trace!("{} is locking {}", participant, storage.to_path(&contribution_locator)?);
 
         // Check that the participant is holding less than the chunk lock limit.
         let number_of_locks_held = self
@@ -444,7 +448,7 @@ impl Round {
         self.get_chunk_mut(chunk_id)?
             .acquire_lock(participant.clone(), expected_num_contributions)?;
 
-        debug!("{} acquired lock on chunk {}", participant, chunk_id);
+        debug!("{} locked chunk {}", participant, chunk_id);
         Ok(contribution_locator)
     }
 

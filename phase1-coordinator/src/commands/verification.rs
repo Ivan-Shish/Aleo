@@ -48,7 +48,7 @@ impl Verification {
         trace!("Current contribution locator is {}", storage.to_path(&current)?);
         trace!("Next contribution locator is {}", storage.to_path(&next)?);
 
-        Self::execute(environment, storage, chunk_id, previous, current, next);
+        Self::execute(environment, storage, chunk_id, previous, current, next)?;
 
         info!(
             "Completed verification of round {} chunk {} contribution {}",
@@ -74,7 +74,10 @@ impl Verification {
 
         // Initialize the next contribution locator so the output is saved,
         // and fetch the writer for the next locator.
-        storage.initialize(next.clone(), Object::contribution_file_size(environment, chunk_id))?;
+        storage.initialize(
+            next.clone(),
+            Object::contribution_file_size(environment, chunk_id, true),
+        )?;
         // let next = match storage.initialize(&next) {
         //     Ok(_) => storage.writer(&next)?,
         //     Err(error) => return Err(error),

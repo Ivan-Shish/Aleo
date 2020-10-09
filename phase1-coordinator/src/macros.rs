@@ -29,11 +29,11 @@ macro_rules! phase1_full_parameters {
     }};
 }
 
-/// Returns the contribution filesize given an instantiation of `PairingEngine`,
+/// Returns the unverified contribution filesize given an instantiation of `PairingEngine`,
 /// an instance of `Settings`, a chunk ID, a compressed setting, and whether
 /// this is the initialization round.
 #[macro_export]
-macro_rules! contribution_filesize {
+macro_rules! unverified_contribution_size {
     ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident) => {{
         use setup_utils::UseCompression;
 
@@ -41,6 +41,22 @@ macro_rules! contribution_filesize {
         match $compressed {
             UseCompression::Yes => parameters.contribution_size as u64,
             UseCompression::No => (parameters.accumulator_size + parameters.public_key_size) as u64,
+        }
+    }};
+}
+
+/// Returns the verified contribution filesize given an instantiation of `PairingEngine`,
+/// an instance of `Settings`, a chunk ID, a compressed setting, and whether
+/// this is the initialization round.
+#[macro_export]
+macro_rules! verified_contribution_size {
+    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident) => {{
+        use setup_utils::UseCompression;
+
+        let parameters = phase1_chunked_parameters!($curve, $settings, $chunk_id);
+        match $compressed {
+            UseCompression::Yes => (parameters.contribution_size - parameters.public_key_size) as u64,
+            UseCompression::No => parameters.accumulator_size as u64,
         }
     }};
 }

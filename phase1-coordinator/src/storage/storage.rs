@@ -43,17 +43,8 @@ pub enum Object
 impl Object {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Object::RoundHeight(round_height) => {
-                // let buffer = serde_json::to_vec(round_height).expect("round state serialization failed");
-                // &buffer[..]
-                serde_json::to_vec(round_height).expect("round state serialization failed")
-            }
-            Object::RoundState(round) => {
-                serde_json::to_vec(round).expect("round state serialization failed")
-
-                // &buffer[..]
-                // &serde_json::to_vec(round).expect("round state serialization failed")
-            }
+            Object::RoundHeight(height) => serde_json::to_vec(height).expect("round height to bytes failed"),
+            Object::RoundState(round) => serde_json::to_vec_pretty(round).expect("round state to bytes failed"),
             Object::RoundFile(round) => round.to_vec(),
             Object::ContributionFile(contribution) => contribution.to_vec(),
         }
@@ -62,19 +53,8 @@ impl Object {
     /// Returns the size in bytes of the object.
     pub fn size(&self) -> u64 {
         match self {
-            Object::RoundHeight(round_height) => {
-                // let buffer = serde_json::to_vec(round_height).expect("round state serialization failed");
-                // &buffer[..]
-                let buffer = serde_json::to_vec(round_height).expect("round state serialization failed");
-                buffer.len() as u64
-            }
-            Object::RoundState(round) => {
-                let buffer = serde_json::to_vec(round).expect("round state serialization failed");
-                buffer.len() as u64
-
-                // &buffer[..]
-                // &serde_json::to_vec(round).expect("round state serialization failed")
-            }
+            Object::RoundHeight(round_height) => self.to_bytes().len() as u64,
+            Object::RoundState(round) => self.to_bytes().len() as u64,
             Object::RoundFile(round) => round.len() as u64,
             Object::ContributionFile(contribution) => contribution.len() as u64,
         }
@@ -92,13 +72,20 @@ impl Object {
     }
 
     /// Returns the expected file size of a chunked contribution.
-    pub fn contribution_file_size(environment: &Environment, chunk_id: u64) -> u64 {
-        let compressed = environment.compressed_outputs();
+    pub fn contribution_file_size(environment: &Environment, chunk_id: u64, verified: bool) -> u64 {
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
-        match curve {
-            CurveKind::Bls12_377 => contribution_filesize!(Bls12_377, settings, chunk_id, compressed),
-            CurveKind::BW6 => contribution_filesize!(BW6_761, settings, chunk_id, compressed),
+        let compressed = match verified {
+            // The verified contribution file is used as *input* in the next computation.
+            true => environment.compressed_inputs(),
+            // The unverified contribution file the *output* of the current computation.
+            false => environment.compressed_outputs(),
+        };
+        match (curve, verified) {
+            (CurveKind::Bls12_377, true) => verified_contribution_size!(Bls12_377, settings, chunk_id, compressed),
+            (CurveKind::Bls12_377, false) => unverified_contribution_size!(Bls12_377, settings, chunk_id, compressed),
+            (CurveKind::BW6, true) => verified_contribution_size!(BW6_761, settings, chunk_id, compressed),
+            (CurveKind::BW6, false) => unverified_contribution_size!(BW6_761, settings, chunk_id, compressed),
         }
     }
 }
