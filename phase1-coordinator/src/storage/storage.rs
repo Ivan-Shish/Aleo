@@ -118,7 +118,7 @@ pub trait StorageLocator {
     fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError>;
 
     /// Returns a locator corresponding to the given locator path string.
-    fn to_locator(&self, path: &String) -> Result<Locator, CoordinatorError>;
+    fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError>;
 }
 
 pub trait StorageObject {

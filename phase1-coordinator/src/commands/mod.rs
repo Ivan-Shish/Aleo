@@ -2,7 +2,6 @@ pub(crate) mod aggregation;
 pub(crate) use aggregation::*;
 
 pub(crate) mod computation;
-#[cfg(test)]
 pub(crate) use computation::*;
 
 pub(crate) mod initialization;

@@ -10,6 +10,7 @@ use std::io::Write;
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
+#[allow(dead_code)]
 pub(crate) struct Verification;
 
 impl Verification {
@@ -66,6 +67,7 @@ impl Verification {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn verification(
         environment: &Environment,
@@ -154,6 +156,7 @@ impl Verification {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn transform_pok_and_correctness<T: Engine + Sync>(
         environment: &Environment,
@@ -209,6 +212,7 @@ impl Verification {
         Ok(response_hash)
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn decompress<'a, T: Engine + Sync>(
         response_reader: &[u8],

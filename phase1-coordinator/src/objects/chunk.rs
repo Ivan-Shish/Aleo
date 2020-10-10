@@ -378,8 +378,8 @@ impl Chunk {
             true => Err(CoordinatorError::ContributionAlreadyVerified),
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
-                // Attempt verification of the contribution.
-                contribution.try_verify(&participant)?;
+                // Attempt set the contribution as verified.
+                contribution.set_verified(&participant)?;
 
                 // Release the lock on this chunk from the verifier.
                 self.lock_holder = None;

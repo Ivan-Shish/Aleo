@@ -47,20 +47,6 @@ pub fn test_storage(environment: &Environment) -> Arc<RwLock<Box<dyn Storage>>> 
     Arc::new(RwLock::new(environment.storage().unwrap()))
 }
 
-pub fn test_initialize_to_round_1(coordinator: &Coordinator) -> anyhow::Result<()> {
-    // If this is the first time running the ceremony, start by initializing one round.
-    if coordinator.current_round_height()? == 0 {
-        info!("Starting test initialization of round 0 to round 1");
-        coordinator.next_round(
-            *TEST_STARTED_AT,
-            TEST_CONTRIBUTOR_IDS.to_vec(),
-            TEST_VERIFIER_IDS.to_vec(),
-        )?;
-        info!("Completed test initialization of round 0 to round 1");
-    }
-    Ok(())
-}
-
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let coordinator = Coordinator::new(environment.clone())?;
