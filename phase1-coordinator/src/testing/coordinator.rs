@@ -1,12 +1,11 @@
 use crate::{environment::Environment, testing::prelude::*, Coordinator, CoordinatorError, Storage};
 
-use once_cell::sync::OnceCell;
 use rocket::{local::Client, Rocket};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, warn};
 
 pub fn initialize_test_environment() {
     #[cfg(not(feature = "silent"))]
@@ -17,6 +16,9 @@ pub fn initialize_test_environment() {
 
 #[cfg(not(feature = "silent"))]
 pub fn test_logger() {
+    use once_cell::sync::OnceCell;
+    use tracing::Level;
+
     static INSTANCE: OnceCell<()> = OnceCell::new();
     INSTANCE.get_or_init(|| {
         let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();

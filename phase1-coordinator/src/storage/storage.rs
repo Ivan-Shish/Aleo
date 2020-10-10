@@ -74,7 +74,6 @@ impl Object {
     }
 }
 
-pub type StorageReadOnly<'a> = RwLockReadGuard<'a, Box<dyn Storage>>;
 pub type StorageWrite<'a> = RwLockWriteGuard<'a, Box<dyn Storage>>;
 
 // TODO (howardwu): Genericize this if necessary for remote objects.

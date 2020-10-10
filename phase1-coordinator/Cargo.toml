@@ -28,7 +28,7 @@ lazy_static = { version = "1.4.0" }
 memmap = { version = "0.7.0" }
 once_cell = { version = "1.4.1", optional = true }
 rand = { version = "0.7.3" }
-rayon = { version = "1.4.0" }
+rayon = { version = "1.4.1" }
 rocket = { version = "0.4.5" }
 rocket_contrib = { version = "0.4", features = ["json"] }
 rocket_cors = { version = "0.4" }
@@ -49,6 +49,6 @@ once_cell = { version = "1.4.1" }
 serial_test = { version = "0.5" }
 
 [features]
-default = []
+default = ["once_cell"]
 testing = ["once_cell", "serial_test"]
 silent = []
