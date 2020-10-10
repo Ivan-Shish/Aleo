@@ -175,7 +175,7 @@ impl Contribution {
     /// returns a `CoordinatorError`.
     ///
     #[inline]
-    pub(crate) fn try_verify(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
+    pub(crate) fn set_verified(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
             return Err(CoordinatorError::ExpectedVerifier);

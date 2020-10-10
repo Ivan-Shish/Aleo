@@ -171,10 +171,22 @@ impl Environment {
     }
 
     ///
+    /// Returns the minimum number of contributors permitted to
+    /// participate in a round.
+    ///
+    pub fn minimum_contributors_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 2,
+            Environment::Development(_) => 2,
+            Environment::Production(_) => 2,
+        }
+    }
+
+    ///
     /// Returns the maximum number of contributors permitted to
     /// participate in a round.
     ///
-    pub fn number_of_contributors_per_round(&self) -> usize {
+    pub fn maximum_contributors_per_round(&self) -> usize {
         match self {
             Environment::Test(_) => 5,
             Environment::Development(_) => 5,
@@ -183,10 +195,22 @@ impl Environment {
     }
 
     ///
+    /// Returns the minimum number of verifiers permitted to
+    /// participate in a round.
+    ///
+    pub fn minimum_verifiers_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 1,
+            Environment::Development(_) => 1,
+            Environment::Production(_) => 1,
+        }
+    }
+
+    ///
     /// Returns the maximum number of verifiers permitted to
     /// participate in a round.
     ///
-    pub fn number_of_verifiers_per_round(&self) -> usize {
+    pub fn maximum_verifiers_per_round(&self) -> usize {
         match self {
             Environment::Test(_) => 5,
             Environment::Development(_) => 5,

@@ -359,7 +359,7 @@ impl StorageLocator for Disk {
     }
 
     #[inline]
-    fn to_locator(&self, path: &String) -> Result<Locator, CoordinatorError> {
+    fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError> {
         self.locator_path.to_locator(path)
     }
 }
@@ -564,7 +564,7 @@ impl StorageLocator for DiskLocator {
     }
 
     #[inline]
-    fn to_locator(&self, path: &String) -> Result<Locator, CoordinatorError> {
+    fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError> {
         // Sanitize the given path and base to the local OS.
         let path = Path::new(path);
         let base = Path::new(&self.base);
