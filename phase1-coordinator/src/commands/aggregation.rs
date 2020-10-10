@@ -88,7 +88,7 @@ impl Aggregation {
             trace!("Loading contribution for round {} chunk {}", round_height, chunk_id);
 
             // Fetch the contribution ID.
-            let contribution_id = round.get_chunk(chunk_id)?.current_contribution_id();
+            let contribution_id = round.chunk(chunk_id)?.current_contribution_id();
 
             // Sanity check that all chunks have all contributions present.
             if expected_id != contribution_id {

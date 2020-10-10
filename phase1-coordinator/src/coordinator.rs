@@ -401,7 +401,7 @@ impl Coordinator {
         // Fetch the expected number of contributions for the current round.
         let expected_num_contributions = round.expected_number_of_contributions();
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = round.get_chunk(chunk_id)?;
+        let chunk = round.chunk(chunk_id)?;
         // Fetch the current contribution ID of the chunk.
         let current_contribution_id = chunk.current_contribution_id();
         // Fetch the next contribution ID of the chunk.
@@ -524,7 +524,7 @@ impl Coordinator {
         }
 
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = round.get_chunk(chunk_id)?;
+        let chunk = round.chunk(chunk_id)?;
         // Fetch the current contribution ID.
         let current_contribution_id = chunk.current_contribution_id();
         // Fetch the next contribution ID.
@@ -935,7 +935,7 @@ impl Coordinator {
 
         // Fetch the current round and given chunk ID and check that
         // the given contribution ID has not been verified yet.
-        let chunk = round.get_chunk(chunk_id)?;
+        let chunk = round.chunk(chunk_id)?;
         if chunk.get_contribution(contribution_id).is_ok() {
             return Err(CoordinatorError::ContributionShouldNotExist);
         }
@@ -1084,7 +1084,7 @@ mod test {
         {
             // Check that chunk 0 is locked.
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(0)?;
+            let chunk = round.chunk(0)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
@@ -1093,7 +1093,7 @@ mod test {
             assert!(!chunk.is_locked_by(contributor_2));
 
             // Check that chunk 1 is locked.
-            let chunk = round.get_chunk(1)?;
+            let chunk = round.chunk(1)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
@@ -1102,7 +1102,7 @@ mod test {
             assert!(!chunk.is_locked_by(contributor_2));
 
             // Check that chunk 2 is locked.
-            let chunk = round.get_chunk(2)?;
+            let chunk = round.chunk(2)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
@@ -1133,7 +1133,7 @@ mod test {
 
             // Check chunk 0 is not verified.
             let chunk_id = 0;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(chunk_id)?;
             assert!(!chunk.is_complete(round.expected_number_of_contributions()));
 
             // Check next contribution is 1.
@@ -1156,7 +1156,7 @@ mod test {
 
             // Check chunk 0 lock is released.
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(chunk_id)?;
             assert!(chunk.is_unlocked());
             assert!(!chunk.is_locked());
         }
@@ -1198,7 +1198,7 @@ mod test {
 
             // Check that chunk 0 is locked.
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(chunk_id)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
@@ -1442,7 +1442,7 @@ mod test {
             assert!(
                 coordinator
                     .current_round()?
-                    .get_chunk(chunk_id)?
+                    .chunk(chunk_id)?
                     .get_contribution(0)?
                     .is_verified()
             );
