@@ -629,7 +629,7 @@ mod tests {
     fn test_get_verifiers() {
         initialize_test_environment();
 
-        let candidates = test_round_0().unwrap().get_verifiers().clone();
+        let candidates = test_round_0().unwrap().verifiers().clone();
         for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
             assert_eq!(*id, candidates[index]);
         }
