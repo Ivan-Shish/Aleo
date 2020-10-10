@@ -1,11 +1,21 @@
 # phase1-coordinator
 
+## Build Guide
+
+To start the coordinator, run:
+```
+cargo run --release
+```
+
 ## Testing
 
 ### Logging
 
-To enable `tracing` on a specific test, add `test_logger()` at the start of the test function.
+Logging is enabled by default during tests. To silence all logs, run:
+```
+cargo test --features silent
+```
 
-### Serial Execution
+### Serial Test Execution
 
-By default, all test functions execute serially to minimize risk of writing over test storage.
+By convention, all tests execute serially to minimize possible risk of writing over test storage.

@@ -6,7 +6,7 @@ use crate::{
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
 use setup_utils::{calculate_hash, CheckForCorrectness, GenericArray, U64};
 
-use std::io::{Read, Write};
+use std::io::Write;
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -14,10 +14,11 @@ pub(crate) struct Verification;
 
 impl Verification {
     ///
-    /// Runs chunk verification for a given environment, round height, and chunk ID.
+    /// Runs verification for a given environment, storage,
+    /// round height, chunk ID, and contribution ID of the
+    /// unverified response file.
     ///
-    /// Executes the round verification on a given chunk ID.
-    ///
+    #[inline]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageWrite,
@@ -25,7 +26,7 @@ impl Verification {
         chunk_id: u64,
         current_contribution_id: u64,
         is_final_contribution: bool,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), CoordinatorError> {
         info!(
             "Starting verification of round {} chunk {} contribution {}",
             round_height, chunk_id, current_contribution_id
@@ -33,7 +34,12 @@ impl Verification {
 
         // Check that this is not the initial contribution.
         if (round_height == 0 || round_height == 1) && current_contribution_id == 0 {
-            return Err(CoordinatorError::VerificationOnContributionIdZero.into());
+            return Err(CoordinatorError::VerificationOnContributionIdZero);
+        }
+
+        // Check that the chunk ID is valid.
+        if chunk_id > environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
         }
 
         // Fetch the contribution locators for `Verification`.
@@ -48,7 +54,10 @@ impl Verification {
         trace!("Current contribution locator is {}", storage.to_path(&current)?);
         trace!("Next contribution locator is {}", storage.to_path(&next)?);
 
-        Self::execute(environment, storage, chunk_id, previous, current, next)?;
+        if let Err(error) = Self::verification(environment, storage, chunk_id, previous, current, next) {
+            error!("Verification failed with {}", error);
+            return Err(error);
+        }
 
         info!(
             "Completed verification of round {} chunk {} contribution {}",
@@ -57,7 +66,8 @@ impl Verification {
         Ok(())
     }
 
-    fn execute(
+    #[inline]
+    fn verification(
         environment: &Environment,
         storage: &mut StorageWrite,
         chunk_id: u64,
@@ -67,7 +77,12 @@ impl Verification {
     ) -> Result<(), CoordinatorError> {
         // Check that the previous and current locators exist in storage.
         if !storage.exists(&challenge_file) || !storage.exists(&response_file) {
-            return Err(CoordinatorError::StorageLocatorMissing);
+            return Err(CoordinatorError::ContributionLocatorMissing);
+        }
+
+        // Check that the next contribution locator does not exist.
+        if storage.exists(&next_challenge_file) {
+            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
         // Execute ceremony verification on chunk.
@@ -89,123 +104,112 @@ impl Verification {
         };
         let response_hash = match result {
             Ok(response_hash) => response_hash,
-            Err(error) => return Err(CoordinatorError::VerificationFailed.into()),
+            Err(error) => {
+                error!("Verification failed with {}", error);
+                return Err(CoordinatorError::VerificationFailed.into());
+            }
         };
+
+        trace!("Verification succeeded! Writing the next challenge file");
 
         // Fetch the compression settings.
         let response_is_compressed = environment.compressed_outputs();
         let next_challenge_is_compressed = environment.compressed_inputs();
 
         // Create the next challenge file.
-        if response_is_compressed == next_challenge_is_compressed {
-            trace!("Don't need to recompress the contribution, copying the file without the public key");
+        let next_challenge_hash = if response_is_compressed == next_challenge_is_compressed {
+            trace!("Copying decompressed response file without the public key");
             storage.copy(&response_file, &next_challenge_file)?;
 
-            let hash = calculate_hash(&storage.reader(&next_challenge_file)?);
-            debug!("Here's the BLAKE2b hash of the decompressed participant's response as new_challenge file:");
-            Self::log_hash(&hash);
+            calculate_hash(&storage.reader(&next_challenge_file)?)
         } else {
-            trace!("Verification succeeded! Writing to new challenge file...");
+            trace!("Starting decompression of the response file for the next challenge file");
 
-            // Initialize the next contribution locator so the output is saved,
-            // and fetch the writer for the next locator.
+            // Initialize the next challenge file.
             storage.initialize(
                 next_challenge_file.clone(),
                 Object::contribution_file_size(environment, chunk_id, true),
             )?;
-            let mut next_challenge_writer = storage.writer(&next_challenge_file)?;
-
-            // Fetch a response file reader.
-            let response_reader = storage.reader(&response_file)?;
 
             let (_, _, curve, _, _, _) = settings.clone();
             match curve {
                 CurveKind::Bls12_377 => Self::decompress(
-                    response_reader.as_ref(),
-                    next_challenge_writer.as_mut(),
+                    storage.reader(&response_file)?.as_ref(),
+                    storage.writer(&next_challenge_file)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 )?,
                 CurveKind::BW6 => Self::decompress(
-                    response_reader.as_ref(),
-                    next_challenge_writer.as_mut(),
+                    storage.reader(&response_file)?.as_ref(),
+                    storage.writer(&next_challenge_file)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 )?,
             };
-            drop(next_challenge_writer);
 
-            let next_challenge_reader = storage.reader(&next_challenge_file)?;
-            let recompressed_hash = calculate_hash(next_challenge_reader.as_ref());
-            debug!("Here's the BLAKE2b hash of the decompressed participant's response as new_challenge file:");
-            Self::log_hash(&recompressed_hash);
-        }
+            calculate_hash(storage.reader(&next_challenge_file)?.as_ref())
+        };
 
+        debug!("The next challenge hash is {}", pretty_hash!(&next_challenge_hash));
         Ok(())
     }
 
-    pub fn transform_pok_and_correctness<T: Engine + Sync>(
+    #[inline]
+    fn transform_pok_and_correctness<T: Engine + Sync>(
         environment: &Environment,
         challenge_reader: &[u8],
         response_reader: &[u8],
         parameters: &Phase1Parameters<T>,
     ) -> Result<GenericArray<u8, U64>, CoordinatorError> {
+        debug!("Verifying 2^{} powers of tau", parameters.total_size_in_log2);
+
         // Fetch the compression settings.
-        let challenge_is_compressed = environment.compressed_inputs();
-        let response_is_compressed = environment.compressed_outputs();
+        let compressed_challenge = environment.compressed_inputs();
+        let compressed_response = environment.compressed_outputs();
 
-        debug!(
-            "Verifying a contribution to accumulator for 2^{} powers of tau",
-            parameters.total_size_in_log2
-        );
+        // Compute the challenge hash using the challenge file.
+        let challenge_hash = calculate_hash(challenge_reader.as_ref());
+        debug!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
 
-        // Check that contribution is correct
-        trace!("Calculating previous challenge hash...");
-        let current_accumulator_hash = calculate_hash(challenge_reader);
-        debug!("Hash of the `challenge` file for verification:");
-        Self::log_hash(&current_accumulator_hash);
+        // Fetch the challenge hash from the response file.
+        let challenge_hash_in_response = &response_reader
+            .get(0..64)
+            .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+        let pretty_hash = pretty_hash!(&challenge_hash_in_response);
+        debug!("Challenge hash in response file is {}", pretty_hash);
 
-        // Check the hash chain - a new response must be based on the previous challenge!
-        {
-            let mut response_challenge_hash = [0; 64];
-            let mut memory_slice = response_reader.get(0..64).expect("must read point data from file");
-            memory_slice
-                .read_exact(&mut response_challenge_hash)
-                .expect("couldn't read hash of challenge file from response file");
-
-            debug!("`response` was based on the hash:");
-            Self::log_hash(&response_challenge_hash);
-
-            if &response_challenge_hash[..] != current_accumulator_hash.as_slice() {
-                error!("Hash chain failure. This is not the right response.");
-                return Err(CoordinatorError::VerificationFailed);
-            }
+        // Check that the challenge hashes match.
+        if challenge_hash_in_response != challenge_hash.as_slice() {
+            error!("Challenge hash in response file does not match the expected challenge hash.");
+            return Err(CoordinatorError::ContributionHashMismatch);
         }
 
+        // Compute the response hash using the response file.
         let response_hash = calculate_hash(response_reader);
-        debug!("Hash of the response file for verification:");
-        Self::log_hash(&response_hash);
+        debug!("The response hash is {}", pretty_hash!(&response_hash));
 
-        // Fetch the contributor's public key.
-        let public_key = PublicKey::read(response_reader, response_is_compressed, &parameters)?;
+        // Fetch the public key of the contributor.
+        let public_key = PublicKey::read(response_reader, compressed_response, &parameters)?;
+        // debug!("Public key of the contributor is {:#?}", public_key);
 
-        trace!("Verifying a contribution to contain proper powers and correspond to the public key...");
+        trace!("Starting verification");
         Phase1::verification(
             challenge_reader,
             response_reader,
             &public_key,
-            current_accumulator_hash.as_slice(),
-            challenge_is_compressed,
-            response_is_compressed,
+            &challenge_hash,
+            compressed_challenge,
+            compressed_response,
             CheckForCorrectness::No,
             CheckForCorrectness::Full,
             &parameters,
         )?;
-        trace!("Verification succeeded!");
+        trace!("Completed verification");
 
         Ok(response_hash)
     }
 
+    #[inline]
     fn decompress<'a, T: Engine + Sync>(
         response_reader: &[u8],
         mut next_challenge_writer: &mut [u8],
@@ -229,21 +233,64 @@ impl Verification {
 
         Ok(())
     }
+}
 
-    /// Logs the hash.
-    fn log_hash(hash: &[u8]) {
-        let mut output = format!("\n\n");
-        for line in hash.chunks(16) {
-            output += "\t";
-            for section in line.chunks(4) {
-                for b in section {
-                    output += &format!("{:02x}", b);
-                }
-                output += " ";
-            }
-            output += "\n";
+#[cfg(test)]
+mod tests {
+    use crate::{
+        commands::{Computation, Verification},
+        storage::Locator,
+        testing::prelude::*,
+        Coordinator,
+    };
+
+    use once_cell::sync::Lazy;
+
+    #[test]
+    #[serial]
+    fn test_verification_run() {
+        initialize_test_environment();
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
+        let test_storage = coordinator.storage();
+
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height().unwrap());
+
+        // Run initialization.
+        coordinator
+            .next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
+                Lazy::force(&TEST_VERIFIER_ID).clone(),
+            ])
+            .unwrap();
+
+        // Check current round height is now 1.
+        assert_eq!(1, coordinator.current_round_height().unwrap());
+
+        // Define test parameters.
+        let round_height = coordinator.current_round_height().unwrap();
+        let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
+        let is_final = true;
+
+        // Obtain the storage lock.
+        let mut storage = test_storage.write().unwrap();
+
+        for chunk_id in 0..number_of_chunks {
+            // Run computation on chunk.
+            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1).unwrap();
+
+            // Run verification on chunk.
+            Verification::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1, is_final).unwrap();
+
+            // Fetch the next contribution locator.
+            let next = match is_final {
+                true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
+                false => Locator::ContributionFile(round_height, chunk_id, 1, true),
+            };
+
+            // Check the next challenge file exists.
+            assert!(storage.exists(&next));
         }
-        debug!("{}", output);
     }
 }
 

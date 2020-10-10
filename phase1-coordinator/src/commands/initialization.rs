@@ -19,13 +19,14 @@ impl Initialization {
     ///
     /// Executes the round initialization on a given chunk ID.
     ///
+    #[inline]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageWrite,
         round_height: u64,
         chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
-        info!("Starting initialization and migration on chunk {}", chunk_id);
+        info!("Starting initialization on round {} chunk {}", round_height, chunk_id);
         let start = Instant::now();
 
         // Determine the expected challenge size.
@@ -63,16 +64,16 @@ impl Initialization {
         }
 
         // Check that the current and next contribution hash match.
-        trace!("The contribution hash of chunk {} is:", chunk_id);
-        let contribution_hash = Self::check_hash(storage, &contribution_locator, &next_contribution_locator)?;
-        Self::log_hash(&contribution_hash);
+        let hash = Self::check_hash(storage, &contribution_locator, &next_contribution_locator)?;
+        debug!("The challenge hash of Chunk {} is {}", chunk_id, pretty_hash!(&hash));
 
         let elapsed = Instant::now().duration_since(start);
         info!("Completed initialization on chunk {} in {:?}", chunk_id, elapsed);
-        Ok(contribution_hash)
+        Ok(hash)
     }
 
     /// Runs Phase 1 initialization on the given parameters.
+    #[inline]
     fn initialization<T: Engine + Sync>(
         mut writer: &mut [u8],
         compressed: UseCompression,
@@ -81,11 +82,10 @@ impl Initialization {
         trace!("Initializing Powers of Tau on 2^{}", parameters.total_size_in_log2);
         trace!("In total will generate up to {} powers", parameters.powers_g1_length);
 
-        debug!("Blank BLAKE2b hash for an empty challenge:");
         let hash = blank_hash();
         (&mut writer[0..]).write_all(hash.as_slice())?;
         writer.flush()?;
-        Self::log_hash(&hash);
+        debug!("Empty challenge hash is {}", pretty_hash!(&hash));
 
         trace!("Starting Phase 1 initialization operation");
         Phase1::initialization(&mut writer, compressed, &parameters)?;
@@ -96,6 +96,7 @@ impl Initialization {
     }
 
     /// Compute both contribution hashes and check for equivalence.
+    #[inline]
     fn check_hash(
         storage: &StorageWrite,
         contribution_locator: &Locator,
@@ -113,22 +114,6 @@ impl Initialization {
 
         Ok(contribution_hash_1.to_vec())
     }
-
-    /// Logs the hash.
-    fn log_hash(hash: &[u8]) {
-        let mut output = format!("\n\n");
-        for line in hash.chunks(16) {
-            output += "\t";
-            for section in line.chunks(4) {
-                for b in section {
-                    output += &format!("{:02x}", b);
-                }
-                output += " ";
-            }
-            output += "\n";
-        }
-        debug!("{}", output);
-    }
 }
 
 #[cfg(test)]
@@ -141,14 +126,14 @@ mod tests {
     #[test]
     #[serial]
     fn test_initialization_run() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         // Define test parameters.
         let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT.number_of_chunks();
 
         // Define test storage.
-        let test_storage = test_storage();
+        let test_storage = test_storage(&TEST_ENVIRONMENT);
         let mut storage = test_storage.write().unwrap();
 
         // Initialize the previous contribution hash with a no-op value.
@@ -186,8 +171,11 @@ mod tests {
                         previous_contribution_hash = contribution_hash;
                     }
                 }
-                trace!("The contribution hash of chunk {} is:", chunk_id);
-                Initialization::log_hash(&contribution_hash);
+                trace!(
+                    "The contribution hash of chunk {} is {}",
+                    chunk_id,
+                    pretty_hash!(&contribution_hash)
+                );
             }
         }
     }

@@ -51,3 +51,4 @@ serial_test = { version = "0.5" }
 [features]
 default = []
 testing = ["once_cell", "serial_test"]
+silent = []

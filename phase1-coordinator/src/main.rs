@@ -4,7 +4,6 @@
 extern crate rocket;
 
 use phase1_coordinator::{
-    apis::*,
     environment::{Environment, Parameters},
     Coordinator,
     Participant,
@@ -61,15 +60,7 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
 
     let server = rocket::custom(config)
         .manage(Arc::new(coordinator(environment)?))
-        .mount("/", routes![
-            // chunk_get,
-            // chunk_post,
-            // lock_post,
-            ping_get,
-            // timestamp_get,
-            // round_get,
-            // deprecated::ceremony_get,
-        ])
+        .mount("/", routes![])
         .attach(environment.cors());
     info!("Server is ready");
     Ok(server)
