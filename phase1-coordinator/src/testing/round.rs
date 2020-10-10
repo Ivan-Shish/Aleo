@@ -1,7 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
-    storage::Storage,
+    testing::coordinator::*,
     Participant,
 };
 
@@ -9,11 +9,6 @@ use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-};
-use tracing::{error, warn};
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTest8Chunks);
@@ -50,28 +45,6 @@ lazy_static! {
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 }
 
-/// Clears the transcript directory for testing purposes only.
-pub fn clear_test_transcript() {
-    let path = TEST_ENVIRONMENT.local_base_directory();
-    if Path::new(path).exists() {
-        warn!("Coordinator is clearing {:?}", &path);
-        match std::fs::remove_dir_all(&path) {
-            Ok(_) => (),
-            Err(error) => error!(
-                "The testing framework tried to clear the test transcript and failed. {}",
-                error
-            ),
-        }
-        warn!("Coordinator cleared {:?}", &path);
-    }
-}
-
-/// Provides a simple test storage object.
-pub fn test_storage() -> Arc<RwLock<Box<dyn Storage>>> {
-    clear_test_transcript();
-    Arc::new(RwLock::new(TEST_ENVIRONMENT.storage().unwrap()))
-}
-
 /// Loads the reference JSON object with a serialized round for testing purposes only.
 pub fn test_round_0_json() -> anyhow::Result<Round> {
     Ok(serde_json::from_str(include_str!("resources/test_round_0.json"))?)
@@ -87,7 +60,7 @@ pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
 /// Creates the initial round for testing purposes only.
 pub fn test_round_0() -> anyhow::Result<Round> {
     // Define test storage.
-    let test_storage = test_storage();
+    let test_storage = test_storage(&TEST_ENVIRONMENT);
     let storage = test_storage.write().unwrap();
 
     Ok(Round::new(
@@ -111,6 +84,8 @@ pub fn print_diff<S: SerdeDiff>(a: &S, b: &S) {
 #[test]
 #[serial]
 fn test_round_0_matches() {
+    initialize_test_environment();
+
     let expected = test_round_0_json().unwrap();
     let candidate = test_round_0().unwrap();
 

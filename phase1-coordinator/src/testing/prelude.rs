@@ -1,4 +1,4 @@
-pub use super::{round::*, server::*};
+pub use super::{coordinator::*, round::*};
 
 pub use rocket::{
     http::{ContentType, Status},

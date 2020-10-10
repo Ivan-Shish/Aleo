@@ -1,15 +1,48 @@
-use crate::{apis::*, environment::Environment, testing::prelude::*, Coordinator, CoordinatorError};
+use crate::{environment::Environment, testing::prelude::*, Coordinator, CoordinatorError, Storage};
 
+use once_cell::sync::OnceCell;
 use rocket::{local::Client, Rocket};
-use std::sync::Arc;
-use tracing::{info, Level};
+use std::{
+    path::Path,
+    sync::{Arc, RwLock},
+};
+use tracing::{error, info, warn, Level};
 
+pub fn initialize_test_environment() {
+    #[cfg(not(feature = "silent"))]
+    test_logger();
+
+    clear_test_storage();
+}
+
+#[cfg(not(feature = "silent"))]
 pub fn test_logger() {
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    static INSTANCE: OnceCell<()> = OnceCell::new();
+    INSTANCE.get_or_init(|| {
+        let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
+        tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    });
+}
+
+/// Clears the transcript directory for testing purposes only.
+pub fn clear_test_storage() {
+    let path = TEST_ENVIRONMENT.local_base_directory();
+    if Path::new(path).exists() {
+        warn!("Coordinator is clearing {:?}", &path);
+        match std::fs::remove_dir_all(&path) {
+            Ok(_) => (),
+            Err(error) => error!(
+                "The testing framework tried to clear the test transcript and failed. {}",
+                error
+            ),
+        }
+        warn!("Coordinator cleared {:?}", &path);
+    }
+}
+
+/// Initializes a test storage object.
+pub fn test_storage(environment: &Environment) -> Arc<RwLock<Box<dyn Storage>>> {
+    Arc::new(RwLock::new(environment.storage().unwrap()))
 }
 
 pub fn test_initialize_to_round_1(coordinator: &Coordinator) -> anyhow::Result<()> {
@@ -37,15 +70,7 @@ pub fn test_server(environment: &Environment) -> anyhow::Result<(Rocket, Arc<Coo
     info!("Starting server...");
     let coordinator = Arc::new(test_coordinator(environment)?);
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let server = rocket::ignite().manage(coordinator.clone()).mount("/", routes![
-        // chunk_get,
-        // chunk_post,
-        // lock_post,
-        ping_get,
-        // timestamp_get,
-        // round_get,
-        // deprecated::ceremony_get,
-    ]);
+    let server = rocket::ignite().manage(coordinator.clone()).mount("/", routes![]);
     info!("Server is ready");
     Ok((server, coordinator))
 }

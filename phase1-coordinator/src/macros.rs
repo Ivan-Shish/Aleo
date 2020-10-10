@@ -119,6 +119,24 @@ macro_rules! storage {
     }};
 }
 
+/// Returns a pretty print of the given hash bytes for logging.
+macro_rules! pretty_hash {
+    ($hash:expr) => {{
+        let mut output = format!("\n\n");
+        for line in $hash.chunks(16) {
+            output += "\t";
+            for section in line.chunks(4) {
+                for b in section {
+                    output += &format!("{:02x}", b);
+                }
+                output += " ";
+            }
+            output += "\n";
+        }
+        output
+    }};
+}
+
 /// Returns an error logging message using `tracing`, then returns the error itself.
 #[macro_export]
 macro_rules! return_error {

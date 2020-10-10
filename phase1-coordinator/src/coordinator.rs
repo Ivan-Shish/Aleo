@@ -4,6 +4,7 @@ use crate::{
     objects::{Participant, Round},
     storage::{Locator, Object, Storage},
 };
+use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
 use std::{
@@ -24,10 +25,12 @@ pub enum CoordinatorError {
     ChunkMissingVerification,
     ChunkNotLockedOrByWrongParticipant,
     ComputationFailed,
+    CompressedContributionHashingUnsupported,
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
     ContributionFileSizeMismatch,
+    ContributionHashMismatch,
     ContributionIdIsNonzero,
     ContributionIdMismatch,
     ContributionIdMustBeNonzero,
@@ -77,6 +80,7 @@ pub enum CoordinatorError {
     StorageLocatorFormatIncorrect,
     StorageLocatorMissing,
     StorageLockFailed,
+    StorageReaderFailed,
     StorageSizeLookupFailed,
     StorageUpdateFailed,
     UnauthorizedChunkContributor,
@@ -394,31 +398,56 @@ impl Coordinator {
 
         // Fetch the expected number of contributions for the current round.
         let expected_num_contributions = round.expected_number_of_contributions();
-
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = round.get_chunk(chunk_id)?;
+        // Fetch the current contribution ID of the chunk.
+        let current_contribution_id = chunk.current_contribution_id();
         // Fetch the next contribution ID of the chunk.
-        let next_contribution_id = round
-            .get_chunk(chunk_id)?
-            .next_contribution_id(expected_num_contributions)?;
+        let next_contribution_id = chunk.next_contribution_id(expected_num_contributions)?;
 
-        // Fetch the contribution locator for the next contribution ID corresponding to
-        // the current round height and chunk ID.
-        let next_contribution_locator =
-            Locator::ContributionFile(current_round_height, chunk_id, next_contribution_id, false);
-        let next_contribution = storage.to_path(&next_contribution_locator)?;
-
-        // Add the next contribution to the current chunk.
-        round.get_chunk_mut(chunk_id)?.add_contribution(
-            next_contribution_id,
-            participant,
-            next_contribution.clone(),
-            expected_num_contributions,
-        )?;
-
-        trace!("Next contribution locator is {}", next_contribution);
-        {
-            // TODO (howardwu): Check that the file size is nonzero, the structure is correct,
-            //  and the starting hash is based on the previous contribution.
+        // Check that the next contribution ID is one above the current contribution ID.
+        if !chunk.is_next_contribution_id(next_contribution_id, expected_num_contributions) {
+            return Err(CoordinatorError::ContributionIdMismatch);
         }
+
+        // Fetch the challenge and response locators.
+        let challenge_file_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true);
+        let response_file_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, next_contribution_id, false);
+
+        {
+            // Fetch a challenge file reader.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
+
+            // Fetch a response file reader.
+            let response_reader = storage.reader(&response_file_locator)?;
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
+
+            // Compute the challenge hash using the challenge file.
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
+            // Fetch the challenge hash from the response file.
+            let challenge_hash_in_response = &response_reader
+                .get(0..64)
+                .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+            let pretty_hash = pretty_hash!(&challenge_hash_in_response);
+            debug!("Challenge hash in response file is {}", pretty_hash);
+
+            // Check the starting hash in the response file is based on the previous contribution.
+            if challenge_hash_in_response != challenge_hash.as_slice() {
+                error!("Challenge hash in response file does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+        }
+
+        // Add the contribution response to the current chunk.
+        round
+            .get_chunk_mut(chunk_id)?
+            .add_contribution(participant, storage.to_path(&response_file_locator)?)?;
+
         // Add the updated round to storage.
         match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
@@ -427,7 +456,7 @@ impl Coordinator {
                     // TODO (howardwu): Send job to run verification on new chunk.
                 }
                 info!("{} added a contribution to chunk {}", participant, chunk_id);
-                Ok(next_contribution)
+                Ok(storage.to_path(&response_file_locator)?)
             }
             _ => Err(CoordinatorError::StorageUpdateFailed),
         }
@@ -498,16 +527,6 @@ impl Coordinator {
         let current_contribution_id = chunk.current_contribution_id();
         // Fetch the next contribution ID.
         let current_contribution = chunk.current_contribution()?;
-
-        // Check that the contribution locator corresponding to this round and chunk exists.
-        if !storage.exists(&Locator::ContributionFile(
-            current_round_height,
-            chunk_id,
-            current_contribution_id,
-            false,
-        )) {
-            return Err(CoordinatorError::ContributionLocatorMissing);
-        }
 
         // Check if the current contribution has already been verified.
         if current_contribution.is_verified() {
@@ -701,7 +720,7 @@ impl Coordinator {
             // TODO (howardwu): Check that all locks have been released.
 
             // Check that the ceremony has started and fetch the current round from storage.
-            let mut round = match current_round_height != 0 {
+            let round = match current_round_height != 0 {
                 // Load the corresponding round data from storage.
                 true => match storage.get(&Locator::RoundState(current_round_height))? {
                     // Case 1 - The ceremony is running and the round state was fetched.
@@ -821,9 +840,21 @@ impl Coordinator {
     /// Returns a reference to the instantiation of `Environment` that this
     /// coordinator is using.
     ///
+    #[allow(dead_code)]
+    #[cfg(test)]
     #[inline]
     pub(crate) fn environment(&self) -> &Environment {
         &self.environment
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Storage` that this
+    /// coordinator is using.
+    ///
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
+        self.storage.clone()
     }
 
     ///
@@ -835,7 +866,7 @@ impl Coordinator {
     ///
     #[cfg(test)]
     #[inline]
-    fn run_computation(
+    pub(crate) fn run_computation(
         &self,
         round_height: u64,
         chunk_id: u64,
@@ -924,36 +955,6 @@ impl Coordinator {
         info!("Computed chunk {} contribution {}", chunk_id, contribution_id);
         Ok(())
     }
-
-    // /// Attempts to run verification in the current round for a given chunk ID.
-    // #[inline]
-    // fn verify_chunk(&self, chunk_id: u64) -> Result<(), CoordinatorError> {
-    //     // Fetch the current round.
-    //     let mut current_round = self.current_round()?;
-    //     let round_height = current_round.round_height();
-    //
-    //     // Execute verification of contribution ID for all chunks in the
-    //     // new round and check that the new locators exist.
-    //     let new_height = round_height + 1;
-    //     debug!("Starting verification of round {}", new_height);
-    //     for chunk_id in 0..self.environment.number_of_chunks() {
-    //     info!("Coordinator is starting initialization on chunk {}", chunk_id);
-    //     // TODO (howardwu): Add contribution hash to `Round`.
-    //     let _contribution_hash = Initialization::run(&self.environment, new_height, chunk_id)?;
-    //     info!("Coordinator completed initialization on chunk {}", chunk_id);
-    //
-    //     // Check that the contribution locator corresponding to this round and chunk now exists.
-    //     let contribution_locator = self.environment.contribution_locator(new_height, chunk_id, contribution_id);
-    //     if !Path::new(&contribution_locator).exists() {
-    //         return Err(CoordinatorError::RoundTranscriptMissing);
-    //     }
-    //
-    //     // Attempt to acquire the lock for verification.
-    //     // self.try_lock(chunk_id, contribution_id)?;
-    //
-    //     // Runs verification and on success, updates the chunk contribution to verified.
-    //     // self.verify_contribution(chunk_id, contribution_id)?;
-    // }
 }
 
 #[cfg(test)]
@@ -1001,7 +1002,7 @@ mod test {
     }
 
     fn coordinator_initialization_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
 
@@ -1050,7 +1051,7 @@ mod test {
     }
 
     fn coordinator_contributor_try_lock_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
         initialize_coordinator(&coordinator)?;
@@ -1112,7 +1113,7 @@ mod test {
     }
 
     fn coordinator_contributor_add_contribution_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
@@ -1162,7 +1163,7 @@ mod test {
     }
 
     fn coordinator_verifier_verify_contribution_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
@@ -1218,7 +1219,7 @@ mod test {
     // The verifier instances are run on a separate thread to simulate an environment where
     // verification and contribution happen concurrently.
     fn coordinator_concurrent_contribution_verification_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         // take_hook() returns the default hook in case when a custom one is not set
         let orig_hook = panic::take_hook();
@@ -1319,7 +1320,7 @@ mod test {
     }
 
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
@@ -1419,7 +1420,7 @@ mod test {
     }
 
     fn coordinator_next_round_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
@@ -1511,7 +1512,7 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_initialization_matches_json() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone()).unwrap();
         initialize_coordinator(&coordinator).unwrap();
@@ -1559,15 +1560,12 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_aggregation() {
-        test_logger();
         coordinator_aggregation_test().unwrap();
     }
 
     #[test]
     #[serial]
     fn test_coordinator_next_round() {
-        test_logger();
-
         coordinator_next_round_test().unwrap();
     }
 
@@ -1575,7 +1573,7 @@ mod test {
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let environment = Environment::Test(Parameters::AleoTestChunks(4096));
 

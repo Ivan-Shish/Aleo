@@ -98,6 +98,7 @@ impl Storage for Disk {
         let file = OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
 
         // Set the file to the given size.
+        trace!("Setting {} to {} bytes", self.to_path(&locator)?, size);
         file.set_len(size)?;
 
         // Add the file to the locators.
@@ -416,7 +417,7 @@ impl StorageObject for Disk {
         }
 
         // Acquire the file read lock.
-        let mut writer = self
+        let writer = self
             .locators
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
@@ -431,18 +432,18 @@ impl StorageObject for Disk {
                 // Check that the round size is correct.
                 let expected = Object::round_file_size(&self.environment, *round_height);
                 let found = self.size(&locator)?;
-                debug!("Round {} filesize is {}", round_height, found);
+                debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::RoundFileSizeMismatch.into());
                 }
                 Ok(writer)
             }
-            Locator::ContributionFile(round_height, chunk_id, _, verified) => {
+            Locator::ContributionFile(_, chunk_id, _, verified) => {
                 // Check that the contribution size is correct.
                 let expected = Object::contribution_file_size(&self.environment, *chunk_id, *verified);
                 let found = self.size(&locator)?;
-                debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
+                debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
@@ -470,23 +471,20 @@ impl DiskManifest {
             std::fs::create_dir_all(base_directory).expect("unable to create the base directory");
         }
 
-        // Create the storage manifest file path.
-        let manifest_file = format!("{}/manifest.json", base_directory);
-
         // Create the locator path.
         let locator_path = DiskLocator {
             base: base_directory.to_string(),
         };
 
         // Check that the storage file exists. If not, create a new storage file.
-        let (locators, file) = match !Path::new(&manifest_file).exists() {
+        let (locators, file) = match !Path::new(&locator_path.manifest()).exists() {
             // Create and store a new instance of `InMemory`.
             true => {
                 let mut file = OpenOptions::new()
                     .read(true)
                     .write(true)
                     .create_new(true)
-                    .open(&manifest_file)?;
+                    .open(&locator_path.manifest())?;
 
                 // Set the file length.
                 let locators: HashSet<Locator> = HashSet::default();
@@ -496,10 +494,16 @@ impl DiskManifest {
                 // Write the buffer to the file.
                 file.write_all(&buffer)?;
 
+                // Sync the data to disk.
+                file.sync_all()?;
+
                 (locators, file)
             }
             false => {
-                let file = OpenOptions::new().read(true).write(true).open(&manifest_file)?;
+                let file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&locator_path.manifest())?;
 
                 // Convert all paths to locators.
                 let paths: HashSet<String> = serde_json::from_reader(BufReader::new(&file))?;
@@ -528,12 +532,26 @@ impl DiskManifest {
             .map(|locator| self.locator_path.to_path(&locator).unwrap())
             .collect();
 
-        // Set the file length.
+        // Convert the data to a buffer.
         let buffer = serde_json::to_vec_pretty(&paths)?;
-        self.file.set_len(buffer.len() as u64)?;
 
-        // Write the buffer to the file.
-        self.file.write_all(&buffer)?;
+        {
+            // Empty the current file.
+            self.file.set_len(0)?;
+
+            // Sync the data to disk.
+            self.file.sync_all()?;
+        }
+
+        {
+            self.file.set_len(buffer.len() as u64)?;
+
+            // Write the buffer to the file.
+            self.file.write_all(&buffer)?;
+
+            // Sync the data to disk.
+            self.file.sync_all()?;
+        }
 
         Ok(())
     }
@@ -677,6 +695,11 @@ impl StorageLocator for DiskLocator {
 }
 
 impl DiskLocator {
+    /// Returns the storage manifest file path.
+    fn manifest(&self) -> String {
+        format!("{}/manifest.json", self.base)
+    }
+
     /// Returns the round directory for a given round height from the coordinator.
     fn round_directory(&self, round_height: u64) -> String {
         format!("{}/round_{}", self.base, round_height)
@@ -722,274 +745,3 @@ impl DiskLocator {
         }
     }
 }
-
-// impl LocatorPath for DiskIndex {
-//     #[inline]
-//     fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError> {
-//         self.locators.read().unwrap().to_path(locator)
-//     }
-//
-//     #[inline]
-//     fn to_locator(&self, path: &String) -> Result<Locator, CoordinatorError> {
-//         self.locators.read().unwrap().to_locator(path)
-//     }
-// }
-
-// impl Serialize for Locator {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_str(&match self {
-//             Locator::RoundHeight => "rh://".to_string(),
-//             Locator::Round(round_height) => format!("r://{}", round_height),
-//             Locator::RoundFile(round_height) => format!("rf://{}", round_height),
-//             Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => format!(
-//                 "cf://{}.{}.{}.{}",
-//                 round_height, chunk_id, contribution_id, *verified as u64
-//             ),
-//             // Locator::Ping => "ping://".to_string(),
-//             _ => return Err(ser::Error::custom("invalid serialization key")),
-//         })
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for Locator {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = String::deserialize(deserializer)?;
-//         let (variant, data) = match s.splitn(2, "://").collect_tuple() {
-//             Some((variant, data)) => (variant, data),
-//             None => return Err(de::Error::custom("failed to parse serialization key")),
-//         };
-//         match (variant, data) {
-//             ("rh", "") => Ok(Locator::RoundHeight),
-//             ("r", value) => Ok(Locator::Round(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("rf", value) => Ok(Locator::RoundFile(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("cf", value) => match s.splitn(4, ".").map(u64::from_str).collect_tuple() {
-//                 Some((round_height, chunk_id, contribution_id, verified)) => Ok(Locator::ContributionFile(
-//                     round_height.map_err(de::Error::custom)?,
-//                     chunk_id.map_err(de::Error::custom)?,
-//                     contribution_id.map_err(de::Error::custom)?,
-//                     verified.map_err(de::Error::custom)? as bool,
-//                 )),
-//                 None => Err(de::Error::custom("failed to parse serialization key")),
-//             },
-//             ("ping", "") => Ok(Locator::Ping),
-//             _ => Err(de::Error::custom("invalid deserialization key")),
-//         }
-//     }
-// }
-
-// impl CeremonyData for Disk {
-// /// Initializes the round directory for a given round height.
-// fn round_directory_init(&mut self, round_height: u64) {
-//     // If the path does not exist, attempt to initialize the directory path.
-//     let path = self.round_directory(round_height);
-//     if !Path::new(&path).exists() {
-//         std::fs::create_dir_all(&path).expect("unable to create the round directory");
-//     }
-// }
-
-// /// Returns `true` if the round directory for a given round height exists.
-// /// Otherwise, returns `false`.
-// fn round_directory_exists(&self, round_height: u64) -> bool {
-//     let path = self.round_directory(round_height);
-//     Path::new(&path).exists()
-// }
-
-// /// Resets the round directory for a given round height.
-// fn round_directory_reset(&mut self, environment: &Environment, round_height: u64) {
-//     // If this is a test  attempt to clear it for the coordinator.
-//     let directory = self.round_directory(round_height);
-//     let path = Path::new(&directory);
-//     match environment {
-//         Environment::Test(_) => {
-//             if path.exists() {
-//                 warn!("Coordinator is clearing {:?}", &path);
-//                 std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-//                 warn!("Coordinator cleared {:?}", &path);
-//             }
-//         }
-//         Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
-//         Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
-//     }
-// }
-
-// /// Resets the entire round directory.
-// fn round_directory_reset_all(&mut self, environment: &Environment) {
-//     // If this is a test attempt to clear it for the coordinator.
-//     let path = Path::new(&self.base_directory);
-//     match environment {
-//         Environment::Test(_) => {
-//             if path.exists() {
-//                 warn!("Coordinator is clearing {:?}", &path);
-//                 std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-//                 warn!("Coordinator cleared {:?}", &path);
-//             }
-//         }
-//         Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
-//         Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
-//     }
-// }
-
-// /// Returns `true` if the chunk directory for a given round height and chunk ID exists.
-// /// Otherwise, returns `false`.
-// fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
-//     let path = self.chunk_directory(round_height, chunk_id);
-//     Path::new(&path).exists()
-// }
-
-// /// Initializes the contribution locator file for a given round, chunk ID, and
-// /// contribution ID from the coordinator.
-// fn contribution_locator_init(&mut self, round_height: u64, chunk_id: u64, contribution_id: u64, _verified: bool) {
-//     // If the path does not exist, attempt to initialize the file path.
-//     self.chunk_directory_init(round_height, chunk_id);
-//
-//     let path = self.contribution_locator(round_height, chunk_id, contribution_id, false);
-//     let directory = Path::new(&path).parent().expect("unable to create parent directory");
-//     if !directory.exists() {
-//         std::fs::create_dir_all(&path).expect("unable to create the contribution directory");
-//     }
-// }
-
-// /// Returns `true` if the contribution locator for a given round height, chunk ID,
-// /// and contribution ID exists. Otherwise, returns `false`.
-// fn contribution_locator_exists(
-//     &self,
-//     round_height: u64,
-//     chunk_id: u64,
-//     contribution_id: u64,
-//     verified: bool,
-// ) -> bool {
-//     let path = self.contribution_locator(round_height, chunk_id, contribution_id, verified);
-//     Path::new(&path).exists()
-// }
-
-// /// Returns the round locator for a given round from the coordinator.
-// fn round_locator(&self, round_height: u64) -> String {
-//     // Fetch the transcript directory path.
-//     let path = self.round_directory(round_height);
-//
-//     // Format the round locator located at `{round_directory}/output`.
-//     format!("{}/output", path)
-// }
-
-// /// Returns `true` if the round locator for a given round height exists.
-// /// Otherwise, returns `false`.
-// fn round_locator_exists(&self, round_height: u64) -> bool {
-//     let path = self.round_locator(round_height);
-//     Path::new(&path).exists()
-// }
-// }
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        storage::{Disk, Storage},
-        testing::prelude::*,
-    };
-
-    use std::{collections::HashMap, fs::OpenOptions, io::BufReader, path::Path};
-
-    fn load_test() -> anyhow::Result<()> {
-        let environment = &TEST_ENVIRONMENT_3;
-
-        // Create a new instance.
-        let _storage = Disk::load(&environment)?;
-
-        // Check the base directory exists.
-        let base_directory = environment.local_base_directory();
-        assert!(Path::new(base_directory).exists());
-
-        // Check the storage file path exists.
-        let storage_file = format!("{}/storage.json", base_directory);
-        assert!(Path::new(&storage_file).exists());
-
-        // Open the file in read-only mode with buffer.
-        let reader = BufReader::new(
-            OpenOptions::new()
-                .read(true)
-                .open(&storage_file)
-                .expect("unable to open the storage file"),
-        );
-
-        // Read the JSON contents of the file.
-        let in_memory: HashMap<String, String> = serde_json::from_reader(reader)?;
-
-        // Check that the storage key exists.
-        assert!(in_memory.contains_key("storage"));
-
-        Ok(())
-    }
-
-    #[test]
-    #[serial]
-    #[ignore]
-    fn test_load() {
-        clear_test_transcript();
-        load_test().unwrap();
-    }
-}
-
-// Ok(match locator {
-//     Locator::RoundHeight => "rh://".to_string(),
-//     Locator::RoundState(round_height) => format!("r://{}", round_height),
-//     Locator::RoundFile(round_height) => format!("rf://{}", round_height),
-//     Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => format!(
-//         "cf://{}.{}.{}.{}",
-//         round_height, chunk_id, contribution_id, *verified as u64
-//     ),
-//     _ => return Err(CoordinatorError::LocatorSerializationFailed),
-// })
-// Ok(serde_json::to_string(locator)?)
-
-// impl Serialize for DiskLocators {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // serializer.serialize_str(&match self {
-//         //     Locator::RoundHeight => "rh://".to_string(),
-//         //     Locator::Round(round_height) => format!("r://{}", round_height),
-//         //     Locator::RoundFile(round_height) => format!("rf://{}", round_height),
-//         //     Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => format!(
-//         //         "cf://{}.{}.{}.{}",
-//         //         round_height, chunk_id, contribution_id, *verified as u64
-//         //     ),
-//         //     // Locator::Ping => "ping://".to_string(),
-//         //     _ => return Err(ser::Error::custom("invalid serialization key")),
-//         // })
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for DiskLocators {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = String::deserialize(deserializer)?;
-//         let (variant, data) = match s.splitn(2, "://").collect_tuple() {
-//             Some((variant, data)) => (variant, data),
-//             None => return Err(de::Error::custom("failed to parse serialization key")),
-//         };
-//         match (variant, data) {
-//             ("rh", "") => Ok(Locator::RoundHeight),
-//             ("r", value) => Ok(Locator::Round(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("rf", value) => Ok(Locator::RoundFile(u64::from_str(value).map_err(de::Error::custom)?)),
-//             ("cf", value) => match s.splitn(4, ".").map(u64::from_str).collect_tuple() {
-//                 Some((round_height, chunk_id, contribution_id, verified)) => Ok(Locator::ContributionFile(
-//                     round_height.map_err(de::Error::custom)?,
-//                     chunk_id.map_err(de::Error::custom)?,
-//                     contribution_id.map_err(de::Error::custom)?,
-//                     verified.map_err(de::Error::custom)? as bool,
-//                 )),
-//                 None => Err(de::Error::custom("failed to parse serialization key")),
-//             },
-//             ("ping", "") => Ok(Locator::Ping),
-//             _ => Err(de::Error::custom("invalid deserialization key")),
-//         }
-//     }
-// }

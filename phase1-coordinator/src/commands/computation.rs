@@ -7,14 +7,11 @@ use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, UseCompression};
 
 use rand::{thread_rng, Rng};
-use std::{
-    io::{Read, Write},
-    panic,
-    time::Instant,
-};
-use tracing::{debug, info, trace};
+use std::{io::Write, time::Instant};
+use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
+#[allow(dead_code)]
 pub(crate) struct Computation;
 
 impl Computation {
@@ -23,6 +20,7 @@ impl Computation {
     ///
     /// Executes the round computation on a given chunk ID and contribution ID.
     ///
+    #[allow(dead_code)]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageWrite,
@@ -65,16 +63,15 @@ impl Computation {
                 &mut thread_rng(),
             ),
         } {
+            error!("Computation failed with {}", error);
             return Err(CoordinatorError::ComputationFailed.into());
         }
 
         // Load a contribution response reader.
-        let mut reader = storage.reader(next_locator)?;
+        let reader = storage.reader(next_locator)?;
         let contribution_hash = calculate_hash(reader.as_ref());
-
-        debug!("Done! Your contribution has been written. The BLAKE2b hash of response file is:\n");
-        Self::log_hash(&contribution_hash);
-        debug!("Thank you for your participation, much appreciated!");
+        debug!("Response hash is {}", pretty_hash!(&contribution_hash));
+        debug!("Thank you for your contribution!");
 
         let elapsed = Instant::now().duration_since(start);
         info!(
@@ -84,10 +81,11 @@ impl Computation {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn contribute<T: Engine + Sync>(
         environment: &Environment,
-        reader: &[u8],
-        mut writer: &mut [u8],
+        challenge_reader: &[u8],
+        mut response_writer: &mut [u8],
         parameters: &Phase1Parameters<T>,
         mut rng: impl Rng,
     ) -> Result<(), CoordinatorError> {
@@ -96,67 +94,45 @@ impl Computation {
         let compressed_outputs = environment.compressed_outputs();
         let check_input_for_correctness = environment.check_input_for_correctness();
 
+        // Check that the challenge hash is not compressed.
+        if UseCompression::Yes == compressed_inputs {
+            return Err(CoordinatorError::CompressedContributionHashingUnsupported);
+        }
+
         trace!("Calculating previous contribution hash and writing it to the response");
-        assert!(UseCompression::No == compressed_inputs, "Cannot hash a compressed file");
-        let current_accumulator_hash = calculate_hash(reader);
-        {
-            debug!("`challenge` file contains decompressed points and has a hash:");
-            Self::log_hash(&current_accumulator_hash);
-            (&mut writer[0..])
-                .write_all(current_accumulator_hash.as_slice())
-                .expect("unable to write a challenge hash to mmap");
-            writer.flush().expect("unable to write hash to response file");
-        }
-        {
-            let mut challenge_hash = [0; 64];
-            let mut memory_slice = reader.get(0..64).expect("must read point data from file");
-            memory_slice
-                .read_exact(&mut challenge_hash)
-                .expect("couldn't read hash of challenge file from response file");
-            debug!(
-                "`challenge` file claims (!!! Must not be blindly trusted) it was based on the original contribution with a hash:"
-            );
-            Self::log_hash(&challenge_hash);
-        }
+        let challenge_hash = calculate_hash(challenge_reader);
+        debug!("Challenge hash is {}", pretty_hash!(&challenge_hash));
+        (&mut response_writer[0..]).write_all(challenge_hash.as_slice())?;
+        response_writer.flush()?;
+
+        let previous_hash = &challenge_reader
+            .get(0..64)
+            .ok_or(CoordinatorError::StorageReaderFailed)?;
+        debug!("Challenge file claims previous hash is {}", pretty_hash!(previous_hash));
+        debug!("Please double check this yourself! Do not trust it blindly!");
 
         // Construct our keypair using the RNG we created above.
         let (public_key, private_key) =
-            Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
+            Phase1::key_generation(&mut rng, challenge_hash.as_ref()).expect("could not generate keypair");
 
         // Perform the transformation
         trace!("Computing and writing your contribution, this could take a while");
         Phase1::computation(
-            reader,
-            writer,
+            challenge_reader,
+            response_writer,
             compressed_inputs,
             compressed_outputs,
             check_input_for_correctness,
             &private_key,
             &parameters,
         )?;
-        writer.flush()?;
+        response_writer.flush()?;
         trace!("Finishing writing your contribution to response file");
 
         // Write the public key.
-        public_key.write(writer, compressed_outputs, &parameters)?;
+        public_key.write(response_writer, compressed_outputs, &parameters)?;
 
         Ok(())
-    }
-
-    /// Logs the hash.
-    fn log_hash(hash: &[u8]) {
-        let mut output = format!("\n\n");
-        for line in hash.chunks(16) {
-            output += "\t";
-            for section in line.chunks(4) {
-                for b in section {
-                    output += &format!("{:02x}", b);
-                }
-                output += " ";
-            }
-            output += "\n";
-        }
-        debug!("{}", output);
     }
 }
 
@@ -173,14 +149,14 @@ mod tests {
     #[test]
     #[serial]
     fn test_computation_run() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         // Define test parameters.
         let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
         // Define test storage.
-        let test_storage = test_storage();
+        let test_storage = test_storage(&TEST_ENVIRONMENT_3);
         let mut storage = test_storage.write().unwrap();
 
         // Generate a new challenge for the given parameters.

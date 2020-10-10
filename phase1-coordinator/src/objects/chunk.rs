@@ -316,10 +316,8 @@ impl Chunk {
     #[inline]
     pub(crate) fn add_contribution(
         &mut self,
-        contribution_id: u64,
         participant: &Participant,
         contributed_locator: String,
-        expected_contributions: u64,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -329,11 +327,6 @@ impl Chunk {
         // Check that this chunk is locked by the contributor before attempting to add the contribution.
         if !self.is_locked_by(&participant) {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
-        }
-
-        // Check that the contribution ID is one above the current contribution ID.
-        if !self.is_next_contribution_id(contribution_id, expected_contributions) {
-            return Err(CoordinatorError::ContributionIdMismatch);
         }
 
         // Add the contribution to this chunk.
