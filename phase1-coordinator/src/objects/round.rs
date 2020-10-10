@@ -153,6 +153,35 @@ impl Round {
         self.verifier_ids.len() as u64
     }
 
+    /// Returns a reference to a list of contributors.
+    #[inline]
+    pub fn contributors(&self) -> &Vec<Participant> {
+        &self.contributor_ids
+    }
+
+    /// Returns a reference to a list of verifiers.
+    #[inline]
+    pub fn verifiers(&self) -> &Vec<Participant> {
+        &self.contributor_ids
+    }
+
+    /// Returns a reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
+        // Fetch the chunk with the given chunk ID.
+        let chunk = match self.chunks.get(chunk_id as usize) {
+            Some(chunk) => chunk,
+            _ => return Err(CoordinatorError::ChunkMissing),
+        };
+
+        // Check the ID in the chunk matches the given chunk ID.
+        match chunk.chunk_id() == chunk_id {
+            true => Ok(chunk),
+            false => Err(CoordinatorError::ChunkIdMismatch),
+        }
+    }
+
     /// Returns the expected number of contributions.
     pub fn expected_number_of_contributions(&self) -> u64 {
         // The expected number of contributions is one more than
@@ -222,7 +251,7 @@ impl Round {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = self.get_chunk(chunk_id)?;
+        let chunk = self.chunk(chunk_id)?;
         // Fetch the current contribution ID.
         let current_contribution_id = chunk.current_contribution_id();
 
@@ -274,7 +303,7 @@ impl Round {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = self.get_chunk(chunk_id)?;
+        let chunk = self.chunk(chunk_id)?;
         // Fetch the expected number of contributions for the current round.
         let expected_num_contributions = self.expected_number_of_contributions();
         // Fetch the next contribution ID.
@@ -303,37 +332,13 @@ impl Round {
         Ok(next_contribution_locator)
     }
 
-    /// Returns a reference to a list of verifiers.
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn get_verifiers(&self) -> &Vec<Participant> {
-        &self.verifier_ids
-    }
-
     /// Returns `true` if the chunk corresponding to the given chunk ID is
     /// locked by the given participant. Otherwise, returns `false`.
     #[inline]
     pub(crate) fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
-        match self.get_chunk(chunk_id) {
+        match self.chunk(chunk_id) {
             Ok(chunk) => chunk.is_locked_by(participant),
             _ => false,
-        }
-    }
-
-    /// Returns a reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub(crate) fn get_chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
-        // Fetch the chunk with the given chunk ID.
-        let chunk = match self.chunks.get(chunk_id as usize) {
-            Some(chunk) => chunk,
-            _ => return Err(CoordinatorError::ChunkMissing),
-        };
-
-        // Check the ID in the chunk matches the given chunk ID.
-        match chunk.chunk_id() == chunk_id {
-            true => Ok(chunk),
-            false => Err(CoordinatorError::ChunkIdMismatch),
         }
     }
 
@@ -430,7 +435,7 @@ impl Round {
         };
 
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = self.get_chunk(chunk_id)?;
+        let chunk = self.chunk(chunk_id)?;
         // Fetch the next contribution ID.
         let current_contribution = chunk.current_contribution()?;
 
@@ -577,7 +582,7 @@ mod tests {
         initialize_test_environment();
 
         let expected = test_round_0_json().unwrap().chunks[0].clone();
-        let candidate = test_round_0().unwrap().get_chunk(0).unwrap().clone();
+        let candidate = test_round_0().unwrap().chunk(0).unwrap().clone();
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }

@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
-    io::{BufReader, Write},
+    io::Write,
     path::Path,
     str::FromStr,
     sync::{Arc, RwLock},
@@ -498,10 +498,6 @@ impl DiskManifest {
 
                 // Convert all paths to locators.
                 let paths: Vec<String> = serde_json::from_str(&serialized)?;
-                for path in &paths {
-                    println!("{:?}", resolver.to_locator(&path));
-                }
-
                 let locators: HashSet<Locator> = paths
                     .par_iter()
                     .map(|path| resolver.to_locator(&path).unwrap())
