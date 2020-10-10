@@ -1,5 +1,7 @@
+#[cfg(test)]
+use crate::commands::Computation;
 use crate::{
-    commands::{Aggregation, Computation, Initialization, Verification},
+    commands::{Aggregation, Initialization, Verification},
     environment::Environment,
     objects::{Participant, Round},
     storage::{Locator, Object, Storage},

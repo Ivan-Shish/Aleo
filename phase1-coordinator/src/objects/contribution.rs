@@ -44,6 +44,7 @@ impl Contribution {
 
     /// Returns a reference to the verifier, if it exists.
     /// Otherwise returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn get_verifier(&self) -> &Option<Participant> {
         &self.verifier_id
@@ -51,6 +52,7 @@ impl Contribution {
 
     /// Returns a reference to the verifier locator, if it exists.
     /// Otherwise returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn get_verified_location(&self) -> &Option<String> {
         &self.verified_locator

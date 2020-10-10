@@ -55,6 +55,7 @@ impl Chunk {
 
     /// Returns the lock holder of this chunk, if the chunk is locked.
     /// Otherwise, returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn lock_holder(&self) -> &Option<Participant> {
         &self.lock_holder
@@ -67,6 +68,7 @@ impl Chunk {
     }
 
     /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
+    #[allow(dead_code)]
     #[inline]
     pub fn is_unlocked(&self) -> bool {
         !self.is_locked()

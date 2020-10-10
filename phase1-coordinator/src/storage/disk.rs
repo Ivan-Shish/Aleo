@@ -51,10 +51,10 @@ impl Storage for Disk {
 
         // Load the locators from the manifest.
         for locator in locators_to_load.iter() {
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&storage.to_path(locator)?)?;
+            let path = storage.to_path(locator)?;
+            trace!("Loading {}", path);
+
+            let file = OpenOptions::new().read(true).write(true).open(&path)?;
             storage.locators.insert(
                 locator.clone(),
                 (
@@ -74,6 +74,7 @@ impl Storage for Disk {
     }
 
     /// Initializes the location corresponding to the given locator.
+    #[inline]
     fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError> {
         trace!("Initializing {}", self.to_path(&locator)?);
 
@@ -130,6 +131,7 @@ impl Storage for Disk {
     }
 
     /// Returns a copy of an object at the given locator in storage, if it exists.
+    #[inline]
     fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError> {
         trace!("Fetching {}", self.to_path(locator)?);
 
@@ -364,6 +366,7 @@ impl StorageLocator for Disk {
 
 impl StorageObject for Disk {
     /// Returns an object reader for the given locator.
+    #[inline]
     fn reader<'a>(&self, locator: &Locator) -> Result<ObjectReader, CoordinatorError> {
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
@@ -409,6 +412,7 @@ impl StorageObject for Disk {
     }
 
     /// Returns an object writer for the given locator.
+    #[inline]
     fn writer(&self, locator: &Locator) -> Result<ObjectWriter, CoordinatorError> {
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
@@ -457,8 +461,7 @@ impl StorageObject for Disk {
 #[derive(Debug)]
 struct DiskManifest {
     locators: HashSet<Locator>,
-    file: File,
-    locator_path: DiskLocator,
+    resolver: DiskLocator,
 }
 
 impl DiskManifest {
@@ -471,87 +474,63 @@ impl DiskManifest {
             std::fs::create_dir_all(base_directory).expect("unable to create the base directory");
         }
 
-        // Create the locator path.
-        let locator_path = DiskLocator {
+        // Create the resolver.
+        let resolver = DiskLocator {
             base: base_directory.to_string(),
         };
 
         // Check that the storage file exists. If not, create a new storage file.
-        let (locators, file) = match !Path::new(&locator_path.manifest()).exists() {
-            // Create and store a new instance of `InMemory`.
+        let locators = match !Path::new(&resolver.manifest()).exists() {
+            // Create and store a new instance of `DiskManifest`.
             true => {
-                let mut file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create_new(true)
-                    .open(&locator_path.manifest())?;
+                // Serialize the paths.
+                let paths: Vec<String> = vec![];
+                let serialized = serde_json::to_string_pretty(&paths)?;
 
-                // Set the file length.
-                let locators: HashSet<Locator> = HashSet::default();
-                let buffer = serde_json::to_vec_pretty(&locators)?;
-                file.set_len(buffer.len() as u64)?;
+                // Write the serialized paths to the manifest.
+                fs::write(Path::new(&resolver.manifest()), serialized)?;
 
-                // Write the buffer to the file.
-                file.write_all(&buffer)?;
-
-                // Sync the data to disk.
-                file.sync_all()?;
-
-                (locators, file)
+                HashSet::default()
             }
             false => {
-                let file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(&locator_path.manifest())?;
+                // Read the serialized paths from the manifest.
+                let serialized = fs::read_to_string(&Path::new(&resolver.manifest()))?;
 
                 // Convert all paths to locators.
-                let paths: HashSet<String> = serde_json::from_reader(BufReader::new(&file))?;
+                let paths: Vec<String> = serde_json::from_str(&serialized)?;
+                for path in &paths {
+                    println!("{:?}", resolver.to_locator(&path));
+                }
+
                 let locators: HashSet<Locator> = paths
                     .par_iter()
-                    .map(|path| locator_path.to_locator(&path).unwrap())
+                    .map(|path| resolver.to_locator(&path).unwrap())
                     .collect();
 
-                (locators, file)
+                locators
             }
         };
 
-        Ok(Self {
-            locators,
-            file,
-            locator_path,
-        })
+        Ok(Self { locators, resolver })
     }
 
     #[inline]
     fn save(&mut self) -> Result<(), CoordinatorError> {
         // Convert all locators to paths.
-        let paths: HashSet<String> = self
+        let mut paths: Vec<String> = self
             .locators
             .par_iter()
-            .map(|locator| self.locator_path.to_path(&locator).unwrap())
+            .map(|locator| self.resolver.to_path(&locator).unwrap())
             .collect();
 
-        // Convert the data to a buffer.
-        let buffer = serde_json::to_vec_pretty(&paths)?;
+        // Sort the list
+        paths.par_sort();
 
-        {
-            // Empty the current file.
-            self.file.set_len(0)?;
+        // Serialize the paths.
+        let serialized = serde_json::to_string_pretty(&paths)?;
 
-            // Sync the data to disk.
-            self.file.sync_all()?;
-        }
-
-        {
-            self.file.set_len(buffer.len() as u64)?;
-
-            // Write the buffer to the file.
-            self.file.write_all(&buffer)?;
-
-            // Sync the data to disk.
-            self.file.sync_all()?;
-        }
+        // Write the serialized paths to the manifest.
+        fs::write(Path::new(&self.resolver.manifest()), serialized)?;
 
         Ok(())
     }
@@ -596,6 +575,7 @@ impl StorageLocator for DiskLocator {
 
         // Check that the path matches the expected base.
         if !path.starts_with(base) {
+            error!("{:?} does not start with {:?}", path, base);
             return Err(CoordinatorError::StorageLocatorFormatIncorrect);
         }
 
@@ -649,14 +629,12 @@ impl StorageLocator for DiskLocator {
 
                             // Check if it matches the chunk directory.
                             if chunk == &format!("chunk_{}", chunk_id) {
-                                let path = Path::new(path);
-
                                 /* In chunk directory */
 
                                 // Check if it matches the contribution file.
                                 if path.starts_with("contribution_") {
-                                    let (id, extension) = chunk
-                                        .strip_prefix("chunk_")
+                                    let (id, extension) = path
+                                        .strip_prefix("contribution_")
                                         .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?
                                         .splitn(2, '.')
                                         .collect_tuple()
@@ -696,16 +674,19 @@ impl StorageLocator for DiskLocator {
 
 impl DiskLocator {
     /// Returns the storage manifest file path.
+    #[inline]
     fn manifest(&self) -> String {
         format!("{}/manifest.json", self.base)
     }
 
     /// Returns the round directory for a given round height from the coordinator.
+    #[inline]
     fn round_directory(&self, round_height: u64) -> String {
         format!("{}/round_{}", self.base, round_height)
     }
 
     /// Returns the chunk directory for a given round height and chunk ID from the coordinator.
+    #[inline]
     fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
         // Fetch the transcript directory path.
         let path = self.round_directory(round_height);
@@ -715,6 +696,7 @@ impl DiskLocator {
     }
 
     /// Initializes the chunk directory for a given  round height, and chunk ID.
+    #[inline]
     fn chunk_directory_init(&self, round_height: u64, chunk_id: u64) {
         // If the round directory does not exist, attempt to initialize the directory path.
         let path = self.round_directory(round_height);
@@ -731,6 +713,7 @@ impl DiskLocator {
 
     /// Returns the contribution locator for a given round, chunk ID, and
     /// contribution ID from the coordinator.
+    #[inline]
     fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64, verified: bool) -> String {
         // Fetch the chunk directory path.
         let path = self.chunk_directory(round_height, chunk_id);

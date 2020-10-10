@@ -304,6 +304,7 @@ impl Round {
     }
 
     /// Returns a reference to a list of verifiers.
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn get_verifiers(&self) -> &Vec<Participant> {
         &self.verifier_ids

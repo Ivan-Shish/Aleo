@@ -120,6 +120,7 @@ where
 }
 
 /// Deserializes a contributor from a string.
+#[allow(dead_code)]
 pub fn deserialize_contributor_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
 where
     D: Deserializer<'de>,
@@ -179,6 +180,7 @@ where
 }
 
 /// Deserializes a verifier from a string.
+#[allow(dead_code)]
 pub fn deserialize_verifier_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
 where
     D: Deserializer<'de>,
