@@ -171,6 +171,30 @@ impl Environment {
     }
 
     ///
+    /// Returns the maximum number of contributors permitted to
+    /// participate in a round.
+    ///
+    pub fn number_of_contributors_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the maximum number of verifiers permitted to
+    /// participate in a round.
+    ///
+    pub fn number_of_verifiers_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
     /// Returns the number of chunks a contributor is
     /// authorized to lock in tandem at any point during a round.
     ///
@@ -187,6 +211,42 @@ impl Environment {
     /// authorized to lock in tandem at any point during a round.
     ///
     pub fn verifier_lock_chunk_limit(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of minutes the coordinator tolerates
+    /// before assuming a contributor has disconnected.
+    ///
+    pub fn contributor_timeout_in_minutes(&self) -> u16 {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of minutes the coordinator tolerates
+    /// before assuming a verifier has disconnected.
+    ///
+    pub fn verifier_timeout_in_minutes(&self) -> u16 {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of times the coordinator tolerates
+    /// a dropped participant before banning them from future rounds.
+    ///
+    pub fn participant_ban_threshold(&self) -> u16 {
         match self {
             Environment::Test(_) => 5,
             Environment::Development(_) => 5,

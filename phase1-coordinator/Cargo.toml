@@ -37,6 +37,7 @@ serde-aux = { version = "0.6" }
 serde-diff = { version = "0.3" }
 serde_json = { version = "1.0" }
 serial_test = { version = "0.5", optional = true }
+tokio = { version = "0.2", features = ["full"] }
 toml = { version = "0.5.6" }
 tracing = { version = "0.1.19" }
 tracing-subscriber = { version = "0.2" }
