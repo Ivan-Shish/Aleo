@@ -153,7 +153,7 @@ mod tests {
         for chunk_id in 0..number_of_chunks {
             {
                 // Acquire the lock as contributor.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor.clone());
+                let try_lock = coordinator.try_lock(chunk_id, &contributor.clone());
                 if try_lock.is_err() {
                     println!(
                         "Failed to acquire lock as contributor {:?}\n{}",
@@ -187,7 +187,7 @@ mod tests {
             }
             {
                 // Acquire the lock as the verifier.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier.clone());
+                let try_lock = coordinator.try_lock(chunk_id, &verifier.clone());
                 if try_lock.is_err() {
                     println!(
                         "Failed to acquire lock as verifier {:?}\n{}",

@@ -77,8 +77,9 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
     Ok(server)
 }
 
+#[tokio::main]
 #[inline]
-pub fn main() -> anyhow::Result<()> {
+pub async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "silent"))]
     init_logger();
 

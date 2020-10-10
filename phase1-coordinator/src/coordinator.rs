@@ -9,7 +9,9 @@ use crate::{
 use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use std::{
+    collections::{HashMap, HashSet, LinkedList},
     fmt,
     sync::{Arc, RwLock},
 };
@@ -59,6 +61,20 @@ pub enum CoordinatorError {
     LocatorSerializationFailed,
     NumberOfChunksInvalid,
     NumberOfContributionsDiffer,
+    ParticipantAlreadyAdded,
+    ParticipantAlreadyDropped,
+    ParticipantAlreadyFinished,
+    ParticipantAlreadyStarted,
+    ParticipantIsBanned,
+    ParticipantHasNotStarted,
+    ParticipantHasNoRemainingChunks,
+    ParticipantHasRemainingChunks,
+    ParticipantNotFound,
+    ParticipantRoundHeightMismatch,
+    ParticipantRoundHeightMissing,
+    ParticipantStillHasLocks,
+    ParticipantUnauthorized,
+    ParticipantWasDropped,
     Phase1Setup(setup_utils::Error),
     RoundAggregationFailed,
     RoundAlreadyInitialized,
@@ -143,10 +159,489 @@ impl From<CoordinatorError> for anyhow::Error {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ParticipantInfo {
+    /// The ID of the participant.
+    id: Participant,
+    /// The timestamp of the first seen instance of this participant.
+    first_seen: DateTime<Utc>,
+    /// The timestamp of the last seen instance of this participant.
+    last_seen: DateTime<Utc>,
+    /// The timestamp when this participant started the round.
+    started_at: Option<DateTime<Utc>>,
+    /// The timestamp when this participant finished the round.
+    finished_at: Option<DateTime<Utc>>,
+    /// The timestamp when this participant was dropped from the round.
+    dropped_at: Option<DateTime<Utc>>,
+    /// The round height that this participant is contributing to.
+    round_height: Option<u64>,
+    /// The list of chunk IDs that this participant has remaining to compute.
+    remaining_chunks: Option<LinkedList<u64>>,
+    /// The number of locks held by this participant in the round.
+    number_of_locks_held: u64,
+}
+
+impl ParticipantInfo {
+    #[inline]
+    pub fn new(participant: Participant, round_height: u64) -> Self {
+        // Fetch the current time.
+        let now = Utc::now();
+        Self {
+            id: participant,
+            first_seen: now,
+            last_seen: now,
+            started_at: None,
+            finished_at: None,
+            dropped_at: None,
+            round_height: Some(round_height),
+            remaining_chunks: None,
+            number_of_locks_held: 0,
+        }
+    }
+
+    ///
+    /// Returns `true` if the participant is finished with the current round.
+    ///
+    #[inline]
+    pub fn is_finished(&self) -> bool {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return false;
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return false;
+        }
+
+        // Check that the participant has already finished the round.
+        if self.finished_at.is_none() {
+            return false;
+        }
+
+        // Check that the participant has no more remaining chunks.
+        if self.remaining_chunks.is_some() {
+            return false;
+        }
+
+        // Check that the participant has released all locks.
+        if self.number_of_locks_held > 0 {
+            return false;
+        }
+
+        true
+    }
+
+    ///
+    /// Assigns the participant to the given chunks for the current round,
+    /// and sets the start time as the current time.
+    ///
+    #[inline]
+    pub fn start(&mut self, round_height: u64, chunks: LinkedList<u64>) -> Result<(), CoordinatorError> {
+        // Check that the participant has not already started in the round.
+        if self.started_at.is_some() || self.dropped_at.is_some() || self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Check that the participant has a round height set.
+        if self.round_height.is_none() {
+            return Err(CoordinatorError::ParticipantRoundHeightMissing);
+        }
+
+        // Check that the participant has no remaining chunks.
+        if self.remaining_chunks.is_some() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the round height matches the one set in the participant info.
+        if self.round_height != Some(round_height) {
+            return Err(CoordinatorError::ParticipantRoundHeightMismatch);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them starting now.
+        self.last_seen = now;
+        self.started_at = Some(now);
+        self.remaining_chunks = Some(chunks);
+
+        Ok(())
+    }
+
+    ///
+    /// Returns the next chunk ID the participant should process,
+    /// in FIFO order when added to the linked list.
+    ///
+    #[inline]
+    pub fn next_chunk_id(&mut self) -> Result<u64, CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Fetch the next chunk ID in order as stored.
+        match &mut self.remaining_chunks {
+            Some(remaining) => {
+                // If the participant has no more remaining chunks, set the remaining chunks to `None`.
+                if remaining.is_empty() {
+                    self.remaining_chunks = None;
+                    return Err(CoordinatorError::ParticipantHasNoRemainingChunks);
+                }
+
+                match remaining.pop_front() {
+                    Some(chunk_id) => Ok(chunk_id),
+                    None => Err(CoordinatorError::ParticipantHasNoRemainingChunks),
+                }
+            }
+            None => Err(CoordinatorError::ParticipantHasNotStarted),
+        }
+    }
+
+    ///
+    /// Increments the number of locks held by this participant by 1.
+    ///
+    #[inline]
+    pub fn acquired_lock(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Increment the number of locks held by 1.
+        self.number_of_locks_held += 1;
+
+        Ok(())
+    }
+
+    ///
+    /// Decrements the number of locks held by this participant by 1.
+    ///
+    #[inline]
+    pub fn released_lock(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Decrement the number of locks held by 1.
+        self.number_of_locks_held -= 1;
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the participant to finished and saves the current time as the completed time.
+    ///
+    #[inline]
+    pub fn finish(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not already finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant has no more remaining chunks.
+        if self.remaining_chunks.is_some() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the participant has released all locks.
+        if self.number_of_locks_held > 0 {
+            return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them finishing now.
+        self.last_seen = now;
+        self.finished_at = Some(now);
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the participant to dropped and saves the current time as the dropped time.
+    ///
+    #[inline]
+    pub fn drop(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not already dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyDropped);
+        }
+
+        // Check that the participant has not already finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them dropping now.
+        self.dropped_at = Some(now);
+
+        Ok(())
+    }
+}
+
+pub struct CoordinatorState {
+    /// The parameters and settings of this coordinator.
+    environment: Environment,
+    /// The set of unique participants for the current round.
+    current: HashMap<Participant, ParticipantInfo>,
+    /// The set of unique participants for the next round.
+    next: HashMap<Participant, ParticipantInfo>,
+    /// The list of information about participants that finished in current and past rounds.
+    finished: Vec<ParticipantInfo>,
+    /// The list of information about participants that dropped in current and past rounds.
+    dropped: Vec<ParticipantInfo>,
+    /// The list of participants that are banned from all current and future rounds.
+    banned: Vec<Participant>,
+}
+
+impl CoordinatorState {
+    ///
+    /// Adds the given participant to the next round if they are permitted to participate.
+    /// On success, returns `true`. Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn add_participant_to_next_round(
+        &mut self,
+        participant: Participant,
+        round_height: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check if the participant is banned.
+        if self.banned.contains(&participant) {
+            return Err(CoordinatorError::ParticipantIsBanned);
+        }
+
+        // Check that the participant is not already added to the next round.
+        if self.next.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        // Check if there is room to add the participant to the next round.
+        match participant {
+            Participant::Contributor(_) => {
+                if self
+                    .next
+                    .par_iter()
+                    .filter(|(participant, _)| participant.is_contributor())
+                    .count()
+                    < self.environment.number_of_contributors_per_round()
+                {
+                    // Add the participant to the next round.
+                    self.next
+                        .insert(participant.clone(), ParticipantInfo::new(participant, round_height));
+
+                    return Ok(());
+                }
+            }
+            Participant::Verifier(_) => {
+                if self
+                    .next
+                    .par_iter()
+                    .filter(|(participant, _)| participant.is_verifier())
+                    .count()
+                    < self.environment.number_of_verifiers_per_round()
+                {
+                    // Add the participant to the next round.
+                    self.next
+                        .insert(participant.clone(), ParticipantInfo::new(participant, round_height));
+
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(CoordinatorError::ParticipantUnauthorized)
+    }
+
+    ///
+    /// Returns `true` if all participants in the current round have no more remaining chunks.
+    ///
+    #[inline]
+    pub fn is_current_round_finished(&self) -> bool {
+        self.current.is_empty()
+    }
+
+    ///
+    /// Adds the given participant to the next round if they are permitted to participate.
+    /// On success, returns `true`. Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn next_chunk_id(&mut self, participant: &Participant) -> Result<u64, CoordinatorError> {
+        match self.current.get_mut(participant) {
+            Some(mut participant) => participant.next_chunk_id(),
+            None => Err(CoordinatorError::ParticipantNotFound),
+        }
+    }
+
+    ///
+    /// Checks the current round for finished participants.
+    ///
+    #[inline]
+    pub fn update_finished_participants(&mut self) -> Result<(), CoordinatorError> {
+        // Split the current participant into (finished, current).
+        let (finished, current): (HashMap<_, _>, HashMap<_, _>) = self
+            .current
+            .par_iter()
+            .partition(|(participant, participant_info)| participant_info.is_finished());
+
+        // Add the finished participants into the finished list.
+        for (_, participant_info) in finished.into_iter() {
+            // Clone the participant info.
+            let mut finished_info = participant_info.clone();
+
+            // Set the participant as finished.
+            finished_info.finish()?;
+
+            self.finished.push(finished_info);
+        }
+
+        // Set current to the updated map.
+        let mut updated = HashMap::default();
+        for (participant, participant_info) in current.into_iter() {
+            updated.insert(participant.clone(), participant_info.clone());
+        }
+
+        self.current = updated;
+
+        Ok(())
+    }
+
+    ///
+    /// Checks the current round for disconnected participants.
+    ///
+    #[inline]
+    pub fn update_dropped_participants(&mut self) -> Result<(), CoordinatorError> {
+        // Fetch the timeout threshold for contributors and verifiers.
+        let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
+        let verifier_timeout = self.environment.verifier_timeout_in_minutes() as i64;
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        for (participant, mut participant_info) in self.current.clone() {
+            // Fetch the elapsed time.
+            let elapsed = now - participant_info.last_seen;
+
+            match participant {
+                Participant::Contributor(_) => {
+                    // Check if the participant is still live.
+                    if elapsed.num_minutes() > contributor_timeout {
+                        // Set the participant as dropped.
+                        participant_info.drop();
+
+                        self.dropped.push(participant_info);
+                        self.current.remove(&participant);
+                    }
+                }
+                Participant::Verifier(_) => {
+                    // Check if the participant is still live.
+                    if elapsed.num_minutes() > verifier_timeout {
+                        // Set the participant as dropped.
+                        participant_info.drop();
+
+                        // TODO (howardwu): Release any outstanding locks.
+
+                        self.dropped.push(participant_info);
+                        self.current.remove(&participant);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Checks the list of dropped participants for participants who
+    /// meet the ban criteria of the coordinator.
+    ///
+    #[inline]
+    pub fn update_banned_participants(&mut self) -> Result<(), CoordinatorError> {
+        for participant_info in self.dropped.iter() {
+            // Fetch the number of times this participant has been dropped.
+            let count = self
+                .dropped
+                .par_iter()
+                .filter(|dropped| dropped.id == participant_info.id)
+                .count();
+
+            // Check if the participant meets the ban threshold.
+            if count > self.environment.participant_ban_threshold() as usize {
+                self.banned.push(participant_info.id.clone());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// A core structure for operating the Phase 1 ceremony.
 pub struct Coordinator {
-    storage: Arc<RwLock<Box<dyn Storage>>>,
+    /// The parameters and settings of this coordinator.
     environment: Environment,
+    /// The storage of contributions and rounds for this coordinator.
+    storage: Arc<RwLock<Box<dyn Storage>>>,
+    /// The current round and participant state.
+    state: CoordinatorState,
 }
 
 impl Coordinator {
@@ -161,9 +656,50 @@ impl Coordinator {
     #[inline]
     pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
         Ok(Self {
+            environment: environment.clone(),
             storage: Arc::new(RwLock::new(environment.storage()?)),
-            environment,
+            state: CoordinatorState {
+                environment,
+                current: HashMap::default(),
+                next: HashMap::default(),
+                finished: Vec::new(),
+                dropped: Vec::new(),
+                banned: Vec::new(),
+            },
         })
+    }
+
+    ///
+    /// Runs a set of operations to update the coordinator state to reflect
+    /// newly finished, dropped, or banned participants.
+    ///
+    #[inline]
+    pub async fn update(&mut self) -> Result<(), CoordinatorError> {
+        // Check the current round for finished participants.
+        self.state.update_finished_participants();
+
+        // Drop disconnected participants from the current round.
+        self.state.update_dropped_participants();
+
+        // Ban any participants who meet the coordinator criteria.
+        self.state.update_banned_participants();
+
+        // TODO (howardwu): Check to start next round.
+
+        Ok(())
+    }
+
+    ///
+    /// Adds the given participant to the next round if they are a contributor,
+    /// and permitted to participate. On success, returns `true`. Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn add_contributor_to_next_round(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Fetch the next round height.
+        let next_round_height = self.current_round_height()? + 1;
+
+        // Attempt to add the participant to the next round.
+        self.state.add_participant_to_next_round(participant, next_round_height)
     }
 
     ///
@@ -277,8 +813,7 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to acquire the lock of a given chunk ID from storage
-    /// for a given participant.
+    /// Attempts to acquire the lock for a given participant.
     ///
     /// On success, this function returns the next contribution locator
     /// if the participant is a contributor, and it returns the current
@@ -287,7 +822,9 @@ impl Coordinator {
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_lock_chunk(&self, chunk_id: u64, participant: &Participant) -> Result<String, CoordinatorError> {
+    pub fn try_lock(&mut self, participant: &Participant) -> Result<String, CoordinatorError> {
+        // Attempt to fetch the next chunk ID for the given participant.
+        let chunk_id = self.state.next_chunk_id(participant)?;
         info!("Trying to lock chunk {} for {}", chunk_id, participant);
 
         // Check that the chunk ID is valid.
@@ -447,7 +984,7 @@ impl Coordinator {
 
         // Add the contribution response to the current chunk.
         round
-            .get_chunk_mut(chunk_id)?
+            .chunk_mut(chunk_id)?
             .add_contribution(participant, storage.to_path(&response_file_locator)?)?;
 
         // Add the updated round to storage.
@@ -1063,22 +1600,22 @@ mod test {
 
         {
             // Acquire the lock for chunk 0 as contributor 1.
-            assert!(coordinator.try_lock_chunk(0, &contributor).is_ok());
+            assert!(coordinator.try_lock(0, &contributor).is_ok());
 
             // Attempt to acquire the lock for chunk 0 as contributor 1 again.
-            assert!(coordinator.try_lock_chunk(0, &contributor).is_err());
+            assert!(coordinator.try_lock(0, &contributor).is_err());
 
             // Acquire the lock for chunk 1 as contributor 1.
-            assert!(coordinator.try_lock_chunk(1, &contributor).is_ok());
+            assert!(coordinator.try_lock(1, &contributor).is_ok());
 
             // Attempt to acquire the lock for chunk 0 as contributor 2.
-            assert!(coordinator.try_lock_chunk(0, &contributor_2).is_err());
+            assert!(coordinator.try_lock(0, &contributor_2).is_err());
 
             // Attempt to acquire the lock for chunk 1 as contributor 2.
-            assert!(coordinator.try_lock_chunk(1, &contributor_2).is_err());
+            assert!(coordinator.try_lock(1, &contributor_2).is_err());
 
             // Acquire the lock for chunk 1 as contributor 2.
-            assert!(coordinator.try_lock_chunk(2, &contributor_2).is_ok());
+            assert!(coordinator.try_lock(2, &contributor_2).is_ok());
         }
 
         {
@@ -1122,7 +1659,7 @@ mod test {
 
         // Acquire the lock for chunk 0 as contributor 1.
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
-        coordinator.try_lock_chunk(0, &contributor)?;
+        coordinator.try_lock(0, &contributor)?;
 
         // Run computation on round 1 chunk 0 contribution 1.
         {
@@ -1177,7 +1714,7 @@ mod test {
         // Acquire the lock for chunk 0 as contributor 1.
         let chunk_id = 0;
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
-        assert!(coordinator.try_lock_chunk(chunk_id, &contributor).is_ok());
+        assert!(coordinator.try_lock(chunk_id, &contributor).is_ok());
 
         // Run computation on round 1 chunk 0 contribution 1.
         let contribution_id = 1;
@@ -1194,7 +1731,7 @@ mod test {
         {
             // Acquire the lock on chunk 0 for the verifier.
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-            assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
+            assert!(coordinator.try_lock(chunk_id, &verifier).is_ok());
 
             // Check that chunk 0 is locked.
             let round = coordinator.current_round()?;
@@ -1248,7 +1785,7 @@ mod test {
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             {
                 // Acquire the lock as contributor.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                let try_lock = coordinator.try_lock(chunk_id, &contributor);
                 if try_lock.is_err() {
                     println!(
                         "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
@@ -1290,7 +1827,7 @@ mod test {
                 let verifier = verifier.clone();
 
                 // Acquire the lock as the verifier.
-                let try_lock = coordinator_clone.try_lock_chunk(chunk_id, &verifier);
+                let try_lock = coordinator_clone.try_lock(chunk_id, &verifier);
                 if try_lock.is_err() {
                     println!(
                         "Failed to acquire lock as verifier {:?}\n{}",
@@ -1347,7 +1884,7 @@ mod test {
                 let contributor = &contributors[contribution_id as usize - 1];
                 {
                     // Acquire the lock as contributor.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                    let try_lock = coordinator.try_lock(chunk_id, &contributor);
                     if try_lock.is_err() {
                         println!(
                             "Failed to acquire lock as contributor {:?}\n{}",
@@ -1381,7 +1918,7 @@ mod test {
                 }
                 {
                     // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
+                    let try_lock = coordinator.try_lock(chunk_id, &verifier);
                     if try_lock.is_err() {
                         println!(
                             "Failed to acquire lock as verifier {:?}\n{}",
@@ -1452,7 +1989,7 @@ mod test {
             for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
                 {
                     // Acquire the lock as contributor.
-                    if coordinator.try_lock_chunk(chunk_id, &contributor).is_err() {
+                    if coordinator.try_lock(chunk_id, &contributor).is_err() {
                         panic!(
                             "Failed to acquire lock as contributor {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
@@ -1478,7 +2015,7 @@ mod test {
                 }
                 {
                     // Acquire the lock as the verifier.
-                    if coordinator.try_lock_chunk(chunk_id, &verifier).is_err() {
+                    if coordinator.try_lock(chunk_id, &verifier).is_err() {
                         panic!(
                             "Failed to acquire lock as verifier {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
@@ -1584,7 +2121,7 @@ mod test {
 
         assert_eq!(
             environment.number_of_chunks(),
-            coordinator.get_round(0).unwrap().get_chunks().len() as u64
+            coordinator.get_round(0).unwrap().chunks().len() as u64
         );
     }
 }

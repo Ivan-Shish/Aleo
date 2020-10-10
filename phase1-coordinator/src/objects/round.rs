@@ -165,31 +165,6 @@ impl Round {
         &self.contributor_ids
     }
 
-    /// Returns a reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub fn chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
-        // Fetch the chunk with the given chunk ID.
-        let chunk = match self.chunks.get(chunk_id as usize) {
-            Some(chunk) => chunk,
-            _ => return Err(CoordinatorError::ChunkMissing),
-        };
-
-        // Check the ID in the chunk matches the given chunk ID.
-        match chunk.chunk_id() == chunk_id {
-            true => Ok(chunk),
-            false => Err(CoordinatorError::ChunkIdMismatch),
-        }
-    }
-
-    /// Returns the expected number of contributions.
-    pub fn expected_number_of_contributions(&self) -> u64 {
-        // The expected number of contributions is one more than
-        // the total number of authorized contributions to account
-        // for the initialization contribution in each round.
-        self.number_of_contributors() + 1
-    }
-
     ///
     /// Returns `true` if the given participant is authorized as a
     /// contributor and listed in the contributor IDs for this round.
@@ -230,6 +205,37 @@ impl Round {
         }
         // Check that the participant is a verifier for the given round height.
         self.verifier_ids.contains(participant)
+    }
+
+    /// Returns a reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
+        // Fetch the chunk with the given chunk ID.
+        let chunk = match self.chunks.get(chunk_id as usize) {
+            Some(chunk) => chunk,
+            _ => return Err(CoordinatorError::ChunkMissing),
+        };
+
+        // Check the ID in the chunk matches the given chunk ID.
+        match chunk.chunk_id() == chunk_id {
+            true => Ok(chunk),
+            false => Err(CoordinatorError::ChunkIdMismatch),
+        }
+    }
+
+    /// Returns a reference to a list of the chunks.
+    #[inline]
+    pub fn chunks(&self) -> &Vec<Chunk> {
+        &self.chunks
+    }
+
+    /// Returns the expected number of contributions.
+    pub fn expected_number_of_contributions(&self) -> u64 {
+        // The expected number of contributions is one more than
+        // the total number of authorized contributions to account
+        // for the initialization contribution in each round.
+        self.number_of_contributors() + 1
     }
 
     ///
@@ -314,20 +320,15 @@ impl Round {
             return Err(CoordinatorError::ContributionMissingVerification);
         }
 
-        // Check that the contribution locator corresponding to the next contribution ID
-        // does NOT exist for the current round and given chunk ID.
-        if storage.exists(&Locator::ContributionFile(
-            current_round_height,
-            chunk_id,
-            next_contribution_id,
-            false,
-        )) {
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
         // Fetch the next contribution locator.
         let next_contribution_locator =
             Locator::ContributionFile(current_round_height, chunk_id, next_contribution_id, false);
+
+        // Check that the contribution locator corresponding to the next contribution ID
+        // does NOT exist for the current round and given chunk ID.
+        if storage.exists(&next_contribution_locator) {
+            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
+        }
 
         Ok(next_contribution_locator)
     }
@@ -335,35 +336,47 @@ impl Round {
     /// Returns `true` if the chunk corresponding to the given chunk ID is
     /// locked by the given participant. Otherwise, returns `false`.
     #[inline]
-    pub(crate) fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
+    pub fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
         match self.chunk(chunk_id) {
             Ok(chunk) => chunk.is_locked_by(participant),
             _ => false,
         }
     }
 
-    /// Returns a mutable reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
+    /// Returns the number of locks held by the given participant in this round.
     #[inline]
-    pub(crate) fn get_chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
-        // Fetch the chunk with the given chunk ID.
-        let chunk = match self.chunks.get_mut(chunk_id as usize) {
-            Some(chunk) => chunk,
-            _ => return Err(CoordinatorError::ChunkMissing),
+    pub fn number_of_locks_held(&self, participant: &Participant) -> Result<u64, CoordinatorError> {
+        debug!("Checking the lock count for {}", participant);
+
+        // Check that the participant is authorized for the current round.
+        match participant {
+            Participant::Contributor(_) => {
+                // Check that the participant is an authorized contributor
+                // for the current round.
+                if !self.is_authorized_contributor(participant) {
+                    error!("{} is not an authorized contributor", participant);
+                    return Err(CoordinatorError::UnauthorizedChunkContributor);
+                }
+            }
+            Participant::Verifier(_) => {
+                // Check that the participant is an authorized verifier
+                // for the current round.
+                if !self.is_authorized_verifier(participant) {
+                    error!("{} is not an authorized verifier", participant);
+                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
+                }
+            }
         };
 
-        // Check the ID in the chunk matches the given chunk ID.
-        match chunk.chunk_id() == chunk_id {
-            true => Ok(chunk),
-            false => Err(CoordinatorError::ChunkIdMismatch),
-        }
-    }
+        // Fetch the number of locks held by the participant.
+        let number_of_locks_held = self
+            .chunks
+            .par_iter()
+            .filter(|chunk| chunk.is_locked_by(participant))
+            .count() as u64;
 
-    /// Returns a reference to a list of the chunks.
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn get_chunks(&self) -> &Vec<Chunk> {
-        &self.chunks
+        debug!("{} is holding {} locks", participant, number_of_locks_held);
+        Ok(number_of_locks_held)
     }
 
     ///
@@ -414,11 +427,7 @@ impl Round {
         trace!("{} is locking {}", participant, storage.to_path(&contribution_locator)?);
 
         // Check that the participant is holding less than the chunk lock limit.
-        let number_of_locks_held = self
-            .chunks
-            .par_iter()
-            .filter(|chunk| chunk.is_locked_by(participant))
-            .count();
+        let number_of_locks_held = self.number_of_locks_held(&participant)? as usize;
         match participant {
             Participant::Contributor(_) => {
                 if number_of_locks_held >= environment.contributor_lock_chunk_limit() {
@@ -451,11 +460,28 @@ impl Round {
 
         // Attempt to acquire the lock for the given participant ID.
         let expected_num_contributions = self.expected_number_of_contributions();
-        self.get_chunk_mut(chunk_id)?
+        self.chunk_mut(chunk_id)?
             .acquire_lock(participant.clone(), expected_num_contributions)?;
 
         debug!("{} locked chunk {}", participant, chunk_id);
         Ok(contribution_locator)
+    }
+
+    /// Returns a mutable reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub(crate) fn chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
+        // Fetch the chunk with the given chunk ID.
+        let chunk = match self.chunks.get_mut(chunk_id as usize) {
+            Some(chunk) => chunk,
+            _ => return Err(CoordinatorError::ChunkMissing),
+        };
+
+        // Check the ID in the chunk matches the given chunk ID.
+        match chunk.chunk_id() == chunk_id {
+            true => Ok(chunk),
+            false => Err(CoordinatorError::ChunkIdMismatch),
+        }
     }
 
     ///
@@ -474,7 +500,7 @@ impl Round {
         verified_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Set the current contribution as verified for the given chunk ID.
-        self.get_chunk_mut(chunk_id)?
+        self.chunk_mut(chunk_id)?
             .verify_contribution(contribution_id, participant, verified_locator)?;
 
         // If the chunk is complete and the finished at timestamp has not been set yet,
@@ -593,7 +619,7 @@ mod tests {
         initialize_test_environment();
 
         let expected = test_round_0_json().unwrap().chunks[0].clone();
-        let candidate = test_round_0().unwrap().get_chunk_mut(0).unwrap().clone();
+        let candidate = test_round_0().unwrap().chunk_mut(0).unwrap().clone();
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
     }
