@@ -566,14 +566,25 @@ impl StorageLocator for DiskLocator {
     #[inline]
     fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError> {
         // Sanitize the given path and base to the local OS.
-        let path = Path::new(path);
-        let base = Path::new(&self.base);
+        let path = {
+            // TODO (howardwu): Change this to support absolute paths and OS specific path
+            //   conventions that may be non-standard. For now, restrict this to relative paths.
+            let mut path = path;
+            if !path.starts_with("./") {
+                path = &format!("./{}", path);
+            }
 
-        // Check that the path matches the expected base.
-        if !path.starts_with(base) {
-            error!("{:?} does not start with {:?}", path, base);
-            return Err(CoordinatorError::StorageLocatorFormatIncorrect);
-        }
+            let path = Path::new(path);
+            let base = Path::new(&self.base);
+
+            // Check that the path matches the expected base.
+            if !path.starts_with(base) {
+                error!("{:?} does not start with {:?}", path, base);
+                return Err(CoordinatorError::StorageLocatorFormatIncorrect);
+            }
+
+            path
+        };
 
         // Strip the base prefix.
         let key = path
