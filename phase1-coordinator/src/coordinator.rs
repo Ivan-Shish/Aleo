@@ -76,6 +76,7 @@ pub enum CoordinatorError {
     ParticipantHasNotStarted,
     ParticipantHasNoRemainingChunks,
     ParticipantHasRemainingChunks,
+    ParticipantMissing,
     ParticipantNotFound,
     ParticipantNotReady,
     ParticipantRoundHeightInvalid,
@@ -620,13 +621,16 @@ impl CoordinatorState {
     ///
     #[inline]
     fn is_current_round_finished(&self) -> bool {
+        // Check that all contributions have undergone verification.
         self.pending_verification.is_empty()
+            // Check that all current contributors are finished.
             && (self
                 .current_contributors
                 .par_iter()
                 .filter(|(_, p)| !p.is_finished())
                 .count()
                 == 0)
+            // Check that all current verifiers are finished.
             && (self
                 .current_verifiers
                 .par_iter()
@@ -730,6 +734,39 @@ impl CoordinatorState {
     }
 
     ///
+    /// Removes the given chunk ID from the locks held by the given participant.
+    ///
+    #[inline]
+    fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                Some(participant_info) => {
+                    // Release the chunk lock from the contributor.
+                    participant_info.released_lock(chunk_id)?;
+
+                    trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
+                    self.add_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                Some(participant) => {
+                    // Release the chunk lock from the verifier.
+                    participant.released_lock(chunk_id)?;
+
+                    trace!("Removing chunk {} from the queue of pending verifications", chunk_id);
+                    self.remove_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
     /// Adds the given chunk ID to the map of chunks that are pending verification.
     /// The chunk is assigned to the verifier with the least number of chunks in its queue.
     ///
@@ -779,7 +816,6 @@ impl CoordinatorState {
 
     ///
     /// Adds the given participant to the next round if they are permitted to participate.
-    /// On success, returns `true`. Otherwise, returns `false`.
     ///
     #[inline]
     fn add_next_round_participant(
@@ -837,36 +873,19 @@ impl CoordinatorState {
     }
 
     ///
-    /// Removes the given chunk ID from the locks held by the given participant.
+    /// Removes the given participant from the next round if they are in the queue.
     ///
     #[inline]
-    fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
-        match participant {
-            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant_info) => {
-                    // Release the chunk lock from the contributor.
-                    participant_info.released_lock(chunk_id)?;
-
-                    trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
-                    self.add_pending_verification(chunk_id)?;
-
-                    Ok(())
-                }
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
-            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => {
-                    // Release the chunk lock from the verifier.
-                    participant.released_lock(chunk_id)?;
-
-                    trace!("Removing chunk {} from the queue of pending verifications", chunk_id);
-                    self.remove_pending_verification(chunk_id)?;
-
-                    Ok(())
-                }
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
+    fn remove_next_round_participant(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is exists in the next round map.
+        if !self.next.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantMissing);
         }
+
+        // Remove the participant from the next round.
+        self.next.remove(&participant);
+
+        Ok(())
     }
 
     ///
@@ -1495,6 +1514,19 @@ impl Coordinator {
         let mut state = self.state.write().unwrap();
 
         // Attempt to add the participant to the next round.
+        state.add_next_round_participant(participant, next_round_height, reliability_score)
+    }
+
+    ///
+    /// Removes the given participant from the next round if they are in the queue.
+    /// On success, returns `true`. Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn remove_next_round_participant(&self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to remove the participant from the next round.
         state.add_next_round_participant(participant, next_round_height, reliability_score)
     }
 
