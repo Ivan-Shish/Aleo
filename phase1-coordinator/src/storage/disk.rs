@@ -137,7 +137,7 @@ impl Storage for Disk {
 
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            trace!("Locator missing in call to get() in storage.");
+            error!("Locator missing in call to get() in storage.");
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
@@ -290,7 +290,7 @@ impl Storage for Disk {
 
         // Check that the given locator exists in storage.
         if !self.exists(locator) {
-            trace!("Locator missing in call to size() in storage.");
+            error!("Locator missing in call to size() in storage.");
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
@@ -370,7 +370,8 @@ impl StorageObject for Disk {
     fn reader<'a>(&self, locator: &Locator) -> Result<ObjectReader, CoordinatorError> {
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            trace!("Locator missing in call to reader() in storage.");
+            let locator = self.to_path(&locator)?;
+            error!("Locator {} missing in call to reader() in storage.", locator);
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
@@ -416,7 +417,8 @@ impl StorageObject for Disk {
     fn writer(&self, locator: &Locator) -> Result<ObjectWriter, CoordinatorError> {
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            trace!("Locator missing in call to writer() in storage.");
+            let locator = self.to_path(&locator)?;
+            error!("Locator {} missing in call to writer() in storage.", locator);
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
