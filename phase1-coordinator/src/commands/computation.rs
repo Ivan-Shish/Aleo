@@ -42,8 +42,10 @@ impl Computation {
 
         // Initialize and fetch a contribution response locator.
         let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
-        let expected_contribution_size = Object::contribution_file_size(environment, chunk_id, false);
-        storage.initialize(next_locator.clone(), expected_contribution_size)?;
+        if !storage.exists(next_locator) {
+            let expected_contribution_size = Object::contribution_file_size(environment, chunk_id, false);
+            storage.initialize(next_locator.clone(), expected_contribution_size)?;
+        }
 
         // Execute computation on chunk.
         let (_, _, curve, _, _, _) = settings;
