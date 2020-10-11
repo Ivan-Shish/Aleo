@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{Locator, StorageLock},
+    storage::{Locator, Object, StorageLock},
     CoordinatorError,
 };
 
@@ -394,7 +394,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &StorageLock,
+        storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<(Locator, Locator), CoordinatorError> {
@@ -496,6 +496,18 @@ impl Round {
         let expected_num_contributions = self.expected_number_of_contributions();
         self.chunk_mut(chunk_id)?
             .acquire_lock(participant.clone(), expected_num_contributions)?;
+
+        // Initialize the next contribution locator.
+        match participant {
+            Participant::Contributor(_) => {
+                // Initialize the unverified response file.
+                storage.initialize(
+                    next_contribution_locator.clone(),
+                    Object::contribution_file_size(environment, chunk_id, false),
+                )?;
+            }
+            Participant::Verifier(_) => (),
+        };
 
         debug!("{} locked chunk {}", participant, chunk_id);
         Ok((current_contribution_locator, next_contribution_locator))

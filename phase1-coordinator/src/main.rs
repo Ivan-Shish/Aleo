@@ -9,7 +9,6 @@ use phase1_coordinator::{
     Participant,
 };
 
-use chrono::Utc;
 use rocket::{
     config::{Config, Environment as RocketEnvironment},
     Rocket,
