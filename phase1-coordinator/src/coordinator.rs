@@ -1,13 +1,14 @@
 use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
     environment::Environment,
-    objects::{Participant, Round},
+    objects::{participant::*, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     fmt,
@@ -172,9 +173,13 @@ impl From<CoordinatorError> for anyhow::Error {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ParticipantInfo {
     /// The ID of the participant.
+    #[serde(
+        serialize_with = "serialize_participant_to_string",
+        deserialize_with = "deserialize_participant_to_string"
+    )]
     id: Participant,
     /// The round height that this participant is contributing to.
     round_height: u64,
@@ -560,8 +565,10 @@ impl ParticipantInfo {
     }
 }
 
+#[derive(Serialize)]
 struct CoordinatorState {
     /// The parameters and settings of this coordinator.
+    #[serde(skip_serializing)]
     environment: Environment,
     /// The map of chunks pending verification in the current round.
     pending_verification: HashMap<u64, Participant>,
@@ -648,7 +655,7 @@ impl CoordinatorState {
     #[inline]
     fn is_next_round_ready(&self) -> bool {
         // Check that the next round contains participants.
-        if !self.next.is_empty() {
+        if self.next.is_empty() {
             return false;
         }
 
@@ -661,6 +668,7 @@ impl CoordinatorState {
         let maximum_contributors = self.environment.maximum_contributors_per_round();
         let number_of_contributors = contributors.count();
         if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
+            trace!("Insufficient or unauthorized number of contributors");
             return false;
         }
 
@@ -669,6 +677,7 @@ impl CoordinatorState {
         let maximum_verifiers = self.environment.maximum_verifiers_per_round();
         let number_of_verifiers = verifiers.count();
         if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
+            trace!("Insufficient or unauthorized number of verifiers");
             return false;
         }
 

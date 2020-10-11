@@ -6,7 +6,12 @@ use rocket::{
     Outcome::*,
     Request,
 };
-use serde::{de::Deserializer, Deserialize, Serialize, Serializer};
+use serde::{
+    de::{Deserializer, Error},
+    Deserialize,
+    Serialize,
+    Serializer,
+};
 use serde_diff::SerdeDiff;
 use std::{
     fmt::{self},
@@ -77,7 +82,7 @@ impl fmt::Display for Participant {
     }
 }
 
-/// Serializes a optional contributor to an optional string.
+/// Serializes a optional participant to an optional string.
 pub fn serialize_optional_participant_to_optional_string<S>(
     participant: &Option<Participant>,
     serializer: S,
@@ -94,7 +99,7 @@ where
     }
 }
 
-/// Deserializes a optional contributor to an optional string.
+/// Deserializes a optional participant to an optional string.
 pub fn deserialize_optional_participant_to_optional_string<'de, D>(
     deserializer: D,
 ) -> Result<Option<Participant>, D::Error>
@@ -115,6 +120,39 @@ where
                 _ => Ok(None),
             },
             None => Ok(None),
+        },
+    }
+}
+
+/// Serializes a participant to a string.
+pub fn serialize_participant_to_string<S>(participant: &Participant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_some(&match participant {
+        Participant::Contributor(id) => ("contributor", id.as_str()),
+        Participant::Verifier(id) => ("verifier", id.as_str()),
+    })
+}
+
+/// Deserializes a participant to a string.
+pub fn deserialize_participant_to_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Participant((String, String)),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Participant(participant) => match participant {
+            (variant, id) => match variant.as_str() {
+                "contributor" => Ok(Participant::Contributor(id)),
+                "verifier" => Ok(Participant::Verifier(id)),
+                _ => Err(D::Error::custom("invalid participant type")),
+            },
         },
     }
 }
