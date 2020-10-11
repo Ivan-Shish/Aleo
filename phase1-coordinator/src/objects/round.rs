@@ -384,6 +384,8 @@ impl Round {
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
     ///
+    /// On success, this function will return the unverified response locator.
+    ///
     #[inline]
     pub(crate) fn try_lock_chunk(
         &mut self,
