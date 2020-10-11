@@ -1,5 +1,5 @@
 use crate::{
-    objects::{Contribution, Participant},
+    objects::{participant::*, Contribution},
     CoordinatorError,
 };
 
@@ -14,6 +14,10 @@ use tracing::trace;
 pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     chunk_id: u64,
+    #[serde(
+        serialize_with = "serialize_optional_participant_to_optional_string",
+        deserialize_with = "deserialize_optional_participant_to_optional_string"
+    )]
     lock_holder: Option<Participant>,
     #[serde_diff(opaque)]
     contributions: Vec<Contribution>,
@@ -51,6 +55,7 @@ impl Chunk {
 
     /// Returns the lock holder of this chunk, if the chunk is locked.
     /// Otherwise, returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn lock_holder(&self) -> &Option<Participant> {
         &self.lock_holder
@@ -63,6 +68,7 @@ impl Chunk {
     }
 
     /// Returns `true` if this chunk is unlocked. Otherwise, returns `false`.
+    #[allow(dead_code)]
     #[inline]
     pub fn is_unlocked(&self) -> bool {
         !self.is_locked()
@@ -200,6 +206,7 @@ impl Chunk {
     ///
     #[inline]
     pub fn is_complete(&self, expected_contributions: u64) -> bool {
+        // TODO (howardwu): Check that all chunks are not locked.
         let contributions_complete = self.only_contributions_complete(expected_contributions);
         let verifications_complete = (self
             .get_contributions()
@@ -311,10 +318,8 @@ impl Chunk {
     #[inline]
     pub(crate) fn add_contribution(
         &mut self,
-        contribution_id: u64,
-        participant: Participant,
+        participant: &Participant,
         contributed_locator: String,
-        expected_contributions: u64,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -326,14 +331,9 @@ impl Chunk {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Check that the contribution ID is one above the current contribution ID.
-        if !self.is_next_contribution_id(contribution_id, expected_contributions) {
-            return Err(CoordinatorError::ContributionIdMismatch);
-        }
-
         // Add the contribution to this chunk.
         self.contributions
-            .push(Contribution::new_contributor(participant, contributed_locator)?);
+            .push(Contribution::new_contributor(participant.clone(), contributed_locator)?);
 
         // Release the lock on this chunk from the contributor.
         self.lock_holder = None;
@@ -378,8 +378,8 @@ impl Chunk {
             true => Err(CoordinatorError::ContributionAlreadyVerified),
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
-                // Attempt verification of the contribution.
-                contribution.try_verify(&participant)?;
+                // Attempt set the contribution as verified.
+                contribution.set_verified(&participant)?;
 
                 // Release the lock on this chunk from the verifier.
                 self.lock_holder = None;
@@ -398,19 +398,4 @@ impl Chunk {
             _ => Err(CoordinatorError::ContributionMissing),
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // use crate::testing::prelude::*;
-
-    // #[test]
-    // fn test_update_chunk() {
-    //     let mut expected = test_round_1_json().unwrap().chunks[0].clone();
-    //     expected.acquire_lock("test_updated_contributor");
-    //
-    //     let candidate = test_round_1().unwrap().get_chunk_mut(0).unwrap();
-    //     assert!(candidate.update_chunk(0, &expected));
-    //     assert_eq!(expected, *candidate);
-    // }
 }

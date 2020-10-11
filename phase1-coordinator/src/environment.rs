@@ -1,6 +1,6 @@
 use crate::{
     objects::Participant,
-    storage::{ConcurrentMemory, InMemory, Storage},
+    storage::{Disk, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
@@ -171,6 +171,114 @@ impl Environment {
     }
 
     ///
+    /// Returns the minimum number of contributors permitted to
+    /// participate in a round.
+    ///
+    pub fn minimum_contributors_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 1,
+            Environment::Development(_) => 1,
+            Environment::Production(_) => 1,
+        }
+    }
+
+    ///
+    /// Returns the maximum number of contributors permitted to
+    /// participate in a round.
+    ///
+    pub fn maximum_contributors_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the minimum number of verifiers permitted to
+    /// participate in a round.
+    ///
+    pub fn minimum_verifiers_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 1,
+            Environment::Development(_) => 1,
+            Environment::Production(_) => 1,
+        }
+    }
+
+    ///
+    /// Returns the maximum number of verifiers permitted to
+    /// participate in a round.
+    ///
+    pub fn maximum_verifiers_per_round(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of chunks a contributor is
+    /// authorized to lock in tandem at any point during a round.
+    ///
+    pub fn contributor_lock_chunk_limit(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of chunks a verifier is
+    /// authorized to lock in tandem at any point during a round.
+    ///
+    pub fn verifier_lock_chunk_limit(&self) -> usize {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of minutes the coordinator tolerates
+    /// before assuming a contributor has disconnected.
+    ///
+    pub fn contributor_timeout_in_minutes(&self) -> u16 {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of minutes the coordinator tolerates
+    /// before assuming a verifier has disconnected.
+    ///
+    pub fn verifier_timeout_in_minutes(&self) -> u16 {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
+    /// Returns the number of times the coordinator tolerates
+    /// a dropped participant before banning them from future rounds.
+    ///
+    pub fn participant_ban_threshold(&self) -> u16 {
+        match self {
+            Environment::Test(_) => 5,
+            Environment::Development(_) => 5,
+            Environment::Production(_) => 5,
+        }
+    }
+
+    ///
     /// Returns the compressed input preference of the coordinator.
     ///
     /// By default, the coordinator returns `false` to minimize time
@@ -268,101 +376,6 @@ impl Environment {
         }
     }
 
-    /// Returns the round directory for a given round height.
-    pub fn round_directory(&self, round_height: u64) -> String {
-        round_directory!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Initializes the round directory for a given round height.
-    pub fn round_directory_init(&self, round_height: u64) {
-        round_directory_init!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Returns `true` if the round directory exists for a given round height.
-    pub fn round_directory_exists(&self, round_height: u64) -> bool {
-        round_directory_exists!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Resets the round directory for a given round height, if permitted.
-    pub fn round_directory_reset(&self, round_height: u64) {
-        round_directory_reset!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Resets the entire round directory for all rounds, if permitted.
-    pub fn round_directory_reset_all(&self) {
-        round_directory_reset_all!(self, Local, Remote, Remote)
-    }
-
-    /// Returns the chunk directory for a given round height and chunk ID.
-    pub fn chunk_directory(&self, round_height: u64, chunk_id: u64) -> String {
-        chunk_directory!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Initializes the chunk directory for a given round height and chunk ID.
-    pub fn chunk_directory_init(&self, round_height: u64, chunk_id: u64) {
-        chunk_directory_init!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Returns `true` if the chunk directory exists for a given round height and chunk ID.
-    pub fn chunk_directory_exists(&self, round_height: u64, chunk_id: u64) -> bool {
-        chunk_directory_exists!(self, Local, Remote, Remote, round_height, chunk_id)
-    }
-
-    /// Returns the contribution locator for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator(
-        &self,
-        round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
-        verified: bool,
-    ) -> String {
-        contribution_locator!(
-            self,
-            Local,
-            Remote,
-            Remote,
-            round_height,
-            chunk_id,
-            contribution_id,
-            verified
-        )
-    }
-
-    /// Initializes the contribution locator file for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator_init(&self, round_height: u64, chunk_id: u64, contribution_id: u64) {
-        contribution_locator_init!(self, Local, Remote, Remote, round_height, chunk_id, contribution_id)
-    }
-
-    /// Returns `true` if the contribution locator exists for a given round, chunk ID, and contribution ID.
-    pub fn contribution_locator_exists(
-        &self,
-        round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
-        verified: bool,
-    ) -> bool {
-        contribution_locator_exists!(
-            self,
-            Local,
-            Remote,
-            Remote,
-            round_height,
-            chunk_id,
-            contribution_id,
-            verified
-        )
-    }
-
-    /// Returns the round locator for a given round height.
-    pub fn round_locator(&self, round_height: u64) -> String {
-        round_locator!(self, Local, Remote, Remote, round_height)
-    }
-
-    /// Returns `true` if the round locator exists for a given round height.
-    pub fn round_locator_exists(&self, round_height: u64) -> bool {
-        round_locator_exists!(self, Local, Remote, Remote, round_height)
-    }
-
     ///
     /// Returns the contributor managed by the coordinator.
     ///
@@ -410,7 +423,7 @@ impl Environment {
 
     /// Returns the storage system of the coordinator.
     pub(crate) fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
-        Ok(storage!(self, InMemory, ConcurrentMemory, ConcurrentMemory))
+        Ok(storage!(self, Disk, Disk, Disk))
     }
 }
 

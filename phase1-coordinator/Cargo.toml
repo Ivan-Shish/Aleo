@@ -23,12 +23,12 @@ anyhow = { version = "1.0.32" }
 chrono = { version = "0.4", features = ["serde"] }
 dotenv = { version = "0.15" }
 evmap = { version = "10.0.2" }
-fs2 = { version = "0.4.3" }
+itertools = { version = "0.9.0" }
 lazy_static = { version = "1.4.0" }
 memmap = { version = "0.7.0" }
 once_cell = { version = "1.4.1", optional = true }
 rand = { version = "0.7.3" }
-rayon = { version = "1.4.0" }
+rayon = { version = "1.4.1" }
 rocket = { version = "0.4.5" }
 rocket_contrib = { version = "0.4", features = ["json"] }
 rocket_cors = { version = "0.4" }
@@ -37,6 +37,7 @@ serde-aux = { version = "0.6" }
 serde-diff = { version = "0.3" }
 serde_json = { version = "1.0" }
 serial_test = { version = "0.5", optional = true }
+tokio = { version = "0.2", features = ["full"] }
 toml = { version = "0.5.6" }
 tracing = { version = "0.1.19" }
 tracing-subscriber = { version = "0.2" }
@@ -50,5 +51,6 @@ once_cell = { version = "1.4.1" }
 serial_test = { version = "0.5" }
 
 [features]
-default = []
+default = ["once_cell"]
 testing = ["once_cell", "serial_test"]
+silent = []

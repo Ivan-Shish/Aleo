@@ -29,11 +29,11 @@ macro_rules! phase1_full_parameters {
     }};
 }
 
-/// Returns the contribution filesize given an instantiation of `PairingEngine`,
+/// Returns the unverified contribution filesize given an instantiation of `PairingEngine`,
 /// an instance of `Settings`, a chunk ID, a compressed setting, and whether
 /// this is the initialization round.
 #[macro_export]
-macro_rules! contribution_filesize {
+macro_rules! unverified_contribution_size {
     ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident) => {{
         use setup_utils::UseCompression;
 
@@ -41,6 +41,22 @@ macro_rules! contribution_filesize {
         match $compressed {
             UseCompression::Yes => parameters.contribution_size as u64,
             UseCompression::No => (parameters.accumulator_size + parameters.public_key_size) as u64,
+        }
+    }};
+}
+
+/// Returns the verified contribution filesize given an instantiation of `PairingEngine`,
+/// an instance of `Settings`, a chunk ID, a compressed setting, and whether
+/// this is the initialization round.
+#[macro_export]
+macro_rules! verified_contribution_size {
+    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident) => {{
+        use setup_utils::UseCompression;
+
+        let parameters = phase1_chunked_parameters!($curve, $settings, $chunk_id);
+        match $compressed {
+            UseCompression::Yes => (parameters.contribution_size - parameters.public_key_size) as u64,
+            UseCompression::No => parameters.accumulator_size as u64,
         }
     }};
 }
@@ -66,12 +82,12 @@ macro_rules! chunk_size {
 }
 
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
-/// an instance of `Settings`, a chunk ID, a compressed setting, and whether
-/// this is the initialization round.
+/// an instance of `Settings`, a round height, and a compressed setting.
 #[macro_export]
 macro_rules! round_filesize {
-    ($curve:ident, $settings:ident, $chunk_id:ident, $compressed:ident, $init:ident) => {{
+    ($curve:ident, $settings:ident, $round:ident, $compressed:ident) => {{
         use phase1::Phase1Parameters;
+        use setup_utils::UseCompression;
 
         let full_parameters = phase1_full_parameters!($curve, $settings);
         let parameters = Phase1Parameters::<$curve>::new(
@@ -83,7 +99,7 @@ macro_rules! round_filesize {
             full_parameters.total_size_in_log2,
             full_parameters.batch_size,
         );
-        match ($compressed, $init) {
+        match ($compressed, $round == 0) {
             (UseCompression::Yes, true) => (parameters.contribution_size - parameters.public_key_size) as u64,
             (UseCompression::Yes, false) => parameters.contribution_size as u64,
             (UseCompression::No, _) => parameters.accumulator_size as u64,
@@ -103,208 +119,21 @@ macro_rules! storage {
     }};
 }
 
-/// Returns the round directory using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_directory {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_directory($env, $round_height),
-            Environment::Development(_) => $l2::round_directory($env, $round_height),
-            Environment::Production(_) => $l3::round_directory($env, $round_height),
-        }
-    }};
-}
-
-/// Initializes the round directory for a given round height using a locator that is
-/// determined based on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_directory_init {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_directory_init($env, $round_height),
-            Environment::Development(_) => $l2::round_directory_init($env, $round_height),
-            Environment::Production(_) => $l3::round_directory_init($env, $round_height),
-        }
-    }};
-}
-
-/// Returns `true` if the round directory exists using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_directory_exists {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_directory_exists($env, $round_height),
-            Environment::Development(_) => $l2::round_directory_exists($env, $round_height),
-            Environment::Production(_) => $l3::round_directory_exists($env, $round_height),
-        }
-    }};
-}
-
-/// Resets the round directory for a given round height if permitted using a locator
-/// that is determined based on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_directory_reset {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_directory_reset($env, $round_height),
-            Environment::Development(_) => $l2::round_directory_reset($env, $round_height),
-            Environment::Production(_) => $l3::round_directory_reset($env, $round_height),
-        }
-    }};
-}
-
-/// Resets the entire round directory if permitted using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_directory_reset_all {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_directory_reset_all($env),
-            Environment::Development(_) => $l2::round_directory_reset_all($env),
-            Environment::Production(_) => $l3::round_directory_reset_all($env),
-        }
-    }};
-}
-
-/// Returns the chunk directory using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! chunk_directory {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::chunk_directory($env, $round_height, $chunk_id),
-            Environment::Development(_) => $l2::chunk_directory($env, $round_height, $chunk_id),
-            Environment::Production(_) => $l3::chunk_directory($env, $round_height, $chunk_id),
-        }
-    }};
-}
-
-/// Initializes the chunk directory for a given round height and chunk ID using a locator
-/// that is determined based on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! chunk_directory_init {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::chunk_directory_init($env, $round_height, $chunk_id),
-            Environment::Development(_) => $l2::chunk_directory_init($env, $round_height, $chunk_id),
-            Environment::Production(_) => $l3::chunk_directory_init($env, $round_height, $chunk_id),
-        }
-    }};
-}
-
-/// Returns `true` if the chunk directory exists using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! chunk_directory_exists {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::chunk_directory_exists($env, $round_height, $chunk_id),
-            Environment::Development(_) => $l2::chunk_directory_exists($env, $round_height, $chunk_id),
-            Environment::Production(_) => $l3::chunk_directory_exists($env, $round_height, $chunk_id),
-        }
-    }};
-}
-
-/// Returns the contribution locator using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! contribution_locator {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident, $verified:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified),
-            Environment::Development(_) => {
-                $l2::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified)
+/// Returns a pretty print of the given hash bytes for logging.
+macro_rules! pretty_hash {
+    ($hash:expr) => {{
+        let mut output = format!("\n\n");
+        for line in $hash.chunks(16) {
+            output += "\t";
+            for section in line.chunks(4) {
+                for b in section {
+                    output += &format!("{:02x}", b);
+                }
+                output += " ";
             }
-            Environment::Production(_) => {
-                $l3::contribution_locator($env, $round_height, $chunk_id, $cont_id, $verified)
-            }
+            output += "\n";
         }
-    }};
-}
-
-/// Initializes the contribution locator using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! contribution_locator_init {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
-            Environment::Development(_) => $l2::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
-            Environment::Production(_) => $l3::contribution_locator_init($env, $round_height, $chunk_id, $cont_id),
-        }
-    }};
-}
-
-/// Returns `true` if the contribution locator exists using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! contribution_locator_exists {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $chunk_id:ident, $cont_id:ident, $verified:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => {
-                $l1::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
-            }
-            Environment::Development(_) => {
-                $l2::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
-            }
-            Environment::Production(_) => {
-                $l3::contribution_locator_exists($env, $round_height, $chunk_id, $cont_id, $verified)
-            }
-        }
-    }};
-}
-
-/// Returns the round locator using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_locator {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => <$l1 as Locator>::round_locator($env, $round_height),
-            Environment::Development(_) => <$l2 as Locator>::round_locator($env, $round_height),
-            Environment::Production(_) => <$l3 as Locator>::round_locator($env, $round_height),
-        }
-    }};
-}
-
-/// Returns `true` if the round locator exists using a locator that is determined based
-/// on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! round_locator_exists {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident) => {{
-        use crate::locators::*;
-
-        match $env {
-            Environment::Test(_) => $l1::round_locator_exists($env, $round_height),
-            Environment::Development(_) => $l2::round_locator_exists($env, $round_height),
-            Environment::Production(_) => $l3::round_locator_exists($env, $round_height),
-        }
+        output
     }};
 }
 

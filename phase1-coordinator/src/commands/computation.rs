@@ -1,81 +1,139 @@
-use crate::{environment::Environment, CoordinatorError};
-use phase1::helpers::CurveKind;
-use phase1_cli::contribute;
+use crate::{
+    environment::Environment,
+    storage::{Locator, Object, StorageLock},
+    CoordinatorError,
+};
+use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
+use setup_utils::{calculate_hash, UseCompression};
 
-use rand::thread_rng;
-use std::{panic, time::Instant};
-use tracing::{info, trace};
-use zexe_algebra::{Bls12_377, BW6_761};
+use rand::{thread_rng, Rng};
+use std::{io::Write, time::Instant};
+use tracing::{debug, error, info, trace};
+use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
-pub struct Computation;
+#[allow(dead_code)]
+pub(crate) struct Computation;
 
 impl Computation {
     ///
     /// Runs computation for a given environment, round height, chunk ID, and contribution ID.
     ///
-    /// Executes the round computation on a given chunk ID and contribution ID using phase1-cli logic.
+    /// Executes the round computation on a given chunk ID and contribution ID.
     ///
-    pub fn run(
+    #[allow(dead_code)]
+    pub(crate) fn run(
         environment: &Environment,
+        storage: &mut StorageLock,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
     ) -> anyhow::Result<()> {
         info!(
-            "Starting computation on chunk {} contribution {}",
-            chunk_id, contribution_id
+            "Starting computation on round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
         );
-        let now = Instant::now();
+        let start = Instant::now();
 
         // Fetch the parameter settings.
         let settings = environment.to_settings();
 
-        // Fetch the contribution locators.
-        let previous_locator = environment.contribution_locator(round_height, chunk_id, contribution_id - 1, true);
-        let current_locator = environment.contribution_locator(round_height, chunk_id, contribution_id, false);
+        // Fetch a contribution challenge locator.
+        let current_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
 
-        trace!(
-            "Storing round {} chunk {} in {}",
-            round_height,
-            chunk_id,
-            current_locator
-        );
-        let compressed_input = environment.compressed_inputs();
-        let compressed_output = environment.compressed_outputs();
-        let check_input_for_correctness = environment.check_input_for_correctness();
+        // Initialize and fetch a contribution response locator.
+        let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        if !storage.exists(next_locator) {
+            let expected_contribution_size = Object::contribution_file_size(environment, chunk_id, false);
+            storage.initialize(next_locator.clone(), expected_contribution_size)?;
+        }
+
         // Execute computation on chunk.
-        let result = panic::catch_unwind(|| {
-            let (_, _, curve, _, _, _) = settings;
-            match curve {
-                CurveKind::Bls12_377 => contribute(
-                    compressed_input,
-                    &previous_locator,
-                    compressed_output,
-                    &current_locator,
-                    check_input_for_correctness,
-                    &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
-                    &mut thread_rng(),
-                ),
-                CurveKind::BW6 => contribute(
-                    compressed_input,
-                    &previous_locator,
-                    compressed_output,
-                    &current_locator,
-                    check_input_for_correctness,
-                    &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
-                    &mut thread_rng(),
-                ),
-            };
-        });
-        if result.is_err() {
+        let (_, _, curve, _, _, _) = settings;
+        if let Err(error) = match curve {
+            CurveKind::Bls12_377 => Self::contribute(
+                environment,
+                storage.reader(current_locator)?.as_ref(),
+                storage.writer(next_locator)?.as_mut(),
+                &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
+                &mut thread_rng(),
+            ),
+            CurveKind::BW6 => Self::contribute(
+                environment,
+                storage.reader(current_locator)?.as_ref(),
+                storage.writer(next_locator)?.as_mut(),
+                &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
+                &mut thread_rng(),
+            ),
+        } {
+            error!("Computation failed with {}", error);
             return Err(CoordinatorError::ComputationFailed.into());
         }
 
-        let elapsed = Instant::now().duration_since(now);
+        // Load a contribution response reader.
+        let reader = storage.reader(next_locator)?;
+        let contribution_hash = calculate_hash(reader.as_ref());
+        debug!("Response hash is {}", pretty_hash!(&contribution_hash));
+        debug!("Thank you for your contribution!");
+
+        let elapsed = Instant::now().duration_since(start);
         info!(
-            "Completed computation on chunk {} contribution {} in {:?}",
-            chunk_id, contribution_id, elapsed
+            "Completed computation on round {} chunk {} contribution {} in {:?}",
+            round_height, chunk_id, contribution_id, elapsed
         );
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn contribute<T: Engine + Sync>(
+        environment: &Environment,
+        challenge_reader: &[u8],
+        mut response_writer: &mut [u8],
+        parameters: &Phase1Parameters<T>,
+        mut rng: impl Rng,
+    ) -> Result<(), CoordinatorError> {
+        // Fetch the environment settings.
+        let compressed_inputs = environment.compressed_inputs();
+        let compressed_outputs = environment.compressed_outputs();
+        let check_input_for_correctness = environment.check_input_for_correctness();
+
+        // Check that the challenge hash is not compressed.
+        if UseCompression::Yes == compressed_inputs {
+            return Err(CoordinatorError::CompressedContributionHashingUnsupported);
+        }
+
+        trace!("Calculating previous contribution hash and writing it to the response");
+        let challenge_hash = calculate_hash(challenge_reader);
+        debug!("Challenge hash is {}", pretty_hash!(&challenge_hash));
+        (&mut response_writer[0..]).write_all(challenge_hash.as_slice())?;
+        response_writer.flush()?;
+
+        let previous_hash = &challenge_reader
+            .get(0..64)
+            .ok_or(CoordinatorError::StorageReaderFailed)?;
+        debug!("Challenge file claims previous hash is {}", pretty_hash!(previous_hash));
+        debug!("Please double check this yourself! Do not trust it blindly!");
+
+        // Construct our keypair using the RNG we created above.
+        let (public_key, private_key) =
+            Phase1::key_generation(&mut rng, challenge_hash.as_ref()).expect("could not generate keypair");
+
+        // Perform the transformation
+        trace!("Computing and writing your contribution, this could take a while");
+        Phase1::computation(
+            challenge_reader,
+            response_writer,
+            compressed_inputs,
+            compressed_outputs,
+            check_input_for_correctness,
+            &private_key,
+            &parameters,
+        )?;
+        response_writer.flush()?;
+        trace!("Finishing writing your contribution to response file");
+
+        // Write the public key.
+        public_key.write(response_writer, compressed_outputs, &parameters)?;
+
         Ok(())
     }
 }
@@ -84,41 +142,44 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
+        storage::{Locator, StorageLock},
         testing::prelude::*,
     };
 
-    use memmap::MmapOptions;
-    use std::fs::OpenOptions;
     use tracing::{debug, trace};
 
     #[test]
     #[serial]
     fn test_computation_run() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         // Define test parameters.
         let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
+
+        // Define test storage.
+        let test_storage = test_storage(&TEST_ENVIRONMENT_3);
+        let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         // Generate a new challenge for the given parameters.
         for chunk_id in 0..number_of_chunks {
             debug!("Initializing test chunk {}", chunk_id);
 
             // Run initialization on chunk.
-            let contribution_hash = Initialization::run(&TEST_ENVIRONMENT_3, round_height, chunk_id).unwrap();
+            let contribution_hash =
+                Initialization::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id).unwrap();
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, round_height, chunk_id, 1).unwrap();
+            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1).unwrap();
 
             // Fetch the current contribution locator.
-            let current = TEST_ENVIRONMENT_3.contribution_locator(round_height, chunk_id, 1, false);
+            let locator = Locator::ContributionFile(round_height, chunk_id, 1, false);
+            let reader = storage.reader(&locator).unwrap();
 
             // Check that the current contribution was generated based on the previous contribution hash.
-            let file = OpenOptions::new().read(true).open(current).unwrap();
-            let reader = unsafe { MmapOptions::new().map(&file).unwrap() };
             for (i, (expected, candidate)) in contribution_hash
                 .iter()
-                .zip(reader.chunks(64).next().unwrap())
+                .zip(reader.as_ref().chunks(64).next().unwrap())
                 .enumerate()
             {
                 trace!("Checking byte {} of expected hash", i);

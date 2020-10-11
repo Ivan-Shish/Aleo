@@ -1,47 +1,54 @@
 use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
     environment::Environment,
-    objects::{Participant, Round},
-    storage::{Key, Storage, Value},
+    objects::{participant::*, Round},
+    storage::{Locator, Object, Storage, StorageLock},
 };
+use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet, LinkedList},
     fmt,
-    sync::{Arc, RwLock, RwLockReadGuard},
-    thread,
+    sync::{Arc, RwLock},
+    time::Duration,
 };
+use tokio::{task, time::delay_for};
 use tracing::{debug, error, info, trace};
-use websocket::{client::ClientBuilder, OwnedMessage};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
     ChunkAlreadyComplete,
     ChunkAlreadyVerified,
+    ChunkIdAlreadyAdded,
+    ChunkIdInvalid,
     ChunkIdMismatch,
+    ChunkIdMissing,
     ChunkLockAlreadyAcquired,
+    ChunkLockLimitReached,
     ChunkMissing,
-    ChunkMissingTranscript,
     ChunkMissingVerification,
-    ChunkNotLocked,
     ChunkNotLockedOrByWrongParticipant,
-    ChunkUpdateFailed,
-    ChunkVerifierMissing,
     ComputationFailed,
+    CompressedContributionHashingUnsupported,
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
     ContributionFileSizeMismatch,
+    ContributionHashMismatch,
     ContributionIdIsNonzero,
     ContributionIdMismatch,
+    ContributionIdMustBeNonzero,
     ContributionLocatorAlreadyExists,
+    ContributionLocatorIncorrect,
     ContributionLocatorMissing,
     ContributionMissing,
     ContributionMissingVerification,
     ContributionMissingVerifiedLocator,
     ContributionMissingVerifier,
     ContributionShouldNotExist,
-    ContributionVerificationFailed,
     ContributionsComplete,
     ContributorAlreadyContributed,
     ContributorsMissing,
@@ -50,31 +57,64 @@ pub enum CoordinatorError {
     Error(anyhow::Error),
     InitializationFailed,
     InitializationTranscriptsDiffer,
-    InvalidUrl,
+    Integer(std::num::ParseIntError),
     IOError(std::io::Error),
     JsonError(serde_json::Error),
     Launch(rocket::error::LaunchError),
-    MissingVerifierIds,
+    LocatorDeserializationFailed,
+    LocatorSerializationFailed,
     NumberOfChunksInvalid,
-    NumberOfChunkVerifierIdsInvalid,
-    NumberOfChunkVerifiedBaseUrlsInvalid,
     NumberOfContributionsDiffer,
+    ParticipantAlreadyAdded,
+    ParticipantAlreadyAddedChunk,
+    ParticipantAlreadyDropped,
+    ParticipantAlreadyFinished,
+    ParticipantAlreadyFinishedChunk,
+    ParticipantAlreadyWorkingOnChunk,
+    ParticipantAlreadyStarted,
+    ParticipantDidNotWork,
+    ParticipantDidntLockChunkId,
+    ParticipantHasNotStarted,
+    ParticipantHasNoRemainingChunks,
+    ParticipantHasRemainingChunks,
+    ParticipantMissing,
+    ParticipantNotFound,
+    ParticipantNotReady,
+    ParticipantRoundHeightInvalid,
+    ParticipantRoundHeightMissing,
+    ParticipantStillHasLocks,
+    ParticipantUnauthorized,
+    ParticipantUnauthorizedForChunkId,
+    ParticipantWasDropped,
+    Phase1Setup(setup_utils::Error),
     RoundAggregationFailed,
     RoundAlreadyInitialized,
-    RoundChunksMissingVerification,
+    RoundContributorsMissing,
+    RoundContributorsNotUnique,
     RoundDirectoryMissing,
     RoundDoesNotExist,
+    RoundFileSizeMismatch,
     RoundHeightIsZero,
     RoundHeightMismatch,
     RoundLocatorAlreadyExists,
     RoundLocatorMissing,
     RoundNotComplete,
-    RoundNotVerified,
-    RoundSkipped,
+    RoundNotReady,
+    RoundNumberOfContributorsUnauthorized,
+    RoundNumberOfVerifiersUnauthorized,
+    RoundShouldNotExist,
+    RoundVerifiersMissing,
+    RoundVerifiersNotUnique,
+    StorageCopyFailed,
     StorageFailed,
+    StorageInitializationFailed,
+    StorageLocatorAlreadyExists,
+    StorageLocatorFormatIncorrect,
+    StorageLocatorMissing,
+    StorageLockFailed,
     StorageReaderFailed,
+    StorageSizeLookupFailed,
     StorageUpdateFailed,
-    StorageWriterFailed,
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
     Url(url::ParseError),
@@ -95,9 +135,21 @@ impl From<serde_json::Error> for CoordinatorError {
     }
 }
 
+impl From<setup_utils::Error> for CoordinatorError {
+    fn from(error: setup_utils::Error) -> Self {
+        CoordinatorError::Phase1Setup(error)
+    }
+}
+
 impl From<std::io::Error> for CoordinatorError {
     fn from(error: std::io::Error) -> Self {
         CoordinatorError::IOError(error)
+    }
+}
+
+impl From<std::num::ParseIntError> for CoordinatorError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        CoordinatorError::Integer(error)
     }
 }
 
@@ -109,21 +161,1148 @@ impl From<url::ParseError> for CoordinatorError {
 
 impl fmt::Display for CoordinatorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        error!("{}", self);
         write!(f, "{:?}", self)
     }
 }
 
 impl From<CoordinatorError> for anyhow::Error {
     fn from(error: CoordinatorError) -> Self {
+        error!("{}", error);
         Self::msg(error.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParticipantInfo {
+    /// The ID of the participant.
+    #[serde(
+        serialize_with = "serialize_participant_to_string",
+        deserialize_with = "deserialize_participant_to_string"
+    )]
+    id: Participant,
+    /// The round height that this participant is contributing to.
+    round_height: u64,
+    /// The reliability of the participant from an initial calibration.
+    reliability: u8,
+    /// The timestamp of the first seen instance of this participant.
+    first_seen: DateTime<Utc>,
+    /// The timestamp of the last seen instance of this participant.
+    last_seen: DateTime<Utc>,
+    /// The timestamp when this participant started the round.
+    started_at: Option<DateTime<Utc>>,
+    /// The timestamp when this participant finished the round.
+    finished_at: Option<DateTime<Utc>>,
+    /// The timestamp when this participant was dropped from the round.
+    dropped_at: Option<DateTime<Utc>>,
+    /// The list of chunk IDs that this participant has left to compute.
+    pending_chunks: LinkedList<u64>,
+    /// The set of chunk IDs that this participant is computing.
+    locked_chunks: HashSet<u64>,
+    /// The list of chunk IDs that this participant has computed.
+    completed_chunks: LinkedList<u64>,
+}
+
+impl ParticipantInfo {
+    #[inline]
+    fn new(participant: Participant, round_height: u64, reliability: u8) -> Self {
+        // Fetch the current time.
+        let now = Utc::now();
+        Self {
+            id: participant,
+            round_height,
+            reliability,
+            first_seen: now,
+            last_seen: now,
+            started_at: None,
+            finished_at: None,
+            dropped_at: None,
+            pending_chunks: LinkedList::new(),
+            locked_chunks: HashSet::new(),
+            completed_chunks: LinkedList::new(),
+        }
+    }
+
+    ///
+    /// Returns `true` if the participant is finished with the current round.
+    ///
+    #[inline]
+    fn is_finished(&self) -> bool {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return false;
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return false;
+        }
+
+        // Check that the participant has already finished the round.
+        if self.finished_at.is_none() {
+            return false;
+        }
+
+        // Check that the participant has no more pending chunks.
+        if !self.pending_chunks.is_empty() {
+            return false;
+        }
+
+        // Check that the participant has no more locked chunks.
+        if !self.locked_chunks.is_empty() {
+            return false;
+        }
+
+        // Check that the participant has completed chunks.
+        if self.completed_chunks.is_empty() {
+            return false;
+        }
+
+        true
+    }
+
+    ///
+    /// Assigns the participant to the given chunks for the current round,
+    /// and sets the start time as the current time.
+    ///
+    #[inline]
+    fn start(&mut self, chunks: LinkedList<u64>) -> Result<(), CoordinatorError> {
+        // Check that the participant has a valid round height set.
+        if self.round_height == 0 {
+            return Err(CoordinatorError::ParticipantRoundHeightInvalid);
+        }
+
+        // Check that the participant has not already started in the round.
+        if self.started_at.is_some() || self.dropped_at.is_some() || self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Check that the participant has no pending or locked chunks.
+        if !self.pending_chunks.is_empty() || !self.locked_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the participant has not completed chunks already.
+        if !self.completed_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them starting now.
+        self.last_seen = now;
+        self.started_at = Some(now);
+        self.pending_chunks = chunks;
+
+        Ok(())
+    }
+
+    ///
+    /// Adds the given chunk ID in FIFO order for the participant to process.
+    ///
+    #[inline]
+    fn push_back_chunk_id(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the chunk ID was not already added to the pending chunks.
+        if self.pending_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
+        // Check that the chunk ID was not already locked or completed.
+        if self.locked_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+        }
+
+        // Add the chunk ID to the front of the linked list.
+        self.pending_chunks.push_back(chunk_id);
+
+        Ok(())
+    }
+
+    ///
+    /// Adds the given chunk ID in LIFO order for the participant to process.
+    ///
+    #[inline]
+    fn push_front_chunk_id(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the chunk ID was not already added to the pending chunks.
+        if self.pending_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
+        // Check that the chunk ID was not already locked or completed.
+        if self.locked_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+        }
+
+        // Add the chunk ID to the front of the linked list.
+        self.pending_chunks.push_front(chunk_id);
+
+        Ok(())
+    }
+
+    ///
+    /// Pops the next chunk ID the participant should process,
+    /// in FIFO order when added to the linked list.
+    ///
+    #[inline]
+    fn pop_chunk_id(&mut self) -> Result<u64, CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant has pending chunks.
+        if self.pending_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasNoRemainingChunks);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Fetch the next chunk ID in order as stored.
+        match self.pending_chunks.pop_front() {
+            Some(chunk_id) => Ok(chunk_id),
+            None => Err(CoordinatorError::ParticipantHasNoRemainingChunks),
+        }
+    }
+
+    ///
+    /// Adds the given chunk ID to the locked chunks held by this participant.
+    ///
+    #[inline]
+    fn acquired_lock(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant was authorized to lock this chunk.
+        if self.pending_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Adds the given chunk ID to the locked chunks.
+        self.locked_chunks.insert(chunk_id);
+
+        Ok(())
+    }
+
+    ///
+    /// Removes the given chunk ID from the locked chunks held by this participant.
+    ///
+    #[inline]
+    fn released_lock(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant had locked this chunk.
+        if self.pending_chunks.contains(&chunk_id) || !self.locked_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantDidntLockChunkId);
+        }
+
+        // Check that the participant has not already completed this chunk.
+        if self.completed_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Remove the given chunk ID from the locked chunks.
+        self.locked_chunks.remove(&chunk_id);
+
+        // Adds the given chunk ID to the completed chunks.
+        self.completed_chunks.push_back(chunk_id);
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the participant to finished and saves the current time as the completed time.
+    ///
+    #[inline]
+    fn finish(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not already finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant has no more pending chunks.
+        if !self.pending_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the participant has no more locked chunks.
+        if !self.locked_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
+        // Check that the participant has completed chunks.
+        if self.completed_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantDidNotWork);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them finishing now.
+        self.last_seen = now;
+        self.finished_at = Some(now);
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the participant to dropped and saves the current time as the dropped time.
+    ///
+    #[inline]
+    fn drop(&mut self) -> Result<(), CoordinatorError> {
+        // Check that the participant already started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not already dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyDropped);
+        }
+
+        // Check that the participant has not already finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them dropping now.
+        self.dropped_at = Some(now);
+
+        Ok(())
+    }
+
+    ///
+    /// Resets the participant information.
+    ///
+    #[inline]
+    fn reset(&mut self) {
+        *self = Self::new(self.id.clone(), self.round_height, self.reliability);
+    }
+}
+
+#[derive(Serialize)]
+struct CoordinatorState {
+    /// The parameters and settings of this coordinator.
+    #[serde(skip_serializing)]
+    environment: Environment,
+    /// The map of chunks pending verification in the current round.
+    pending_verification: HashMap<u64, Participant>,
+    /// The map of unique contributors for the current round.
+    current_contributors: HashMap<Participant, ParticipantInfo>,
+    /// The map of unique verifiers for the current round.
+    current_verifiers: HashMap<Participant, ParticipantInfo>,
+    /// The map of unique participants for the next round.
+    next: HashMap<Participant, ParticipantInfo>,
+    /// The map of each round height to the corresponding contributors from that round.
+    finished_contributors: HashMap<u64, ParticipantInfo>,
+    /// The map of each round height to the corresponding verifiers from that round.
+    finished_verifiers: HashMap<u64, ParticipantInfo>,
+    /// The list of information about participants that dropped in current and past rounds.
+    dropped: Vec<ParticipantInfo>,
+    /// The list of participants that are banned from all current and future rounds.
+    banned: Vec<Participant>,
+}
+
+impl CoordinatorState {
+    ///
+    /// Creates a new instance of `CoordinatorState`.
+    ///
+    #[inline]
+    fn new(environment: Environment) -> Self {
+        Self {
+            environment,
+            pending_verification: HashMap::default(),
+            current_contributors: HashMap::default(),
+            current_verifiers: HashMap::default(),
+            next: HashMap::default(),
+            finished_contributors: HashMap::default(),
+            finished_verifiers: HashMap::default(),
+            dropped: Vec::new(),
+            banned: Vec::new(),
+        }
+    }
+
+    ///
+    /// Returns `true` if the given participant is an authorized contributor in the ceremony.
+    ///
+    #[inline]
+    fn is_authorized_contributor(&self, participant: &Participant) -> bool {
+        participant.is_contributor() && !self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is an authorized verifier in the ceremony.
+    ///
+    #[inline]
+    fn is_authorized_verifier(&self, participant: &Participant) -> bool {
+        participant.is_verifier() && !self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns `true` if all participants in the current round have no more pending chunks.
+    ///
+    #[inline]
+    fn is_current_round_finished(&self) -> bool {
+        // Check that all contributions have undergone verification.
+        self.pending_verification.is_empty()
+            // Check that all current contributors are finished.
+            && (self
+            .current_contributors
+            .par_iter()
+            .filter(|(_, p)| !p.is_finished())
+            .count()
+            == 0)
+            // Check that all current verifiers are finished.
+            && (self
+            .current_verifiers
+            .par_iter()
+            .filter(|(_, p)| !p.is_finished())
+            .count()
+            == 0)
+    }
+
+    ///
+    /// Returns `true` if the next round has the required number of contributors and verifiers.
+    ///
+    /// Note that this function does not check for banned participants, which is checked
+    /// during the precommit phase for the next round.
+    ///
+    #[inline]
+    fn is_next_round_ready(&self) -> bool {
+        // Check that the next round contains participants.
+        if self.next.is_empty() {
+            return false;
+        }
+
+        // Parse the next round participants into contributors and verifiers.
+        let contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor());
+        let verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier());
+
+        // Check that the next round contains a permitted number of contributors.
+        let minimum_contributors = self.environment.minimum_contributors_per_round();
+        let maximum_contributors = self.environment.maximum_contributors_per_round();
+        let number_of_contributors = contributors.count();
+        if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
+            trace!("Insufficient or unauthorized number of contributors");
+            return false;
+        }
+
+        // Check that the next round contains a permitted number of verifiers.
+        let minimum_verifiers = self.environment.minimum_verifiers_per_round();
+        let maximum_verifiers = self.environment.maximum_verifiers_per_round();
+        let number_of_verifiers = verifiers.count();
+        if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
+            trace!("Insufficient or unauthorized number of verifiers");
+            return false;
+        }
+
+        true
+    }
+
+    ///
+    /// Adds the given chunk ID to the participant to process.
+    ///
+    #[inline]
+    fn push_front_chunk_id(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Add the chunk ID to the pending chunks of the given participant.
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                Some(participant) => Ok(participant.push_front_chunk_id(chunk_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                Some(participant) => Ok(participant.push_front_chunk_id(chunk_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
+    /// Pops the next chunk ID the participant should process.
+    ///
+    #[inline]
+    fn pop_chunk_id(&mut self, participant: &Participant) -> Result<u64, CoordinatorError> {
+        // Remove the next chunk ID from the pending chunks of the given participant.
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                Some(participant) => Ok(participant.pop_chunk_id()?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                Some(participant) => Ok(participant.pop_chunk_id()?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
+    /// Adds the given chunk ID to the locks held by the given participant.
+    ///
+    #[inline]
+    fn acquired_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
+    /// Removes the given chunk ID from the locks held by the given participant.
+    ///
+    #[inline]
+    fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                Some(participant_info) => {
+                    // Release the chunk lock from the contributor.
+                    participant_info.released_lock(chunk_id)?;
+
+                    trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
+                    self.add_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                Some(participant) => {
+                    // Release the chunk lock from the verifier.
+                    participant.released_lock(chunk_id)?;
+
+                    trace!("Removing chunk {} from the queue of pending verifications", chunk_id);
+                    self.remove_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
+    /// Adds the given chunk ID to the map of chunks that are pending verification.
+    /// The chunk is assigned to the verifier with the least number of chunks in its queue.
+    ///
+    #[inline]
+    fn add_pending_verification(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the set pending verification does not already contain the chunk ID.
+        if self.pending_verification.contains_key(&chunk_id) {
+            return Err(CoordinatorError::ChunkIdAlreadyAdded);
+        }
+
+        let verifier = match self
+            .current_verifiers
+            .par_iter()
+            .min_by_key(|(_, v)| v.pending_chunks.len() + v.locked_chunks.len())
+        {
+            Some((verifier, verifier_info)) => verifier.clone(),
+            None => return Err(CoordinatorError::VerifierMissing),
+        };
+
+        trace!("Assigning chunk {} to {} for verification", chunk_id, verifier);
+
+        match self.current_verifiers.get_mut(&verifier) {
+            Some(verifier_info) => verifier_info.push_back_chunk_id(chunk_id)?,
+            None => return Err(CoordinatorError::VerifierMissing),
+        };
+
+        self.pending_verification.insert(chunk_id, verifier);
+
+        Ok(())
+    }
+
+    ///
+    /// Remove the given chunk ID from the map of chunks that are pending verification.
+    ///
+    #[inline]
+    fn remove_pending_verification(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the set pending verification does not already contain the chunk ID.
+        if !self.pending_verification.contains_key(&chunk_id) {
+            return Err(CoordinatorError::ChunkIdMissing);
+        }
+
+        trace!("Removing chunk {} from the pending verifications", chunk_id);
+        self.pending_verification.remove(&chunk_id);
+
+        Ok(())
+    }
+
+    ///
+    /// Adds the given participant to the next round if they are permitted to participate.
+    ///
+    #[inline]
+    fn add_next_round_participant(
+        &mut self,
+        participant: Participant,
+        round_height: u64,
+        reliability_score: u8,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the participant is not already added to the next round.
+        if self.next.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        // Check if there is space to add the given participant to the next round.
+        match participant {
+            Participant::Contributor(_) => {
+                // Check if the contributor is authorized.
+                if !self.is_authorized_contributor(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Filter the next round participants into contributors.
+                let num_contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor()).count();
+
+                if num_contributors < self.environment.maximum_contributors_per_round() {
+                    // Add the contributor to the next round.
+                    self.next.insert(
+                        participant.clone(),
+                        ParticipantInfo::new(participant, round_height, reliability_score),
+                    );
+                    return Ok(());
+                }
+            }
+            Participant::Verifier(_) => {
+                // Check if the verifier is authorized.
+                if !self.is_authorized_verifier(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Filter the next round participants into verifiers.
+                let num_verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier()).count();
+
+                if num_verifiers < self.environment.maximum_verifiers_per_round() {
+                    // Add the verifier to the next round.
+                    self.next.insert(
+                        participant.clone(),
+                        ParticipantInfo::new(participant, round_height, reliability_score),
+                    );
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(CoordinatorError::ParticipantUnauthorized)
+    }
+
+    ///
+    /// Removes the given participant from the next round if they are in the queue.
+    ///
+    #[inline]
+    fn remove_next_round_participant(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is exists in the next round map.
+        if !self.next.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantMissing);
+        }
+
+        // Remove the participant from the next round.
+        self.next.remove(&participant);
+
+        Ok(())
+    }
+
+    ///
+    /// Updates the state of contributors in the current round.
+    ///
+    #[inline]
+    fn update_current_contributors(&mut self) -> Result<(), CoordinatorError> {
+        for (contributor, contributor_info) in self.current_contributors.iter_mut() {
+            trace!("{:#?}", contributor_info);
+
+            // Check that the contributor already started in the round.
+            if contributor_info.started_at.is_none() {
+                continue;
+            }
+
+            // Check that the contributor was not dropped from the round.
+            if contributor_info.dropped_at.is_some() {
+                continue;
+            }
+
+            // Check that the contributor has not already finished the round.
+            if contributor_info.finished_at.is_some() {
+                continue;
+            }
+
+            // Check that the contributor has no more pending chunks.
+            if !contributor_info.pending_chunks.is_empty() {
+                continue;
+            }
+
+            // Check that the contributor has no more locked chunks.
+            if !contributor_info.locked_chunks.is_empty() {
+                continue;
+            }
+
+            // Check that the contributor has completed chunks.
+            if contributor_info.completed_chunks.is_empty() {
+                continue;
+            }
+
+            // Set the contributor as finished.
+            contributor_info.finish()?;
+
+            debug!("{} has finished", contributor);
+        }
+        Ok(())
+    }
+
+    ///
+    /// Updates the state of verifiers in the current round.
+    ///
+    /// This function never be run prior to calling `update_current_contributors`.
+    ///
+    #[inline]
+    fn update_current_verifiers(&mut self) -> Result<(), CoordinatorError> {
+        // Check if the contributors are finished.
+        let is_contributors_finished = self
+            .current_contributors
+            .par_iter()
+            .filter(|(_, p)| !p.is_finished())
+            .count()
+            == 0;
+
+        // If all contributors are finished, this means there are no new verification jobs
+        // to be added to the pending verifications queue. So if a verifier is finished
+        // with their verifications, then they are finished for this round.
+        if is_contributors_finished {
+            for (verifier, verifier_info) in self.current_verifiers.iter_mut() {
+                trace!("{:#?}", verifier_info);
+
+                // Check that the verifier already started in the round.
+                if verifier_info.started_at.is_none() {
+                    continue;
+                }
+
+                // Check that the verifier was not dropped from the round.
+                if verifier_info.dropped_at.is_some() {
+                    continue;
+                }
+
+                // Check that the verifier has not already finished the round.
+                if verifier_info.finished_at.is_some() {
+                    continue;
+                }
+
+                // Check that the verifier has no more pending chunks.
+                if !verifier_info.pending_chunks.is_empty() {
+                    continue;
+                }
+
+                // Check that the verifier has no more locked chunks.
+                if !verifier_info.locked_chunks.is_empty() {
+                    continue;
+                }
+
+                // Check that the verifier has completed chunks.
+                if verifier_info.completed_chunks.is_empty() {
+                    continue;
+                }
+
+                // Set the verifier as finished.
+                verifier_info.finish()?;
+
+                debug!("{} has finished", verifier);
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Checks the current round for disconnected participants.
+    ///
+    #[inline]
+    fn update_dropped_participants(&mut self) -> Result<(), CoordinatorError> {
+        // Fetch the timeout threshold for contributors and verifiers.
+        let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
+        let verifier_timeout = self.environment.verifier_timeout_in_minutes() as i64;
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Process the contributors.
+        for (participant, mut participant_info) in self.current_contributors.clone() {
+            // Fetch the elapsed time.
+            let elapsed = now - participant_info.last_seen;
+
+            // Check if the participant is still live.
+            if elapsed.num_minutes() > contributor_timeout {
+                // Set the participant as dropped.
+                participant_info.drop()?;
+
+                // TODO (howardwu): Release any outstanding locks.
+
+                self.dropped.push(participant_info);
+                self.current_contributors.remove(&participant);
+
+                debug!("{} is being dropped", participant);
+            }
+        }
+
+        // Process the verifiers.
+        for (participant, mut participant_info) in self.current_verifiers.clone() {
+            // Fetch the elapsed time.
+            let elapsed = now - participant_info.last_seen;
+
+            // Check if the participant is still live.
+            if elapsed.num_minutes() > verifier_timeout {
+                // Set the participant as dropped.
+                participant_info.drop()?;
+
+                // TODO (howardwu): Release any outstanding locks.
+
+                self.dropped.push(participant_info);
+                self.current_verifiers.remove(&participant);
+
+                debug!("{} is being dropped", participant);
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Checks the list of dropped participants for participants who
+    /// meet the ban criteria of the coordinator.
+    ///
+    #[inline]
+    fn update_banned_participants(&mut self) -> Result<(), CoordinatorError> {
+        for participant_info in self.dropped.iter() {
+            // Fetch the number of times this participant has been dropped.
+            let count = self
+                .dropped
+                .par_iter()
+                .filter(|dropped| dropped.id == participant_info.id)
+                .count();
+
+            // Check if the participant meets the ban threshold.
+            if count > self.environment.participant_ban_threshold() as usize {
+                self.banned.push(participant_info.id.clone());
+
+                debug!("{} is being banned", participant_info.id);
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Prepares transition of the coordinator state from the current round to the next round.
+    /// On precommit success, returns the list of contributors and verifiers for the next round.
+    ///
+    #[inline]
+    fn precommit_next_round(&mut self) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
+        // Check that the current round is complete.
+        if !self.is_current_round_finished() {
+            return Err(CoordinatorError::RoundNotComplete);
+        }
+
+        // Check that the next round contains participants.
+        if self.next.is_empty() {
+            return Err(CoordinatorError::RoundNotReady);
+        }
+
+        // Check that each participant in the next round is authorized.
+        if self
+            .next
+            .par_iter()
+            .filter(|(participant, _)| self.banned.contains(participant))
+            .count()
+            > 0
+        {
+            return Err(CoordinatorError::ParticipantUnauthorized);
+        }
+
+        // Parse the next round participants into contributors and verifiers.
+        let contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor());
+        let verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier());
+
+        // Check that the next round contains a permitted number of contributors.
+        let minimum_contributors = self.environment.minimum_contributors_per_round();
+        let maximum_contributors = self.environment.maximum_contributors_per_round();
+        let number_of_contributors = contributors.count();
+        if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
+            return Err(CoordinatorError::RoundNumberOfContributorsUnauthorized);
+        }
+
+        // Check that the next round contains a permitted number of verifiers.
+        let minimum_verifiers = self.environment.minimum_verifiers_per_round();
+        let maximum_verifiers = self.environment.maximum_verifiers_per_round();
+        let number_of_verifiers = verifiers.count();
+        if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
+            return Err(CoordinatorError::RoundNumberOfVerifiersUnauthorized);
+        }
+
+        // Create the initial chunk locking sequence for each contributor.
+        {
+            // Load the contributors.
+            let mut contributors: Vec<_> = self
+                .next
+                .clone()
+                .into_iter()
+                .filter(|(p, _)| p.is_contributor())
+                .map(|participant| participant.1)
+                .collect();
+            contributors.par_sort_by_key(|p| p.reliability);
+
+            // Fetch the number of chunks and bucket size.
+            let number_of_chunks = self.environment.number_of_chunks() as u64;
+            let bucket_size = number_of_chunks / number_of_contributors as u64;
+
+            // Set the chunk ID ordering for each contributor.
+            for (index, contributor_info) in contributors.iter().enumerate() {
+                // Determine the starting and ending indices.
+                let start = index as u64 * bucket_size;
+                let end = start + number_of_chunks;
+
+                // Add the chunk ID in FIFO ordering.
+                let mut chunk_ids = LinkedList::new();
+                for index in start..end {
+                    let chunk_id = index % number_of_chunks;
+                    chunk_ids.push_back(chunk_id);
+                }
+
+                // Prepare to commit by adding chunk IDs to participant in next.
+                match self.next.get_mut(&contributor_info.id) {
+                    Some(participant_info) => participant_info.start(chunk_ids)?,
+                    None => return Err(CoordinatorError::ParticipantNotFound),
+                }
+            }
+        }
+
+        // // Check that all participants are storing the same round height.
+        // let round_heights = self
+        //     .next
+        //     .par_iter()
+        //     .map(|(_, p)| {
+        //         let mut output = HashSet::new();
+        //         output.insert(p.round_height);
+        //         output
+        //     })
+        //     .reduce(|| HashSet::new(), |a, b| a.union(&b).collect::<HashSet<_>>());
+        // if round_heights > 1 {
+        //     return Err(CoordinatorError::RoundHeightMismatch);
+        // }
+
+        // Check that each contribution has an initial chunk locking sequence,
+        // and prepare the list of contributors and verifiers to return.
+        let mut contributors = Vec::with_capacity(number_of_contributors);
+        let mut verifiers = Vec::with_capacity(number_of_verifiers);
+        for (participant, participant_info) in &mut self.next {
+            match participant {
+                Participant::Contributor(_) => {
+                    // Check that the chunk IDs are set in the participant information.
+                    if participant_info.pending_chunks.is_empty() {
+                        return Err(CoordinatorError::ParticipantNotReady);
+                    }
+                    // Add the participant to the list of contributors to return.
+                    contributors.push(participant.clone());
+                }
+                Participant::Verifier(_) => {
+                    // Start the verifier.
+                    participant_info.start(LinkedList::new())?;
+
+                    // Add the participant to the list of contributors to return.
+                    verifiers.push(participant.clone());
+                }
+            }
+        }
+
+        Ok((contributors, verifiers))
+    }
+
+    ///
+    /// Executes transition of the coordinator state from the current round to the next round.
+    ///
+    #[inline]
+    fn commit_next_round(&mut self) {
+        // Add all current round participants to the finished list.
+        for (_, contributor_info) in self.current_contributors.clone() {
+            self.finished_contributors
+                .insert(contributor_info.round_height, contributor_info);
+        }
+        for (_, verifier_info) in self.current_verifiers.clone() {
+            self.finished_verifiers
+                .insert(verifier_info.round_height, verifier_info);
+        }
+
+        // Reset the current round map.
+        self.current_contributors = HashMap::new();
+        self.current_verifiers = HashMap::new();
+
+        // Add all participants from next to current.
+        for (participant, participant_info) in self.next.iter() {
+            match participant {
+                Participant::Contributor(_) => self
+                    .current_contributors
+                    .insert(participant.clone(), participant_info.clone()),
+                Participant::Verifier(_) => self
+                    .current_verifiers
+                    .insert(participant.clone(), participant_info.clone()),
+            };
+        }
+
+        // Reset the next round map.
+        self.next = HashMap::new();
+    }
+
+    ///
+    /// Rolls back the precommit of the coordinator state for transitioning to the next round.
+    ///
+    #[inline]
+    fn rollback_next_round(&mut self) {
+        // Reset the participant information for each contributor.
+        for (participant, participant_info) in &mut self.next {
+            // Check if the participant is a contributor.
+            if participant.is_contributor() {
+                // Reset all participant information.
+                participant_info.reset();
+            }
+        }
+    }
+
+    ///
+    /// Returns the status of the coordinator state.
+    ///
+    #[inline]
+    fn status_report(&self) -> String {
+        let number_of_current_contributors = self.current_contributors.len();
+        let number_of_current_verifiers = self.current_verifiers.len();
+        let number_of_pending_verifications = self.pending_verification.len();
+
+        let number_of_next_contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor()).count();
+        let number_of_next_verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier()).count();
+
+        let number_of_dropped_participants = self.dropped.len();
+        let number_of_banned_participants = self.banned.len();
+
+        format!(
+            r#"
+    {} contributors and {} verifiers in the current round
+    {} chunks are pending verification
+
+    {} contributors and {} verifiers in queue for next round
+
+    {} participants dropped
+    {} participants banned        
+        "#,
+            number_of_current_contributors,
+            number_of_current_verifiers,
+            number_of_pending_verifications,
+            number_of_next_contributors,
+            number_of_next_verifiers,
+            number_of_dropped_participants,
+            number_of_banned_participants
+        )
     }
 }
 
 /// A core structure for operating the Phase 1 ceremony.
 #[derive(Clone)]
 pub struct Coordinator {
-    storage: Arc<RwLock<Box<dyn Storage>>>,
+    /// The parameters and settings of this coordinator.
     environment: Environment,
+    /// The storage of contributions and rounds for this coordinator.
+    storage: Arc<RwLock<Box<dyn Storage>>>,
+    /// The current round and participant state.
+    state: Arc<RwLock<CoordinatorState>>,
 }
 
 impl Coordinator {
@@ -138,103 +1317,224 @@ impl Coordinator {
     #[inline]
     pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
         Ok(Self {
+            environment: environment.clone(),
             storage: Arc::new(RwLock::new(environment.storage()?)),
-            environment,
+            state: Arc::new(RwLock::new(CoordinatorState::new(environment))),
         })
     }
 
     ///
-    /// Returns a reference to the instantiation of `Environment` that this
-    /// coordinator is using.
+    /// Runs a set of operations to initialize state and start the coordinator.
     ///
     #[inline]
-    pub fn environment(&self) -> &Environment {
-        &self.environment
+    pub async fn initialize(&self) -> Result<(), CoordinatorError> {
+        // Fetch the current round height from storage.
+        let current_round_height = self.current_round_height()?;
+
+        // If this is a new ceremony, execute the first round to initialize the ceremony.
+        if current_round_height == 0 {
+            // Fetch the contributor and verifier of the coordinator.
+            let contributor = self.environment.coordinator_contributor();
+            let verifier = self.environment.coordinator_verifier();
+
+            // Add the contributor and verifier of the coordinator to execute round 1.
+            let mut state = self.state.write().unwrap();
+            state.add_next_round_participant(contributor.clone(), 1, 10)?;
+            state.add_next_round_participant(verifier.clone(), 1, 10)?;
+            drop(state);
+
+            info!("Initializing round 1");
+            self.try_advance()?;
+            info!("Initialized round 1");
+
+            info!("Add contributions and verifications for round 1");
+            for chunk_id in 0..self.environment.number_of_chunks() {
+                debug!("Computing contributions for round 1 chunk {}", chunk_id);
+                let (_chunk_id, _challenge_locator, response_locator) = self.try_lock(&contributor)?;
+                self.run_computation(1, chunk_id, 1, &contributor)?;
+                let _response_locator = self.try_contribute(&contributor, &response_locator)?;
+                debug!("Computed contributions for round 1 chunk {}", chunk_id);
+
+                debug!("Running verification for round 1 chunk {}", chunk_id);
+                let (_chunk_id, _response_locator, next_challenge_locator) = self.try_lock(&verifier)?;
+                let _next_challenge_locator = self.run_verification(1, chunk_id, 1, &verifier)?;
+                let _empty = self.try_verify(&verifier, &next_challenge_locator)?;
+                debug!("Running verification for round 1 chunk {}", chunk_id);
+            }
+            info!("Added contributions and verifications for round 1");
+        }
+
+        // Clone the coordinator.
+        let coordinator = self.clone();
+
+        // Start a task thread for the coordinator.
+        task::spawn(async move {
+            // Initialize the coordinator loop.
+            loop {
+                // Run the update operation.
+                coordinator.update().await.unwrap();
+
+                // Sleep for 10 seconds in between iterations.
+                delay_for(Duration::from_secs(10)).await;
+            }
+        });
+
+        Ok(())
     }
 
     ///
-    /// Returns `true` if the given participant is a contributor and included
-    /// in the list of contributors for the current round of the ceremony.
+    /// Runs a set of operations to update the coordinator state to reflect
+    /// newly finished, dropped, or banned participants.
+    ///
+    #[inline]
+    pub async fn update(&self) -> Result<(), CoordinatorError> {
+        // Process updates for the current round and check if the current round is finished.
+        let (is_current_round_finished, is_next_round_ready) = {
+            // Acquire the state write lock.
+            let mut state = self.state.write().unwrap();
+
+            info!("Status Report\n\t{}", state.status_report());
+
+            // Update the state of current round contributors.
+            state.update_current_contributors()?;
+
+            // Update the state of current round verifiers.
+            state.update_current_verifiers()?;
+
+            // Drop disconnected participants from the current round.
+            state.update_dropped_participants()?;
+
+            // Ban any participants who meet the coordinator criteria.
+            state.update_banned_participants()?;
+
+            // Determine if current round is finished and next round is ready.
+            (state.is_current_round_finished(), state.is_next_round_ready())
+        };
+
+        trace!("{} {}", is_current_round_finished, is_next_round_ready);
+
+        // Check if the current round is finished and the next round is ready.
+        if is_current_round_finished && is_next_round_ready {
+            // Check that all locators exist.
+
+            // Backup a copy of the current coordinator.
+
+            // Attempt to advance to the next round.
+            let next_round_height = self.try_advance()?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Returns `true` if the given participant is authorized as a
+    /// contributor and listed in the contributor IDs for this round.
     ///
     /// If the participant is not a contributor, or if there are
     /// no prior rounds, returns `false`.
     ///
     #[inline]
     pub fn is_current_contributor(&self, participant: &Participant) -> bool {
-        // Check that the participant is a contributor.
-        if !participant.is_contributor() {
+        // Acquire a storage read lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        // Fetch the current round from storage.
+        let round = match Self::load_current_round(&storage) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(round) => round,
+            // Case 2 - The ceremony has not started or storage has failed.
+            _ => return false,
+        };
+
+        // Release the storage read lock.
+        drop(storage);
+
+        // Check that the participant is a contributor for the given round height.
+        if !round.is_contributor(participant) {
             return false;
         }
-        // Check that the participant is not a verifier.
-        if participant.is_verifier() {
+
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+
+        // Check that the participant is an authorized contributor.
+        if !state.is_authorized_contributor(participant) {
             return false;
         }
-        // Check that the participant is a contributor in the current round.
-        match self.current_round() {
-            Ok(round) => round.is_authorized_contributor(participant),
-            _ => false,
-        }
+
+        true
     }
 
     ///
-    /// Returns `true` if the given participant is a verifier and included
-    /// in the list of verifiers for the current round of the ceremony.
+    /// Returns `true` if the given participant is authorized as a
+    /// verifier and listed in the verifier IDs for this round.
     ///
     /// If the participant is not a verifier, or if there are
-    /// no prior rounds, returns a `false`.
+    /// no prior rounds, returns `false`.
     ///
     #[inline]
     pub fn is_current_verifier(&self, participant: &Participant) -> bool {
-        // Check that the participant is not a contributor.
-        if participant.is_contributor() {
+        // Acquire a storage read lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        // Fetch the current round from storage.
+        let round = match Self::load_current_round(&storage) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(round) => round,
+            // Case 2 - The ceremony has not started or storage has failed.
+            _ => return false,
+        };
+
+        // Release the storage read lock.
+        drop(storage);
+
+        // Check that the participant is a verifier for the given round height.
+        if !round.is_verifier(participant) {
             return false;
         }
-        // Check that the participant is a verifier.
-        if !participant.is_verifier() {
+
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+
+        // Check that the participant is an authorized contributor.
+        if !state.is_authorized_verifier(participant) {
             return false;
         }
-        // Check that the participant is a verifier in the current round.
-        match self.current_round() {
-            Ok(round) => round.is_authorized_verifier(participant),
-            _ => false,
-        }
+
+        true
     }
 
     ///
-    /// Returns a reference to the round corresponding to the given height from storage.
-    ///
-    /// If there are no prior rounds, returns a `CoordinatorError`.
+    /// Adds the given participant to the next round if they are permitted to participate.
+    /// On success, returns `true`. Otherwise, returns `false`.
     ///
     #[inline]
-    pub fn get_round(&self, round_height: u64) -> Result<Round, CoordinatorError> {
-        // Load the round corresponding to the given round height from storage.
-        match self.storage()?.get(&Key::Round(round_height)) {
-            Some(Value::Round(round)) => Ok(round.clone()),
-            _ => Err(CoordinatorError::RoundDoesNotExist),
-        }
+    pub fn add_next_round_participant(
+        &self,
+        participant: Participant,
+        reliability_score: u8,
+    ) -> Result<(), CoordinatorError> {
+        // Fetch the next round height.
+        let next_round_height = self.current_round_height()? + 1;
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to add the participant to the next round.
+        state.add_next_round_participant(participant, next_round_height, reliability_score)
     }
 
     ///
-    /// Returns a reference to the current round of the ceremony
-    /// from storage, irrespective of the stage of its completion.
-    ///
-    /// If there are no prior rounds in storage, returns `0`.
-    ///
-    /// When loading the current round from storage, this function
-    /// checks that the current round height matches the height
-    /// set in the returned `Round` instance.
+    /// Removes the given participant from the next round if they are in the queue.
+    /// On success, returns `true`. Otherwise, returns `false`.
     ///
     #[inline]
-    pub fn current_round(&self) -> Result<Round, CoordinatorError> {
-        // Fetch the current round height.
-        let round_height = self.current_round_height()?;
-        // Fetch the corresponding round.
-        let round = self.get_round(round_height)?;
-        // Check that the round height matches the current round height.
-        match round.round_height() == round_height {
-            true => Ok(round),
-            false => Err(CoordinatorError::RoundHeightMismatch),
-        }
+    pub fn remove_next_round_participant(&self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to remove the participant from the next round.
+        state.remove_next_round_participant(participant)
     }
 
     ///
@@ -253,296 +1553,444 @@ impl Coordinator {
     ///
     #[inline]
     pub fn current_round_height(&self) -> Result<u64, CoordinatorError> {
-        // Acquire the storage read lock.
-        let storage = self.storage()?;
+        trace!("Fetching the current round height from storage");
 
-        // Fetch the latest round height from storage.
-        match storage.get(&Key::RoundHeight) {
-            Some(Value::RoundHeight(round_height)) => match round_height != 0 {
+        // Acquire the storage lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        match current_round_height != 0 {
+            // Check that the corresponding round data exists in storage.
+            true => match storage.exists(&Locator::RoundState(current_round_height)) {
                 // Case 1 - This is a typical round of the ceremony.
-                // Check that the corresponding round data exists in storage.
-                true => match storage.contains_key(&Key::Round(round_height)) {
-                    true => Ok(round_height),
-                    false => Err(CoordinatorError::StorageFailed),
-                },
-                // Case 2 - There are no prior rounds of the ceremony.
-                false => Ok(0),
+                true => Ok(current_round_height),
+                // Case 2 - Storage failed to locate the current round.
+                false => Err(CoordinatorError::StorageFailed),
             },
-            // Case 2 - There are no prior rounds of the ceremony.
-            _ => Ok(0),
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => Ok(0),
         }
     }
 
     ///
-    /// Returns the current contribution locator for a given chunk ID.
+    /// Returns the current round state of the ceremony from storage,
+    /// irrespective of the stage of its completion.
     ///
-    /// If the current contribution is NOT contributed yet,
-    /// this function will return a `CoordinatorError`.
+    /// If there are no prior rounds in storage, returns `CoordinatorError`.
     ///
-    /// If the current contribution is already verified,
-    /// this function will return a `CoordinatorError`.
+    /// When loading the current round from storage, this function
+    /// checks that the current round height matches the height
+    /// set in the returned `Round` instance.
     ///
     #[inline]
-    pub fn current_contribution_locator(&self, chunk_id: u64, verified: bool) -> Result<String, CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
-        // Fetch the current round height.
-        let current_round_height = current_round.round_height();
-        // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = current_round.get_chunk(chunk_id)?;
-        // Fetch the current contribution ID.
-        let current_contribution_id = chunk.current_contribution_id();
+    pub fn current_round(&self) -> Result<Round, CoordinatorError> {
+        trace!("Fetching the current round from storage");
 
-        // Check that the contribution locator corresponding to the current contribution ID
-        // exists for the current round and given chunk ID.
-        if !self.environment.contribution_locator_exists(
-            current_round_height,
-            chunk_id,
-            current_contribution_id,
-            verified,
-        ) {
-            return Err(CoordinatorError::ContributionLocatorMissing);
-        }
+        // Acquire a storage read lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
 
-        // Check that the current contribution ID is NOT verified yet.
-        if chunk.get_contribution(current_contribution_id)?.is_verified() {
-            return Err(CoordinatorError::ContributionAlreadyVerified);
-        }
-
-        // Fetch the current contribution locator.
-        let current_contribution_locator =
-            self.environment
-                .contribution_locator(current_round_height, chunk_id, current_contribution_id, verified);
-
-        Ok(current_contribution_locator)
+        // Fetch the current round from storage.
+        Self::load_current_round(&storage)
     }
 
     ///
-    /// Returns the next contribution locator for a given chunk ID.
+    /// Returns the round state corresponding to the given height from storage.
     ///
-    /// If the current contribution is NOT contributed yet,
-    /// this function will return a `CoordinatorError`.
-    ///
-    /// If the current contribution is NOT verified yet,
-    /// this function will return a `CoordinatorError`.
-    ///
-    /// If the next contribution locator already exists,
-    /// this function will return a `CoordinatorError`.
-    ///
-    /// If the chunk corresponding to the given chunk ID
-    /// is already completed for the current round,
-    /// this function will return a `CoordinatorError`.
+    /// If there are no prior rounds, returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_contribution_locator(&self, chunk_id: u64, verified: bool) -> Result<String, CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
-        // Fetch the current round height.
-        let current_round_height = current_round.round_height();
-        // Fetch the expected number of contributions for the current round.
-        let expected_num_contributions = current_round.expected_num_contributions();
-        // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = current_round.get_chunk(chunk_id)?;
-        // Fetch the next contribution ID.
-        let next_contribution_id = chunk.next_contribution_id(expected_num_contributions)?;
+    pub fn get_round(&self, round_height: u64) -> Result<Round, CoordinatorError> {
+        // Acquire the storage lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
 
-        // Check that the current contribution has been verified.
-        if !chunk.current_contribution()?.is_verified() {
-            return Err(CoordinatorError::ContributionMissingVerification);
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        // Check that the given round height is valid.
+        match round_height <= current_round_height {
+            // Fetch the round corresponding to the given round height from storage.
+            true => Ok(serde_json::from_slice(
+                &*storage.reader(&Locator::RoundState(round_height))?.as_ref(),
+            )?),
+            // The given round height does not exist.
+            false => Err(CoordinatorError::RoundDoesNotExist),
         }
-
-        // Check that the contribution locator corresponding to the next contribution ID
-        // does NOT exist for the current round and given chunk ID.
-        if self
-            .environment
-            .contribution_locator_exists(current_round_height, chunk_id, next_contribution_id, verified)
-        {
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
-        // Fetch the next contribution locator.
-        let next_contribution_locator =
-            self.environment
-                .contribution_locator(current_round_height, chunk_id, next_contribution_id, verified);
-
-        Ok(next_contribution_locator)
     }
 
     ///
-    /// Attempts to acquire the lock of a given chunk ID from storage
-    /// for a given participant.
+    /// Attempts to acquire the lock to a chunk for the given participant.
     ///
-    /// On success, this function returns the next contribution locator
-    /// if the participant is a contributor, and it returns the current
-    /// contribution locator if the participant is a verifier.
+    /// On success, if the participant is a contributor, this function
+    /// returns `(chunk_id, challenge_locator, response_locator)`.
+    ///
+    /// On success, if the participant is a verifier, this function
+    /// returns `(chunk_id, response_locator, next_challenge_locator)`.
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_lock_chunk(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
-        // Fetch the current round height.
-        let current_round_height = current_round.round_height();
-        // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = current_round.get_chunk(chunk_id)?;
-        // Fetch the next contribution ID.
-        let current_contribution = chunk.current_contribution()?;
+    pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String), CoordinatorError> {
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
 
-        // Check that the participant is authorized to acquire the lock
-        // associated with the given chunk ID for the current round,
-        // and fetch the appropriate contribution locator.
-        let contribution_locator = match participant.clone() {
-            Participant::Contributor(_) => {
-                // Check that the participant is an authorized contributor
-                // for the current round.
-                if !self.is_current_contributor(&participant) {
-                    return Err(CoordinatorError::UnauthorizedChunkContributor);
-                }
-                // This call enforces a strict check that the
-                // next contribution locator does NOT exist and
-                // that the current contribution locator exists
-                // and has already been verified.
-                self.next_contribution_locator(chunk_id, false)?
+        // Attempt to fetch the next chunk ID for the given participant.
+        trace!("Fetching next chunk ID for {}", participant);
+        let chunk_id = state.pop_chunk_id(participant)?;
+
+        trace!("Trying to lock chunk {} for {}", chunk_id, participant);
+        match self.try_lock_chunk(chunk_id, participant) {
+            // Case 1 - Participant acquired lock, return the locator.
+            Ok((current_contribution_locator, next_contribution_locator)) => {
+                trace!("Incrementing the number of locks held by {}", participant);
+                state.acquired_lock(participant, chunk_id)?;
+
+                info!("Acquired lock on chunk {} for {}", chunk_id, participant);
+                Ok((chunk_id, current_contribution_locator, next_contribution_locator))
             }
-            Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_current_verifier(&participant) {
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
+            // Case 2 - Participant failed to acquire the lock, put the chunk ID back.
+            Err(error) => {
+                trace!("Failed to acquire lock and adding chunk ID back to participant queue");
+                state.push_front_chunk_id(participant, chunk_id)?;
+
+                error!("{}", error);
+                return Err(error);
+            }
+        }
+    }
+
+    ///
+    /// Attempts to add a contribution for the given unverified response file locator
+    /// from the given participant.
+    ///
+    /// On success, this function releases the lock from the contributor and returns
+    /// the response file locator.
+    ///
+    /// On failure, it returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn try_contribute(
+        &self,
+        participant: &Participant,
+        unverified_locator: &str,
+    ) -> Result<String, CoordinatorError> {
+        // Check that the participant is a contributor.
+        if !participant.is_contributor() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        // Fetch the chunk ID from the response file locator.
+        let chunk_id = match self.storage.read().unwrap().to_locator(unverified_locator)? {
+            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+                // Check that the response file locator is unverified.
+                if verified == true {
+                    error!("{} provided a verified locator {}", participant, unverified_locator);
+                    return Err(CoordinatorError::ContributionLocatorIncorrect);
                 }
-                // This call enforces a strict check that the
-                // current contribution locator exist and
-                // has not been verified yet.
-                self.current_contribution_locator(chunk_id, false)?
+
+                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
+                chunk_id
+            }
+            _ => {
+                error!("{} provided an irrelevant locator {}", participant, unverified_locator);
+                return Err(CoordinatorError::ContributionLocatorIncorrect);
             }
         };
 
-        // As a corollary, if the current contribution locator exists
-        // and the current contribution has not been verified yet,
-        // check that the given participant is not a contributor.
-        if self.current_contribution_locator(chunk_id, false).is_ok() && !current_contribution.is_verified() {
-            // Check that the given participant is not a contributor.
-            if participant.is_contributor() {
-                return Err(CoordinatorError::UnauthorizedChunkContributor);
+        trace!("Trying to add contribution from {} for chunk {}", chunk_id, participant);
+        match self.add_contribution(chunk_id, participant) {
+            // Case 1 - Participant added contribution, return the response file locator.
+            Ok(locator) => {
+                // Acquire the state write lock.
+                let mut state = self.state.write().unwrap();
+
+                trace!("Release the lock on chunk {} from {}", chunk_id, participant);
+                state.released_lock(participant, chunk_id)?;
+
+                info!("Added contribution for chunk {} at {}", chunk_id, locator);
+                Ok(locator)
+            }
+            // Case 2 - Participant failed to add their contribution, remove the contribution file.
+            Err(error) => {
+                trace!("Failed to add a contribution and removing the contribution file");
+                // self.state.push_chunk_id(participant, chunk_id)?;
+
+                // TODO (howardwu): Delete the response file.
+
+                error!("{}", error);
+                return Err(error);
             }
         }
+    }
 
-        // Attempt to acquire the chunk lock for verification.
-        {
-            // Create a mutable reference of the current round from storage.
-            let mut current_round = current_round.clone();
-
-            // Attempt to acquire the chunk lock for participant.
-            current_round.try_lock_chunk(chunk_id, participant.clone())?;
-
-            // Save the update to storage.
-            self.save_round_to_storage(current_round_height, current_round)?;
+    ///
+    /// Attempts to add a verification with the given verified response file locator
+    /// from the given participant.
+    ///
+    #[inline]
+    pub fn try_verify(&self, participant: &Participant, verified_locator: &str) -> Result<(), CoordinatorError> {
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedContributor);
         }
 
-        info!(
-            "{} acquired lock on round {} chunk {}",
-            participant, current_round_height, chunk_id
-        );
+        // Fetch the chunk ID from the response file locator.
+        let chunk_id = match self.storage.read().unwrap().to_locator(verified_locator)? {
+            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+                // Check that the response file locator is verified.
+                if verified == false {
+                    error!("{} provided an unverified locator {}", participant, verified_locator);
+                    return Err(CoordinatorError::ContributionLocatorIncorrect);
+                }
 
-        Ok(contribution_locator)
+                // TODO (howardwu): Load a reader for the unverified response file and verified file.
+                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
+
+                chunk_id
+            }
+            _ => {
+                error!("{} provided an irrelevant locator {}", participant, verified_locator);
+                return Err(CoordinatorError::ContributionLocatorIncorrect);
+            }
+        };
+
+        trace!("Trying to add verification from {} for chunk {}", chunk_id, participant);
+        match self.verify_contribution(chunk_id, participant) {
+            // Case 1 - Participant verified contribution, return the response file locator.
+            Ok(locator) => {
+                // Acquire the state write lock.
+                let mut state = self.state.write().unwrap();
+
+                trace!("Decrementing the number of locks held by {}", participant);
+                state.released_lock(participant, chunk_id)?;
+
+                info!("Added verification for chunk {}", chunk_id);
+                Ok(locator)
+            }
+            // Case 2 - Participant failed to add their contribution, remove the contribution file.
+            Err(error) => {
+                trace!("Failed to add a verification and removing the contribution file");
+                // self.state.push_chunk_id(participant, chunk_id)?;
+
+                // TODO (howardwu): Delete the response file.
+
+                error!("{}", error);
+                return Err(error);
+            }
+        }
+    }
+
+    ///
+    /// Attempts to advance the ceremony to the next round.
+    ///
+    #[inline]
+    pub fn try_advance(&self) -> Result<u64, CoordinatorError> {
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to advance the round.
+        trace!("Trying to add advance to the next round");
+        match state.precommit_next_round() {
+            // Case 1 - Precommit succeed, attempt to advance the round.
+            Ok((contributors, verifiers)) => match self.next_round(now, contributors, verifiers) {
+                // Case 1a - Coordinator advanced the round.
+                Ok(next_round_height) => {
+                    // If success, update coordinator state to next round.
+                    info!("Coordinator has advanced to round {}", next_round_height);
+                    state.commit_next_round();
+                    Ok(next_round_height)
+                }
+                // Case 1b - Coordinator failed to advance the round.
+                Err(error) => {
+                    // If failed, rollback coordinator state to the current round.
+                    error!("Coordinator failed to advance the next round, performing state rollback");
+                    state.rollback_next_round();
+                    error!("{}", error);
+                    Err(error)
+                }
+            },
+            // Case 2 - Precommit failed, roll back precommit.
+            Err(error) => {
+                // If failed, rollback coordinator state to the current round.
+                error!("Precommit for next round has failed, performing state rollback");
+                state.rollback_next_round();
+                error!("{}", error);
+                Err(error)
+            }
+        }
+    }
+}
+
+impl Coordinator {
+    ///
+    /// Attempts to acquire the lock for a given chunk ID and participant.
+    ///
+    /// On success, if the participant is a contributor, this function
+    /// returns `(challenge_locator, response_locator)`.
+    ///
+    /// On success, if the participant is a verifier, this function
+    /// returns `(response_locator, next_challenge_locator)`.
+    ///
+    /// On failure, this function returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub(crate) fn try_lock_chunk(
+        &self,
+        chunk_id: u64,
+        participant: &Participant,
+    ) -> Result<(String, String), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+        trace!("Current round height from storage is {}", current_round_height);
+
+        // Fetch the current round from storage.
+        let mut round = Self::load_current_round(&storage)?;
+
+        // Attempt to acquire the chunk lock for participant.
+        trace!("Preparing to lock chunk {}", chunk_id);
+        let (current_contribution_locator, next_contribution_locator) =
+            round.try_lock_chunk(&self.environment, &mut storage, chunk_id, &participant)?;
+        trace!("Participant {} locked chunk {}", participant, chunk_id);
+
+        // Add the updated round to storage.
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                info!("{} acquired lock on chunk {}", participant, chunk_id);
+                Ok((
+                    storage.to_path(&current_contribution_locator)?,
+                    storage.to_path(&next_contribution_locator)?,
+                ))
+            }
+            _ => Err(CoordinatorError::StorageUpdateFailed),
+        }
     }
 
     ///
     /// Attempts to add a contribution for a given chunk ID from a given participant.
     ///
-    /// On success, this function releases the lock from the contributor and returns
-    /// the chunk locator.
+    /// This function assumes the participant is a contributor and has just uploaded
+    /// their response file to the coordinator. The coordinator proceeds to sanity check
+    /// (however, does not verify) the contribution before accepting the response file.
+    ///
+    /// On success, this function releases the chunk lock from the contributor and
+    /// returns the response file locator.
     ///
     /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn add_contribution(&self, chunk_id: u64, participant: Participant) -> Result<String, CoordinatorError> {
-        info!("Attempting to add contribution to a chunk");
+    pub(crate) fn add_contribution(
+        &self,
+        chunk_id: u64,
+        participant: &Participant,
+    ) -> Result<String, CoordinatorError> {
+        info!("Adding contribution from {} to chunk {}", participant, chunk_id);
+
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
 
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
-            return Err(CoordinatorError::UnauthorizedChunkContributor);
+            return Err(CoordinatorError::ExpectedContributor);
         }
 
-        // Check that the participant is an authorized contributor to the round.
-        if !self.is_current_contributor(&participant) {
-            error!("{} is unauthorized to contribute to chunk {})", &participant, chunk_id);
-            return Err(CoordinatorError::UnauthorizedChunkContributor);
-        }
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
-        // Check that the ceremony started and exists in storage.
-        let current_round_height = self.current_round_height()?;
-        if current_round_height == 0 {
-            error!("The ceremony has not started");
-            return Err(CoordinatorError::RoundHeightIsZero);
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        trace!("Current round height from storage is {}", current_round_height);
+
+        // Fetch the current round from storage.
+        let mut round = Self::load_current_round(&storage)?;
+
+        // Check that the participant is an authorized contributor to the current round.
+        if !round.is_contributor(participant) {
+            error!("{} is unauthorized to contribute to chunk {})", participant, chunk_id);
+            return Err(CoordinatorError::UnauthorizedChunkContributor);
         }
 
         // Check that the chunk lock is currently held by this contributor.
-        let current_round = self.get_round(current_round_height)?;
-        if !current_round.is_chunk_locked_by(chunk_id, &participant) {
-            error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
+        if !round.is_chunk_locked_by(chunk_id, participant) {
+            error!("{} should have lock on chunk {} but does not", participant, chunk_id);
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
+        // Fetch the expected number of contributions for the current round.
+        let expected_num_contributions = round.expected_number_of_contributions();
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = round.chunk(chunk_id)?;
         // Fetch the next contribution ID of the chunk.
-        let expected_num_contributions = current_round.expected_num_contributions();
-        let next_contribution_id = self
-            .current_round()?
-            .get_chunk(chunk_id)?
-            .next_contribution_id(expected_num_contributions)?;
+        let contribution_id = chunk.next_contribution_id(expected_num_contributions)?;
 
-        // Fetch the contribution locator for the next contribution ID corresponding to
-        // the current round height and chunk ID.
-        let next_contributed_locator = self.next_contribution_locator_unchecked(chunk_id)?;
-        trace!("Next contribution locator is {}", next_contributed_locator);
-
-        {
-            // TODO (howardwu): Check that the file size is nonzero, the structure is correct,
-            //  and the starting hash is based on the previous contribution.
+        // Check that the next contribution ID is one above the current contribution ID.
+        if !chunk.is_next_contribution_id(contribution_id, expected_num_contributions) {
+            return Err(CoordinatorError::ContributionIdMismatch);
         }
 
-        // Add the next contribution to the current chunk.
+        // Fetch the challenge and response locators.
+        let challenge_file_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
+        let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+
         {
-            // Create a mutable reference of the current round from storage.
-            let mut current_round = current_round.clone();
+            // Fetch a challenge file reader.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
 
-            // Add the next contribution to the current chunk.
-            current_round.get_chunk_mut(chunk_id)?.add_contribution(
-                next_contribution_id,
-                participant,
-                next_contributed_locator.clone(),
-                expected_num_contributions,
-            )?;
+            // Fetch a response file reader.
+            let response_reader = storage.reader(&response_file_locator)?;
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
 
-            // Save the update to storage.
-            self.save_round_to_storage(current_round_height, current_round)?;
+            // Compute the challenge hash using the challenge file.
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
+            // Fetch the challenge hash from the response file.
+            let challenge_hash_in_response = &response_reader
+                .get(0..64)
+                .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+            let pretty_hash = pretty_hash!(&challenge_hash_in_response);
+            debug!("Challenge hash in response file is {}", pretty_hash);
+
+            // Check the starting hash in the response file is based on the previous contribution.
+            if challenge_hash_in_response != challenge_hash.as_slice() {
+                error!("Challenge hash in response file does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
         }
 
-        // TODO (raychu86) Create a better message dispatch protocol. It is likely better to simply
-        //  maintain a single long-standing websocket connection.
-        // Dispatch a message to the coordinator verifier to lock and verify the completed contribution.
-        {
-            // Fetch the verifier websocket address
-            let verifier_ws_url = self.environment.coordinator_verifier_ws();
+        // Add the contribution response to the current chunk.
+        round
+            .chunk_mut(chunk_id)?
+            .add_contribution(participant, storage.to_path(&response_file_locator)?)?;
 
-            thread::spawn(move || {
-                // Attempt to connect to the verifier websocket running at the url `verifier_ws_url`
-                if let Ok(mut client) = ClientBuilder::new(&verifier_ws_url) {
-                    if let Ok(mut connection) = client.connect_insecure() {
-                        // Send the lock message to the verifier websocket
-                        let lock_message = format!(r#"{{"method": "lock", "chunk_id": {}}}"#, chunk_id);
-                        let _ = connection.send_message(&OwnedMessage::Text(lock_message));
-
-                        // Send the verify message to the verifier websocket
-                        let verify_message = format!(r#"{{"method": "verify", "chunk_id": {}}}"#, chunk_id);
-                        let _ = connection.send_message(&OwnedMessage::Text(verify_message));
-                    }
+        // Add the updated round to storage.
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                debug!("Updated round {} in storage", current_round_height);
+                {
+                    // TODO (howardwu): Send job to run verification on new chunk.
                 }
-            });
+                info!("{} added a contribution to chunk {}", participant, chunk_id);
+                Ok(storage.to_path(&response_file_locator)?)
+            }
+            _ => Err(CoordinatorError::StorageUpdateFailed),
         }
-
-        Ok(next_contributed_locator)
     }
 
     ///
@@ -553,109 +2001,75 @@ impl Coordinator {
     /// is complete.
     ///
     #[inline]
-    pub fn verify_contribution(&self, chunk_id: u64, participant: Participant) -> Result<(), CoordinatorError> {
-        // Check that the given participant is a verifier.
+    pub(crate) fn verify_contribution(&self, chunk_id: u64, participant: &Participant) -> Result<(), CoordinatorError> {
+        info!("Attempting to verify a contribution for chunk {}", chunk_id);
+
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Check that the participant is a verifier.
         if !participant.is_verifier() {
             return Err(CoordinatorError::ExpectedVerifier);
         }
 
-        // Fetch the current round.
-        let current_round = self.current_round()?;
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        trace!("Current round height from storage is {}", current_round_height);
+
+        // Fetch the current round from storage.
+        let mut round = Self::load_current_round(&storage)?;
+
+        // Check that the participant is an authorized verifier to the current round.
+        if !round.is_verifier(participant) {
+            error!("{} is unauthorized to verify chunk {})", participant, chunk_id);
+            return Err(CoordinatorError::UnauthorizedChunkContributor);
+        }
 
         // Check that the chunk lock is currently held by this verifier.
-        if !current_round.is_chunk_locked_by(chunk_id, &participant) {
-            error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
+        if !round.is_chunk_locked_by(chunk_id, participant) {
+            error!("{} should have lock on chunk {} but does not", participant, chunk_id);
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Fetch the current round height.
-        let current_round_height = current_round.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = current_round.get_chunk(chunk_id)?;
+        let chunk = round.chunk(chunk_id)?;
         // Fetch the current contribution ID.
         let current_contribution_id = chunk.current_contribution_id();
-        // Fetch the next contribution ID.
-        let current_contribution = chunk.current_contribution()?;
 
-        // Check that the contribution locator corresponding to this round and chunk exists.
-        if !self
-            .environment
-            .contribution_locator_exists(current_round_height, chunk_id, current_contribution_id, false)
-        {
-            return Err(CoordinatorError::ContributionLocatorMissing);
-        }
-
-        // Check if the current contribution has already been verified.
-        if current_contribution.is_verified() {
-            return Err(CoordinatorError::ContributionAlreadyVerified);
-        }
-
-        // Fetch the contribution locators for `Verification`.
-        let (previous, current, next) = if chunk.only_contributions_complete(current_round.expected_num_contributions())
-        {
-            let previous = self.environment.contribution_locator(
-                current_round_height,
-                chunk_id,
-                current_contribution_id - 1,
-                true,
-            );
-            let current =
-                self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, false);
-            let next = self
-                .environment
-                .contribution_locator(current_round_height + 1, chunk_id, 0, true);
-
-            // Initialize the chunk directory of the new round so the next locator file will be saved.
-            self.environment
-                .chunk_directory_init(current_round_height + 1, chunk_id);
-
-            (previous, current, next)
-        } else {
-            let previous = self.environment.contribution_locator(
-                current_round_height,
-                chunk_id,
-                current_contribution_id - 1,
-                true,
-            );
-            let current =
-                self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, false);
-            let next =
-                self.environment
-                    .contribution_locator(current_round_height, chunk_id, current_contribution_id, true);
-            (previous, current, next)
-        };
-
-        debug!("Coordinator is starting verification on chunk {}", chunk_id);
-        Verification::run(
-            &self.environment,
-            current_round_height,
-            chunk_id,
-            current_contribution_id,
-            previous,
-            current.clone(),
-            next,
-        )?;
-        debug!("Coordinator completed verification on chunk {}", chunk_id);
+        // Fetch whether this is the final contribution of the specified chunk.
+        let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
         // Attempts to set the current contribution as verified in the current round.
-        {
-            // Create a mutable reference of the current round from storage.
-            let mut current_round = current_round.clone();
+        // Fetch the contribution locators for `Verification`.
+        let verified_contribution_locator = match is_final_contribution {
+            true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+            false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
+        };
+        round.verify_contribution(
+            chunk_id,
+            current_contribution_id,
+            participant.clone(),
+            storage.to_path(&verified_contribution_locator)?,
+        )?;
 
-            // Attempts to set the current contribution as verified in the current round.
-            current_round.verify_contribution(chunk_id, current_contribution_id, participant.clone(), current)?;
-
-            // Save the update to storage.
-            self.save_round_to_storage(current_round_height, current_round)?;
+        // Add the updated round to storage.
+        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+            Ok(_) => {
+                debug!("Updated round {} in storage", current_round_height);
+                info!(
+                    "{} verified chunk {} contribution {}",
+                    participant, chunk_id, current_contribution_id
+                );
+                Ok(())
+            }
+            _ => Err(CoordinatorError::StorageUpdateFailed),
         }
-
-        info!(
-            "{} verified chunk {} contribution {}",
-            participant, chunk_id, current_contribution_id
-        );
-        Ok(())
     }
 
     ///
@@ -677,7 +2091,7 @@ impl Coordinator {
     /// Otherwise, it returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_round(
+    pub(crate) fn next_round(
         &self,
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
@@ -687,153 +2101,32 @@ impl Coordinator {
         if contributors.is_empty() {
             return Err(CoordinatorError::ContributorsMissing);
         }
-
         // Check that the next round has at least one authorized verifier.
         if verifiers.is_empty() {
             return Err(CoordinatorError::VerifierMissing);
         }
 
-        // Fetch the current height of the ceremony.
-        let round_height = self.current_round_height()?;
-        trace!("Current round height from storage is {}", round_height);
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
-        let next_height = round_height + 1;
-        info!("Starting transition from round {} to {}", round_height, next_height);
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
 
-        // Execute aggregation of the current round in preparation for
-        // transition to next round. If this is the initial round, there
-        // should be nothing to aggregate and we may continue.
-        if round_height != 0 {
-            // Attempt to fetch the current round directly.
-            let current_round = self.get_round(round_height);
-            trace!("Check current round exists in storage ({})", current_round.is_ok());
-
-            // Check that all chunks in the current round are verified,
-            // so that we may transition to the next round.
-            let current_round = current_round?;
-            if !&current_round.is_complete() {
-                error!("Round {} is not complete and next round is not starting", round_height);
-                trace!("{:#?}", &current_round);
-                return Err(CoordinatorError::RoundNotComplete);
-            }
-
-            // Execute round aggregation and aggregate verification on the current round.
-            self.run_aggregation()?;
-        }
-
-        // Execute the round initialization as the coordinator.
-        // On success, the new round will have been saved to storage.
-        self.run_initialization(round_height, started_at, contributors, verifiers)?;
-
-        // Fetch the new round height.
-        let new_height = self.current_round_height()?;
-
-        // Check that the new height increments the prior round height by 1.
-        if new_height != next_height {
-            error!("Round height after initialization is {}", new_height);
-            return Err(CoordinatorError::RoundHeightMismatch);
-        }
-
-        info!("Completed transition from round {} to {}", round_height, new_height);
-        Ok(new_height)
-    }
-
-    // /// Attempts to run verification in the current round for a given chunk ID.
-    // #[inline]
-    // fn verify_chunk(&self, chunk_id: u64) -> Result<(), CoordinatorError> {
-    //     // Fetch the current round.
-    //     let mut current_round = self.current_round()?;
-    //     let round_height = current_round.round_height();
-    //
-    //     // Execute verification of contribution ID for all chunks in the
-    //     // new round and check that the new locators exist.
-    //     let new_height = round_height + 1;
-    //     debug!("Starting verification of round {}", new_height);
-    //     for chunk_id in 0..self.environment.number_of_chunks() {
-    //     info!("Coordinator is starting initialization on chunk {}", chunk_id);
-    //     // TODO (howardwu): Add contribution hash to `Round`.
-    //     let _contribution_hash = Initialization::run(&self.environment, new_height, chunk_id)?;
-    //     info!("Coordinator completed initialization on chunk {}", chunk_id);
-    //
-    //     // Check that the contribution locator corresponding to this round and chunk now exists.
-    //     let contribution_locator = self.environment.contribution_locator(new_height, chunk_id, contribution_id);
-    //     if !Path::new(&contribution_locator).exists() {
-    //         return Err(CoordinatorError::RoundTranscriptMissing);
-    //     }
-    //
-    //     // Attempt to acquire the lock for verification.
-    //     // self.try_lock(chunk_id, contribution_id)?;
-    //
-    //     // Runs verification and on success, updates the chunk contribution to verified.
-    //     // self.verify_contribution(chunk_id, contribution_id)?;
-    // }
-
-    ///
-    /// Returns the next contribution locator for a given chunk ID.
-    ///
-    /// If the chunk corresponding to the given chunk ID
-    /// is already completed for the current round,
-    /// this function will return a `CoordinatorError`.
-    ///
-    #[inline]
-    fn next_contribution_locator_unchecked(&self, chunk_id: u64) -> Result<String, CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
-        // Fetch the current round height.
-        let current_round_height = current_round.round_height();
-        // Fetch the expected number of contributions for the current round.
-        let expected_num_contributions = current_round.expected_num_contributions();
-        // Fetch the chunk corresponding to the given chunk ID.
-        let chunk = current_round.get_chunk(chunk_id)?;
-        // Fetch the next contribution ID.
-        let next_contribution_id = chunk.next_contribution_id(expected_num_contributions)?;
-        // Fetch the next contribution locator.
-        let next_contribution_locator =
-            self.environment
-                .contribution_locator(current_round_height, chunk_id, next_contribution_id, false);
-
-        Ok(next_contribution_locator)
-    }
-
-    ///
-    /// Attempts to run initialization for a given round.
-    ///
-    /// In a test environment, this function clears the transcript for the
-    /// coordinator. In a development or production environment, this
-    /// does NOT reset the transcript for the coordinator.
-    ///
-    #[inline]
-    fn run_initialization(
-        &self,
-        round_height: u64,
-        started_at: DateTime<Utc>,
-        contributors: Vec<Participant>,
-        verifiers: Vec<Participant>,
-    ) -> Result<(), CoordinatorError> {
-        trace!("Received call to initialize round {}", round_height);
-
-        // Fetch the current round height.
-        let current_round_height = self.current_round_height()?;
-
-        // Check that the given round height is above the current round height.
-        if round_height < current_round_height {
-            error!("Round {} is less than round {}", round_height, current_round_height);
-            return Err(CoordinatorError::RoundAlreadyInitialized);
-        }
-        // Check that the given round height corresponds to the current round height.
-        if round_height != current_round_height {
-            error!("Expected round height {} == {}", round_height, current_round_height);
-            return Err(CoordinatorError::RoundHeightMismatch);
-        }
+        trace!("Current round height from storage is {}", current_round_height);
 
         // If this is the initial round, ensure the round does not exist yet.
         // Attempt to load the round corresponding to the given round height from storage.
         // If there is no round in storage, proceed to create a new round instance,
         // and run `Initialization` to start the ceremony.
-        if round_height == 0 {
-            // If the path exists, this means a prior *ceremony* is stored as a transcript.
-            if self.environment.round_directory_exists(round_height) {
-                self.environment.round_directory_reset(round_height);
+        if current_round_height == 0 {
+            // Check that the current round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
+            }
+
+            // Check that the next round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
             }
 
             // Create an instantiation of `Round` for round 0.
@@ -845,231 +2138,439 @@ impl Coordinator {
                 // as this is for initialization.
                 let verifiers = vec![self.environment.coordinator_verifier()];
 
-                match self.storage()?.get(&Key::Round(round_height)) {
-                    // Check that the round does not exist in storage.
-                    // If it exists, this means the round was already initialized.
-                    Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
-                    Some(_) => return Err(CoordinatorError::StorageFailed),
-                    // Create a new round instance and save it to storage.
-                    _ => Round::new(&self.environment, round_height, started_at, contributors, verifiers)?,
-                }
+                // Create a new round instance.
+                Round::new(
+                    &self.environment,
+                    &storage,
+                    current_round_height,
+                    started_at,
+                    contributors,
+                    verifiers,
+                )?
             };
 
-            debug!("Starting initialization of round {}", round_height);
+            debug!("Starting initialization of round {}", current_round_height);
 
-            // Execute initialization of contribution 0 for all chunks in the
-            // new round and check that the new locators exist.
+            // Execute initialization of contribution 0 for all chunks
+            // in the new round and check that the new locators exist.
             for chunk_id in 0..self.environment.number_of_chunks() {
+                // 1 - Check that the contribution locator corresponding to this round's chunk does not exist.
+                let locator = Locator::ContributionFile(current_round_height, chunk_id, 0, true);
+                if storage.exists(&locator) {
+                    error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
+                    return Err(CoordinatorError::ContributionLocatorAlreadyExists);
+                }
+
+                // 2 - Check that the contribution locator corresponding to the next round's chunk does not exists.
+                let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                if storage.exists(&locator) {
+                    error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
+                    return Err(CoordinatorError::ContributionLocatorAlreadyExists);
+                }
+
                 info!("Coordinator is starting initialization on chunk {}", chunk_id);
                 // TODO (howardwu): Add contribution hash to `Round`.
-                let _contribution_hash = Initialization::run(&self.environment, round_height, chunk_id)?;
+                let _contribution_hash =
+                    Initialization::run(&self.environment, &mut storage, current_round_height, chunk_id)?;
                 info!("Coordinator completed initialization on chunk {}", chunk_id);
 
                 // 1 - Check that the contribution locator corresponding to this round's chunk now exists.
-                if !self
-                    .environment
-                    .contribution_locator_exists(round_height, chunk_id, 0, true)
-                {
+                let locator = Locator::ContributionFile(current_round_height, chunk_id, 0, true);
+                if !storage.exists(&locator) {
+                    error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
 
                 // 2 - Check that the contribution locator corresponding to the next round's chunk now exists.
-                if !self
-                    .environment
-                    .contribution_locator_exists(round_height + 1, chunk_id, 0, true)
-                {
+                let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                if !storage.exists(&locator) {
+                    error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                     return Err(CoordinatorError::ContributionLocatorMissing);
                 }
             }
 
-            // Write the round to storage.
-            self.save_round_to_storage(round_height, round)?;
+            // Add the new round to storage.
+            storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round))?;
 
-            // Check that the current round now matches the given round height unconditionally.
-            if self.current_round_height()? != round_height {
-                return Err(CoordinatorError::RoundHeightMismatch);
+            debug!("Updated round {} in storage", current_round_height);
+            debug!("Completed initialization of round {}", current_round_height);
+        }
+
+        // Execute aggregation of the current round in preparation for
+        // transitioning to the next round. If this is the initial round,
+        // there should be nothing to aggregate and we may continue.
+        if current_round_height != 0 {
+            // Check that the current round exists in storage.
+            if !storage.exists(&Locator::RoundState(current_round_height)) {
+                return Err(CoordinatorError::RoundLocatorMissing);
             }
 
-            debug!("Completed initialization of round {}", round_height);
+            // Check that the next round does not exist in storage.
+            if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+                return Err(CoordinatorError::RoundShouldNotExist);
+            }
+
+            // TODO (howardwu): Check that all locks have been released.
+
+            // Fetch the current round from storage.
+            let mut round = Self::load_current_round(&storage)?;
+
+            // Check that all chunks in the current round are verified,
+            // so that we may transition to the next round.
+            if !round.is_complete() {
+                error!(
+                    "Round {} is not complete and next round is not starting",
+                    current_round_height
+                );
+                trace!("{:#?}", &round);
+                return Err(CoordinatorError::RoundNotComplete);
+            }
+
+            // Execute round aggregation and aggregate verification on the current round.
+            {
+                let contribution_id = round.expected_number_of_contributions() - 1;
+                for chunk_id in 0..self.environment.number_of_chunks() {
+                    // Check that the final unverified contribution locator exists.
+                    let locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+                    if !storage.exists(&locator) {
+                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
+                        return Err(CoordinatorError::ContributionMissing);
+                    }
+                    // Check that the final verified contribution locator exists.
+                    let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+                    if !storage.exists(&locator) {
+                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
+                        return Err(CoordinatorError::ContributionMissing);
+                    }
+                }
+
+                // Check that the round locator does not exist.
+                let round_locator = Locator::RoundFile(current_round_height);
+                if storage.exists(&round_locator) {
+                    error!("Round locator already exists ({})", storage.to_path(&round_locator)?);
+                    return Err(CoordinatorError::RoundLocatorAlreadyExists);
+                }
+
+                // TODO (howardwu): Add aggregate verification logic.
+                // Execute aggregation to combine on all chunks to finalize the round
+                // corresponding to the given round height.
+                debug!("Coordinator is starting aggregation");
+                Aggregation::run(&self.environment, &mut storage, &round)?;
+                debug!("Coordinator completed aggregation");
+
+                // Check that the round locator now exists.
+                if !storage.exists(&round_locator) {
+                    error!("Round locator is missing ({})", storage.to_path(&round_locator)?);
+                    return Err(CoordinatorError::RoundLocatorMissing);
+                }
+            }
         }
 
         // Create the new round height.
-        let new_height = round_height + 1;
+        let new_height = current_round_height + 1;
 
-        debug!("Starting initialization of round {}", new_height);
+        info!(
+            "Starting transition from round {} to {}",
+            current_round_height, new_height
+        );
 
         // Check that the new round does not exist in storage.
         // If it exists, this means the round was already initialized.
-        match self.storage()?.get(&Key::Round(new_height)) {
-            Some(Value::Round(_)) => return Err(CoordinatorError::RoundAlreadyInitialized),
-            Some(_) => return Err(CoordinatorError::StorageFailed),
-            _ => (),
-        };
+        let locator = Locator::RoundState(new_height);
+        if storage.exists(&locator) {
+            error!("Round {} already exists ({})", new_height, storage.to_path(&locator)?);
+            return Err(CoordinatorError::RoundAlreadyInitialized);
+        }
 
-        // Check that each contribution transcript for the next round exists.
+        // Check that each contribution for the next round exists.
         for chunk_id in 0..self.environment.number_of_chunks() {
             debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
-            if !self
-                .environment
-                .contribution_locator_exists(new_height, chunk_id, 0, true)
-            {
+            let locator = Locator::ContributionFile(new_height, chunk_id, 0, true);
+            if !storage.exists(&locator) {
+                error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorMissing);
             }
         }
 
         // Instantiate the new round and height.
-        let new_round = Round::new(&self.environment, new_height, started_at, contributors, verifiers)?;
+        let new_round = Round::new(
+            &self.environment,
+            &storage,
+            new_height,
+            started_at,
+            contributors,
+            verifiers,
+        )?;
 
         #[cfg(test)]
-        {
-            trace!("{:?}", &new_round);
-        }
+        trace!("{:#?}", &new_round);
 
-        // Insert and save the new round into storage.
-        self.save_round_to_storage(new_height, new_round)?;
+        // Insert the new round into storage.
+        storage.insert(Locator::RoundState(new_height), Object::RoundState(new_round))?;
 
-        debug!("Completed initialization of round {}", new_height);
-        Ok(())
+        // Next, update the round height to reflect the new round.
+        storage.update(&Locator::RoundHeight, Object::RoundHeight(new_height))?;
+
+        debug!("Added round {} to storage", current_round_height);
+        info!(
+            "Completed transition from round {} to {}",
+            current_round_height, new_height
+        );
+        Ok(new_height)
     }
 
     ///
-    /// Attempts to run computation for a given chunk ID and contribution ID in the current round.
+    /// Returns a reference to the instantiation of `Environment` that this
+    /// coordinator is using.
     ///
-    /// This function is primarily used for testing purposes. This can also be purposed for
-    /// completing contributions of participants who may have dropped off and handed over
-    /// control of their session.
-    ///
-    #[inline]
     #[allow(dead_code)]
-    fn run_computation(
+    #[inline]
+    pub(super) fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Storage` that this
+    /// coordinator is using.
+    ///
+    #[allow(dead_code)]
+    #[inline]
+    pub(super) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
+        self.storage.clone()
+    }
+
+    ///
+    /// Attempts to run computation for a given round height, given chunk ID, and contribution ID.
+    ///
+    /// This function is used for testing purposes and can also be used for completing contributions
+    /// of participants who may have dropped off and handed over control of their session.
+    ///
+    #[allow(dead_code)]
+    #[inline]
+    pub(super) fn run_computation(
         &self,
+        round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
         participant: &Participant,
     ) -> Result<(), CoordinatorError> {
-        // Fetch the current height from storage.
-        let round_height = self.current_round_height()?;
+        info!(
+            "Running computation for round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
+        );
+
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Check that the contribution ID is valid.
+        if contribution_id == 0 {
+            return Err(CoordinatorError::ContributionIdMustBeNonzero);
+        }
+
+        // Check that the participant is a contributor.
+        if !participant.is_contributor() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        // TODO (howardwu): Switch to a storage read lock.
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        // Check that the given round height is valid.
+        let round = match round_height != 0 && round_height <= current_round_height {
+            // Load the corresponding round data from storage.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => return Err(CoordinatorError::RoundDoesNotExist),
+        };
 
         // Check that the chunk lock is currently held by this contributor.
-        let round = self.get_round(round_height)?;
         if !round.is_chunk_locked_by(chunk_id, &participant) {
             error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Check that the contribution locator corresponding to this round and chunk exists.
-        if self
-            .environment
-            .contribution_locator_exists(round_height, chunk_id, contribution_id, false)
-        {
-            error!("Locator for contribution {} already exists", contribution_id);
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
-        // Fetch the current round and given chunk ID and check that
-        // the given contribution ID has not been verified yet.
-        let chunk = round.get_chunk(chunk_id)?;
+        // Fetch the current round and given chunk ID, and check that
+        // the given contribution ID does not exist yet.
+        let chunk = round.chunk(chunk_id)?;
         if chunk.get_contribution(contribution_id).is_ok() {
             return Err(CoordinatorError::ContributionShouldNotExist);
         }
 
-        debug!(
-            "Coordinator is starting computation on chunk {} contribution {}",
-            chunk_id, contribution_id
+        info!(
+            "Starting computation on round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
         );
-        Computation::run(&self.environment, round_height, chunk_id, contribution_id)?;
-        debug!(
-            "Coordinator completed computation on chunk {} contribution {}",
-            chunk_id, contribution_id
+        Computation::run(&self.environment, &mut storage, round_height, chunk_id, contribution_id)?;
+        info!(
+            "Completed computation on round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
         );
-
-        // Attempts to set the current contribution as verified in the current round.
-        // self.add_contribution(chunk_id, contributor)?;
-
-        info!("Computed chunk {} contribution {}", chunk_id, contribution_id);
-        Ok(())
-    }
-
-    ///
-    /// Attempts to run aggregation for the current round.
-    ///
-    #[inline]
-    fn run_aggregation(&self) -> Result<(), CoordinatorError> {
-        // Fetch the current round.
-        let current_round = self.current_round()?;
-        let current_round_height = current_round.round_height();
-
-        // Check that all current round chunks are fully contributed and verified.
-        if !current_round.is_complete() {
-            return Err(CoordinatorError::RoundNotComplete);
-        }
-
-        // TODO (howardwu): Do pre-check that all current chunk contributions are present.
-        // Check that the round directory corresponding to this round exists.
-        if !self.environment.round_directory_exists(current_round_height) {
-            return Err(CoordinatorError::RoundDirectoryMissing);
-        }
-
-        // TODO (howardwu): Add aggregate verification logic.
-        // Execute aggregation to combine on all chunks to finalize the round
-        // corresponding to the given round height.
-        debug!("Coordinator is starting aggregation");
-        Aggregation::run(&self.environment, &current_round)?;
-        debug!("Coordinator completed aggregation");
-
-        // Check that the round locator exists.
-        if !self.environment.round_locator_exists(current_round_height) {
-            return Err(CoordinatorError::RoundLocatorMissing);
-        }
 
         Ok(())
     }
 
     ///
-    /// Updates the round corresponding to the given height in storage.
+    /// Attempts to run verification for a given round height, given chunk ID, and contribution ID.
     ///
+    /// On success, this function returns the verified contribution locator.
+    ///
+    /// This function copies the unverified contribution into the verified contribution locator,
+    /// which is the next contribution ID within a round, or the next round height if this round
+    /// is complete.
+    ///
+    #[allow(dead_code)]
     #[inline]
-    fn save_round_to_storage(&self, round_height: u64, round: Round) -> Result<(), CoordinatorError> {
-        trace!("Writing round {} to storage", round_height);
+    pub(super) fn run_verification(
+        &self,
+        round_height: u64,
+        chunk_id: u64,
+        contribution_id: u64,
+        participant: &Participant,
+    ) -> Result<String, CoordinatorError> {
+        info!(
+            "Running verification for round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
+        );
 
-        // TODO (howardwu): Do we need to structure this entry as an atomic transaction?
-        let mut success = false;
-        // Acquire the storage write lock.
-        // let mut storage = self.storage_mut()?;
-        let mut storage = match self.storage.write() {
-            Ok(storage) => storage,
-            _ => return Err(CoordinatorError::StorageWriterFailed),
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Check that the contribution ID is valid.
+        if contribution_id == 0 {
+            return Err(CoordinatorError::ContributionIdMustBeNonzero);
+        }
+
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        // TODO (howardwu): Switch to a storage read lock.
+        // Acquire the storage lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        // Check that the given round height is valid.
+        let round = match round_height != 0 && round_height <= current_round_height {
+            // Load the corresponding round data from storage.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => round,
+                // Case 2 - Storage failed to fetch the round height.
+                _ => return Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        // First, add the new round to storage.
-        if storage.insert(Key::Round(round_height), Value::Round(round)) {
-            // Next, update the round height to reflect the update.
-            if storage.insert(Key::RoundHeight, Value::RoundHeight(round_height)) {
-                // Lastly, save the round to storage.
-                if storage.save() {
-                    debug!("Completed writing round {} to storage", round_height);
-                    success = true;
-                }
-            }
+        // Check that the chunk lock is currently held by this contributor.
+        if !round.is_chunk_locked_by(chunk_id, &participant) {
+            error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        match success {
-            true => Ok(()),
-            false => Err(CoordinatorError::StorageUpdateFailed),
+        // Check that the contribution locator corresponding to the response file exists.
+        let response_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        if !storage.exists(&response_locator) {
+            error!("Response file at {} is missing", storage.to_path(&response_locator)?);
+            return Err(CoordinatorError::ContributionLocatorMissing);
+        }
+
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = round.chunk(chunk_id)?;
+
+        // Fetch the contribution corresponding to the given contribution ID.
+        let contribution = chunk.get_contribution(contribution_id)?;
+
+        // Check if the contribution has NOT been verified yet.
+        if contribution.is_verified() {
+            return Err(CoordinatorError::ContributionAlreadyVerified);
+        }
+
+        // Fetch whether this is the final contribution of the specified chunk.
+        let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
+
+        // Fetch the verified response locator.
+        let verified_locator = match is_final_contribution {
+            true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
+            false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
+        };
+
+        // Check that the verified contribution locator does not exist.
+        let verified_locator_path = storage.to_path(&verified_locator)?;
+        if storage.exists(&verified_locator) {
+            error!("Verified response file at {} already exists", verified_locator_path);
+            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
+        }
+
+        info!(
+            "Starting verification on round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
+        );
+        Verification::run(
+            &self.environment,
+            &mut storage,
+            round_height,
+            chunk_id,
+            contribution_id,
+            is_final_contribution,
+        )?;
+        info!(
+            "Completed verification on round {} chunk {} contribution {} as {}",
+            round_height, chunk_id, contribution_id, participant
+        );
+
+        // Check that the verified contribution locator now exists.
+        if !storage.exists(&verified_locator) {
+            error!("Verified response file at {} is missing", verified_locator_path);
+            return Err(CoordinatorError::ContributionLocatorMissing);
+        }
+
+        Ok(storage.to_path(&verified_locator)?)
+    }
+
+    #[inline]
+    fn load_current_round_height(storage: &StorageLock) -> Result<u64, CoordinatorError> {
+        // Fetch the current round height from storage.
+        match storage.get(&Locator::RoundHeight)? {
+            // Case 1 - This is a typical round of the ceremony.
+            Object::RoundHeight(current_round_height) => Ok(current_round_height),
+            // Case 2 - Storage failed to fetch the round height.
+            _ => Err(CoordinatorError::StorageFailed),
         }
     }
 
-    ///
-    /// Attempts to acquire the read lock for storage.
-    ///
     #[inline]
-    fn storage(&self) -> Result<RwLockReadGuard<Box<dyn Storage>>, CoordinatorError> {
-        match self.storage.read() {
-            Ok(storage) => Ok(storage),
-            _ => {
-                error!("Failed to acquire the storage read lock");
-                Err(CoordinatorError::StorageReaderFailed)
-            }
+    fn load_current_round(storage: &StorageLock) -> Result<Round, CoordinatorError> {
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(storage)?;
+
+        // Fetch the current round from storage.
+        match current_round_height != 0 {
+            // Load the corresponding round data from storage.
+            true => match storage.get(&Locator::RoundState(current_round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => Ok(round),
+                // Case 2 - Storage failed to fetch the round height.
+                _ => Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => Err(CoordinatorError::RoundDoesNotExist),
         }
     }
 }
@@ -1080,6 +2581,8 @@ mod test {
 
     use chrono::Utc;
     use once_cell::sync::Lazy;
+    use std::{panic, process};
+    use tracing::debug;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
@@ -1097,11 +2600,27 @@ mod test {
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height()?);
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        Ok(())
+    }
+
+    fn initialize_coordinator_single_contributor(coordinator: &Coordinator) -> anyhow::Result<()> {
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
+
+        // Run initialization.
+        coordinator.next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
+            Lazy::force(&TEST_VERIFIER_ID).clone(),
+        ])?;
+
+        // Check current round height is now 1.
+        assert_eq!(1, coordinator.current_round_height()?);
         Ok(())
     }
 
     fn coordinator_initialization_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
 
@@ -1125,71 +2644,85 @@ mod test {
             // Check current round height is now 1.
             assert_eq!(1, coordinator.current_round_height()?);
 
+            // Check the current round has a matching height.
+            let current_round = coordinator.current_round()?;
+            assert_eq!(coordinator.current_round_height()?, current_round.round_height());
+
             // Check round 1 contributors.
-            assert_eq!(2, coordinator.current_round()?.number_of_contributors());
-            assert!(coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID));
-            assert!(coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID_2));
-            assert!(!coordinator.is_current_contributor(&TEST_CONTRIBUTOR_ID_3));
-            assert!(!coordinator.is_current_contributor(&TEST_VERIFIER_ID));
+            assert_eq!(2, current_round.number_of_contributors());
+            assert!(current_round.is_contributor(&TEST_CONTRIBUTOR_ID));
+            assert!(current_round.is_contributor(&TEST_CONTRIBUTOR_ID_2));
+            assert!(!current_round.is_contributor(&TEST_CONTRIBUTOR_ID_3));
+            assert!(!current_round.is_contributor(&TEST_VERIFIER_ID));
 
             // Check round 1 verifiers.
-            assert_eq!(1, coordinator.current_round()?.get_verifiers().len());
-            assert!(coordinator.is_current_verifier(&TEST_VERIFIER_ID));
-            assert!(!coordinator.is_current_verifier(&TEST_VERIFIER_ID_2));
-            assert!(!coordinator.is_current_verifier(&TEST_CONTRIBUTOR_ID));
+            assert_eq!(1, current_round.number_of_verifiers());
+            assert!(current_round.is_verifier(&TEST_VERIFIER_ID));
+            assert!(!current_round.is_verifier(&TEST_VERIFIER_ID_2));
+            assert!(!current_round.is_verifier(&TEST_CONTRIBUTOR_ID));
 
             // Check round 1 is NOT complete.
-            assert!(!coordinator.current_round()?.is_complete());
+            assert!(!current_round.is_complete());
         }
 
         Ok(())
     }
 
     fn coordinator_contributor_try_lock_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
         initialize_coordinator(&coordinator)?;
 
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+        let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
+
         {
             // Acquire the lock for chunk 0 as contributor 1.
-            let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
-            assert!(coordinator.try_lock_chunk(0, contributor.clone()).is_ok());
+            assert!(coordinator.try_lock_chunk(0, &contributor).is_ok());
 
-            // Attempt to acquire the lock for chunk 0 again.
-            assert!(coordinator.try_lock_chunk(0, contributor.clone()).is_err());
+            // Attempt to acquire the lock for chunk 0 as contributor 1 again.
+            assert!(coordinator.try_lock_chunk(0, &contributor).is_err());
 
-            // Attempt to acquire the lock for chunk 1.
-            assert!(coordinator.try_lock_chunk(1, contributor.clone()).is_err());
+            // Acquire the lock for chunk 1 as contributor 1.
+            assert!(coordinator.try_lock_chunk(1, &contributor).is_ok());
 
             // Attempt to acquire the lock for chunk 0 as contributor 2.
-            let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone();
-            assert!(coordinator.try_lock_chunk(0, contributor_2.clone()).is_err());
+            assert!(coordinator.try_lock_chunk(0, &contributor_2).is_err());
 
             // Attempt to acquire the lock for chunk 1 as contributor 2.
-            assert!(coordinator.try_lock_chunk(1, contributor_2).is_ok());
+            assert!(coordinator.try_lock_chunk(1, &contributor_2).is_err());
+
+            // Acquire the lock for chunk 1 as contributor 2.
+            assert!(coordinator.try_lock_chunk(2, &contributor_2).is_ok());
         }
 
         {
             // Check that chunk 0 is locked.
-            let chunk_id = 0;
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(0)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
             // Check that chunk 0 is locked by contributor 1.
-            let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
             assert!(chunk.is_locked_by(contributor));
+            assert!(!chunk.is_locked_by(contributor_2));
 
             // Check that chunk 1 is locked.
-            let chunk_id = 1;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(1)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
-            // Check that chunk 0 is locked by contributor 2.
-            let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
+            // Check that chunk 1 is locked by contributor 1.
+            assert!(chunk.is_locked_by(contributor));
+            assert!(!chunk.is_locked_by(contributor_2));
+
+            // Check that chunk 2 is locked.
+            let chunk = round.chunk(2)?;
+            assert!(chunk.is_locked());
+            assert!(!chunk.is_unlocked());
+
+            // Check that chunk 2 is locked by contributor 2.
             assert!(chunk.is_locked_by(contributor_2));
             assert!(!chunk.is_locked_by(contributor));
         }
@@ -1198,34 +2731,35 @@ mod test {
     }
 
     fn coordinator_contributor_add_contribution_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
 
         // Acquire the lock for chunk 0 as contributor 1.
-        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
-        coordinator.try_lock_chunk(0, contributor.clone())?;
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        coordinator.try_lock_chunk(0, &contributor)?;
 
         // Run computation on round 1 chunk 0 contribution 1.
         {
             // Check current round is 1.
             let round = coordinator.current_round()?;
-            assert_eq!(1, round.round_height());
+            let round_height = round.round_height();
+            assert_eq!(1, round_height);
 
             // Check chunk 0 is not verified.
             let chunk_id = 0;
-            let chunk = round.get_chunk(chunk_id)?;
-            assert!(!chunk.is_complete(round.expected_num_contributions()));
+            let chunk = round.chunk(chunk_id)?;
+            assert!(!chunk.is_complete(round.expected_number_of_contributions()));
 
             // Check next contribution is 1.
             let contribution_id = 1;
-            assert!(chunk.is_next_contribution_id(contribution_id, round.expected_num_contributions()));
+            assert!(chunk.is_next_contribution_id(contribution_id, round.expected_number_of_contributions()));
 
             // Run the computation
             assert!(
                 coordinator
-                    .run_computation(chunk_id, contribution_id, &contributor)
+                    .run_computation(round_height, chunk_id, contribution_id, &contributor)
                     .is_ok()
             );
         }
@@ -1234,11 +2768,11 @@ mod test {
         {
             // Add round 1 chunk 0 contribution 1.
             let chunk_id = 0;
-            assert!(coordinator.add_contribution(chunk_id, contributor.clone()).is_ok());
+            assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
 
             // Check chunk 0 lock is released.
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(chunk_id)?;
             assert!(chunk.is_unlocked());
             assert!(!chunk.is_locked());
         }
@@ -1247,40 +2781,45 @@ mod test {
     }
 
     fn coordinator_verifier_verify_contribution_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
 
+        // Check current round height is now 1.
+        let round_height = coordinator.current_round_height()?;
+        assert_eq!(1, round_height);
+
         // Acquire the lock for chunk 0 as contributor 1.
         let chunk_id = 0;
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
-        assert!(coordinator.try_lock_chunk(chunk_id, contributor.clone()).is_ok());
+        assert!(coordinator.try_lock_chunk(chunk_id, &contributor).is_ok());
 
         // Run computation on round 1 chunk 0 contribution 1.
         let contribution_id = 1;
         assert!(
             coordinator
-                .run_computation(chunk_id, contribution_id, contributor)
+                .run_computation(round_height, chunk_id, contribution_id, contributor)
                 .is_ok()
         );
 
         // Add round 1 chunk 0 contribution 1.
-        assert!(coordinator.add_contribution(chunk_id, contributor.clone()).is_ok());
+        assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
 
         // Acquire lock for round 1 chunk 0 contribution 1.
         {
             // Acquire the lock on chunk 0 for the verifier.
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-            assert!(coordinator.try_lock_chunk(chunk_id, verifier.clone()).is_ok());
+            assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
 
             // Check that chunk 0 is locked.
             let round = coordinator.current_round()?;
-            let chunk = round.get_chunk(chunk_id)?;
+            let chunk = round.chunk(chunk_id)?;
             assert!(chunk.is_locked());
             assert!(!chunk.is_unlocked());
 
             // Check that chunk 0 is locked by the verifier.
+            debug!("{:#?}", round);
             assert!(chunk.is_locked_by(&verifier));
         }
 
@@ -1288,19 +2827,125 @@ mod test {
         {
             // Verify contribution 1.
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-            coordinator.verify_contribution(chunk_id, verifier)?;
+            coordinator.verify_contribution(chunk_id, &verifier)?;
         }
 
         Ok(())
     }
 
-    // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
+    // This test runs a round with a single coordinator and single verifier
+    // The verifier instances are run on a separate thread to simulate an environment where
+    // verification and contribution happen concurrently.
+    fn coordinator_concurrent_contribution_verification_test() -> anyhow::Result<()> {
+        initialize_test_environment();
+
+        // take_hook() returns the default hook in case when a custom one is not set
+        let orig_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            // invoke the default handler and exit the process
+            orig_hook(panic_info);
+            process::exit(1);
+        }));
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        initialize_coordinator_single_contributor(&coordinator)?;
+
+        // Check current round height is now 1.
+        let round_height = coordinator.current_round_height()?;
+        assert_eq!(1, round_height);
+
+        let coordinator = std::sync::Arc::new(coordinator);
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+
+        let mut verifier_threads = vec![];
+
+        let contribution_id = 1;
+        for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
+            {
+                // Acquire the lock as contributor.
+                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                if try_lock.is_err() {
+                    println!(
+                        "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        &contributor,
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    try_lock?;
+                }
+
+                // Run computation as contributor.
+                let contribute = coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor);
+                if contribute.is_err() {
+                    println!(
+                        "Failed to run computation for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        &contributor,
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    contribute?;
+                }
+
+                // Add the contribution as the contributor.
+                let contribute = coordinator.add_contribution(chunk_id, &contributor);
+                if contribute.is_err() {
+                    println!(
+                        "Failed to add contribution for chunk {} as contributor {:?}\n{}",
+                        chunk_id,
+                        &contributor,
+                        serde_json::to_string_pretty(&coordinator.current_round()?)?
+                    );
+                    contribute?;
+                }
+            }
+
+            // Spawn a thread to concurrently verify the contributions.
+            let coordinator_clone = coordinator.clone();
+            let verifier_thread = std::thread::spawn(move || {
+                let verifier = verifier.clone();
+
+                // Acquire the lock as the verifier.
+                let try_lock = coordinator_clone.try_lock_chunk(chunk_id, &verifier);
+                if try_lock.is_err() {
+                    println!(
+                        "Failed to acquire lock as verifier {:?}\n{}",
+                        verifier.clone(),
+                        serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                    );
+                    panic!(format!("{:?}", try_lock.unwrap()))
+                }
+
+                // Run verification as the verifier.
+                let verify = coordinator_clone.verify_contribution(chunk_id, &verifier);
+                if verify.is_err() {
+                    println!(
+                        "Failed to run verification as verifier {:?}\n{}",
+                        verifier.clone(),
+                        serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                    );
+                    panic!(format!("{:?}", verify.unwrap()))
+                }
+            });
+            verifier_threads.push(verifier_thread);
+        }
+
+        for verifier_thread in verifier_threads {
+            verifier_thread.join().expect("Couldn't join on the verifier thread");
+        }
+
+        Ok(())
+    }
+
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
-        test_logger();
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         initialize_coordinator(&coordinator)?;
+
+        // Check current round height is now 1.
+        let round_height = coordinator.current_round_height()?;
+        assert_eq!(1, round_height);
 
         // Run computation and verification on each contribution in each chunk.
         let contributors = vec![
@@ -1308,43 +2953,43 @@ mod test {
             Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
         ];
 
-        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+        let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
 
         // Iterate over all chunk IDs.
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // As contribution ID 0 is initialized by the coordinator, iterate from
             // contribution ID 1 up to the expected number of contributions.
-            for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
+            for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
                 let contributor = &contributors[contribution_id as usize - 1];
                 {
                     // Acquire the lock as contributor.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, contributor.clone());
+                    let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
                     if try_lock.is_err() {
                         println!(
                             "Failed to acquire lock as contributor {:?}\n{}",
-                            contributor.clone(),
+                            &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         try_lock?;
                     }
 
                     // Run computation as contributor.
-                    let contribute = coordinator.run_computation(chunk_id, contribution_id, &contributor);
+                    let contribute = coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor);
                     if contribute.is_err() {
                         println!(
                             "Failed to run computation as contributor {:?}\n{}",
-                            contributor.clone(),
+                            &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         contribute?;
                     }
 
                     // Add the contribution as the contributor.
-                    let contribute = coordinator.add_contribution(chunk_id, contributor.clone());
+                    let contribute = coordinator.add_contribution(chunk_id, &contributor);
                     if contribute.is_err() {
                         println!(
                             "Failed to add contribution as contributor {:?}\n{}",
-                            contributor.clone(),
+                            &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         contribute?;
@@ -1352,22 +2997,22 @@ mod test {
                 }
                 {
                     // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, verifier.clone());
+                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
                     if try_lock.is_err() {
                         println!(
                             "Failed to acquire lock as verifier {:?}\n{}",
-                            contributor.clone(),
+                            &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         try_lock?;
                     }
 
                     // Run verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, verifier.clone());
+                    let verify = coordinator.verify_contribution(chunk_id, &verifier);
                     if verify.is_err() {
                         println!(
                             "Failed to run verification as verifier {:?}\n{}",
-                            contributor.clone(),
+                            &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         verify?;
@@ -1376,23 +3021,36 @@ mod test {
             }
         }
 
+        println!(
+            "Starting aggregation with this transcript {}",
+            serde_json::to_string_pretty(&coordinator.current_round()?)?
+        );
+
+        // Run aggregation and transition from round 1 to round 2.
+        coordinator.next_round(Utc::now(), contributors, vec![verifier.clone()])?;
+
+        println!(
+            "Finished aggregation with this transcript {}",
+            serde_json::to_string_pretty(&coordinator.current_round()?)?
+        );
+
         Ok(())
     }
 
     fn coordinator_next_round_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let verifier = Lazy::force(&TEST_VERIFIER_ID);
-        {
-            // Ensure the ceremony has not started.
-            assert_eq!(0, coordinator.current_round_height()?);
-            // Run initialization.
-            coordinator.next_round(*TEST_STARTED_AT, vec![contributor.clone()], vec![verifier.clone()])?;
-            // Check current round height is now 1.
-            assert_eq!(1, coordinator.current_round_height()?);
-        }
+
+        // Ensure the ceremony has not started.
+        assert_eq!(0, coordinator.current_round_height()?);
+        // Run initialization.
+        coordinator.next_round(*TEST_STARTED_AT, vec![contributor.clone()], vec![verifier.clone()])?;
+        // Check current round height is now 1.
+        let round_height = coordinator.current_round_height()?;
+        assert_eq!(1, round_height);
 
         // Run computation and verification on each contribution in each chunk.
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
@@ -1400,17 +3058,17 @@ mod test {
             assert!(
                 coordinator
                     .current_round()?
-                    .get_chunk(chunk_id)?
+                    .chunk(chunk_id)?
                     .get_contribution(0)?
                     .is_verified()
             );
 
             // As contribution ID 0 is initialized by the coordinator, iterate from
             // contribution ID 1 up to the expected number of contributions.
-            for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
+            for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
                 {
                     // Acquire the lock as contributor.
-                    if coordinator.try_lock_chunk(chunk_id, contributor.clone()).is_err() {
+                    if coordinator.try_lock_chunk(chunk_id, &contributor).is_err() {
                         panic!(
                             "Failed to acquire lock as contributor {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
@@ -1418,7 +3076,7 @@ mod test {
                     }
                     // Run computation as contributor.
                     if coordinator
-                        .run_computation(chunk_id, contribution_id, &contributor)
+                        .run_computation(round_height, chunk_id, contribution_id, &contributor)
                         .is_err()
                     {
                         panic!(
@@ -1427,7 +3085,7 @@ mod test {
                         );
                     }
                     // Add the contribution as the contributor.
-                    if coordinator.add_contribution(chunk_id, contributor.clone()).is_err() {
+                    if coordinator.add_contribution(chunk_id, &contributor).is_err() {
                         panic!(
                             "Failed to add contribution as contributor {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
@@ -1436,14 +3094,14 @@ mod test {
                 }
                 {
                     // Acquire the lock as the verifier.
-                    if coordinator.try_lock_chunk(chunk_id, verifier.clone()).is_err() {
+                    if coordinator.try_lock_chunk(chunk_id, &verifier).is_err() {
                         panic!(
                             "Failed to acquire lock as verifier {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                     }
                     // Run verification as the verifier.
-                    if coordinator.verify_contribution(chunk_id, verifier.clone()).is_err() {
+                    if coordinator.verify_contribution(chunk_id, &verifier).is_err() {
                         panic!(
                             "Failed to run verification as verifier {}",
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
@@ -1472,7 +3130,7 @@ mod test {
     #[test]
     #[serial]
     fn test_coordinator_initialization_matches_json() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone()).unwrap();
         initialize_coordinator(&coordinator).unwrap();
@@ -1507,8 +3165,14 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_coordinator_contributor_verify_contribution() {
+    fn test_coordinator_verifier_verify_contribution() {
         coordinator_verifier_verify_contribution_test().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_coordinator_concurrent_contribution_verification() {
+        coordinator_concurrent_contribution_verification_test().unwrap();
     }
 
     #[test]
@@ -1525,8 +3189,9 @@ mod test {
 
     #[test]
     #[serial]
+    #[ignore]
     fn test_coordinator_number_of_chunks() {
-        clear_test_transcript();
+        initialize_test_environment();
 
         let environment = Environment::Test(Parameters::AleoTestChunks(4096));
 
@@ -1535,7 +3200,7 @@ mod test {
 
         assert_eq!(
             environment.number_of_chunks(),
-            coordinator.get_round(0).unwrap().get_chunks().len() as u64
+            coordinator.get_round(0).unwrap().chunks().len() as u64
         );
     }
 }
