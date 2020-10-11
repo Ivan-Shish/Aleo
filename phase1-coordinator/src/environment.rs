@@ -176,9 +176,9 @@ impl Environment {
     ///
     pub fn minimum_contributors_per_round(&self) -> usize {
         match self {
-            Environment::Test(_) => 2,
-            Environment::Development(_) => 2,
-            Environment::Production(_) => 2,
+            Environment::Test(_) => 1,
+            Environment::Development(_) => 1,
+            Environment::Production(_) => 1,
         }
     }
 
