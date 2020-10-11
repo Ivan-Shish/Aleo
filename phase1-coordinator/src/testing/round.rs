@@ -1,6 +1,7 @@
 use crate::{
     environment::{Environment, Parameters},
     objects::Round,
+    storage::StorageLock,
     testing::coordinator::*,
     Participant,
 };
@@ -61,7 +62,7 @@ pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
 pub fn test_round_0() -> anyhow::Result<Round> {
     // Define test storage.
     let test_storage = test_storage(&TEST_ENVIRONMENT);
-    let storage = test_storage.write().unwrap();
+    let storage = StorageLock::Write(test_storage.write().unwrap());
 
     Ok(Round::new(
         &TEST_ENVIRONMENT,
