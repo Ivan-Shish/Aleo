@@ -24,6 +24,7 @@ pub enum CoordinatorError {
     ChunkIdAlreadyAdded,
     ChunkIdInvalid,
     ChunkIdMismatch,
+    ChunkIdMissing,
     ChunkLockAlreadyAcquired,
     ChunkLockLimitReached,
     ChunkMissing,
@@ -562,15 +563,17 @@ struct CoordinatorState {
     /// The parameters and settings of this coordinator.
     environment: Environment,
     /// The map of chunks pending verification in the current round.
-    pending_verification: HashMap<u64, Option<Participant>>,
+    pending_verification: HashMap<u64, Participant>,
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
-    /// The list of information about participants that finished in current and past rounds.
-    finished: Vec<ParticipantInfo>,
+    /// The map of each round height to the corresponding contributors from that round.
+    finished_contributors: HashMap<u64, ParticipantInfo>,
+    /// The map of each round height to the corresponding verifiers from that round.
+    finished_verifiers: HashMap<u64, ParticipantInfo>,
     /// The list of information about participants that dropped in current and past rounds.
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
@@ -589,7 +592,8 @@ impl CoordinatorState {
             current_contributors: HashMap::default(),
             current_verifiers: HashMap::default(),
             next: HashMap::default(),
-            finished: Vec::new(),
+            finished_contributors: HashMap::default(),
+            finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
             banned: Vec::new(),
         }
@@ -617,8 +621,18 @@ impl CoordinatorState {
     #[inline]
     fn is_current_round_finished(&self) -> bool {
         self.pending_verification.is_empty()
-            && self.current_contributors.is_empty()
-            && self.current_verifiers.is_empty()
+            && (self
+                .current_contributors
+                .par_iter()
+                .filter(|(_, p)| !p.is_finished())
+                .count()
+                == 0)
+            && (self
+                .current_verifiers
+                .par_iter()
+                .filter(|(_, p)| !p.is_finished())
+                .count()
+                == 0)
     }
 
     ///
@@ -738,11 +752,27 @@ impl CoordinatorState {
         trace!("Assigning chunk {} to {} for verification", chunk_id, verifier);
 
         match self.current_verifiers.get_mut(&verifier) {
-            Some(verifier_info) => verifier_info.push_back_chunk_id(chunk_id),
+            Some(verifier_info) => verifier_info.push_back_chunk_id(chunk_id)?,
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
-        self.pending_verification.insert(chunk_id, Some(verifier));
+        self.pending_verification.insert(chunk_id, verifier);
+
+        Ok(())
+    }
+
+    ///
+    /// Remove the given chunk ID from the map of chunks that are pending verification.
+    ///
+    #[inline]
+    fn remove_pending_verification(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the set pending verification does not already contain the chunk ID.
+        if !self.pending_verification.contains_key(&chunk_id) {
+            return Err(CoordinatorError::ChunkIdMissing);
+        }
+
+        trace!("Removing chunk {} from the pending verifications", chunk_id);
+        self.pending_verification.remove(&chunk_id);
 
         Ok(())
     }
@@ -813,37 +843,137 @@ impl CoordinatorState {
     fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant) => Ok(participant.released_lock(chunk_id)?),
+                Some(participant_info) => {
+                    // Release the chunk lock from the contributor.
+                    participant_info.released_lock(chunk_id)?;
+
+                    trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
+                    self.add_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => Ok(participant.released_lock(chunk_id)?),
+                Some(participant) => {
+                    // Release the chunk lock from the verifier.
+                    participant.released_lock(chunk_id)?;
+
+                    trace!("Removing chunk {} from the queue of pending verifications", chunk_id);
+                    self.remove_pending_verification(chunk_id)?;
+
+                    Ok(())
+                }
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
     }
 
     ///
-    /// Checks the current round for finished contributors.
+    /// Updates the state of contributors in the current round.
     ///
     #[inline]
-    fn update_finished_contributors(&mut self) -> Result<(), CoordinatorError> {
-        for (participant, participant_info) in self.current_contributors.clone() {
-            if participant_info.is_finished() {
-                // Add the finished contributors into the finished list.
-                match self.current_contributors.remove(&participant) {
-                    Some(participant_info) => {
-                        // Clone the participant info.
-                        let mut finished_info = participant_info.clone();
-                        // Set the participant as finished.
-                        finished_info.finish()?;
-                        // Add the participant to the finished list.
-                        self.finished.push(finished_info);
-                    }
-                    _ => (),
-                };
+    fn update_current_contributors(&mut self) -> Result<(), CoordinatorError> {
+        for (contributor, contributor_info) in self.current_contributors.iter_mut() {
+            trace!("{:#?}", contributor_info);
+
+            // Check that the contributor already started in the round.
+            if contributor_info.started_at.is_none() {
+                continue;
+            }
+
+            // Check that the contributor was not dropped from the round.
+            if contributor_info.dropped_at.is_some() {
+                continue;
+            }
+
+            // Check that the contributor has not already finished the round.
+            if contributor_info.finished_at.is_some() {
+                continue;
+            }
+
+            // Check that the contributor has no more pending chunks.
+            if !contributor_info.pending_chunks.is_empty() {
+                continue;
+            }
+
+            // Check that the contributor has no more locked chunks.
+            if !contributor_info.locked_chunks.is_empty() {
+                continue;
+            }
+
+            // Check that the contributor has completed chunks.
+            if contributor_info.completed_chunks.is_empty() {
+                continue;
+            }
+
+            // Set the contributor as finished.
+            contributor_info.finish()?;
+
+            debug!("{} has finished", contributor);
+        }
+        Ok(())
+    }
+
+    ///
+    /// Updates the state of verifiers in the current round.
+    ///
+    /// This function never be run prior to calling `update_current_contributors`.
+    ///
+    #[inline]
+    fn update_current_verifiers(&mut self) -> Result<(), CoordinatorError> {
+        // Check if the contributors are finished.
+        let is_contributors_finished = self
+            .current_contributors
+            .par_iter()
+            .filter(|(_, p)| !p.is_finished())
+            .count()
+            == 0;
+
+        // If all contributors are finished, this means there are no new verification jobs
+        // to be added to the pending verifications queue. So if a verifier is finished
+        // with their verifications, then they are finished for this round.
+        if is_contributors_finished {
+            for (verifier, verifier_info) in self.current_verifiers.iter_mut() {
+                trace!("{:#?}", verifier_info);
+
+                // Check that the verifier already started in the round.
+                if verifier_info.started_at.is_none() {
+                    continue;
+                }
+
+                // Check that the verifier was not dropped from the round.
+                if verifier_info.dropped_at.is_some() {
+                    continue;
+                }
+
+                // Check that the verifier has not already finished the round.
+                if verifier_info.finished_at.is_some() {
+                    continue;
+                }
+
+                // Check that the verifier has no more pending chunks.
+                if !verifier_info.pending_chunks.is_empty() {
+                    continue;
+                }
+
+                // Check that the verifier has no more locked chunks.
+                if !verifier_info.locked_chunks.is_empty() {
+                    continue;
+                }
+
+                // Check that the verifier has completed chunks.
+                if verifier_info.completed_chunks.is_empty() {
+                    continue;
+                }
+
+                // Set the verifier as finished.
+                verifier_info.finish()?;
+
+                debug!("{} has finished", verifier);
             }
         }
+
         Ok(())
     }
 
@@ -873,6 +1003,8 @@ impl CoordinatorState {
 
                 self.dropped.push(participant_info);
                 self.current_contributors.remove(&participant);
+
+                debug!("{} is being dropped", participant);
             }
         }
 
@@ -890,6 +1022,8 @@ impl CoordinatorState {
 
                 self.dropped.push(participant_info);
                 self.current_verifiers.remove(&participant);
+
+                debug!("{} is being dropped", participant);
             }
         }
 
@@ -913,6 +1047,8 @@ impl CoordinatorState {
             // Check if the participant meets the ban threshold.
             if count > self.environment.participant_ban_threshold() as usize {
                 self.banned.push(participant_info.id.clone());
+
+                debug!("{} is being banned", participant_info.id);
             }
         }
 
@@ -1003,6 +1139,20 @@ impl CoordinatorState {
             }
         }
 
+        // // Check that all participants are storing the same round height.
+        // let round_heights = self
+        //     .next
+        //     .par_iter()
+        //     .map(|(_, p)| {
+        //         let mut output = HashSet::new();
+        //         output.insert(p.round_height);
+        //         output
+        //     })
+        //     .reduce(|| HashSet::new(), |a, b| a.union(&b).collect::<HashSet<_>>());
+        // if round_heights > 1 {
+        //     return Err(CoordinatorError::RoundHeightMismatch);
+        // }
+
         // Check that each contribution has an initial chunk locking sequence,
         // and prepare the list of contributors and verifiers to return.
         let mut contributors = Vec::with_capacity(number_of_contributors);
@@ -1035,6 +1185,20 @@ impl CoordinatorState {
     ///
     #[inline]
     fn commit_next_round(&mut self) {
+        // Add all current round participants to the finished list.
+        for (_, contributor_info) in self.current_contributors.clone() {
+            self.finished_contributors
+                .insert(contributor_info.round_height, contributor_info);
+        }
+        for (_, verifier_info) in self.current_verifiers.clone() {
+            self.finished_verifiers
+                .insert(verifier_info.round_height, verifier_info);
+        }
+
+        // Reset the current round map.
+        self.current_contributors = HashMap::new();
+        self.current_verifiers = HashMap::new();
+
         // Add all participants from next to current.
         for (participant, participant_info) in self.next.iter() {
             match participant {
@@ -1083,9 +1247,9 @@ impl CoordinatorState {
 
         format!(
             r#"
-    {} active contributors
-    {} active verifiers
-    {} chunks pending verification
+    {} contributors in the current round
+    {} verifiers in the current round
+    {} chunks are pending verification
     
     {} contributors in queue for next round
     {} verifiers in queue for next round
@@ -1154,7 +1318,7 @@ impl Coordinator {
             drop(state);
 
             info!("Initializing round 1");
-            self.try_advance();
+            self.try_advance()?;
             info!("Initialized round 1");
 
             info!("Add contributions and verifications for round 1");
@@ -1203,10 +1367,13 @@ impl Coordinator {
             // Acquire the state write lock.
             let mut state = self.state.write().unwrap();
 
-            debug!("Coordinator state\n\t{}", state.status_report());
+            info!("Status Report\n\t{}", state.status_report());
 
-            // Check the current round for finished participants.
-            state.update_finished_contributors()?;
+            // Update the state of current round contributors.
+            state.update_current_contributors()?;
+
+            // Update the state of current round verifiers.
+            state.update_current_verifiers()?;
 
             // Drop disconnected participants from the current round.
             state.update_dropped_participants()?;
@@ -1217,6 +1384,8 @@ impl Coordinator {
             // Determine if current round is finished and next round is ready.
             (state.is_current_round_finished(), state.is_next_round_ready())
         };
+
+        trace!("{} {}", is_current_round_finished, is_next_round_ready);
 
         // Check if the current round is finished and the next round is ready.
         if is_current_round_finished && is_next_round_ready {
@@ -1497,8 +1666,6 @@ impl Coordinator {
 
                 trace!("Release the lock on chunk {} from {}", chunk_id, participant);
                 state.released_lock(participant, chunk_id)?;
-                trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
-                state.add_pending_verification(chunk_id)?;
 
                 info!("Added contribution for chunk {} at {}", chunk_id, locator);
                 Ok(locator)
