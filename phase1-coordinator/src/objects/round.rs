@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{Locator, StorageWrite},
+    storage::{Locator, StorageLock},
     CoordinatorError,
 };
 
@@ -46,7 +46,7 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
-        storage: &StorageWrite,
+        storage: &StorageLock,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
@@ -173,7 +173,7 @@ impl Round {
     /// no prior rounds, returns `false`.
     ///
     #[inline]
-    pub fn is_authorized_contributor(&self, participant: &Participant) -> bool {
+    pub fn is_contributor(&self, participant: &Participant) -> bool {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
             return false;
@@ -194,7 +194,7 @@ impl Round {
     /// no prior rounds, returns `false`.
     ///
     #[inline]
-    pub fn is_authorized_verifier(&self, participant: &Participant) -> bool {
+    pub fn is_verifier(&self, participant: &Participant) -> bool {
         // Check that the participant is not a contributor.
         if participant.is_contributor() {
             return false;
@@ -231,11 +231,58 @@ impl Round {
     }
 
     /// Returns the expected number of contributions.
+    #[inline]
     pub fn expected_number_of_contributions(&self) -> u64 {
         // The expected number of contributions is one more than
         // the total number of authorized contributions to account
         // for the initialization contribution in each round.
         self.number_of_contributors() + 1
+    }
+
+    /// Returns `true` if the chunk corresponding to the given chunk ID is
+    /// locked by the given participant. Otherwise, returns `false`.
+    #[inline]
+    pub fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
+        match self.chunk(chunk_id) {
+            Ok(chunk) => chunk.is_locked_by(participant),
+            _ => false,
+        }
+    }
+
+    /// Returns the number of locks held by the given participant in this round.
+    #[inline]
+    pub fn number_of_locks_held(&self, participant: &Participant) -> Result<u64, CoordinatorError> {
+        debug!("Checking the lock count for {}", participant);
+
+        // Check that the participant is authorized for the current round.
+        match participant {
+            Participant::Contributor(_) => {
+                // Check that the participant is an authorized contributor
+                // for the current round.
+                if !self.is_contributor(participant) {
+                    error!("{} is not an authorized contributor", participant);
+                    return Err(CoordinatorError::UnauthorizedChunkContributor);
+                }
+            }
+            Participant::Verifier(_) => {
+                // Check that the participant is an authorized verifier
+                // for the current round.
+                if !self.is_verifier(participant) {
+                    error!("{} is not an authorized verifier", participant);
+                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
+                }
+            }
+        };
+
+        // Fetch the number of locks held by the participant.
+        let number_of_locks_held = self
+            .chunks
+            .par_iter()
+            .filter(|chunk| chunk.is_locked_by(participant))
+            .count() as u64;
+
+        debug!("{} is holding {} locks", participant, number_of_locks_held);
+        Ok(number_of_locks_held)
     }
 
     ///
@@ -248,9 +295,9 @@ impl Round {
     /// this function will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn current_contribution_locator(
+    pub(crate) fn current_contribution_locator(
         &self,
-        storage: &StorageWrite,
+        storage: &StorageLock,
         chunk_id: u64,
         verified: bool,
     ) -> Result<Locator, CoordinatorError> {
@@ -301,9 +348,9 @@ impl Round {
     /// this function will return a `CoordinatorError`.
     ///
     #[inline]
-    pub fn next_contribution_locator(
+    pub(crate) fn next_contribution_locator(
         &self,
-        storage: &StorageWrite,
+        storage: &StorageLock,
         chunk_id: u64,
     ) -> Result<Locator, CoordinatorError> {
         // Fetch the current round height.
@@ -333,52 +380,6 @@ impl Round {
         Ok(next_contribution_locator)
     }
 
-    /// Returns `true` if the chunk corresponding to the given chunk ID is
-    /// locked by the given participant. Otherwise, returns `false`.
-    #[inline]
-    pub fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
-        match self.chunk(chunk_id) {
-            Ok(chunk) => chunk.is_locked_by(participant),
-            _ => false,
-        }
-    }
-
-    /// Returns the number of locks held by the given participant in this round.
-    #[inline]
-    pub fn number_of_locks_held(&self, participant: &Participant) -> Result<u64, CoordinatorError> {
-        debug!("Checking the lock count for {}", participant);
-
-        // Check that the participant is authorized for the current round.
-        match participant {
-            Participant::Contributor(_) => {
-                // Check that the participant is an authorized contributor
-                // for the current round.
-                if !self.is_authorized_contributor(participant) {
-                    error!("{} is not an authorized contributor", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkContributor);
-                }
-            }
-            Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_authorized_verifier(participant) {
-                    error!("{} is not an authorized verifier", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                }
-            }
-        };
-
-        // Fetch the number of locks held by the participant.
-        let number_of_locks_held = self
-            .chunks
-            .par_iter()
-            .filter(|chunk| chunk.is_locked_by(participant))
-            .count() as u64;
-
-        debug!("{} is holding {} locks", participant, number_of_locks_held);
-        Ok(number_of_locks_held)
-    }
-
     ///
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
@@ -387,7 +388,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &StorageWrite,
+        storage: &StorageLock,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<Locator, CoordinatorError> {
@@ -400,7 +401,7 @@ impl Round {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
-                if !self.is_authorized_contributor(participant) {
+                if !self.is_contributor(participant) {
                     error!("{} is not an authorized contributor", participant);
                     return Err(CoordinatorError::UnauthorizedChunkContributor);
                 }
@@ -413,7 +414,7 @@ impl Round {
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
                 // for the current round.
-                if !self.is_authorized_verifier(participant) {
+                if !self.is_verifier(participant) {
                     error!("{} is not an authorized verifier", participant);
                     return Err(CoordinatorError::UnauthorizedChunkVerifier);
                 }
@@ -547,7 +548,7 @@ mod tests {
 
         // Define test storage.
         let test_storage = test_storage(&TEST_ENVIRONMENT);
-        let storage = test_storage.write().unwrap();
+        let storage = StorageLock::Write(test_storage.write().unwrap());
 
         let expected = test_round_0().unwrap();
         let candidate = Round::new(
@@ -587,7 +588,7 @@ mod tests {
         initialize_test_environment();
 
         let round_1 = test_round_1_initial_json().unwrap();
-        assert!(round_1.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
     }
 
     #[test]
@@ -596,10 +597,10 @@ mod tests {
         initialize_test_environment();
 
         let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_authorized_verifier(&TEST_VERIFIER_ID));
+        assert!(round_0.is_verifier(&TEST_VERIFIER_ID));
 
         let round_1 = test_round_1_initial_json().unwrap();
-        assert!(round_1.is_authorized_contributor(&TEST_CONTRIBUTOR_ID));
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
     }
 
     #[test]

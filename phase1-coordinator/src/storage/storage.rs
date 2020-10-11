@@ -3,7 +3,10 @@ use phase1::helpers::CurveKind;
 
 use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::{RwLockReadGuard, RwLockWriteGuard},
+};
 use zexe_algebra::{Bls12_377, BW6_761};
 
 /// A data structure representing all possible types of keys in storage.
@@ -74,7 +77,34 @@ impl Object {
     }
 }
 
-pub type StorageWrite<'a> = RwLockWriteGuard<'a, Box<dyn Storage>>;
+pub(crate) enum Lock<'a, T> {
+    Read(RwLockReadGuard<'a, T>),
+    Write(RwLockWriteGuard<'a, T>),
+}
+
+impl<'a, T> Deref for Lock<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Lock::Read(read_guard) => read_guard.deref(),
+            Lock::Write(write_guard) => write_guard.deref(),
+        }
+    }
+}
+
+impl<'a, T> DerefMut for Lock<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Lock::Read(_) => panic!("Cannot mutably dereference a read-only lock"),
+            Lock::Write(write_guard) => write_guard,
+        }
+    }
+}
+
+pub(crate) type StorageLock<'a> = Lock<'a, Box<dyn Storage>>;
+
+// pub type StorageWrite<'a> = RwLockWriteGuard<'a, Box<dyn Storage>>;
 
 // TODO (howardwu): Genericize this if necessary for remote objects.
 //  Alternatively, usage of temporary memory-backed local files can also work.

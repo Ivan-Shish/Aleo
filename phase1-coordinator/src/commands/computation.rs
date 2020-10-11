@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, Object, StorageWrite},
+    storage::{Locator, Object, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -23,7 +23,7 @@ impl Computation {
     #[allow(dead_code)]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageWrite,
+        storage: &mut StorageLock,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
@@ -140,7 +140,7 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
-        storage::Locator,
+        storage::{Locator, StorageLock},
         testing::prelude::*,
     };
 
@@ -157,7 +157,7 @@ mod tests {
 
         // Define test storage.
         let test_storage = test_storage(&TEST_ENVIRONMENT_3);
-        let mut storage = test_storage.write().unwrap();
+        let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         // Generate a new challenge for the given parameters.
         for chunk_id in 0..number_of_chunks {

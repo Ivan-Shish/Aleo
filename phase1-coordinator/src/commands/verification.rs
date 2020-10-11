@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, Object, StorageWrite},
+    storage::{Locator, Object, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -22,7 +22,7 @@ impl Verification {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageWrite,
+        storage: &mut StorageLock,
         round_height: u64,
         chunk_id: u64,
         current_contribution_id: u64,
@@ -71,7 +71,7 @@ impl Verification {
     #[inline]
     fn verification(
         environment: &Environment,
-        storage: &mut StorageWrite,
+        storage: &mut StorageLock,
         chunk_id: u64,
         challenge_file: Locator,
         response_file: Locator,
@@ -243,7 +243,7 @@ impl Verification {
 mod tests {
     use crate::{
         commands::{Computation, Verification},
-        storage::Locator,
+        storage::{Locator, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
@@ -277,7 +277,7 @@ mod tests {
         let is_final = true;
 
         // Obtain the storage lock.
-        let mut storage = test_storage.write().unwrap();
+        let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         for chunk_id in 0..number_of_chunks {
             // Run computation on chunk.

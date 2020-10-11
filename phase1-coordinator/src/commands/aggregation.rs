@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::Round,
-    storage::{Locator, Object, ObjectReader, StorageWrite},
+    storage::{Locator, Object, ObjectReader, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
@@ -14,7 +14,7 @@ pub(crate) struct Aggregation;
 impl Aggregation {
     /// Runs aggregation for a given environment and round.
     #[inline]
-    pub(crate) fn run(environment: &Environment, storage: &mut StorageWrite, round: &Round) -> anyhow::Result<()> {
+    pub(crate) fn run(environment: &Environment, storage: &mut StorageLock, round: &Round) -> anyhow::Result<()> {
         // Fetch the round height.
         let round_height = round.round_height();
         debug!("Starting aggregation on round {}", round_height);
@@ -73,7 +73,7 @@ impl Aggregation {
     #[inline]
     fn readers<'a>(
         environment: &Environment,
-        storage: &'a StorageWrite<'a>,
+        storage: &'a StorageLock<'a>,
         round: &Round,
     ) -> anyhow::Result<Vec<ObjectReader<'a>>> {
         let mut readers = vec![];
@@ -119,7 +119,7 @@ impl Aggregation {
 
 #[cfg(test)]
 mod tests {
-    use crate::{commands::Aggregation, testing::prelude::*, Coordinator};
+    use crate::{commands::Aggregation, storage::StorageLock, testing::prelude::*, Coordinator};
 
     use once_cell::sync::Lazy;
 
@@ -216,7 +216,7 @@ mod tests {
         // Aggregate.
         {
             // Obtain the storage lock.
-            let mut storage = test_storage.write().unwrap();
+            let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
             // Run aggregation on the round.
             Aggregation::run(&TEST_ENVIRONMENT_3, &mut storage, &round).unwrap();

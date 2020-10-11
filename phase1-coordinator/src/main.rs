@@ -31,22 +31,15 @@ fn init_logger() {
 }
 
 #[inline]
-fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
+async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let coordinator = Coordinator::new(environment.clone())?;
-
-    let contributors = vec![environment.coordinator_contributor()];
-    let verifiers = vec![environment.coordinator_verifier()];
 
     info!("Chunk size is {}", environment.to_settings().5);
     info!("{:#?}", environment.to_settings());
 
-    // If this is the first time running the ceremony, start by initializing one round.
-    if coordinator.current_round_height()? == 0 {
-        info!("Starting initialization of round 0 to round 1");
-        coordinator.next_round(Utc::now(), contributors, verifiers)?;
-        info!("Completed initialization of round 0 to round 1");
-    }
+    coordinator.initialize().await?;
+
     info!("Coordinator is ready");
     info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
 
@@ -54,7 +47,7 @@ fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 }
 
 #[inline]
-fn server(environment: &Environment) -> anyhow::Result<Rocket> {
+async fn server(environment: &Environment) -> anyhow::Result<Rocket> {
     info!("Starting server...");
 
     let builder = match environment {
@@ -69,7 +62,7 @@ fn server(environment: &Environment) -> anyhow::Result<Rocket> {
         .finalize()?;
 
     let server = rocket::custom(config)
-        .manage(Arc::new(coordinator(environment)?))
+        .manage(Arc::new(coordinator(environment).await?))
         .mount("/", routes![])
         .attach(environment.cors());
 
@@ -83,6 +76,8 @@ pub async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "silent"))]
     init_logger();
 
-    server(&Environment::Test(Parameters::AleoTestCustom(16, 12, 256)))?.launch();
+    server(&Environment::Development(Parameters::AleoTestCustom(8, 12, 256)))
+        .await?
+        .launch();
     Ok(())
 }
