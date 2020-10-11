@@ -2400,13 +2400,6 @@ impl Coordinator {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Check that the contribution locator corresponding to this response file does NOT exist.
-        let response_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
-        if storage.exists(&response_locator) {
-            error!("Response file already exists ({})", storage.to_path(&response_locator)?);
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
         // Fetch the current round and given chunk ID, and check that
         // the given contribution ID does not exist yet.
         let chunk = round.chunk(chunk_id)?;
