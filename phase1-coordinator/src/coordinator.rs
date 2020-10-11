@@ -1343,15 +1343,15 @@ impl Coordinator {
             info!("Add contributions and verifications for round 1");
             for chunk_id in 0..self.environment.number_of_chunks() {
                 debug!("Computing contributions for round 1 chunk {}", chunk_id);
-                let unverified_locator = self.try_lock(&contributor)?;
+                let (_challenge_locator, response_locator) = self.try_lock(&contributor)?;
                 self.run_computation(1, chunk_id, 1, &contributor)?;
-                let _unverified_locator = self.try_contribute(&contributor, &unverified_locator)?;
+                let _response_locator = self.try_contribute(&contributor, &response_locator)?;
                 debug!("Computed contributions for round 1 chunk {}", chunk_id);
 
                 debug!("Running verification for round 1 chunk {}", chunk_id);
-                let _unverified_locator = self.try_lock(&verifier)?;
-                let verified_locator = self.run_verification(1, chunk_id, 1, &verifier)?;
-                let _empty = self.try_verify(&verifier, &verified_locator)?;
+                let (_response_locator, next_challenge_locator) = self.try_lock(&verifier)?;
+                let _next_challenge_locator = self.run_verification(1, chunk_id, 1, &verifier)?;
+                let _empty = self.try_verify(&verifier, &next_challenge_locator)?;
                 debug!("Running verification for round 1 chunk {}", chunk_id);
             }
             info!("Added contributions and verifications for round 1");
@@ -1527,7 +1527,7 @@ impl Coordinator {
         let mut state = self.state.write().unwrap();
 
         // Attempt to remove the participant from the next round.
-        state.add_next_round_participant(participant, next_round_height, reliability_score)
+        state.remove_next_round_participant(participant)
     }
 
     ///
@@ -1615,14 +1615,16 @@ impl Coordinator {
     ///
     /// Attempts to acquire the lock to a chunk for the given participant.
     ///
-    /// On success, this function returns the next contribution locator
-    /// if the participant is a contributor, and it returns the current
-    /// unverified contribution locator if the participant is a verifier.
+    /// On success, if the participant is a contributor, this function
+    /// returns `(challenge_locator, response_locator)`.
+    ///
+    /// On success, if the participant is a verifier, this function
+    /// returns `(response_locator, next_challenge_locator)`.
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_lock(&self, participant: &Participant) -> Result<String, CoordinatorError> {
+    pub fn try_lock(&self, participant: &Participant) -> Result<(String, String), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
@@ -1633,12 +1635,12 @@ impl Coordinator {
         trace!("Trying to lock chunk {} for {}", chunk_id, participant);
         match self.try_lock_chunk(chunk_id, participant) {
             // Case 1 - Participant acquired lock, return the locator.
-            Ok(locator) => {
+            Ok((current_contribution_locator, next_contribution_locator)) => {
                 trace!("Incrementing the number of locks held by {}", participant);
                 state.acquired_lock(participant, chunk_id)?;
 
-                info!("Acquired lock on chunk {} for {} at {}", chunk_id, participant, locator);
-                Ok(locator)
+                info!("Acquired lock on chunk {} for {}", chunk_id, participant);
+                Ok((current_contribution_locator, next_contribution_locator))
             }
             // Case 2 - Participant failed to acquire the lock, put the chunk ID back.
             Err(error) => {
@@ -1820,14 +1822,20 @@ impl Coordinator {
     ///
     /// Attempts to acquire the lock for a given chunk ID and participant.
     ///
-    /// On success, this function returns the next contribution locator
-    /// if the participant is a contributor, and it returns the current
-    /// contribution locator if the participant is a verifier.
+    /// On success, if the participant is a contributor, this function
+    /// returns `(challenge_locator, response_locator)`.
+    ///
+    /// On success, if the participant is a verifier, this function
+    /// returns `(response_locator, next_challenge_locator)`.
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    pub(crate) fn try_lock_chunk(&self, chunk_id: u64, participant: &Participant) -> Result<String, CoordinatorError> {
+    pub(crate) fn try_lock_chunk(
+        &self,
+        chunk_id: u64,
+        participant: &Participant,
+    ) -> Result<(String, String), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -1845,14 +1853,18 @@ impl Coordinator {
 
         // Attempt to acquire the chunk lock for participant.
         trace!("Preparing to lock chunk {}", chunk_id);
-        let contribution_locator = round.try_lock_chunk(&self.environment, &storage, chunk_id, &participant)?;
+        let (current_contribution_locator, next_contribution_locator) =
+            round.try_lock_chunk(&self.environment, &storage, chunk_id, &participant)?;
         trace!("Participant {} locked chunk {}", participant, chunk_id);
 
         // Add the updated round to storage.
         match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
                 info!("{} acquired lock on chunk {}", participant, chunk_id);
-                storage.to_path(&contribution_locator)
+                Ok((
+                    storage.to_path(&current_contribution_locator)?,
+                    storage.to_path(&next_contribution_locator)?,
+                ))
             }
             _ => Err(CoordinatorError::StorageUpdateFailed),
         }
