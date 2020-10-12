@@ -5,18 +5,18 @@ use phase1_coordinator::{environment::Environment, phase1_chunked_parameters, Pa
 use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
-use reqwest::Client;
+use reqwest::{multipart, Client};
 use std::{str::FromStr, thread::sleep, time::Duration};
 use tracing::{error, info, trace};
 
 ///
 /// This lock response bundles the data required for the verifier
-/// to perform a valid contribution or verification.
+/// to perform a valid verification.
 ///
-#[derive(Debug, Serialize, Deserialize, SerdeDiff)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LockResponse {
     /// The chunk id
-    #[serde(rename(serialize = "chunkId"))]
+    #[serde(alias = "chunkId")]
     pub chunk_id: u64,
 
     /// Indicator if the chunk was locked
@@ -26,14 +26,12 @@ pub struct LockResponse {
     #[serde(alias = "participantID")]
     pub participant_id: String,
 
-    // /// The locator of the challenge file that the participant will download
-    // #[serde(alias = "challengeLocator")]
-    // pub challenge_locator: String,
-    /// The locator where the participant will upload their completed contribution/verification.
+    #[serde(alias = "challengeLocator")]
+    pub challenge_locator: String,
+
     #[serde(alias = "responseLocator")]
     pub response_locator: String,
 
-    /// The locator of the challenge file that the participant will download
     #[serde(alias = "nextChallengeLocator")]
     pub next_challenge_locator: String,
 }
@@ -96,9 +94,20 @@ impl Verifier {
             .await
         {
             Ok(response) => {
+                if !response.status().is_success() {
+                    error!("Verifier failed to lock chunk");
+                    return Err(VerifierError::FailedRequest(
+                        path.to_string(),
+                        coordinator_api_url.to_string(),
+                    ));
+                }
+
                 // Parse the lock response
+                info!("Verifier lock response: {:?}", response);
                 let json_response = response.json().await?;
+                info!("Verifier json response: {:?}", json_response);
                 let lock_response = serde_json::from_value::<LockResponse>(json_response)?;
+                info!("Decoded verifier lock response: {:?}", lock_response);
 
                 Ok(lock_response)
             }
@@ -133,7 +142,7 @@ impl Verifier {
             verified_locator
         );
 
-        let signature_path = format!("/api{}", path);
+        let signature_path = format!("/api{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .post(&format!("{}{}", &coordinator_api_url, &path))
@@ -168,7 +177,7 @@ impl Verifier {
 
         info!("Verifier downloading a response file at {} ", response_locator);
 
-        let signature_path = format!("/api{}", path);
+        let signature_path = format!("/api{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .get(&format!("{}{}", &coordinator_api_url, &path))
@@ -206,7 +215,7 @@ impl Verifier {
 
         info!("Verifier downloading a challenge file at {} ", challenge_locator);
 
-        let signature_path = format!("/api{}", path);
+        let signature_path = format!("/api{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .get(&format!("{}{}", &coordinator_api_url, &path))
@@ -242,11 +251,11 @@ impl Verifier {
     ) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = format!("/coordinator/locator/{}", next_challenge_locator);
+        let path = format!("/coordinator/verification/{}", next_challenge_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
-        let signature_path = format!("/api{}", path);
+        let signature_path = format!("/api{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
 
         info!(
@@ -256,8 +265,9 @@ impl Verifier {
         );
 
         match Client::new()
-            .get(&format!("{}{}", &coordinator_api_url, &path))
+            .post(&format!("{}{}", &coordinator_api_url, &path))
             .header("Authorization", authentication.to_string())
+            .header("Content-Type", "application/octet-stream")
             .body(next_challenge_file_bytes)
             .send()
             .await
@@ -275,6 +285,27 @@ impl Verifier {
             }
         }
     }
+
+    // pub async fn upload_file(&self) {
+    //     let file_locator = "./transcript/large_file.ok";
+    //
+    //     let file_bytes = std::fs::read(&file_locator).unwrap();
+    //
+    //     info!("Attempting to add file {} of size {}", file_locator, file_bytes.len());
+    //
+    //     // Upload the verified response file to `lock_response.response.locator`
+    //     match self.upload_next_challenge_locator_file(&file_locator, file_bytes).await {
+    //         Ok(response) => {
+    //             info!("Verifier uploaded the file to the coordinator. Response {}", response);
+    //         }
+    //         Err(err) => {
+    //             error!(
+    //                 "Failed to open upload  {} to coordinator (error: {})",
+    //                 &file_locator, err
+    //             );
+    //         }
+    //     };
+    // }
 
     ///
     /// Start the verifier loop. Polls the coordinator to lock and verify chunks.
@@ -306,7 +337,7 @@ impl Verifier {
                 };
 
                 // Update the .verified to .unverified in the response locator
-                let challenge_file_locator = lock_response.response_locator.replace(".unverified", ".verified");
+                let challenge_file_locator = lock_response.challenge_locator;
 
                 trace!("challenge_file_locator: {}", challenge_file_locator);
                 trace!("response_locator: {}", lock_response.response_locator);
@@ -363,6 +394,15 @@ impl Verifier {
                     );
                 }
 
+                info!(
+                    "Initializing the next challenge locator directory: {}",
+                    lock_response.next_challenge_locator
+                );
+
+                let next_challenge_locator_path = std::path::Path::new(&lock_response.next_challenge_locator);
+                let next_challenge_locator_path_parent = next_challenge_locator_path.parent().unwrap();
+                std::fs::create_dir_all(next_challenge_locator_path_parent).unwrap();
+
                 // Run the verification
 
                 let settings = self.environment.to_settings();
@@ -372,6 +412,8 @@ impl Verifier {
                 let compressed_response = self.environment.compressed_outputs();
 
                 let chunk_id = lock_response.chunk_id;
+
+                info!("Running verification on chunk {}", chunk_id);
 
                 match curve {
                     CurveKind::Bls12_377 => transform_pok_and_correctness(
@@ -395,7 +437,13 @@ impl Verifier {
                 };
 
                 let next_challenge_file = match std::fs::read(&lock_response.next_challenge_locator) {
-                    Ok(file) => file,
+                    Ok(file) => {
+                        info!(
+                            "Reading next challenge locator at {}",
+                            &lock_response.next_challenge_locator
+                        );
+                        file
+                    }
                     Err(err) => {
                         error!(
                             "Failed to open next_challenge_file at {} (error {})",
@@ -406,7 +454,6 @@ impl Verifier {
                 };
 
                 // Upload the verified response file to `lock_response.response.locator`
-
                 match self
                     .upload_next_challenge_locator_file(&lock_response.next_challenge_locator, next_challenge_file)
                     .await
@@ -442,8 +489,8 @@ impl Verifier {
                 }
             }
 
-            // Sleep for 10 seconds
-            sleep(Duration::from_secs(10));
+            // Sleep for 15 seconds
+            sleep(Duration::from_secs(15));
         }
     }
 }

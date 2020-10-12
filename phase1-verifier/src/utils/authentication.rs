@@ -3,6 +3,7 @@ use snarkos_toolkit::account::{Address, ViewKey};
 
 use rand::thread_rng;
 use std::fmt;
+use tracing::trace;
 
 /// The header used for authenticating requests sent to the coordinator
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -34,12 +35,21 @@ impl fmt::Display for AuthenticationHeader {
 pub fn authenticate(view_key: &ViewKey, method: &str, path: &str) -> Result<AuthenticationHeader, VerifierError> {
     // TODO (raychu86) make this user defined RNG
     let rng = &mut thread_rng();
-    // Construct the authentication signature.
-    let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());
-    let signature = view_key.sign(&message.into_bytes(), rng)?;
 
     // Derive the Aleo address used to verify the signature.
     let address = Address::from_view_key(&view_key)?;
+
+    // Form the message that is signed
+    let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());
+
+    trace!(
+        "Request authentication - (message: {}) (address: {})",
+        message,
+        address.to_string()
+    );
+
+    // Construct the authentication signature.
+    let signature = view_key.sign(&message.into_bytes(), rng)?;
 
     // Construct the authentication header.
 

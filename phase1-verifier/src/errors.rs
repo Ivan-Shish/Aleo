@@ -3,8 +3,20 @@ pub enum VerifierError {
     #[error("{}: {}", _0, _1)]
     Crate(&'static str, String),
 
+    #[error("Failed to download a challenge at {}", _0)]
+    FailedChallengeDownload(String),
+
+    #[error("Failed to lock a chunk")]
+    FailedLock,
+
     #[error("Request {} sent to {} errored", _0, _1)]
     FailedRequest(String, String),
+
+    #[error("Failed to download a response at {}", _0)]
+    FailedResponseDownload(String),
+
+    #[error("Failed to upload a challenge to {}", _0)]
+    FailedUpload(String),
 }
 
 impl From<reqwest::Error> for VerifierError {

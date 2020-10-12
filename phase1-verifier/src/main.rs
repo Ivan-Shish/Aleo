@@ -19,7 +19,7 @@ async fn main() {
     let view_key = ViewKey::from_str(&view_key).expect("Invalid view key");
     let _address = Address::from_view_key(&view_key).expect("Invalid view key. Address not derived correctly");
 
-    let environment = Environment::Test(Parameters::AleoTest8Chunks);
+    let environment = Environment::Test(Parameters::AleoTest3Chunks);
 
     // Initialize the verifier
     info!("Initializing verifier...");
@@ -27,4 +27,5 @@ async fn main() {
         .expect("failed to initialize verifier");
 
     verifier.start_verifier().await;
+    // verifier.upload_file().await;
 }
