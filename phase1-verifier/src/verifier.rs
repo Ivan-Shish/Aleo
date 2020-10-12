@@ -10,30 +10,32 @@ use std::{str::FromStr, thread::sleep, time::Duration};
 use tracing::{error, info, trace};
 
 ///
-/// This lock response bundles the data required for the contributor/verifier
+/// This lock response bundles the data required for the verifier
 /// to perform a valid contribution or verification.
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SerdeDiff)]
 pub struct LockResponse {
     /// The chunk id
-    #[serde(alias = "chunkId")]
+    #[serde(rename(serialize = "chunkId"))]
     pub chunk_id: u64,
 
     /// Indicator if the chunk was locked
     pub locked: bool,
 
     /// The participant id related to the lock
-    #[serde(rename(deserialize = "participantID"))]
     #[serde(alias = "participantID")]
     pub participant_id: String,
 
-    /// The locator of the challenge file that the participant will download
-    #[serde(alias = "challengeLocator")]
-    pub next_challenge_locator: String,
-
+    // /// The locator of the challenge file that the participant will download
+    // #[serde(alias = "challengeLocator")]
+    // pub challenge_locator: String,
     /// The locator where the participant will upload their completed contribution/verification.
     #[serde(alias = "responseLocator")]
     pub response_locator: String,
+
+    /// The locator of the challenge file that the participant will download
+    #[serde(alias = "nextChallengeLocator")]
+    pub next_challenge_locator: String,
 }
 
 ///
@@ -174,7 +176,10 @@ impl Verifier {
             .send()
             .await
         {
-            Ok(response) => Ok(response.bytes().await?.to_vec()),
+            Ok(response) => {
+                // TODO (raychu86) sanity check the response and make sure it's valid. (not a request error)
+                Ok(response.bytes().await?.to_vec())
+            }
             Err(_) => {
                 error!("Verifier failed to download the response file: {}", response_locator);
                 return Err(VerifierError::FailedRequest(
@@ -209,7 +214,10 @@ impl Verifier {
             .send()
             .await
         {
-            Ok(response) => Ok(response.bytes().await?.to_vec()),
+            Ok(response) => {
+                // TODO (raychu86) sanity check the challenge and make sure it's valid. (not a request error)
+                Ok(response.bytes().await?.to_vec())
+            }
             Err(_) => {
                 error!("Verifier failed to download the challenge file: {}", challenge_locator);
                 return Err(VerifierError::FailedRequest(
