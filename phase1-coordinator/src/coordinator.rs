@@ -691,7 +691,7 @@ impl CoordinatorState {
         // Fetch the next round height.
         let next_round_height = self.current_round_height.unwrap_or_default();
 
-        // Fetch the state of contributors.
+        // Fetch the state of assigned contributors for the next round in the queue.
         let minimum_contributors = self.environment.minimum_contributors_per_round();
         let maximum_contributors = self.environment.maximum_contributors_per_round();
         let number_of_assigned_contributors = self
@@ -701,7 +701,7 @@ impl CoordinatorState {
             .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
             .count();
 
-        // Fetch the state of verifiers.
+        // Fetch the state of assigned verifiers for the next round in the queue.
         let minimum_verifiers = self.environment.minimum_verifiers_per_round();
         let maximum_verifiers = self.environment.maximum_verifiers_per_round();
         let number_of_assigned_verifiers = self
@@ -1477,6 +1477,12 @@ impl CoordinatorState {
 
         // Reset the next round map.
         self.next = HashMap::new();
+
+        // Increment the current round height.
+        self.current_round_height = match self.current_round_height {
+            Some(current_round_height) => Some(current_round_height + 1),
+            None => panic!("Cannot increment a round without setting the round height"),
+        };
     }
 
     ///
