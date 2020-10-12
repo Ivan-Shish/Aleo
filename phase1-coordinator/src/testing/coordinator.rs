@@ -1,7 +1,5 @@
 use crate::{environment::Environment, testing::prelude::*, Coordinator, CoordinatorError, Participant, Storage};
 
-use once_cell::sync::Lazy;
-use rocket::{local::Client, Rocket};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
@@ -53,22 +51,4 @@ pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator
     let coordinator = Coordinator::new(environment.clone())?;
     info!("Coordinator is ready");
     Ok(coordinator)
-}
-
-pub fn test_server(environment: &Environment) -> anyhow::Result<(Rocket, Arc<Coordinator>)> {
-    info!("Starting server...");
-    let coordinator = Arc::new(test_coordinator(environment)?);
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    let server = rocket::ignite().manage(coordinator.clone()).mount("/", routes![]);
-    info!("Server is ready");
-    Ok((server, coordinator))
-}
-
-pub fn test_client(environment: &Environment) -> anyhow::Result<(Client, Arc<Coordinator>)> {
-    info!("Starting client");
-    let (server, coordinator) = test_server(environment)?;
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    let client = Client::new(server).map_err(CoordinatorError::Launch)?;
-    info!("Client is ready");
-    Ok((client, coordinator))
 }

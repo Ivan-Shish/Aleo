@@ -5,7 +5,6 @@ use crate::{
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
-use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
 use url::Url;
 
 type BatchSize = usize;
@@ -332,7 +331,7 @@ impl Environment {
         match self {
             Environment::Test(_) => "localhost",
             Environment::Development(_) => "0.0.0.0",
-            Environment::Production(_) => "167.71.156.62",
+            Environment::Production(_) => "1.2.3.4",
         }
     }
 
@@ -342,28 +341,6 @@ impl Environment {
             Environment::Test(_) => 8080,
             Environment::Development(_) => 8080,
             Environment::Production(_) => 8080,
-        }
-    }
-
-    /// Returns the CORS policy of the server.
-    pub fn cors(&self) -> Cors {
-        let allowed_origins = match self {
-            Environment::Test(_) => AllowedOrigins::all(),
-            Environment::Development(_) => AllowedOrigins::all(),
-            Environment::Production(_) => AllowedOrigins::all(),
-        };
-
-        let allowed_headers = match self {
-            Environment::Test(_) => AllowedHeaders::all(),
-            Environment::Development(_) => AllowedHeaders::all(),
-            Environment::Production(_) => AllowedHeaders::all(),
-        };
-
-        Cors {
-            allowed_origins,
-            allowed_headers,
-            allow_credentials: true,
-            ..Default::default()
         }
     }
 

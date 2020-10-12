@@ -1,11 +1,3 @@
-use rocket::{
-    data::{self, FromDataSimple},
-    http::{ContentType, Status},
-    Data,
-    Outcome,
-    Outcome::*,
-    Request,
-};
 use serde::{
     de::{Deserializer, Error},
     Deserialize,
@@ -50,26 +42,6 @@ impl Participant {
     /// Otherwise, returns `false`.
     pub fn is_verifier(&self) -> bool {
         !self.is_contributor()
-    }
-}
-
-impl FromDataSimple for Participant {
-    type Error = String;
-
-    fn from_data(req: &Request, data: Data) -> data::Outcome<Self, String> {
-        // Ensure the content type is correct before opening the data.
-        if req.content_type() != Some(&ContentType::new("application", "x-participant")) {
-            return Outcome::Forward(data);
-        }
-
-        // Read the data as a participant.
-        let mut participant = String::new();
-        if let Err(e) = data.open().take(DATA_LIMIT).read_to_string(&mut participant) {
-            return Failure((Status::InternalServerError, format!("{:?}", e)));
-        }
-
-        // By default, we will always set this to a contributor.
-        Success(Participant::new_contributor(participant))
     }
 }
 
