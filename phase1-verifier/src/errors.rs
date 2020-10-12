@@ -15,8 +15,11 @@ pub enum VerifierError {
     #[error("Failed to download a response at {}", _0)]
     FailedResponseDownload(String),
 
-    #[error("Failed to upload a challenge to {}", _0)]
-    FailedUpload(String),
+    #[error("Failed to upload a new challenge file to {}", _0)]
+    FailedChallengeUpload(String),
+
+    #[error("The coordinator failed to verify the uploaded challenge file {}", _0)]
+    FailedVerification(String),
 }
 
 impl From<reqwest::Error> for VerifierError {

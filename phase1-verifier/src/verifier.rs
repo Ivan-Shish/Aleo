@@ -5,9 +5,9 @@ use phase1_coordinator::{environment::Environment, phase1_chunked_parameters, Pa
 use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
-use reqwest::{multipart, Client};
+use reqwest::Client;
 use std::{str::FromStr, thread::sleep, time::Duration};
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
 ///
 /// This lock response bundles the data required for the verifier
@@ -69,7 +69,7 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to acquire the lock of a given chunk ID for a given verifier.
+    /// Attempts to acquire the lock on a chunk.
     ///
     /// On success, this function returns the `LockResponse`.
     ///
@@ -95,24 +95,19 @@ impl Verifier {
         {
             Ok(response) => {
                 if !response.status().is_success() {
-                    error!("Verifier failed to lock chunk");
-                    return Err(VerifierError::FailedRequest(
-                        path.to_string(),
-                        coordinator_api_url.to_string(),
-                    ));
+                    error!("Verifier failed to acquire a lock on a chunk");
+                    return Err(VerifierError::FailedLock);
                 }
 
                 // Parse the lock response
-                info!("Verifier lock response: {:?}", response);
                 let json_response = response.json().await?;
-                info!("Verifier json response: {:?}", json_response);
                 let lock_response = serde_json::from_value::<LockResponse>(json_response)?;
-                info!("Decoded verifier lock response: {:?}", lock_response);
+                debug!("Decoded verifier lock response: {:#?}", lock_response);
 
                 Ok(lock_response)
             }
             Err(_) => {
-                error!("Verifier failed to lock chunk");
+                error!("Request ({}) to lock a chunk.", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -122,11 +117,12 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to run verification in the current round for a given verified locator
+    /// Attempts to run verification in the current round for a given `verified_locator`
     ///
-    /// On success, this function copies the current contribution into the next transcript locator,
-    /// which is the next contribution ID within a round, or the next round height if this round
-    /// is complete.
+    /// This assumes that a valid challenge file has already been uploaded to the
+    /// coordinator at the given `verified_locator`.
+    ///
+    /// On success, the coordinator returns an { "status": "ok" } response.
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
@@ -150,9 +146,16 @@ impl Verifier {
             .send()
             .await
         {
-            Ok(response) => Ok(response.text().await?),
+            Ok(response) => {
+                if !response.status().is_success() {
+                    error!("Failed to verify the challenge {}", verified_locator);
+                    return Err(VerifierError::FailedVerification(verified_locator.to_string()));
+                }
+
+                Ok(response.text().await?)
+            }
             Err(_) => {
-                error!("Verifier failed to verify contribution");
+                error!("Request ({}) to verify a contribution failed.", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -162,7 +165,8 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to download the unverified response file from the coordinator
+    /// Attempts to download the unverified response file from the coordinator at
+    /// a given `response_locator`
     ///
     /// On success, this function returns the full response file buffer.
     ///
@@ -186,11 +190,15 @@ impl Verifier {
             .await
         {
             Ok(response) => {
-                // TODO (raychu86) sanity check the response and make sure it's valid. (not a request error)
+                if !response.status().is_success() {
+                    error!("Failed to download the response file {}", response_locator);
+                    return Err(VerifierError::FailedResponseDownload(response_locator.to_string()));
+                }
+
                 Ok(response.bytes().await?.to_vec())
             }
             Err(_) => {
-                error!("Verifier failed to download the response file: {}", response_locator);
+                error!("Request ({}) to download a response file failed.", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -200,7 +208,8 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to download the  response file from the coordinator
+    /// Attempts to download the challenge file from the coordinator at
+    /// a given `challenge_locator`
     ///
     /// On success, this function returns the full challenge file buffer.
     ///
@@ -224,11 +233,15 @@ impl Verifier {
             .await
         {
             Ok(response) => {
-                // TODO (raychu86) sanity check the challenge and make sure it's valid. (not a request error)
+                if !response.status().is_success() {
+                    error!("Failed to download the challenge file {}", challenge_locator);
+                    return Err(VerifierError::FailedChallengeDownload(challenge_locator.to_string()));
+                }
+
                 Ok(response.bytes().await?.to_vec())
             }
             Err(_) => {
-                error!("Verifier failed to download the challenge file: {}", challenge_locator);
+                error!("Request ({}) to download a challenge file failed.", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -272,12 +285,16 @@ impl Verifier {
             .send()
             .await
         {
-            Ok(response) => Ok(response.text().await?),
+            Ok(response) => {
+                if !response.status().is_success() {
+                    error!("Failed to upload the new challenge file {}", next_challenge_locator);
+                    return Err(VerifierError::FailedChallengeUpload(next_challenge_locator.to_string()));
+                }
+
+                Ok(response.text().await?)
+            }
             Err(_) => {
-                error!(
-                    "Verifier failed to upload the next challenge file: {}",
-                    next_challenge_locator
-                );
+                error!("Request ({}) to upload a new challenge file failed.", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
@@ -286,29 +303,19 @@ impl Verifier {
         }
     }
 
-    // pub async fn upload_file(&self) {
-    //     let file_locator = "./transcript/large_file.ok";
-    //
-    //     let file_bytes = std::fs::read(&file_locator).unwrap();
-    //
-    //     info!("Attempting to add file {} of size {}", file_locator, file_bytes.len());
-    //
-    //     // Upload the verified response file to `lock_response.response.locator`
-    //     match self.upload_next_challenge_locator_file(&file_locator, file_bytes).await {
-    //         Ok(response) => {
-    //             info!("Verifier uploaded the file to the coordinator. Response {}", response);
-    //         }
-    //         Err(err) => {
-    //             error!(
-    //                 "Failed to open upload  {} to coordinator (error: {})",
-    //                 &file_locator, err
-    //             );
-    //         }
-    //     };
-    // }
-
     ///
     /// Start the verifier loop. Polls the coordinator to lock and verify chunks.
+    ///
+    /// 1. Attempts to lock a chunk
+    /// 2. Downloads the challenge file
+    /// 3. Downloads the response file
+    /// 4. Runs the verification on these two files
+    /// 5. Stores the verification to the new challenge file
+    /// 6. Uploads the new challenge file to the coordinator
+    /// 7. Attempts to apply the verification in the ceremony
+    ///     - Request to the coordinator to run `try_verify`
+    ///
+    /// After completion, the loop waits 10 seconds and starts again at step 1.
     ///
     pub async fn start_verifier(&self) {
         // Run the verifier loop
@@ -489,8 +496,8 @@ impl Verifier {
                 }
             }
 
-            // Sleep for 15 seconds
-            sleep(Duration::from_secs(15));
+            // Sleep for 10 seconds
+            sleep(Duration::from_secs(10));
         }
     }
 }

@@ -27,5 +27,4 @@ async fn main() {
         .expect("failed to initialize verifier");
 
     verifier.start_verifier().await;
-    // verifier.upload_file().await;
 }
