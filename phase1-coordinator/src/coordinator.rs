@@ -2538,7 +2538,8 @@ impl Coordinator {
 
         // Check that the verified contribution locator exists.
         if !storage.exists(&verified_locator) {
-            error!("Verified response file at {} is missing", verified_locator_path);
+            let verified_response = storage.to_path(&verified_locator)?;
+            error!("Verified response file at {} is missing", verified_response);
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
