@@ -1623,10 +1623,10 @@ impl Coordinator {
     /// Attempts to acquire the lock to a chunk for the given participant.
     ///
     /// On success, if the participant is a contributor, this function
-    /// returns `(chunk_id, challenge_locator, response_locator)`.
+    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
     ///
     /// On success, if the participant is a verifier, this function
-    /// returns `(chunk_id, response_locator, next_challenge_locator)`.
+    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
@@ -1830,10 +1830,10 @@ impl Coordinator {
     /// Attempts to acquire the lock for a given chunk ID and participant.
     ///
     /// On success, if the participant is a contributor, this function
-    /// returns `(challenge_locator, response_locator)`.
+    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
     ///
     /// On success, if the participant is a verifier, this function
-    /// returns `(response_locator, next_challenge_locator)`.
+    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
@@ -1860,7 +1860,7 @@ impl Coordinator {
 
         // Attempt to acquire the chunk lock for participant.
         trace!("Preparing to lock chunk {}", chunk_id);
-        let (current_contribution_locator, next_contribution_locator) =
+        let (previous_contribution_locator, current_contribution_locator, next_contribution_locator) =
             round.try_lock_chunk(&self.environment, &mut storage, chunk_id, &participant)?;
         trace!("Participant {} locked chunk {}", participant, chunk_id);
 
