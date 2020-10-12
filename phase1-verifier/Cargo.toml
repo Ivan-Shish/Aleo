@@ -13,8 +13,11 @@ name = "phase1-verifier"
 path = "src/main.rs"
 
 [dependencies]
+phase1 = { path = "../phase1" }
+phase1-cli = { path = "../phase1-cli" }
 phase1-coordinator = { path = "../phase1-coordinator" }
 snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761"] }
 
 dotenv = { version = "0.15" }
 rand = { version = "0.7.3" }
