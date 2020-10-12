@@ -82,11 +82,6 @@ impl Verification {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
-        // Check that the next contribution locator does not exist.
-        if storage.exists(&next_challenge_file) {
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
         // Execute ceremony verification on chunk.
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings.clone();
@@ -127,11 +122,13 @@ impl Verification {
         } else {
             trace!("Starting decompression of the response file for the next challenge file");
 
-            // Initialize the next challenge file.
-            storage.initialize(
-                next_challenge_file.clone(),
-                Object::contribution_file_size(environment, chunk_id, true),
-            )?;
+            // Initialize the next contribution locator, if it does not exist.
+            if !storage.exists(&next_challenge_file) {
+                storage.initialize(
+                    next_challenge_file.clone(),
+                    Object::contribution_file_size(environment, chunk_id, true),
+                )?;
+            }
 
             let (_, _, curve, _, _, _) = settings.clone();
             match curve {
