@@ -682,6 +682,15 @@ impl CoordinatorState {
             return false;
         }
 
+        // Check that the current round height is set.
+        if self.current_round_height.is_none() {
+            warn!("Current round height is not set in the coordinator state");
+            return false;
+        }
+
+        // Fetch the next round height.
+        let next_round_height = self.current_round_height.unwrap_or_default();
+
         // Fetch the state of contributors.
         let minimum_contributors = self.environment.minimum_contributors_per_round();
         let maximum_contributors = self.environment.maximum_contributors_per_round();
@@ -1673,7 +1682,7 @@ impl Coordinator {
             // Ban any participants who meet the coordinator criteria.
             state.update_banned_participants()?;
 
-            // Determine if current round is finished and next round is ready.
+            // Determine if current round is finished and precommit to next round is ready.
             (state.is_current_round_finished(), state.is_precommit_next_round_ready())
         };
 
