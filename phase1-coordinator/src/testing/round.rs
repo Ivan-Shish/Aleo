@@ -3,6 +3,7 @@ use crate::{
     objects::Round,
     storage::StorageLock,
     testing::coordinator::*,
+    Coordinator,
     Participant,
 };
 
@@ -44,6 +45,21 @@ lazy_static! {
 
     /// Verifier IDs for testing purposes only.
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
+}
+
+pub fn initialize_coordinator(
+    coordinator: &Coordinator,
+    contributors: Vec<Participant>,
+    verifiers: Vec<Participant>,
+) -> anyhow::Result<()> {
+    // Ensure the ceremony has not started.
+    assert_eq!(0, coordinator.current_round_height()?);
+    // Run initialization.
+    coordinator.next_round(*TEST_STARTED_AT, contributors, verifiers)?;
+    // Check current round height is now 1.
+    assert_eq!(1, coordinator.current_round_height()?);
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    Ok(())
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.

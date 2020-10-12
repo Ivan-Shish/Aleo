@@ -551,6 +551,16 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
+        // Check that the participant has no more pending chunks.
+        if !self.pending_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the participant has no more locked chunks.
+        if !self.locked_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
         // Fetch the current time.
         let now = Utc::now();
 
