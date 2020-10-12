@@ -49,7 +49,7 @@ impl Verifier {
                 Ok(lock_response)
             }
             Err(_) => {
-                error!("Request ({}) to lock a chunk.", path);
+                error!("Request ({}) to lock a chunk failed", path);
                 return Err(VerifierError::FailedRequest(
                     path.to_string(),
                     coordinator_api_url.to_string(),
