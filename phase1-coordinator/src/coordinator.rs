@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::{task, time::delay_for};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -1240,6 +1240,8 @@ impl CoordinatorState {
         &mut self,
         next_round_height: u64,
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
+        trace!("Attempting to run precommit for round {}", next_round_height);
+
         // Check that the given round height is correct.
         // Fetch the next round height.
         let current_round_height = match self.current_round_height {
@@ -1311,6 +1313,10 @@ impl CoordinatorState {
         let maximum_contributors = self.environment.maximum_contributors_per_round();
         let number_of_contributors = contributors.len();
         if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
+            warn!(
+                "Precommit found {} contributors, but expected between {} and {} contributors",
+                number_of_contributors, minimum_contributors, maximum_contributors
+            );
             return Err(CoordinatorError::RoundNumberOfContributorsUnauthorized);
         }
 
@@ -1319,6 +1325,10 @@ impl CoordinatorState {
         let maximum_verifiers = self.environment.maximum_verifiers_per_round();
         let number_of_verifiers = verifiers.len();
         if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
+            warn!(
+                "Precommit found {} verifiers, but expected between {} and {} verifiers",
+                number_of_verifiers, minimum_verifiers, maximum_verifiers
+            );
             return Err(CoordinatorError::RoundNumberOfVerifiersUnauthorized);
         }
 
@@ -1350,7 +1360,7 @@ impl CoordinatorState {
 
                 // Check that each participant is storing the correct round height.
                 if next_round != next_round_height && next_round != current_round_height + 1 {
-                    error!("Contributor claims round is {}, not {}", next_round, next_round_height);
+                    warn!("Contributor claims round is {}, not {}", next_round, next_round_height);
                     return Err(CoordinatorError::RoundHeightMismatch);
                 }
 
@@ -1378,7 +1388,7 @@ impl CoordinatorState {
         for (participant, (reliability, next_round)) in verifiers {
             // Check that each participant is storing the correct round height.
             if next_round != next_round_height && next_round != current_round_height + 1 {
-                error!("Verifier claims round is {}, not {}", next_round, next_round_height);
+                warn!("Verifier claims round is {}, not {}", next_round, next_round_height);
                 return Err(CoordinatorError::RoundHeightMismatch);
             }
 
@@ -1463,6 +1473,21 @@ impl CoordinatorState {
         let number_of_queued_contributors = self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count();
         let number_of_queued_verifiers = self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count();
 
+        // Parse the queued participants for the next round and split into contributors and verifiers.
+        let next_round_height = self.current_round_height.unwrap_or_default();
+        let number_of_next_contributors = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+        let number_of_next_verifiers = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
 
@@ -1471,7 +1496,8 @@ impl CoordinatorState {
     {} contributors and {} verifiers in the current round
     {} chunks are pending verification
 
-    {} contributors and {} verifiers in the queue
+    {} contributors and {} verifiers selected for the next round
+    {} contributors and {} verifiers total are in the queue
 
     {} participants dropped
     {} participants banned        
@@ -1479,6 +1505,8 @@ impl CoordinatorState {
             number_of_current_contributors,
             number_of_current_verifiers,
             number_of_pending_verifications,
+            number_of_next_contributors,
+            number_of_next_verifiers,
             number_of_queued_contributors,
             number_of_queued_verifiers,
             number_of_dropped_participants,
