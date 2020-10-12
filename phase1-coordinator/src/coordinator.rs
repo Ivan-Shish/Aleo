@@ -63,6 +63,7 @@ pub enum CoordinatorError {
     Launch(rocket::error::LaunchError),
     LocatorDeserializationFailed,
     LocatorSerializationFailed,
+    NextRoundShouldBeEmpty,
     NumberOfChunksInvalid,
     NumberOfContributionsDiffer,
     ParticipantAlreadyAdded,
@@ -72,6 +73,7 @@ pub enum CoordinatorError {
     ParticipantAlreadyFinishedChunk,
     ParticipantAlreadyWorkingOnChunk,
     ParticipantAlreadyStarted,
+    ParticipantBanned,
     ParticipantDidNotWork,
     ParticipantDidntLockChunkId,
     ParticipantHasNotStarted,
@@ -87,6 +89,7 @@ pub enum CoordinatorError {
     ParticipantUnauthorizedForChunkId,
     ParticipantWasDropped,
     Phase1Setup(setup_utils::Error),
+    QueueIsEmpty,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundContributorsMissing,
@@ -96,6 +99,7 @@ pub enum CoordinatorError {
     RoundFileSizeMismatch,
     RoundHeightIsZero,
     RoundHeightMismatch,
+    RoundHeightNotSet,
     RoundLocatorAlreadyExists,
     RoundLocatorMissing,
     RoundNotComplete,
@@ -570,14 +574,18 @@ struct CoordinatorState {
     /// The parameters and settings of this coordinator.
     #[serde(skip_serializing)]
     environment: Environment,
-    /// The map of chunks pending verification in the current round.
-    pending_verification: HashMap<u64, Participant>,
+    /// The map of queue participants with a reliability score and an assigned future round.
+    queue: HashMap<Participant, (u8, Option<u64>)>,
+    /// The map of unique participants for the next round.
+    next: HashMap<Participant, ParticipantInfo>,
+    /// The current round height of the ceremony.
+    current_round_height: Option<u64>,
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
-    /// The map of unique participants for the next round.
-    next: HashMap<Participant, ParticipantInfo>,
+    /// The map of chunks pending verification in the current round.
+    pending_verification: HashMap<u64, Participant>,
     /// The map of each round height to the corresponding contributors from that round.
     finished_contributors: HashMap<u64, ParticipantInfo>,
     /// The map of each round height to the corresponding verifiers from that round.
@@ -596,10 +604,12 @@ impl CoordinatorState {
     fn new(environment: Environment) -> Self {
         Self {
             environment,
-            pending_verification: HashMap::default(),
+            queue: HashMap::default(),
+            next: HashMap::default(),
+            current_round_height: None,
             current_contributors: HashMap::default(),
             current_verifiers: HashMap::default(),
-            next: HashMap::default(),
+            pending_verification: HashMap::default(),
             finished_contributors: HashMap::default(),
             finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
@@ -682,6 +692,14 @@ impl CoordinatorState {
         }
 
         true
+    }
+
+    ///
+    /// Updates the current round height stored in the coordinator state.
+    ///
+    #[inline]
+    fn set_current_round_height(&mut self, current_round_height: u64) {
+        self.current_round_height = Some(current_round_height);
     }
 
     ///
@@ -827,7 +845,7 @@ impl CoordinatorState {
     /// Adds the given participant to the next round if they are permitted to participate.
     ///
     #[inline]
-    fn add_next_round_participant(
+    fn add_to_next_round(
         &mut self,
         participant: Participant,
         round_height: u64,
@@ -836,6 +854,20 @@ impl CoordinatorState {
         // Check that the participant is not already added to the next round.
         if self.next.contains_key(&participant) {
             return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        // Check that the given round height is one above the current round height.
+        match self.current_round_height {
+            Some(current_round_height) => {
+                if round_height != current_round_height + 1 {
+                    error!(
+                        "Attempting to add a participant to a next round of {} when the coordinator is on round {}",
+                        round_height, current_round_height
+                    );
+                    return Err(CoordinatorError::RoundHeightMismatch);
+                }
+            }
+            _ => return Err(CoordinatorError::RoundHeightNotSet),
         }
 
         // Check if there is space to add the given participant to the next round.
@@ -882,17 +914,124 @@ impl CoordinatorState {
     }
 
     ///
-    /// Removes the given participant from the next round if they are in the queue.
+    /// Removes the given participant from the next round.
     ///
     #[inline]
-    fn remove_next_round_participant(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
-        // Check that the participant is exists in the next round map.
-        if !self.next.contains_key(&participant) {
+    fn remove_from_next_round(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Remove the participant from the next round.
+        match self.next.remove(&participant) {
+            Some(participant_info) => {
+                // Add them back into the queue.
+                if let Ok(_) = self.add_to_queue(participant_info.id, participant_info.reliability) {
+                    trace!("Added {} back into the queue", participant);
+                }
+                Ok(())
+            }
+            _ => Err(CoordinatorError::ParticipantMissing),
+        }
+    }
+
+    ///
+    /// Adds the given participant to the queue if they are permitted to participate.
+    ///
+    #[inline]
+    fn add_to_queue(&mut self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
+        // Check that the participant is not already added to the queue.
+        if self.queue.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        // Check that the participant is not banned from participating.
+        if self.banned.contains(&participant) {
+            return Err(CoordinatorError::ParticipantBanned);
+        }
+
+        match &participant {
+            Participant::Contributor(_) => {
+                // Check if the contributor is authorized.
+                if !self.is_authorized_contributor(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Add the contributor to the queue.
+                self.queue.insert(participant, (reliability_score, None));
+            }
+            Participant::Verifier(_) => {
+                // Check if the verifier is authorized.
+                if !self.is_authorized_verifier(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Add the contributor to the queue.
+                self.queue.insert(participant, (reliability_score, None));
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Removes the given participant from the queue.
+    ///
+    #[inline]
+    fn remove_from_queue(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is exists in the queue.
+        if !self.queue.contains_key(&participant) {
             return Err(CoordinatorError::ParticipantMissing);
         }
 
-        // Remove the participant from the next round.
-        self.next.remove(&participant);
+        // Remove the participant from the queue.
+        self.queue.remove(&participant);
+
+        Ok(())
+    }
+
+    ///
+    /// Updates the state of the queue for all waiting participants.
+    ///
+    #[inline]
+    fn update_queue(&mut self) -> Result<(), CoordinatorError> {
+        // Fetch the next round height.
+        let next_round = match self.current_round_height {
+            Some(round_height) => round_height + 1,
+            _ => return Err(CoordinatorError::RoundHeightNotSet),
+        };
+
+        // Sort the participants in the queue by reliability.
+        let mut queue: Vec<_> = self.queue.clone().into_par_iter().map(|(p, (r, _))| (p, r)).collect();
+        queue.par_sort_by_key(|p| p.1);
+
+        // Parse the queue participants into contributors and verifiers.
+        let contributors: Vec<(_, _)> = queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, _)| p.is_contributor())
+            .collect();
+        let verifiers: Vec<(_, _)> = queue.into_par_iter().filter(|(p, _)| p.is_verifier()).collect();
+
+        // Fetch the permitted number of contributors and verifiers.
+        let maximum_contributors = self.environment.maximum_contributors_per_round();
+        let maximum_verifiers = self.environment.maximum_verifiers_per_round();
+
+        // Initialize the updated queue.
+        let mut updated_queue = HashMap::with_capacity(contributors.len() + verifiers.len());
+
+        // Update assigned round height for each contributor.
+        for (index, round) in contributors.chunks(maximum_contributors).enumerate() {
+            for (contributor, reliability) in round.into_iter() {
+                updated_queue.insert(contributor.clone(), (*reliability, Some(next_round + index as u64)));
+            }
+        }
+
+        // Update assigned round height for each contributor.
+        for (index, round) in verifiers.chunks(maximum_verifiers).enumerate() {
+            for (verifier, reliability) in round.into_iter() {
+                updated_queue.insert(verifier.clone(), (*reliability, Some(next_round + index as u64)));
+            }
+        }
+
+        // Set the queue to the updated queue.
+        self.queue = updated_queue;
 
         Ok(())
     }
@@ -1088,20 +1227,66 @@ impl CoordinatorState {
     /// On precommit success, returns the list of contributors and verifiers for the next round.
     ///
     #[inline]
-    fn precommit_next_round(&mut self) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
+    fn precommit_next_round(
+        &mut self,
+        next_round_height: u64,
+    ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
+        // Check that the given round height is correct.
+        // Fetch the next round height.
+        let current_round_height = match self.current_round_height {
+            Some(current_round_height) => {
+                if next_round_height != current_round_height + 1 {
+                    error!(
+                        "Attempting to precommit to round {} when the next round should be {}",
+                        next_round_height,
+                        current_round_height + 1
+                    );
+                    return Err(CoordinatorError::RoundHeightMismatch);
+                }
+                current_round_height
+            }
+            _ => return Err(CoordinatorError::RoundHeightNotSet),
+        };
+
+        // Check that the queue contains participants.
+        if self.queue.is_empty() {
+            return Err(CoordinatorError::QueueIsEmpty);
+        }
+
+        // Check that the staging area for the next round is empty.
+        if !self.next.is_empty() {
+            return Err(CoordinatorError::NextRoundShouldBeEmpty);
+        }
+
         // Check that the current round is complete.
         if !self.is_current_round_finished() {
             return Err(CoordinatorError::RoundNotComplete);
         }
 
-        // Check that the next round contains participants.
-        if self.next.is_empty() {
-            return Err(CoordinatorError::RoundNotReady);
-        }
+        // Parse the queued participants for the next round and split into contributors and verifiers.
+        let mut contributors: Vec<(_, (_, _))> = self
+            .queue.clone()
+            .into_par_iter()
+            .map(|(p, (r, rh))| (p, (r, rh.unwrap_or_default())))
+            .filter(|(p, (_, rh))| p.is_contributor() && *rh == next_round_height)
+            .collect();
+        let verifiers: Vec<(_, (_, _))> = self
+            .queue.clone()
+            .into_par_iter()
+            .map(|(p, (r, rh))| (p, (r, rh.unwrap_or_default())))
+            .filter(|(p, (_, rh))| p.is_verifier() && *rh == next_round_height)
+            .collect();
 
         // Check that each participant in the next round is authorized.
-        if self
-            .next
+        if contributors
+            .par_iter()
+            .filter(|(participant, _)| self.banned.contains(participant))
+            .count()
+            > 0
+        {
+            return Err(CoordinatorError::ParticipantUnauthorized);
+        }
+        if verifiers
             .par_iter()
             .filter(|(participant, _)| self.banned.contains(participant))
             .count()
@@ -1110,14 +1295,10 @@ impl CoordinatorState {
             return Err(CoordinatorError::ParticipantUnauthorized);
         }
 
-        // Parse the next round participants into contributors and verifiers.
-        let contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor());
-        let verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier());
-
         // Check that the next round contains a permitted number of contributors.
         let minimum_contributors = self.environment.minimum_contributors_per_round();
         let maximum_contributors = self.environment.maximum_contributors_per_round();
-        let number_of_contributors = contributors.count();
+        let number_of_contributors = contributors.len();
         if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
             return Err(CoordinatorError::RoundNumberOfContributorsUnauthorized);
         }
@@ -1125,29 +1306,26 @@ impl CoordinatorState {
         // Check that the next round contains a permitted number of verifiers.
         let minimum_verifiers = self.environment.minimum_verifiers_per_round();
         let maximum_verifiers = self.environment.maximum_verifiers_per_round();
-        let number_of_verifiers = verifiers.count();
+        let number_of_verifiers = verifiers.len();
         if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
             return Err(CoordinatorError::RoundNumberOfVerifiersUnauthorized);
         }
 
+        // Initialize the next round contributors and verifiers to return.
+        let mut next_contributors = Vec::with_capacity(number_of_contributors);
+        let mut next_verifiers = Vec::with_capacity(number_of_verifiers);
+
         // Create the initial chunk locking sequence for each contributor.
         {
-            // Load the contributors.
-            let mut contributors: Vec<_> = self
-                .next
-                .clone()
-                .into_iter()
-                .filter(|(p, _)| p.is_contributor())
-                .map(|participant| participant.1)
-                .collect();
-            contributors.par_sort_by_key(|p| p.reliability);
+            // Sort the contributors by their reliability.
+            contributors.par_sort_by_key(|p| p.1.0);
 
             // Fetch the number of chunks and bucket size.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
             let bucket_size = number_of_chunks / number_of_contributors as u64;
 
             // Set the chunk ID ordering for each contributor.
-            for (index, contributor_info) in contributors.iter().enumerate() {
+            for (index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
                 // Determine the starting and ending indices.
                 let start = index as u64 * bucket_size;
                 let end = start + number_of_chunks;
@@ -1159,53 +1337,55 @@ impl CoordinatorState {
                     chunk_ids.push_back(chunk_id);
                 }
 
-                // Prepare to commit by adding chunk IDs to participant in next.
-                match self.next.get_mut(&contributor_info.id) {
-                    Some(participant_info) => participant_info.start(chunk_ids)?,
-                    None => return Err(CoordinatorError::ParticipantNotFound),
+                // Check that each participant is storing the correct round height.
+                if next_round != next_round_height && next_round != current_round_height + 1 {
+                    error!("Contributor claims round is {}, not {}", next_round, next_round_height);
+                    return Err(CoordinatorError::RoundHeightMismatch);
                 }
+
+                // Initialize the participant info for the contributor.
+                let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability);
+                participant_info.start(chunk_ids)?;
+
+                // Check that the chunk IDs are set in the participant information.
+                if participant_info.pending_chunks.is_empty() {
+                    return Err(CoordinatorError::ParticipantNotReady);
+                }
+
+                // Add the contributor to staging for the next round.
+                self.next.insert(participant.clone(), participant_info);
+
+                // Remove the contributor from the queue.
+                self.queue.remove(&participant);
+
+                // Add the next round contributors to the return output.
+                next_contributors.push(participant);
             }
         }
 
-        // // Check that all participants are storing the same round height.
-        // let round_heights = self
-        //     .next
-        //     .par_iter()
-        //     .map(|(_, p)| {
-        //         let mut output = HashSet::new();
-        //         output.insert(p.round_height);
-        //         output
-        //     })
-        //     .reduce(|| HashSet::new(), |a, b| a.union(&b).collect::<HashSet<_>>());
-        // if round_heights > 1 {
-        //     return Err(CoordinatorError::RoundHeightMismatch);
-        // }
-
-        // Check that each contribution has an initial chunk locking sequence,
-        // and prepare the list of contributors and verifiers to return.
-        let mut contributors = Vec::with_capacity(number_of_contributors);
-        let mut verifiers = Vec::with_capacity(number_of_verifiers);
-        for (participant, participant_info) in &mut self.next {
-            match participant {
-                Participant::Contributor(_) => {
-                    // Check that the chunk IDs are set in the participant information.
-                    if participant_info.pending_chunks.is_empty() {
-                        return Err(CoordinatorError::ParticipantNotReady);
-                    }
-                    // Add the participant to the list of contributors to return.
-                    contributors.push(participant.clone());
-                }
-                Participant::Verifier(_) => {
-                    // Start the verifier.
-                    participant_info.start(LinkedList::new())?;
-
-                    // Add the participant to the list of contributors to return.
-                    verifiers.push(participant.clone());
-                }
+        // Initialize the participant info for each verifier.
+        for (participant, (reliability, next_round)) in verifiers {
+            // Check that each participant is storing the correct round height.
+            if next_round != next_round_height && next_round != current_round_height + 1 {
+                error!("Verifier claims round is {}, not {}", next_round, next_round_height);
+                return Err(CoordinatorError::RoundHeightMismatch);
             }
+
+            // Initialize the participant info for the verifier.
+            let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability);
+            participant_info.start(LinkedList::new())?;
+
+            // Add the verifier to staging for the next round.
+            self.next.insert(participant.clone(), participant_info);
+
+            // Remove the verifier from the queue.
+            self.queue.remove(&participant);
+
+            // Add the next round contributors to the return output.
+            next_verifiers.push(participant);
         }
 
-        Ok((contributors, verifiers))
+        Ok((next_contributors, next_verifiers))
     }
 
     ///
@@ -1248,14 +1428,13 @@ impl CoordinatorState {
     ///
     #[inline]
     fn rollback_next_round(&mut self) {
-        // Reset the participant information for each contributor.
-        for (participant, participant_info) in &mut self.next {
-            // Check if the participant is a contributor.
-            if participant.is_contributor() {
-                // Reset all participant information.
-                participant_info.reset();
-            }
+        // Add each participant back into the queue.
+        for (participant, participant_info) in &self.next {
+            self.queue.insert(participant.clone(), (participant_info.reliability, Some(participant_info.round_height)));
         }
+
+        // Reset the next round map.
+        self.next = HashMap::new();
     }
 
     ///
@@ -1267,8 +1446,8 @@ impl CoordinatorState {
         let number_of_current_verifiers = self.current_verifiers.len();
         let number_of_pending_verifications = self.pending_verification.len();
 
-        let number_of_next_contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor()).count();
-        let number_of_next_verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier()).count();
+        let number_of_queued_contributors = self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count();
+        let number_of_queued_verifiers = self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count();
 
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
@@ -1278,7 +1457,7 @@ impl CoordinatorState {
     {} contributors and {} verifiers in the current round
     {} chunks are pending verification
 
-    {} contributors and {} verifiers in queue for next round
+    {} contributors and {} verifiers in the queue
 
     {} participants dropped
     {} participants banned        
@@ -1286,8 +1465,8 @@ impl CoordinatorState {
             number_of_current_contributors,
             number_of_current_verifiers,
             number_of_pending_verifications,
-            number_of_next_contributors,
-            number_of_next_verifiers,
+            number_of_queued_contributors,
+            number_of_queued_verifiers,
             number_of_dropped_participants,
             number_of_banned_participants
         )
@@ -1331,17 +1510,31 @@ impl Coordinator {
         // Fetch the current round height from storage.
         let current_round_height = self.current_round_height()?;
 
+        // Set the current round height for coordinator state.
+        let mut state = self.state.write().unwrap();
+        state.set_current_round_height(current_round_height);
+        drop(state);
+
         // If this is a new ceremony, execute the first round to initialize the ceremony.
         if current_round_height == 0 {
             // Fetch the contributor and verifier of the coordinator.
             let contributor = self.environment.coordinator_contributor();
             let verifier = self.environment.coordinator_verifier();
 
-            // Add the contributor and verifier of the coordinator to execute round 1.
-            let mut state = self.state.write().unwrap();
-            state.add_next_round_participant(contributor.clone(), 1, 10)?;
-            state.add_next_round_participant(verifier.clone(), 1, 10)?;
-            drop(state);
+            {
+                // Acquire the state write lock.
+                let mut state = self.state.write().unwrap();
+
+                // Add the contributor and verifier of the coordinator to execute round 1.
+                state.add_to_queue(contributor.clone(), 10)?;
+                state.add_to_queue(verifier.clone(), 10)?;
+
+                // Update the state of the queue.
+                state.update_queue()?;
+
+                // Drop the state write lock.
+                drop(state);
+            }
 
             info!("Initializing round 1");
             self.try_advance()?;
@@ -1396,6 +1589,9 @@ impl Coordinator {
             let mut state = self.state.write().unwrap();
 
             info!("Status Report\n\t{}", state.status_report());
+
+            // Update the state of the queue.
+            state.update_queue()?;
 
             // Update the state of current round contributors.
             state.update_current_contributors()?;
@@ -1507,36 +1703,29 @@ impl Coordinator {
     }
 
     ///
-    /// Adds the given participant to the next round if they are permitted to participate.
-    /// On success, returns `true`. Otherwise, returns `false`.
+    /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
-    pub fn add_next_round_participant(
+    pub fn add_to_queue(
         &self,
         participant: Participant,
         reliability_score: u8,
     ) -> Result<(), CoordinatorError> {
-        // Fetch the next round height.
-        let next_round_height = self.current_round_height()? + 1;
-
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
-
         // Attempt to add the participant to the next round.
-        state.add_next_round_participant(participant, next_round_height, reliability_score)
+        state.add_to_queue(participant, reliability_score)
     }
 
     ///
-    /// Removes the given participant from the next round if they are in the queue.
-    /// On success, returns `true`. Otherwise, returns `false`.
+    /// Removes the given participant from the queue if they are in the queue.
     ///
     #[inline]
-    pub fn remove_next_round_participant(&self, participant: Participant) -> Result<(), CoordinatorError> {
+    pub fn remove_from_queue(&self, participant: Participant) -> Result<(), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
-
         // Attempt to remove the participant from the next round.
-        state.remove_next_round_participant(participant)
+        state.remove_from_queue(participant)
     }
 
     ///
@@ -1793,31 +1982,34 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_advance(&self) -> Result<u64, CoordinatorError> {
-        // Fetch the current time.
-        let now = Utc::now();
-
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
         // Attempt to advance the round.
-        trace!("Trying to add advance to the next round");
-        match state.precommit_next_round() {
+        trace!("Running precommit for the next round");
+        match state.precommit_next_round(self.current_round_height()? + 1) {
             // Case 1 - Precommit succeed, attempt to advance the round.
-            Ok((contributors, verifiers)) => match self.next_round(now, contributors, verifiers) {
-                // Case 1a - Coordinator advanced the round.
-                Ok(next_round_height) => {
-                    // If success, update coordinator state to next round.
-                    info!("Coordinator has advanced to round {}", next_round_height);
-                    state.commit_next_round();
-                    Ok(next_round_height)
-                }
-                // Case 1b - Coordinator failed to advance the round.
-                Err(error) => {
-                    // If failed, rollback coordinator state to the current round.
-                    error!("Coordinator failed to advance the next round, performing state rollback");
-                    state.rollback_next_round();
-                    error!("{}", error);
-                    Err(error)
+            Ok((contributors, verifiers)) => {
+                // Fetch the current time.
+                let now = Utc::now();
+
+                trace!("Trying to add advance to the next round");
+                match self.next_round(now, contributors, verifiers) {
+                    // Case 1a - Coordinator advanced the round.
+                    Ok(next_round_height) => {
+                        // If success, update coordinator state to next round.
+                        info!("Coordinator has advanced to round {}", next_round_height);
+                        state.commit_next_round();
+                        Ok(next_round_height)
+                    }
+                    // Case 1b - Coordinator failed to advance the round.
+                    Err(error) => {
+                        // If failed, rollback coordinator state to the current round.
+                        error!("Coordinator failed to advance the next round, performing state rollback");
+                        state.rollback_next_round();
+                        error!("{}", error);
+                        Err(error)
+                    }
                 }
             },
             // Case 2 - Precommit failed, roll back precommit.
@@ -2221,7 +2413,7 @@ impl Coordinator {
             // TODO (howardwu): Check that all locks have been released.
 
             // Fetch the current round from storage.
-            let mut round = Self::load_current_round(&storage)?;
+            let round = Self::load_current_round(&storage)?;
 
             // Check that all chunks in the current round are verified,
             // so that we may transition to the next round.
