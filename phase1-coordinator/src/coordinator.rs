@@ -60,7 +60,6 @@ pub enum CoordinatorError {
     Integer(std::num::ParseIntError),
     IOError(std::io::Error),
     JsonError(serde_json::Error),
-    Launch(rocket::error::LaunchError),
     LocatorDeserializationFailed,
     LocatorSerializationFailed,
     NextRoundShouldBeEmpty,

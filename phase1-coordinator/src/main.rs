@@ -1,18 +1,9 @@
-#![feature(proc_macro_hygiene, decl_macro)]
-
-#[macro_use]
-extern crate rocket;
-
 use phase1_coordinator::{
     environment::{Environment, Parameters},
     Coordinator,
     Participant,
 };
 
-use rocket::{
-    config::{Config, Environment as RocketEnvironment},
-    Rocket,
-};
 use std::sync::Arc;
 use tracing::info;
 
@@ -45,38 +36,13 @@ async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     Ok(coordinator)
 }
 
-#[inline]
-async fn server(environment: &Environment) -> anyhow::Result<Rocket> {
-    info!("Starting server...");
-
-    let builder = match environment {
-        Environment::Test(_) => Config::build(RocketEnvironment::Development),
-        Environment::Development(_) => Config::build(RocketEnvironment::Production),
-        Environment::Production(_) => Config::build(RocketEnvironment::Production),
-    };
-
-    let config = builder
-        .address(environment.address())
-        .port(environment.port())
-        .finalize()?;
-
-    let server = rocket::custom(config)
-        .manage(Arc::new(coordinator(environment).await?))
-        .mount("/", routes![])
-        .attach(environment.cors());
-
-    info!("Server is ready");
-    Ok(server)
-}
-
 #[tokio::main]
 #[inline]
 pub async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "silent"))]
     init_logger();
 
-    server(&Environment::Development(Parameters::AleoTestCustom(8, 12, 256)))
-        .await?
-        .launch();
+    coordinator(&Environment::Development(Parameters::AleoTestCustom(8, 12, 256))).await?;
+
     Ok(())
 }
