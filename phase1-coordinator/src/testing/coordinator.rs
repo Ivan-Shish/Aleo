@@ -15,24 +15,6 @@ pub fn initialize_test_environment() {
     clear_test_storage();
 }
 
-pub fn initialize_coordinator(
-    coordinator: &Coordinator,
-    contributors: Vec<Participant>,
-    verifiers: Vec<Participant>,
-) -> anyhow::Result<()> {
-    // Ensure the ceremony has not started.
-    assert_eq!(0, coordinator.current_round_height()?);
-
-    // Run initialization.
-    coordinator.next_round(*TEST_STARTED_AT, contributors, verifiers)?;
-
-    // Check current round height is now 1.
-    assert_eq!(1, coordinator.current_round_height()?);
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    Ok(())
-}
-
 #[cfg(not(feature = "silent"))]
 pub fn test_logger() {
     use once_cell::sync::OnceCell;
