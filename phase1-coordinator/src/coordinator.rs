@@ -666,36 +666,62 @@ impl CoordinatorState {
     }
 
     ///
-    /// Returns `true` if the next round has the required number of contributors and verifiers.
+    /// Returns `true` if the precommit for the next round is ready.
+    ///
+    /// This function checks that the requisite number of contributors and verifiers are
+    /// assigned for the next round.
     ///
     /// Note that this function does not check for banned participants, which is checked
     /// during the precommit phase for the next round.
     ///
     #[inline]
-    fn is_next_round_ready(&self) -> bool {
-        // Check that the next round contains participants.
-        if self.next.is_empty() {
+    fn is_precommit_next_round_ready(&self) -> bool {
+        // Check that the queue contains participants.
+        if self.queue.is_empty() {
+            trace!("Queue is currently empty");
             return false;
         }
 
-        // Parse the next round participants into contributors and verifiers.
-        let contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor());
-        let verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier());
-
-        // Check that the next round contains a permitted number of contributors.
+        // Fetch the state of contributors.
         let minimum_contributors = self.environment.minimum_contributors_per_round();
         let maximum_contributors = self.environment.maximum_contributors_per_round();
-        let number_of_contributors = contributors.count();
-        if number_of_contributors < minimum_contributors || number_of_contributors > maximum_contributors {
+        let number_of_assigned_contributors = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+
+        // Fetch the state of verifiers.
+        let minimum_verifiers = self.environment.minimum_verifiers_per_round();
+        let maximum_verifiers = self.environment.maximum_verifiers_per_round();
+        let number_of_assigned_verifiers = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+
+        trace!(
+            "Prepare precommit status - {} contributors assigned ({}-{} required), {} verifiers assigned ({}-{} required)",
+            number_of_assigned_contributors,
+            minimum_contributors,
+            maximum_contributors,
+            number_of_assigned_verifiers,
+            minimum_verifiers,
+            maximum_verifiers
+        );
+
+        // Check that the next round contains a permitted number of contributors.
+        if number_of_assigned_contributors < minimum_contributors
+            || number_of_assigned_contributors > maximum_contributors
+        {
             trace!("Insufficient or unauthorized number of contributors");
             return false;
         }
 
         // Check that the next round contains a permitted number of verifiers.
-        let minimum_verifiers = self.environment.minimum_verifiers_per_round();
-        let maximum_verifiers = self.environment.maximum_verifiers_per_round();
-        let number_of_verifiers = verifiers.count();
-        if number_of_verifiers < minimum_verifiers || number_of_verifiers > maximum_verifiers {
+        if number_of_assigned_verifiers < minimum_verifiers || number_of_assigned_verifiers > maximum_verifiers {
             trace!("Insufficient or unauthorized number of verifiers");
             return false;
         }
@@ -1470,23 +1496,23 @@ impl CoordinatorState {
         let number_of_current_verifiers = self.current_verifiers.len();
         let number_of_pending_verifications = self.pending_verification.len();
 
+        // Parse the queue for assigned contributors and verifiers of the next round.
+        let next_round_height = self.current_round_height.unwrap_or_default();
+        let number_of_assigned_contributors = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+        let number_of_assigned_verifiers = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .count();
+
         let number_of_queued_contributors = self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count();
         let number_of_queued_verifiers = self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count();
-
-        // Parse the queued participants for the next round and split into contributors and verifiers.
-        let next_round_height = self.current_round_height.unwrap_or_default();
-        let number_of_next_contributors = self
-            .queue
-            .clone()
-            .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
-            .count();
-        let number_of_next_verifiers = self
-            .queue
-            .clone()
-            .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
-            .count();
 
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
@@ -1496,8 +1522,8 @@ impl CoordinatorState {
     {} contributors and {} verifiers in the current round
     {} chunks are pending verification
 
-    {} contributors and {} verifiers selected for the next round
-    {} contributors and {} verifiers total are in the queue
+    {} contributors and {} verifiers assigned to the next round
+    {} contributors and {} verifiers in queue for the ceremony
 
     {} participants dropped
     {} participants banned        
@@ -1505,8 +1531,8 @@ impl CoordinatorState {
             number_of_current_contributors,
             number_of_current_verifiers,
             number_of_pending_verifications,
-            number_of_next_contributors,
-            number_of_next_verifiers,
+            number_of_assigned_contributors,
+            number_of_assigned_verifiers,
             number_of_queued_contributors,
             number_of_queued_verifiers,
             number_of_dropped_participants,
@@ -1648,7 +1674,7 @@ impl Coordinator {
             state.update_banned_participants()?;
 
             // Determine if current round is finished and next round is ready.
-            (state.is_current_round_finished(), state.is_next_round_ready())
+            (state.is_current_round_finished(), state.is_precommit_next_round_ready())
         };
 
         trace!("{} {}", is_current_round_finished, is_next_round_ready);
