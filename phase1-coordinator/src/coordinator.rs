@@ -1350,13 +1350,15 @@ impl Coordinator {
             info!("Add contributions and verifications for round 1");
             for chunk_id in 0..self.environment.number_of_chunks() {
                 debug!("Computing contributions for round 1 chunk {}", chunk_id);
-                let (_chunk_id, _challenge_locator, response_locator) = self.try_lock(&contributor)?;
+                let (_chunk_id, _previous_response_locator, _challenge_locator, response_locator) =
+                    self.try_lock(&contributor)?;
                 self.run_computation(1, chunk_id, 1, &contributor)?;
                 let _response_locator = self.try_contribute(&contributor, &response_locator)?;
                 debug!("Computed contributions for round 1 chunk {}", chunk_id);
 
                 debug!("Running verification for round 1 chunk {}", chunk_id);
-                let (_chunk_id, _response_locator, next_challenge_locator) = self.try_lock(&verifier)?;
+                let (_chunk_id, _challenge_locator, _response_locator, next_challenge_locator) =
+                    self.try_lock(&verifier)?;
                 let _next_challenge_locator = self.run_verification(1, chunk_id, 1, &verifier)?;
                 let _empty = self.try_verify(&verifier, &next_challenge_locator)?;
                 debug!("Running verification for round 1 chunk {}", chunk_id);
@@ -1631,7 +1633,7 @@ impl Coordinator {
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String), CoordinatorError> {
+    pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String, String), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
@@ -1642,12 +1644,17 @@ impl Coordinator {
         trace!("Trying to lock chunk {} for {}", chunk_id, participant);
         match self.try_lock_chunk(chunk_id, participant) {
             // Case 1 - Participant acquired lock, return the locator.
-            Ok((current_contribution_locator, next_contribution_locator)) => {
+            Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
                 trace!("Incrementing the number of locks held by {}", participant);
                 state.acquired_lock(participant, chunk_id)?;
 
                 info!("Acquired lock on chunk {} for {}", chunk_id, participant);
-                Ok((chunk_id, current_contribution_locator, next_contribution_locator))
+                Ok((
+                    chunk_id,
+                    previous_contribution_locator,
+                    current_contribution_locator,
+                    next_contribution_locator,
+                ))
             }
             // Case 2 - Participant failed to acquire the lock, put the chunk ID back.
             Err(error) => {
@@ -1842,7 +1849,7 @@ impl Coordinator {
         &self,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<(String, String), CoordinatorError> {
+    ) -> Result<(String, String, String), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -1869,6 +1876,7 @@ impl Coordinator {
             Ok(_) => {
                 info!("{} acquired lock on chunk {}", participant, chunk_id);
                 Ok((
+                    storage.to_path(&previous_contribution_locator)?,
                     storage.to_path(&current_contribution_locator)?,
                     storage.to_path(&next_contribution_locator)?,
                 ))
