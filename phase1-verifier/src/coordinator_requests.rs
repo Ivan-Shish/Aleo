@@ -3,13 +3,55 @@ use crate::{
     utils::authenticate,
     verifier::{LockResponse, Verifier},
 };
-use snarkos_toolkit::account::ViewKey;
+use snarkos_toolkit::account::{Address, ViewKey};
 
 use reqwest::Client;
 use std::str::FromStr;
 use tracing::{debug, error, info};
 
 impl Verifier {
+    ///
+    /// Attempts to join the coordinator queue
+    ///
+    /// On success, this function returns the `LockResponse`.
+    ///
+    /// On failure, this function returns a `VerifierError`.
+    ///
+    pub async fn join_queue(&self) -> Result<bool, VerifierError> {
+        let coordinator_api_url = &self.coordinator_api_url;
+
+        let view_key = ViewKey::from_str(&self.view_key)?;
+        let aleo_address = Address::from_view_key(&view_key)?.to_string();
+
+        let path = format!("/queue/join/verifier/{}", aleo_address);
+
+        info!("Attempting to join as verifier join the queue as {}", aleo_address);
+
+        match Client::new()
+            .post(&format!("{}{}", &coordinator_api_url, &path))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    error!("Verifier failed to join the queue");
+                    return Err(VerifierError::FailedToJoinQueue);
+                }
+
+                // Parse the lock response
+                let queue_response = serde_json::from_value::<bool>(response.json().await?)?;
+                Ok(queue_response)
+            }
+            Err(_) => {
+                error!("Request ({}) to join the queue failed", path);
+                return Err(VerifierError::FailedRequest(
+                    path.to_string(),
+                    coordinator_api_url.to_string(),
+                ));
+            }
+        }
+    }
+
     ///
     /// Attempts to acquire the lock on a chunk.
     ///

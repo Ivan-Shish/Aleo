@@ -87,6 +87,11 @@ impl Verifier {
     pub async fn start_verifier(&self) {
         // Run the verifier loop
         loop {
+            // Attempt to join the queue
+            if let Ok(response) = self.join_queue().await {
+                info!("Verifier {} joined the queue with status {}", self.verifier, response)
+            }
+
             // Attempt to lock a chunk
             if let Ok(lock_response) = self.lock_chunk().await {
                 // Extract the lock response attributes

@@ -20,6 +20,9 @@ pub enum VerifierError {
 
     #[error("The coordinator failed to verify the uploaded challenge file {}", _0)]
     FailedVerification(String),
+
+    #[error("Failed to join the queue")]
+    FailedToJoinQueue,
 }
 
 impl From<reqwest::Error> for VerifierError {
