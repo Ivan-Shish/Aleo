@@ -551,6 +551,16 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
+        // Check that the participant has no more pending chunks.
+        if !self.pending_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        }
+
+        // Check that the participant has no more locked chunks.
+        if !self.locked_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
         // Fetch the current time.
         let now = Utc::now();
 
@@ -1265,13 +1275,15 @@ impl CoordinatorState {
 
         // Parse the queued participants for the next round and split into contributors and verifiers.
         let mut contributors: Vec<(_, (_, _))> = self
-            .queue.clone()
+            .queue
+            .clone()
             .into_par_iter()
             .map(|(p, (r, rh))| (p, (r, rh.unwrap_or_default())))
             .filter(|(p, (_, rh))| p.is_contributor() && *rh == next_round_height)
             .collect();
         let verifiers: Vec<(_, (_, _))> = self
-            .queue.clone()
+            .queue
+            .clone()
             .into_par_iter()
             .map(|(p, (r, rh))| (p, (r, rh.unwrap_or_default())))
             .filter(|(p, (_, rh))| p.is_verifier() && *rh == next_round_height)
@@ -1318,7 +1330,7 @@ impl CoordinatorState {
         // Create the initial chunk locking sequence for each contributor.
         {
             // Sort the contributors by their reliability.
-            contributors.par_sort_by_key(|p| p.1.0);
+            contributors.par_sort_by_key(|p| (p.1).0);
 
             // Fetch the number of chunks and bucket size.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
@@ -1430,7 +1442,10 @@ impl CoordinatorState {
     fn rollback_next_round(&mut self) {
         // Add each participant back into the queue.
         for (participant, participant_info) in &self.next {
-            self.queue.insert(participant.clone(), (participant_info.reliability, Some(participant_info.round_height)));
+            self.queue.insert(
+                participant.clone(),
+                (participant_info.reliability, Some(participant_info.round_height)),
+            );
         }
 
         // Reset the next round map.
@@ -1706,11 +1721,7 @@ impl Coordinator {
     /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
-    pub fn add_to_queue(
-        &self,
-        participant: Participant,
-        reliability_score: u8,
-    ) -> Result<(), CoordinatorError> {
+    pub fn add_to_queue(&self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
         // Attempt to add the participant to the next round.
@@ -2011,7 +2022,7 @@ impl Coordinator {
                         Err(error)
                     }
                 }
-            },
+            }
             // Case 2 - Precommit failed, roll back precommit.
             Err(error) => {
                 // If failed, rollback coordinator state to the current round.
