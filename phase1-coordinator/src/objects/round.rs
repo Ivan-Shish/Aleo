@@ -162,7 +162,7 @@ impl Round {
     /// Returns a reference to a list of verifiers.
     #[inline]
     pub fn verifiers(&self) -> &Vec<Participant> {
-        &self.contributor_ids
+        &self.verifier_ids
     }
 
     ///
@@ -532,7 +532,13 @@ impl Round {
                     Object::contribution_file_size(environment, chunk_id, false),
                 )?;
             }
-            Participant::Verifier(_) => (),
+            Participant::Verifier(_) => {
+                // Initialize the next challenge file.
+                storage.initialize(
+                    next_contribution_locator.clone(),
+                    Object::contribution_file_size(environment, chunk_id, true),
+                )?;
+            }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);

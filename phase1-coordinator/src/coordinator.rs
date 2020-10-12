@@ -2519,13 +2519,6 @@ impl Coordinator {
             false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
         };
 
-        // Check that the verified contribution locator does not exist.
-        let verified_locator_path = storage.to_path(&verified_locator)?;
-        if storage.exists(&verified_locator) {
-            error!("Verified response file at {} already exists", verified_locator_path);
-            return Err(CoordinatorError::ContributionLocatorAlreadyExists);
-        }
-
         info!(
             "Starting verification on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
@@ -2543,7 +2536,7 @@ impl Coordinator {
             round_height, chunk_id, contribution_id, participant
         );
 
-        // Check that the verified contribution locator now exists.
+        // Check that the verified contribution locator exists.
         if !storage.exists(&verified_locator) {
             error!("Verified response file at {} is missing", verified_locator_path);
             return Err(CoordinatorError::ContributionLocatorMissing);
