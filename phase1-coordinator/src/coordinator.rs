@@ -689,7 +689,7 @@ impl CoordinatorState {
         }
 
         // Fetch the next round height.
-        let next_round_height = self.current_round_height.unwrap_or_default();
+        let next_round_height = self.current_round_height.unwrap_or_default() + 1;
 
         // Fetch the state of assigned contributors for the next round in the queue.
         let minimum_contributors = self.environment.minimum_contributors_per_round();
@@ -1512,7 +1512,7 @@ impl CoordinatorState {
         let number_of_pending_verifications = self.pending_verification.len();
 
         // Parse the queue for assigned contributors and verifiers of the next round.
-        let next_round_height = self.current_round_height.unwrap_or_default();
+        let next_round_height = self.current_round_height.unwrap_or_default() + 1;
         let number_of_assigned_contributors = self
             .queue
             .clone()
