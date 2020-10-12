@@ -1477,6 +1477,12 @@ impl CoordinatorState {
 
         // Reset the next round map.
         self.next = HashMap::new();
+
+        // Increment the current round height.
+        self.current_round_height = match self.current_round_height {
+            Some(current_round_height) => Some(current_round_height + 1),
+            None => panic!("Cannot increment a round without setting the round height"),
+        };
     }
 
     ///
