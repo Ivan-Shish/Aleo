@@ -385,10 +385,10 @@ impl Round {
     /// for a given participant.
     ///
     /// On success, if the participant is a contributor, this function
-    /// returns `(challenge_locator, response_locator)`.
+    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
     ///
     /// On success, if the participant is a verifier, this function
-    /// returns `(response_locator, next_challenge_locator)`.
+    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
     ///
     #[inline]
     pub(crate) fn try_lock_chunk(
@@ -397,7 +397,7 @@ impl Round {
         storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<(Locator, Locator), CoordinatorError> {
+    ) -> Result<(Locator, Locator, Locator), CoordinatorError> {
         debug!("{} is attempting to lock chunk {}", participant, chunk_id);
 
         // Check that the participant is holding less than the chunk lock limit.
@@ -420,7 +420,8 @@ impl Round {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
-        let (current_contribution_locator, next_contribution_locator) = match participant {
+        let (previous_contribution_locator, current_contribution_locator, next_contribution_locator) = match participant
+        {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
@@ -433,6 +434,26 @@ impl Round {
                 let current_round_height = self.round_height();
                 // Fetch the current contribution ID.
                 let current_contribution_id = self.chunk(chunk_id)?.current_contribution_id();
+                // Fetch if this is the first round.
+                let is_initial_round = current_round_height == 1;
+                // Fetch if this is the initial contribution.
+                let is_initial_contribution = current_contribution_id == 0;
+                // Fetch the final contribution ID from the previous round.
+                let previous_final_id = self.expected_number_of_contributions() - 1;
+                // Fetch the previous contribution locator.
+                let previous_response_locator = match (is_initial_round, is_initial_contribution) {
+                    // This is the initial contribution in the initial round, return the verified response from the previous round.
+                    (true, true) => Locator::ContributionFile(0, chunk_id, 0, true),
+                    // This is the initial contribution in the chunk, return the final response from the previous round.
+                    (false, true) => {
+                        Locator::ContributionFile(current_round_height - 1, chunk_id, previous_final_id, false)
+                    }
+                    // This is a typical contribution in the chunk, return the previous response from this round.
+                    (true, false) | (false, false) => {
+                        Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id - 1, false)
+                    }
+                };
+
                 // Fetch the current contribution locator.
                 let challenge_locator =
                     Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true);
@@ -443,7 +464,7 @@ impl Round {
                 // and has already been verified.
                 let response_locator = self.next_contribution_locator(storage, chunk_id)?;
 
-                (challenge_locator, response_locator)
+                (previous_response_locator, challenge_locator, response_locator)
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -452,10 +473,6 @@ impl Round {
                     error!("{} is not an authorized verifier", participant);
                     return Err(CoordinatorError::UnauthorizedChunkVerifier);
                 }
-                // This call enforces a strict check that the
-                // current contribution locator exist and
-                // has not been verified yet.
-                let response_locator = self.current_contribution_locator(storage, chunk_id, false)?;
 
                 // Fetch the current round height.
                 let current_round_height = self.round_height();
@@ -463,6 +480,15 @@ impl Round {
                 let chunk = self.chunk(chunk_id)?;
                 // Fetch the current contribution ID.
                 let current_contribution_id = chunk.current_contribution_id();
+                // Fetch the previous contribution locator.
+                let challenge_locator =
+                    Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id - 1, true);
+
+                // This call enforces a strict check that the
+                // current contribution locator exist and
+                // has not been verified yet.
+                let response_locator = self.current_contribution_locator(storage, chunk_id, false)?;
+
                 // Fetch whether this is the final contribution of the specified chunk.
                 let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
                 // Fetch the next contribution locator.
@@ -473,7 +499,7 @@ impl Round {
                     false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
                 };
 
-                (response_locator, next_challenge_locator)
+                (challenge_locator, response_locator, next_challenge_locator)
             }
         };
 
@@ -510,7 +536,11 @@ impl Round {
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
-        Ok((current_contribution_locator, next_contribution_locator))
+        Ok((
+            previous_contribution_locator,
+            current_contribution_locator,
+            next_contribution_locator,
+        ))
     }
 
     /// Returns a mutable reference to the chunk, if it exists.
