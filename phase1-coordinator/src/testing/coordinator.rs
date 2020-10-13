@@ -1,4 +1,4 @@
-use crate::{environment::Environment, testing::prelude::*, Coordinator, CoordinatorError, Storage};
+use crate::{environment::Environment, storage::Storage, testing::prelude::*, Coordinator};
 
 use std::{
     path::Path,
