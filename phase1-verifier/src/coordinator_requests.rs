@@ -159,7 +159,7 @@ impl Verifier {
     pub async fn download_response_file(&self, response_locator: &str) -> Result<Vec<u8>, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "get";
-        let path = format!("/coordinator/locator/{}", response_locator);
+        let path = format!("/coordinator/response/{}", response_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
@@ -202,7 +202,7 @@ impl Verifier {
     pub async fn download_challenge_file(&self, challenge_locator: &str) -> Result<Vec<u8>, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "get";
-        let path = format!("/coordinator/locator/{}", challenge_locator);
+        let path = format!("/coordinator/challenge/{}", challenge_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
@@ -235,9 +235,10 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to upload the next challenge locator file to the coordinator
+    /// Attempts to upload the next challenge file to the coordinator
+    /// at a given `next_challenge_locator`
     ///
-    /// On success, this function returns the full challenge file buffer.
+    /// On success, this function returns an `ok` status
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
@@ -248,7 +249,7 @@ impl Verifier {
     ) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = format!("/coordinator/verification/{}", next_challenge_locator);
+        let path = format!("/coordinator/challenge/{}", next_challenge_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
