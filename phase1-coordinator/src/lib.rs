@@ -4,16 +4,20 @@ extern crate lazy_static;
 #[macro_use]
 mod macros;
 
-pub mod commands;
+pub(crate) mod commands;
+
 pub mod coordinator;
+pub use coordinator::*;
+
+pub(crate) mod coordinator_state;
+pub(crate) use coordinator_state::CoordinatorState;
+
 pub mod environment;
 
-pub use coordinator::*;
+pub mod objects;
 pub use objects::{Participant, Round};
-pub use storage::Storage;
 
-mod objects;
-mod storage;
+pub(crate) mod storage;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

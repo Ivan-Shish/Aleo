@@ -5,16 +5,10 @@ use serde::{
     Serializer,
 };
 use serde_diff::SerdeDiff;
-use std::{
-    fmt::{self},
-    io::Read,
-};
+use std::fmt::{self};
 
 pub type ContributorId = String;
 pub type VerifierId = String;
-
-// Always use a limit to prevent DoS attacks.
-const DATA_LIMIT: u64 = 256;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(untagged)]
