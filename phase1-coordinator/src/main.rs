@@ -1,10 +1,8 @@
 use phase1_coordinator::{
     environment::{Environment, Parameters},
     Coordinator,
-    Participant,
 };
 
-use std::sync::Arc;
 use tracing::info;
 
 #[cfg(not(feature = "silent"))]
