@@ -608,10 +608,9 @@ impl Round {
         }
 
         // Check that all contributions in all chunks have been verified.
-        let expected_num_contributions = self.expected_number_of_contributions();
         self.chunks
             .par_iter()
-            .filter(|chunk| !chunk.is_complete(expected_num_contributions))
+            .filter(|chunk| !chunk.is_complete(self.expected_number_of_contributions()))
             .collect::<Vec<_>>()
             .is_empty()
     }
@@ -625,7 +624,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_round_0_matches() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         // Define test storage.
         let test_storage = test_storage(&TEST_ENVIRONMENT);
@@ -651,7 +650,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_round_height() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let round_0 = test_round_0_json().unwrap();
         assert_eq!(0, round_0.round_height());
@@ -666,7 +665,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_is_authorized_contributor() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let round_1 = test_round_1_initial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
@@ -675,7 +674,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_is_authorized_verifier() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let round_0 = test_round_0().unwrap();
         assert!(round_0.is_verifier(&TEST_VERIFIER_ID));
@@ -687,7 +686,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_get_chunk() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let expected = test_round_0_json().unwrap().chunks[0].clone();
         let candidate = test_round_0().unwrap().chunk(0).unwrap().clone();
@@ -698,7 +697,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_get_chunk_mut_basic() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let expected = test_round_0_json().unwrap().chunks[0].clone();
         let candidate = test_round_0().unwrap().chunk_mut(0).unwrap().clone();
@@ -709,7 +708,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_get_verifiers() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         let candidates = test_round_0().unwrap().verifiers().clone();
         for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
@@ -720,7 +719,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_is_complete() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         // TODO (howardwu): Add tests for a full completeness check.
         let round_0 = test_round_0_json().unwrap();

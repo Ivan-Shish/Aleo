@@ -6,15 +6,15 @@ use std::{
 };
 use tracing::{error, info, warn};
 
-pub fn initialize_test_environment() {
+pub fn initialize_test_environment(environment: &Environment) {
     #[cfg(not(feature = "silent"))]
     test_logger();
 
-    clear_test_storage();
+    clear_test_storage(environment);
 }
 
 #[cfg(not(feature = "silent"))]
-pub fn test_logger() {
+pub(crate) fn test_logger() {
     use once_cell::sync::OnceCell;
     use tracing::Level;
 
@@ -26,8 +26,8 @@ pub fn test_logger() {
 }
 
 /// Clears the transcript directory for testing purposes only.
-pub fn clear_test_storage() {
-    let path = TEST_ENVIRONMENT.local_base_directory();
+fn clear_test_storage(environment: &Environment) {
+    let path = environment.local_base_directory();
     if Path::new(path).exists() {
         warn!("Coordinator is clearing {:?}", &path);
         match std::fs::remove_dir_all(&path) {

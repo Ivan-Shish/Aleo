@@ -43,19 +43,19 @@ impl Verification {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
-        // Fetch the contribution locators for `Verification`.
-        let previous = Locator::ContributionFile(round_height, chunk_id, current_contribution_id - 1, true);
-        let current = Locator::ContributionFile(round_height, chunk_id, current_contribution_id, false);
-        let next = match is_final_contribution {
+        // Fetch the locators for `Verification`.
+        let challenge = Locator::ContributionFile(round_height, chunk_id, current_contribution_id - 1, true);
+        let response = Locator::ContributionFile(round_height, chunk_id, current_contribution_id, false);
+        let next_challenge = match is_final_contribution {
             true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
             false => Locator::ContributionFile(round_height, chunk_id, current_contribution_id, true),
         };
 
-        trace!("Previous contribution locator is {}", storage.to_path(&previous)?);
-        trace!("Current contribution locator is {}", storage.to_path(&current)?);
-        trace!("Next contribution locator is {}", storage.to_path(&next)?);
+        trace!("Challenge locator is {}", storage.to_path(&challenge)?);
+        trace!("Response locator is {}", storage.to_path(&response)?);
+        trace!("Next challenge locator is {}", storage.to_path(&next_challenge)?);
 
-        if let Err(error) = Self::verification(environment, storage, chunk_id, previous, current, next) {
+        if let Err(error) = Self::verification(environment, storage, chunk_id, challenge, response, next_challenge) {
             error!("Verification failed with {}", error);
             return Err(error);
         }
@@ -73,12 +73,12 @@ impl Verification {
         environment: &Environment,
         storage: &mut StorageLock,
         chunk_id: u64,
-        challenge_file: Locator,
-        response_file: Locator,
-        next_challenge_file: Locator,
+        challenge: Locator,
+        response: Locator,
+        next_challenge: Locator,
     ) -> Result<(), CoordinatorError> {
         // Check that the previous and current locators exist in storage.
-        if !storage.exists(&challenge_file) || !storage.exists(&response_file) {
+        if !storage.exists(&challenge) || !storage.exists(&response) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -88,14 +88,14 @@ impl Verification {
         let result = match curve {
             CurveKind::Bls12_377 => Self::transform_pok_and_correctness(
                 environment,
-                storage.reader(&challenge_file)?.as_ref(),
-                storage.reader(&response_file)?.as_ref(),
+                storage.reader(&challenge)?.as_ref(),
+                storage.reader(&response)?.as_ref(),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
             ),
             CurveKind::BW6 => Self::transform_pok_and_correctness(
                 environment,
-                storage.reader(&challenge_file)?.as_ref(),
-                storage.reader(&response_file)?.as_ref(),
+                storage.reader(&challenge)?.as_ref(),
+                storage.reader(&response)?.as_ref(),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
@@ -115,17 +115,18 @@ impl Verification {
 
         // Create the next challenge file.
         let next_challenge_hash = if response_is_compressed == next_challenge_is_compressed {
+            // TODO (howardwu): Update this.
             trace!("Copying decompressed response file without the public key");
-            storage.copy(&response_file, &next_challenge_file)?;
+            storage.copy(&response, &next_challenge)?;
 
-            calculate_hash(&storage.reader(&next_challenge_file)?)
+            calculate_hash(&storage.reader(&next_challenge)?)
         } else {
             trace!("Starting decompression of the response file for the next challenge file");
 
             // Initialize the next contribution locator, if it does not exist.
-            if !storage.exists(&next_challenge_file) {
+            if !storage.exists(&next_challenge) {
                 storage.initialize(
-                    next_challenge_file.clone(),
+                    next_challenge.clone(),
                     Object::contribution_file_size(environment, chunk_id, true),
                 )?;
             }
@@ -133,23 +134,43 @@ impl Verification {
             let (_, _, curve, _, _, _) = settings.clone();
             match curve {
                 CurveKind::Bls12_377 => Self::decompress(
-                    storage.reader(&response_file)?.as_ref(),
-                    storage.writer(&next_challenge_file)?.as_mut(),
+                    storage.reader(&response)?.as_ref(),
+                    storage.writer(&next_challenge)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 )?,
                 CurveKind::BW6 => Self::decompress(
-                    storage.reader(&response_file)?.as_ref(),
-                    storage.writer(&next_challenge_file)?.as_mut(),
+                    storage.reader(&response)?.as_ref(),
+                    storage.writer(&next_challenge)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 )?,
             };
 
-            calculate_hash(storage.reader(&next_challenge_file)?.as_ref())
+            calculate_hash(storage.reader(&next_challenge)?.as_ref())
         };
 
         debug!("The next challenge hash is {}", pretty_hash!(&next_challenge_hash));
+
+        {
+            // Fetch the saved response hash in the next challenge file.
+            let saved_response_hash = storage
+                .reader(&next_challenge)?
+                .as_ref()
+                .chunks(64)
+                .next()
+                .unwrap()
+                .to_vec();
+
+            // Check that the response hash matches the next challenge hash.
+            debug!("The response hash is {}", pretty_hash!(&response_hash));
+            debug!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+            if response_hash.as_slice() != saved_response_hash {
+                error!("Response hash does not match the saved response hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+        }
+
         Ok(())
     }
 
@@ -163,34 +184,38 @@ impl Verification {
     ) -> Result<GenericArray<u8, U64>, CoordinatorError> {
         debug!("Verifying 2^{} powers of tau", parameters.total_size_in_log2);
 
+        // Check that the challenge hashes match.
+        let challenge_hash = {
+            // Compute the challenge hash using the challenge file.
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
+
+            // Fetch the challenge hash from the response file.
+            let saved_challenge_hash = &response_reader
+                .get(0..64)
+                .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+
+            // Check that the challenge hashes match.
+            debug!("The challenge hash is {}", pretty_hash!(&challenge_hash));
+            debug!("The saved challenge hash is {}", pretty_hash!(&saved_challenge_hash));
+            match challenge_hash.as_slice() == saved_challenge_hash {
+                true => challenge_hash,
+                false => {
+                    error!("Challenge hash does not match saved challenge hash.");
+                    return Err(CoordinatorError::ContributionHashMismatch);
+                }
+            }
+        };
+
+        // Compute the response hash using the response file.
+        let response_hash = calculate_hash(response_reader);
+
         // Fetch the compression settings.
         let compressed_challenge = environment.compressed_inputs();
         let compressed_response = environment.compressed_outputs();
 
-        // Compute the challenge hash using the challenge file.
-        let challenge_hash = calculate_hash(challenge_reader.as_ref());
-        debug!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
-
-        // Fetch the challenge hash from the response file.
-        let challenge_hash_in_response = &response_reader
-            .get(0..64)
-            .ok_or(CoordinatorError::StorageReaderFailed)?[..];
-        let pretty_hash = pretty_hash!(&challenge_hash_in_response);
-        debug!("Challenge hash in response file is {}", pretty_hash);
-
-        // Check that the challenge hashes match.
-        if challenge_hash_in_response != challenge_hash.as_slice() {
-            error!("Challenge hash in response file does not match the expected challenge hash.");
-            return Err(CoordinatorError::ContributionHashMismatch);
-        }
-
-        // Compute the response hash using the response file.
-        let response_hash = calculate_hash(response_reader);
-        debug!("The response hash is {}", pretty_hash!(&response_hash));
-
         // Fetch the public key of the contributor.
         let public_key = PublicKey::read(response_reader, compressed_response, &parameters)?;
-        // debug!("Public key of the contributor is {:#?}", public_key);
+        // trace!("Public key of the contributor is {:#?}", public_key);
 
         trace!("Starting verification");
         Phase1::verification(
@@ -240,7 +265,7 @@ impl Verification {
 mod tests {
     use crate::{
         commands::{Computation, Verification},
-        storage::{Locator, StorageLock},
+        storage::{Locator, Object, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
@@ -250,7 +275,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_verification_run() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
         let test_storage = coordinator.storage();
@@ -270,6 +295,7 @@ mod tests {
 
         // Define test parameters.
         let round_height = coordinator.current_round_height().unwrap();
+        let expected_number_of_contributions = coordinator.current_round().unwrap().expected_number_of_contributions();
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
         let is_final = true;
 
@@ -277,8 +303,17 @@ mod tests {
         let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         for chunk_id in 0..number_of_chunks {
+            // Fetch the challenge locator.
+            let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
+            // Fetch the response locator.
+            let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            if !storage.exists(response_locator) {
+                let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
+                storage.initialize(response_locator.clone(), expected_filesize).unwrap();
+            }
+
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1).unwrap();
+            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, challenge_locator, response_locator).unwrap();
 
             // Run verification on chunk.
             Verification::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1, is_final).unwrap();

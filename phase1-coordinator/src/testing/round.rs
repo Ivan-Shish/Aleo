@@ -101,7 +101,7 @@ pub fn print_diff<S: SerdeDiff>(a: &S, b: &S) {
 #[test]
 #[serial]
 fn test_round_0_matches() {
-    initialize_test_environment();
+    initialize_test_environment(&TEST_ENVIRONMENT);
 
     let expected = test_round_0_json().unwrap();
     let candidate = test_round_0().unwrap();
