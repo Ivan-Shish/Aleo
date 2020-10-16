@@ -49,12 +49,12 @@ impl Aggregation {
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
                 &contribution_readers,
-                (storage.writer(&round_locator)?.as_mut(), compressed_input),
+                (storage.writer(&round_locator)?.as_mut(), compressed_output),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
             ),
             CurveKind::BW6 => Phase1::aggregation(
                 &contribution_readers,
-                (storage.writer(&round_locator)?.as_mut(), compressed_input),
+                (storage.writer(&round_locator)?.as_mut(), compressed_output),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
@@ -63,18 +63,35 @@ impl Aggregation {
             return Err(CoordinatorError::RoundAggregationFailed.into());
         }
 
+        // trace!(
+        //     "{} {} {} Chunked parameters {:#?}",
+        //     contribution_readers[0].0.len(),
+        //     contribution_readers[1].0.len(),
+        //     contribution_readers[2].0.len(),
+        //     phase1_chunked_parameters!(Bls12_377, settings, chunk_id)
+        // );
+        // trace!("Full parameters {:#?}", phase1_full_parameters!(Bls12_377, settings));
+
         // Run aggregate verification on the given round.
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
         match curve {
-            CurveKind::Bls12_377 => phase1_cli::transform_ratios(
-                &storage.to_path(&round_locator)?,
+            CurveKind::Bls12_377 => Phase1::aggregate_verification(
+                (
+                    &storage.reader(&round_locator)?.as_ref(),
+                    setup_utils::UseCompression::Yes,
+                    setup_utils::CheckForCorrectness::Full,
+                ),
                 &phase1_full_parameters!(Bls12_377, settings),
-            ),
-            CurveKind::BW6 => phase1_cli::transform_ratios(
-                &storage.to_path(&round_locator)?,
+            )?,
+            CurveKind::BW6 => Phase1::aggregate_verification(
+                (
+                    &storage.reader(&round_locator)?.as_ref(),
+                    setup_utils::UseCompression::Yes,
+                    setup_utils::CheckForCorrectness::Full,
+                ),
                 &phase1_full_parameters!(BW6_761, settings),
-            ),
+            )?,
         };
 
         debug!("Completed aggregation on round {}", round_height);
