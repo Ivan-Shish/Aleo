@@ -724,7 +724,7 @@ impl CoordinatorState {
             .par_iter()
             .min_by_key(|(_, v)| v.pending_chunks.len() + v.locked_chunks.len())
         {
-            Some((verifier, verifier_info)) => verifier.clone(),
+            Some((verifier, _verifier_info)) => verifier.clone(),
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
@@ -1894,7 +1894,7 @@ mod tests {
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
         let next_round_height = current_round_height + 1;
-        let precommit = state.precommit_next_round(next_round_height).unwrap();
+        let _precommit = state.precommit_next_round(next_round_height).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
@@ -1975,7 +1975,7 @@ mod tests {
 
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
-        let precommit = state.precommit_next_round(current_round_height + 1).unwrap();
+        let _precommit = state.precommit_next_round(current_round_height + 1).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);

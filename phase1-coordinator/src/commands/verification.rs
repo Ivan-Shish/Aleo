@@ -143,7 +143,7 @@ impl Verification {
                     storage.reader(&response)?.as_ref(),
                     storage.writer(&next_challenge)?.as_mut(),
                     response_hash.as_ref(),
-                    &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
+                    &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 )?,
             };
 
@@ -295,7 +295,6 @@ mod tests {
 
         // Define test parameters.
         let round_height = coordinator.current_round_height().unwrap();
-        let expected_number_of_contributions = coordinator.current_round().unwrap().expected_number_of_contributions();
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
         let is_final = true;
 

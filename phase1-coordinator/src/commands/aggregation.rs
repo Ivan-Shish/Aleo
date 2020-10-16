@@ -42,7 +42,7 @@ impl Aggregation {
         let readers = Self::readers(environment, storage, round)?;
         let contribution_readers: Vec<_> = readers.iter().map(|r| (r.as_ref(), compressed_output)).collect();
 
-        // Execute aggregation on given round.
+        // Run aggregation on the given round.
         let chunk_id = 0usize;
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
@@ -58,14 +58,27 @@ impl Aggregation {
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
-
         if let Err(error) = result {
             error!("Aggregation failed with {}", error);
-            Err(CoordinatorError::RoundAggregationFailed.into())
-        } else {
-            debug!("Completed aggregation on round {}", round_height);
-            Ok(())
+            return Err(CoordinatorError::RoundAggregationFailed.into());
         }
+
+        // Run aggregate verification on the given round.
+        let settings = environment.to_settings();
+        let (_, _, curve, _, _, _) = settings;
+        match curve {
+            CurveKind::Bls12_377 => phase1_cli::transform_ratios(
+                &storage.to_path(&round_locator)?,
+                &phase1_full_parameters!(Bls12_377, settings),
+            ),
+            CurveKind::BW6 => phase1_cli::transform_ratios(
+                &storage.to_path(&round_locator)?,
+                &phase1_full_parameters!(BW6_761, settings),
+            ),
+        };
+
+        debug!("Completed aggregation on round {}", round_height);
+        Ok(())
     }
 
     /// Attempts to open every contribution for the given round and

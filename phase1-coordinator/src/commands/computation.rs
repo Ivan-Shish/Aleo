@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, Object, StorageLock},
+    storage::{Locator, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -37,19 +37,11 @@ impl Computation {
             storage.to_path(response_locator)?
         );
 
-        // Fetch the chunk ID and contribution ID from the response locator.
-        let (chunk_id, contribution_id) = match response_locator {
-            Locator::ContributionFile(_, chunk_id, contribution_id, _) => (*chunk_id as usize, *contribution_id),
+        // Fetch the chunk ID from the response locator.
+        let chunk_id = match response_locator {
+            Locator::ContributionFile(_, chunk_id, _, _) => *chunk_id as usize,
             _ => return Err(CoordinatorError::ContributionLocatorIncorrect.into()),
         };
-
-        // if !storage.exists(response_locator) {
-        //     let expected_contribution_size = Object::contribution_file_size(environment, chunk_id as u64, false);
-        //     storage.initialize(response_locator.clone(), expected_contribution_size)?;
-        // }
-
-        // // Check that the saved previous response hash matches the actual previous response hash.
-        // Self::check_hash(storage, previous_response_locator, challenge_locator, contribution_id)?;
 
         // Run computation on chunk.
         let settings = environment.to_settings();
@@ -142,47 +134,6 @@ impl Computation {
 
         Ok(())
     }
-
-    // /// Compute both contribution hashes and check for equivalence.
-    // #[inline]
-    // fn check_hash(
-    //     storage: &StorageLock,
-    //     previous_response_locator: &Locator,
-    //     challenge_locator: &Locator,
-    //     contribution_id: u64,
-    // ) -> anyhow::Result<Vec<u8>> {
-    //     trace!("Checking the previous response locator hash");
-    //
-    //     // Compare the contribution hashes of both files to confirm the hash chain.
-    //     let previous_response_reader = storage.reader(previous_response_locator)?;
-    //     let previous_response_hash = {
-    //         let computed_hash = calculate_hash(previous_response_reader.as_ref());
-    //         debug!("The hash of previous response file is {}", pretty_hash!(computed_hash));
-    //         computed_hash
-    //     };
-    //
-    //     let challenge_reader = storage.reader(challenge_locator)?;
-    //     let previous_response_hash_saved = {
-    //         let saved_hash = challenge_reader
-    //             .get(0..64)
-    //             .ok_or(CoordinatorError::StorageReaderFailed)?;
-    //         debug!(
-    //             "The saved hash of previous response file is {}",
-    //             pretty_hash!(saved_hash)
-    //         );
-    //         saved_hash
-    //     };
-    //
-    //     debug!("Please double check this!");
-    //     if previous_response_hash.as_slice() != previous_response_hash_saved {
-    //         error!(
-    //             "The hash of the previous response file does not match the saved hash of the previous response file in the challenge file"
-    //         );
-    //         return Err(CoordinatorError::InitializationTranscriptsDiffer.into());
-    //     }
-    //
-    //     Ok(previous_response_hash.to_vec())
-    // }
 }
 
 #[cfg(test)]
@@ -194,7 +145,7 @@ mod tests {
     };
     use setup_utils::calculate_hash;
 
-    use tracing::{debug, error, trace};
+    use tracing::{debug, trace};
 
     #[test]
     #[serial]
@@ -203,7 +154,6 @@ mod tests {
 
         // Define test parameters.
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
-        let expected_number_of_contributions = 1;
 
         // Define test storage.
         let test_storage = test_storage(&TEST_ENVIRONMENT_3);
