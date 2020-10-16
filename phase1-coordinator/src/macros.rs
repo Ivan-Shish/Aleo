@@ -86,25 +86,8 @@ macro_rules! chunk_size {
 #[macro_export]
 macro_rules! round_filesize {
     ($curve:ident, $settings:ident, $round:ident, $compressed:ident) => {{
-        use phase1::Phase1Parameters;
-        use setup_utils::UseCompression;
-
         let full_parameters = phase1_full_parameters!($curve, $settings);
-        // full_parameters.get_length($compressed) as u64
-        let parameters = Phase1Parameters::<$curve>::new(
-            full_parameters.contribution_mode,
-            0,
-            full_parameters.powers_g1_length, // <- do not change this
-            full_parameters.curve.clone(),
-            full_parameters.proving_system,
-            full_parameters.total_size_in_log2,
-            full_parameters.batch_size,
-        );
-        match ($compressed, $round == 0) {
-            (UseCompression::Yes, true) => (parameters.contribution_size - parameters.public_key_size) as u64,
-            (UseCompression::Yes, false) => parameters.contribution_size as u64,
-            (UseCompression::No, _) => parameters.accumulator_size as u64,
-        }
+        full_parameters.get_length($compressed) as u64
     }};
 }
 
