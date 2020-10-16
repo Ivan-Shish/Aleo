@@ -156,7 +156,9 @@ mod tests {
         Coordinator,
     };
 
+    use crate::commands::{Seed, SEED_LENGTH};
     use once_cell::sync::Lazy;
+    use rand::RngCore;
     use tracing::*;
 
     #[test]
@@ -185,6 +187,8 @@ mod tests {
         let round_height = coordinator.current_round_height().unwrap();
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
         // Iterate over all chunk IDs.
         for chunk_id in 0..number_of_chunks {
             {
@@ -200,7 +204,7 @@ mod tests {
                 }
 
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone());
+                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), seed);
                 if contribute.is_err() {
                     error!(
                         "Failed to run computation as contributor {:?}\n{}",

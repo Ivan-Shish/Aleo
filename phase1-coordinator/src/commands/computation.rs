@@ -4,15 +4,18 @@ use crate::{
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
-use setup_utils::{calculate_hash, UseCompression};
+use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 #[allow(dead_code)]
 pub(crate) struct Computation;
+
+pub const SEED_LENGTH: usize = 32;
+pub type Seed = [u8; SEED_LENGTH];
 
 impl Computation {
     ///
@@ -29,6 +32,7 @@ impl Computation {
         storage: &mut StorageLock,
         challenge_locator: &Locator,
         response_locator: &Locator,
+        seed: Seed,
     ) -> anyhow::Result<()> {
         let start = Instant::now();
         info!(
@@ -52,14 +56,14 @@ impl Computation {
                 storage.reader(challenge_locator)?.as_ref(),
                 storage.writer(response_locator)?.as_mut(),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
-                &mut thread_rng(),
+                derive_rng_from_seed(&seed[..]),
             ),
             CurveKind::BW6 => Self::contribute(
                 environment,
                 storage.reader(challenge_locator)?.as_ref(),
                 storage.writer(response_locator)?.as_mut(),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
-                &mut thread_rng(),
+                derive_rng_from_seed(&seed[..]),
             ),
         } {
             error!("Computation failed with {}", error);
@@ -145,6 +149,8 @@ mod tests {
     };
     use setup_utils::calculate_hash;
 
+    use crate::commands::{Seed, SEED_LENGTH};
+    use rand::RngCore;
     use tracing::{debug, trace};
 
     #[test]
@@ -183,7 +189,16 @@ mod tests {
             }
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, challenge_locator, response_locator).unwrap();
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
+            Computation::run(
+                &TEST_ENVIRONMENT_3,
+                &mut storage,
+                challenge_locator,
+                response_locator,
+                seed,
+            )
+            .unwrap();
 
             // Check that the current contribution was generated based on the previous contribution hash.
             let challenge_hash = calculate_hash(&storage.reader(&challenge_locator).unwrap());
