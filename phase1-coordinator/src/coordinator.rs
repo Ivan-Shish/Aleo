@@ -18,6 +18,7 @@ use tracing::{debug, error, info, trace};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
+    AggregateContributionFileSizeMismatch,
     ChunkAlreadyComplete,
     ChunkAlreadyVerified,
     ChunkIdAlreadyAdded,
@@ -598,7 +599,7 @@ impl Coordinator {
 
         // Fetch the chunk ID from the response file locator.
         let chunk_id = match self.storage.read().unwrap().to_locator(unverified_locator)? {
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
                 // Check that the response file locator is unverified.
                 if verified == true {
                     error!("{} provided a verified locator {}", participant, unverified_locator);
@@ -653,7 +654,7 @@ impl Coordinator {
 
         // Fetch the chunk ID from the response file locator.
         let chunk_id = match self.storage.read().unwrap().to_locator(verified_locator)? {
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
                 // Check that the response file locator is verified.
                 if verified == false {
                     error!("{} provided an unverified locator {}", participant, verified_locator);
