@@ -49,12 +49,12 @@ impl Aggregation {
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
                 &contribution_readers,
-                (storage.writer(&round_locator)?.as_mut(), compressed_output),
+                (storage.writer(&round_locator)?.as_mut(), compressed_input),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
             ),
             CurveKind::BW6 => Phase1::aggregation(
                 &contribution_readers,
-                (storage.writer(&round_locator)?.as_mut(), compressed_output),
+                (storage.writer(&round_locator)?.as_mut(), compressed_input),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
@@ -79,7 +79,7 @@ impl Aggregation {
             CurveKind::Bls12_377 => Phase1::aggregate_verification(
                 (
                     &storage.reader(&round_locator)?.as_ref(),
-                    setup_utils::UseCompression::Yes,
+                    setup_utils::UseCompression::No,
                     setup_utils::CheckForCorrectness::Full,
                 ),
                 &phase1_full_parameters!(Bls12_377, settings),
@@ -87,7 +87,7 @@ impl Aggregation {
             CurveKind::BW6 => Phase1::aggregate_verification(
                 (
                     &storage.reader(&round_locator)?.as_ref(),
-                    setup_utils::UseCompression::Yes,
+                    setup_utils::UseCompression::No,
                     setup_utils::CheckForCorrectness::Full,
                 ),
                 &phase1_full_parameters!(BW6_761, settings),

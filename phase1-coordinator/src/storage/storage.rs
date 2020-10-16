@@ -53,7 +53,7 @@ impl Object {
 
     /// Returns the expected file size of an aggregated round.
     pub fn round_file_size(environment: &Environment, round_height: u64) -> u64 {
-        let compressed = environment.compressed_outputs();
+        let compressed = environment.compressed_inputs();
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
         match curve {
