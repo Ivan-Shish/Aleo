@@ -270,7 +270,9 @@ mod tests {
         Coordinator,
     };
 
+    use crate::commands::{Seed, SEED_LENGTH};
     use once_cell::sync::Lazy;
+    use rand::RngCore;
 
     #[test]
     #[serial]
@@ -312,7 +314,16 @@ mod tests {
             }
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, challenge_locator, response_locator).unwrap();
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
+            Computation::run(
+                &TEST_ENVIRONMENT_3,
+                &mut storage,
+                challenge_locator,
+                response_locator,
+                seed,
+            )
+            .unwrap();
 
             // Run verification on chunk.
             Verification::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1, is_final).unwrap();

@@ -7,7 +7,9 @@ use crate::{
 };
 use setup_utils::calculate_hash;
 
+use crate::commands::{Seed, SEED_LENGTH};
 use chrono::{DateTime, Utc};
+use rand::RngCore;
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -244,11 +246,13 @@ impl Coordinator {
             info!("Initialized round 1");
 
             info!("Add contributions and verifications for round 1");
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
             for chunk_id in 0..self.environment.number_of_chunks() {
                 debug!("Computing contributions for round 1 chunk {}", chunk_id);
                 let (_chunk_id, _previous_response_locator, _challenge_locator, response_locator) =
                     self.try_lock(&contributor)?;
-                self.run_computation(1, chunk_id, 1, &contributor)?;
+                self.run_computation(1, chunk_id, 1, &contributor, seed)?;
                 let _response_locator = self.try_contribute(&contributor, &response_locator)?;
                 debug!("Computed contributions for round 1 chunk {}", chunk_id);
 
@@ -1303,6 +1307,7 @@ impl Coordinator {
         chunk_id: u64,
         contribution_id: u64,
         participant: &Participant,
+        seed: Seed,
     ) -> Result<(), CoordinatorError> {
         info!(
             "Running computation for round {} chunk {} contribution {} as {}",
@@ -1366,7 +1371,13 @@ impl Coordinator {
             "Starting computation on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
         );
-        Computation::run(&self.environment, &mut storage, challenge_locator, response_locator)?;
+        Computation::run(
+            &self.environment,
+            &mut storage,
+            challenge_locator,
+            response_locator,
+            seed,
+        )?;
         info!(
             "Completed computation on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
@@ -1528,9 +1539,11 @@ impl Coordinator {
 mod tests {
     use crate::{environment::*, testing::prelude::*, Coordinator};
 
+    use crate::commands::{Seed, SEED_LENGTH};
     use chrono::Utc;
     use once_cell::sync::Lazy;
-    use std::{panic, process};
+    use rand::RngCore;
+    use std::{collections::HashMap, panic, process};
     use tracing::*;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
@@ -1706,9 +1719,11 @@ mod tests {
             assert!(chunk.is_next_contribution_id(contribution_id, round.expected_number_of_contributions()));
 
             // Run the computation
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
             assert!(
                 coordinator
-                    .run_computation(round_height, chunk_id, contribution_id, &contributor)
+                    .run_computation(round_height, chunk_id, contribution_id, &contributor, seed)
                     .is_ok()
             );
         }
@@ -1746,9 +1761,11 @@ mod tests {
 
         // Run computation on round 1 chunk 0 contribution 1.
         let contribution_id = 1;
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
         assert!(
             coordinator
-                .run_computation(round_height, chunk_id, contribution_id, contributor)
+                .run_computation(round_height, chunk_id, contribution_id, contributor, seed)
                 .is_ok()
         );
 
@@ -1815,6 +1832,8 @@ mod tests {
         let mut verifier_threads = vec![];
 
         let contribution_id = 1;
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             {
                 // Acquire the lock as contributor.
@@ -1830,7 +1849,8 @@ mod tests {
                 }
 
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor);
+                let contribute =
+                    coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
                 if contribute.is_err() {
                     println!(
                         "Failed to run computation for chunk {} as contributor {:?}\n{}",
@@ -1919,6 +1939,7 @@ mod tests {
         ];
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
 
+        let mut seeds = HashMap::new();
         // Iterate over all chunk IDs.
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // As contribution ID 0 is initialized by the coordinator, iterate from
@@ -1937,9 +1958,18 @@ mod tests {
                         );
                         try_lock?;
                     }
+                    let seed = if seeds.contains_key(&contribution_id) {
+                        seeds[&contribution_id]
+                    } else {
+                        let mut seed: Seed = [0; SEED_LENGTH];
+                        rand::thread_rng().fill_bytes(&mut seed[..]);
+                        seeds.insert(contribution_id.clone(), seed);
+                        seed
+                    };
 
                     // Run computation as contributor.
-                    let contribute = coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor);
+                    let contribute =
+                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
@@ -2029,6 +2059,7 @@ mod tests {
         assert_eq!(1, round_height);
 
         // Run computation and verification on each contribution in each chunk.
+        let mut seeds = HashMap::new();
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // Ensure contribution ID 0 is already verified by the coordinator.
             assert!(
@@ -2055,7 +2086,17 @@ mod tests {
                     }
 
                     // Run computation as contributor.
-                    let contribute = coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor);
+                    let seed = if seeds.contains_key(&contribution_id) {
+                        seeds[&contribution_id]
+                    } else {
+                        let mut seed: Seed = [0; SEED_LENGTH];
+                        rand::thread_rng().fill_bytes(&mut seed[..]);
+                        seeds.insert(contribution_id.clone(), seed);
+                        seed
+                    };
+
+                    let contribute =
+                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
