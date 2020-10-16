@@ -166,8 +166,6 @@ impl Contribution {
         Ok(())
     }
 
-    /// TODO (howardwu): Check that verified locator is stored.
-    ///
     /// Updates `verified` to `true` in this instance of `Contribution`,
     /// if the verifier ID and verified location are valid.
     ///

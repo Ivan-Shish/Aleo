@@ -206,7 +206,13 @@ impl Chunk {
     ///
     #[inline]
     pub fn is_complete(&self, expected_contributions: u64) -> bool {
-        // TODO (howardwu): Check that all chunks are not locked.
+        // Check if the chunk is currently locked.
+        if self.is_locked() {
+            trace!("Chunk {} is locked and therefore not complete", self.chunk_id());
+            return false;
+        }
+
+        // Check that all contributions and verifications are present.
         let contributions_complete = self.only_contributions_complete(expected_contributions);
         let verifications_complete = (self
             .get_contributions()

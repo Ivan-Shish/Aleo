@@ -127,7 +127,15 @@ impl Storage for Disk {
     /// Returns `true` if a given locator exists in storage. Otherwise, returns `false`.
     #[inline]
     fn exists(&self, locator: &Locator) -> bool {
-        self.manifest.read().unwrap().contains(locator) && self.locators.contains_key(locator)
+        let is_in_manifest = self.manifest.read().unwrap().contains(locator);
+        let is_in_locators = self.locators.contains_key(locator);
+        #[cfg(test)]
+        trace!(
+            "Checking if locator exists in storage (manifest = {}, locators = {})",
+            is_in_manifest,
+            is_in_locators
+        );
+        is_in_manifest && is_in_locators
     }
 
     /// Returns a copy of an object at the given locator in storage, if it exists.
@@ -555,7 +563,14 @@ impl StorageLocator for DiskLocator {
                 format!("{}/round_{}.verified", round_directory, *round_height)
             }
             Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
-                self.contribution_locator(*round_height, *chunk_id, *contribution_id, *verified)
+                // Fetch the chunk directory path.
+                let path = self.chunk_directory(*round_height, *chunk_id);
+                match verified {
+                    // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.verified`.
+                    true => format!("{}/contribution_{}.verified", path, contribution_id),
+                    // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified`.
+                    false => format!("{}/contribution_{}.unverified", path, contribution_id),
+                }
             }
         };
         // Sanitize the path.
@@ -717,23 +732,6 @@ impl DiskLocator {
         let path = self.chunk_directory(round_height, chunk_id);
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
-        }
-    }
-
-    /// Returns the contribution locator for a given round, chunk ID, and
-    /// contribution ID from the coordinator.
-    #[inline]
-    fn contribution_locator(&self, round_height: u64, chunk_id: u64, contribution_id: u64, verified: bool) -> String {
-        // Fetch the chunk directory path.
-        let path = self.chunk_directory(round_height, chunk_id);
-
-        // As the contribution at ID 0 is a continuation of the last contribution
-        // in the previous round, it will always be verified by default.
-        match verified || contribution_id == 0 {
-            // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.verified`.
-            true => format!("{}/contribution_{}.verified", path, contribution_id),
-            // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified`.
-            false => format!("{}/contribution_{}.unverified", path, contribution_id),
         }
     }
 }

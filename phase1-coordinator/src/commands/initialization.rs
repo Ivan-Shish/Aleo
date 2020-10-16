@@ -130,7 +130,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_initialization_run() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT);
 
         // Define test parameters.
         let round_height = 0;
