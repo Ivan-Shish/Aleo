@@ -159,6 +159,10 @@ impl Storage for Disk {
             .unwrap();
 
         let object = match locator {
+            Locator::CoordinatorState => {
+                // TODO (howardwu): Implement CoordinatorState storage.
+                Ok(Object::CoordinatorState)
+            }
             Locator::RoundHeight => {
                 let round_height: u64 = serde_json::from_slice(&*reader)?;
                 Ok(Object::RoundHeight(round_height))
@@ -393,6 +397,7 @@ impl StorageObject for Disk {
             .unwrap();
 
         match locator {
+            Locator::CoordinatorState => Ok(reader),
             Locator::RoundHeight => Ok(reader),
             Locator::RoundState(_) => Ok(reader),
             Locator::RoundFile(round_height) => {
@@ -440,6 +445,7 @@ impl StorageObject for Disk {
             .unwrap();
 
         match locator {
+            Locator::CoordinatorState => Ok(writer),
             Locator::RoundHeight => Ok(writer),
             Locator::RoundState(_) => Ok(writer),
             Locator::RoundFile(round_height) => {
@@ -556,6 +562,7 @@ impl StorageLocator for DiskLocator {
     #[inline]
     fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError> {
         let path = match locator {
+            Locator::CoordinatorState => format!("{}/coordinator.json", self.base),
             Locator::RoundHeight => format!("{}/round_height", self.base),
             Locator::RoundState(round_height) => format!("{}/state.json", self.round_directory(*round_height)),
             Locator::RoundFile(round_height) => {
@@ -609,6 +616,11 @@ impl StorageLocator for DiskLocator {
             .map_err(|_| CoordinatorError::StorageLocatorFormatIncorrect)?;
 
         let key = key.to_str().ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?;
+
+        // Check if it matches the coordinator state file.
+        if key == "coordinator.json" {
+            return Ok(Locator::CoordinatorState);
+        }
 
         // Check if it matches the round height.
         if key == "round_height" {

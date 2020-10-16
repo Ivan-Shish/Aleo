@@ -90,6 +90,7 @@ macro_rules! round_filesize {
         use setup_utils::UseCompression;
 
         let full_parameters = phase1_full_parameters!($curve, $settings);
+        // full_parameters.get_length($compressed) as u64
         let parameters = Phase1Parameters::<$curve>::new(
             full_parameters.contribution_mode,
             0,

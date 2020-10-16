@@ -377,6 +377,11 @@ mod tests {
     }
 
     #[test]
+    fn test_aggregation_aleo() {
+        aggregation_test::<Bls12_377>(8, 64, UseCompression::No, UseCompression::Yes, false);
+    }
+
+    #[test]
     #[should_panic]
     fn test_aggregation_bls12_377_wrong_chunks() {
         aggregation_test::<Bls12_377>(4, 3 + 3 * 4, UseCompression::No, UseCompression::Yes, true);
