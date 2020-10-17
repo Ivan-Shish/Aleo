@@ -1,4 +1,4 @@
-use phase1_coordinator::environment::{Environment, Parameters};
+use phase1_coordinator::environment::{DevelopmentEnvironment, Parameters};
 use phase1_verifier::{utils::init_logger, verifier::Verifier};
 
 use snarkos_toolkit::account::{Address, ViewKey};
@@ -19,7 +19,7 @@ async fn main() {
     let view_key = ViewKey::from_str(&view_key).expect("Invalid view key");
     let _address = Address::from_view_key(&view_key).expect("Invalid view key. Address not derived correctly");
 
-    let environment = Environment::Test(Parameters::AleoTest3Chunks);
+    let environment = DevelopmentEnvironment::from(Parameters::Test3Chunks);
 
     // Initialize the verifier
     info!("Initializing verifier...");

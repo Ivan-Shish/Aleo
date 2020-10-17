@@ -4,7 +4,7 @@ use crate::{
 };
 use phase1::helpers::CurveKind;
 use phase1_cli::transform_pok_and_correctness;
-use phase1_coordinator::{environment::Environment, phase1_chunked_parameters, Participant};
+use phase1_coordinator::{environment::DevelopmentEnvironment, phase1_chunked_parameters, Participant};
 use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -54,12 +54,16 @@ pub struct Verifier {
     pub(crate) verifier: Participant,
 
     /// The coordinator environment
-    pub(crate) environment: Environment,
+    pub(crate) environment: DevelopmentEnvironment,
 }
 
 impl Verifier {
     /// Initialize a new verifier
-    pub fn new(coordinator_api_url: String, view_key: String, environment: Environment) -> Result<Self, VerifierError> {
+    pub fn new(
+        coordinator_api_url: String,
+        view_key: String,
+        environment: DevelopmentEnvironment,
+    ) -> Result<Self, VerifierError> {
         let verifier_id = Address::from_view_key(&ViewKey::from_str(&view_key)?)?.to_string();
 
         Ok(Self {
@@ -169,7 +173,7 @@ impl Verifier {
 
                 // Run the verification
 
-                let settings = self.environment.to_settings();
+                let settings = self.environment.parameters();
                 let (_, _, curve, _, _, _) = settings.clone();
 
                 let compressed_challenge = self.environment.compressed_inputs();
