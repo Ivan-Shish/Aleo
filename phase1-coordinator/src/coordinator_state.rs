@@ -1499,8 +1499,6 @@ impl CoordinatorState {
 mod tests {
     use crate::{objects::participant::*, testing::prelude::*, CoordinatorState};
 
-    use tracing::trace;
-
     #[test]
     fn test_new() {
         // Initialize a new coordinator state.

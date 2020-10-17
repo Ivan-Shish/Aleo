@@ -78,7 +78,7 @@ macro_rules! total_size_in_g1 {
 /// and the number of powers.
 #[macro_export]
 macro_rules! chunk_size {
-    ($num_chunks:ident, $proving_system:ident, $power:ident) => {{ (total_size_in_g1!($proving_system, $power) / $num_chunks) }};
+    ($num_chunks:ident, $proving_system:ident, $power:ident) => {{ ((total_size_in_g1!($proving_system, $power) + $num_chunks - 1) / $num_chunks) }};
 }
 
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
@@ -127,5 +127,13 @@ macro_rules! return_error {
     ($error:ident, $message:ident) => {{
         error!($message);
         return $error;
+    }};
+}
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! test_report {
+    ($function:expr) => {{
+        test_report(function_name!(), $function);
     }};
 }

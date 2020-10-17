@@ -326,6 +326,8 @@ impl Coordinator {
 
             // Attempt to advance to the next round.
             let next_round_height = self.try_advance()?;
+
+            trace!("Advanced ceremony to round {}", next_round_height);
         }
 
         Ok(())
@@ -1544,7 +1546,6 @@ mod tests {
     use once_cell::sync::Lazy;
     use rand::RngCore;
     use std::{collections::HashMap, panic, process};
-    use tracing::*;
 
     fn initialize_coordinator(coordinator: &Coordinator) -> anyhow::Result<()> {
         // Ensure the ceremony has not started.
@@ -1578,6 +1579,24 @@ mod tests {
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height()?);
+        Ok(())
+    }
+
+    fn coordinator_initialization_matches_json_test() -> anyhow::Result<()> {
+        initialize_test_environment(&TEST_ENVIRONMENT);
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        initialize_coordinator(&coordinator)?;
+
+        // Check that round 0 matches the round 0 JSON specification.
+        {
+            // Fetch round 0 from coordinator.
+            let expected = test_round_0_json()?;
+            let candidate = coordinator.get_round(0)?;
+            print_diff(&expected, &candidate);
+            assert_eq!(expected, candidate);
+        }
+
         Ok(())
     }
 
@@ -2171,66 +2190,63 @@ mod tests {
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_initialization_matches_json() {
-        initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone()).unwrap();
-        initialize_coordinator(&coordinator).unwrap();
-
-        // Check that round 0 matches the round 0 JSON specification.
-        {
-            // Fetch round 0 from coordinator.
-            let expected = test_round_0_json().unwrap();
-            let candidate = coordinator.get_round(0).unwrap();
-            print_diff(&expected, &candidate);
-            assert_eq!(expected, candidate);
-        }
+        test_report!(coordinator_initialization_matches_json_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_initialization() {
-        coordinator_initialization_test().unwrap();
+        test_report!(coordinator_initialization_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_contributor_try_lock() {
-        coordinator_contributor_try_lock_test().unwrap();
+        test_report!(coordinator_contributor_try_lock_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_contributor_add_contribution() {
-        coordinator_contributor_add_contribution_test().unwrap();
+        test_report!(coordinator_contributor_add_contribution_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_verifier_verify_contribution() {
-        coordinator_verifier_verify_contribution_test().unwrap();
+        test_report!(coordinator_verifier_verify_contribution_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_concurrent_contribution_verification() {
-        coordinator_concurrent_contribution_verification_test().unwrap();
+        test_report!(coordinator_concurrent_contribution_verification_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_aggregation() {
-        coordinator_aggregation_test().unwrap();
+        test_report!(coordinator_aggregation_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     fn test_coordinator_next_round() {
-        coordinator_next_round_test().unwrap();
+        test_report!(coordinator_next_round_test);
     }
 
     #[test]
+    #[named]
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
