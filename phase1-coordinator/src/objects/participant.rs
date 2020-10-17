@@ -18,9 +18,14 @@ pub enum Participant {
 }
 
 impl Participant {
-    /// Creates a new instance of `Participant`.
-    pub fn new_contributor(participant: String) -> Self {
-        Participant::Contributor(participant)
+    /// Creates a new contributor instance of `Participant`.
+    pub fn new_contributor(participant: &str) -> Self {
+        Participant::Contributor(participant.to_string())
+    }
+
+    /// Creates a new verifier instance of `Participant`.
+    pub fn new_verifier(participant: &str) -> Self {
+        Participant::Verifier(participant.to_string())
     }
 
     /// Returns `true` if the participant is a contributor.

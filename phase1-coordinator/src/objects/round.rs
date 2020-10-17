@@ -102,12 +102,16 @@ impl Round {
         //
         // Initialize the chunk verifiers as a list comprising only
         // the coordinator verifier, as this is for initialization.
+        let verifier = environment
+            .coordinator_verifiers()
+            .first()
+            .ok_or(CoordinatorError::VerifierMissing)?;
         let chunks: Vec<Chunk> = (0..environment.number_of_chunks() as usize)
             .into_par_iter()
             .map(|chunk_id| {
                 Chunk::new(
                     chunk_id as u64,
-                    environment.coordinator_verifier(),
+                    verifier.clone(),
                     storage
                         .to_path(&Locator::ContributionFile(round_height, chunk_id as u64, 0, true))
                         .expect("failed to create locator path"),
@@ -119,7 +123,7 @@ impl Round {
         debug!("Completed creating round {}", round_height);
 
         Ok(Self {
-            version: environment.version(),
+            version: environment.software_version(),
             height: round_height,
             started_at: Some(started_at),
             finished_at: None,

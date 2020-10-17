@@ -137,6 +137,7 @@ pub enum CoordinatorError {
     VerificationFailed,
     VerificationOnContributionIdZero,
     VerifierMissing,
+    VerifiersMissing,
 }
 
 impl From<anyhow::Error> for CoordinatorError {
@@ -245,8 +246,16 @@ impl Coordinator {
         // If this is a new ceremony, execute the first round to initialize the ceremony.
         if current_round_height == 0 {
             // Fetch the contributor and verifier of the coordinator.
-            let contributor = self.environment.coordinator_contributor();
-            let verifier = self.environment.coordinator_verifier();
+            let contributor = self
+                .environment
+                .coordinator_contributors()
+                .first()
+                .ok_or(CoordinatorError::ContributorsMissing)?;
+            let verifier = self
+                .environment
+                .coordinator_verifiers()
+                .first()
+                .ok_or(CoordinatorError::VerifiersMissing)?;
 
             {
                 // Acquire the state write lock.
@@ -291,6 +300,15 @@ impl Coordinator {
                 }
             }
             info!("Added contributions and verifications for round 1");
+        } else {
+            // Acquire the state write lock.
+            let mut state = self.state.write().unwrap();
+
+            // Set the current round height to initialize coordinator state.
+            state.set_current_round_height(current_round_height);
+
+            // Drop the state write lock.
+            drop(state);
         }
 
         info!("{}", serde_json::to_string_pretty(&self.current_round()?)?);
@@ -317,7 +335,7 @@ impl Coordinator {
     #[inline]
     pub fn shutdown_listener(self) -> anyhow::Result<()> {
         ctrlc::set_handler(move || {
-            warn!("\n\nATTENTION - Coordinator is shutting down...\n\n");
+            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
 
             // Acquire the coordinator state lock.
             let state = self.state.write().unwrap();
@@ -325,13 +343,13 @@ impl Coordinator {
 
             // Print the final coordinator state.
             let final_state = serde_json::to_string_pretty(&*state).unwrap();
-            info!("\n\nFinal Coordinator State\n\n{}\n\n", final_state);
+            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
 
             // Acquire the storage lock.
-            let storage = self.storage.write().unwrap();
+            let _storage = self.storage.write().unwrap();
             debug!("Coordinator has safely shutdown storage");
 
-            info!("\n\nCoordinator has safely shutdown all operations\n\nGoodbye.\n\n");
+            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
             std::process::exit(0);
         })?;
 
@@ -349,7 +367,7 @@ impl Coordinator {
             // Acquire the state write lock.
             let mut state = self.state.write().unwrap();
 
-            info!("Status Report\n\t{}", state.status_report());
+            info!("\n\t{}", state.status_report());
 
             // Update the state of the queue.
             state.update_queue()?;
@@ -1144,9 +1162,15 @@ impl Coordinator {
                 // Initialize the contributors as an empty list as this is for initialization.
                 let contributors = vec![];
 
-                // Initialize the verifiers as a list comprising only the coordinator verifier,
+                // Initialize the verifiers as a list comprising only one coordinator verifier,
                 // as this is for initialization.
-                let verifiers = vec![self.environment.coordinator_verifier()];
+                let verifiers = vec![
+                    self.environment
+                        .coordinator_verifiers()
+                        .first()
+                        .ok_or(CoordinatorError::VerifierMissing)?
+                        .clone(),
+                ];
 
                 // Create a new round instance.
                 Round::new(
@@ -2303,8 +2327,8 @@ mod tests {
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
-        let environment = Environment::Test(Parameters::AleoTestChunks(4096));
-        initialize_test_environment(&environment);
+        let environment = &*TestingEnvironment::from(Parameters::TestChunks(4096));
+        initialize_test_environment(environment);
 
         let coordinator = Coordinator::new(environment.clone()).unwrap();
         initialize_coordinator(&coordinator).unwrap();

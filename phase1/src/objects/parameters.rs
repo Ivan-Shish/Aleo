@@ -2,15 +2,16 @@ use setup_utils::UseCompression;
 
 use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-#[derive(Clone, PartialEq, Eq, Debug, Copy)]
+#[derive(Clone, PartialEq, Eq, Debug, Copy, Serialize, Deserialize)]
 pub enum ContributionMode {
     Full,
     Chunked,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ProvingSystem {
     Groth16,
     Marlin,

@@ -1,4 +1,4 @@
-use crate::{environment::Environment, objects::Round, CoordinatorError};
+use crate::{environment::Environment, objects::Round, CoordinatorError, CoordinatorState};
 use phase1::helpers::CurveKind;
 
 use memmap::MmapMut;
@@ -20,9 +20,9 @@ pub enum Locator {
 }
 
 /// A data structure representing all possible types of values in storage.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone)]
 pub enum Object {
-    CoordinatorState,
+    CoordinatorState(CoordinatorState),
     RoundHeight(u64),
     RoundState(Round),
     RoundFile(Vec<u8>),
@@ -32,7 +32,9 @@ pub enum Object {
 impl Object {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Object::CoordinatorState => vec![], // TODO (howardwu): Implement CoordinatorState storage.
+            Object::CoordinatorState(state) => {
+                serde_json::to_vec_pretty(state).expect("coordinator state to bytes failed")
+            }
             Object::RoundHeight(height) => serde_json::to_vec(height).expect("round height to bytes failed"),
             Object::RoundState(round) => serde_json::to_vec_pretty(round).expect("round state to bytes failed"),
             Object::RoundFile(round) => round.to_vec(),
@@ -43,7 +45,7 @@ impl Object {
     /// Returns the size in bytes of the object.
     pub fn size(&self) -> u64 {
         match self {
-            Object::CoordinatorState => 0,
+            Object::CoordinatorState(_) => self.to_bytes().len() as u64,
             Object::RoundHeight(_) => self.to_bytes().len() as u64,
             Object::RoundState(_) => self.to_bytes().len() as u64,
             Object::RoundFile(round) => round.len() as u64,
@@ -54,7 +56,7 @@ impl Object {
     /// Returns the expected file size of an aggregated round.
     pub fn round_file_size(environment: &Environment) -> u64 {
         let compressed = environment.compressed_inputs();
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         match curve {
             CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, compressed),
@@ -64,7 +66,7 @@ impl Object {
 
     /// Returns the expected file size of a chunked contribution.
     pub fn contribution_file_size(environment: &Environment, chunk_id: u64, verified: bool) -> u64 {
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         let compressed = match verified {
             // The verified contribution file is used as *input* in the next computation.

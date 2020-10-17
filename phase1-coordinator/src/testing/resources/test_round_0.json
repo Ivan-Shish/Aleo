@@ -6,7 +6,7 @@
     "finishedAt": null,
     "contributorIds": [],
     "verifierIds": [
-        "test-coordinator-verifier"
+        "testing-coordinator-verifier"
     ],
     "chunks": [
         {
@@ -16,8 +16,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_0/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_0/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -29,8 +29,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_1/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_1/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -42,8 +42,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_2/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_2/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -55,8 +55,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_3/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_3/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -68,8 +68,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_4/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_4/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -81,8 +81,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_5/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_5/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -94,8 +94,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_6/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_6/contribution_0.verified",
                     "verified": true
                 }
             ]
@@ -107,8 +107,8 @@
                 {
                     "contributorId": null,
                     "contributedLocation": null,
-                    "verifierId": "test-coordinator-verifier",
-                    "verifiedLocation": "./transcript/test/round_0/chunk_7/contribution_0.verified",
+                    "verifierId": "testing-coordinator-verifier",
+                    "verifiedLocation": "./transcript/testing/round_0/chunk_7/contribution_0.verified",
                     "verified": true
                 }
             ]

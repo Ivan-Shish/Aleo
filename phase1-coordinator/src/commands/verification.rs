@@ -83,7 +83,7 @@ impl Verification {
         }
 
         // Execute ceremony verification on chunk.
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings.clone();
         let result = match curve {
             CurveKind::Bls12_377 => Self::transform_pok_and_correctness(

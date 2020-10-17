@@ -1,5 +1,5 @@
 use phase1_coordinator::{
-    environment::{Environment, Parameters},
+    environment::{DevelopmentEnvironment, Environment, Parameters},
     Coordinator,
 };
 
@@ -31,7 +31,7 @@ pub async fn main() -> anyhow::Result<()> {
     init_logger();
 
     // Set the environment.
-    let environment = Environment::Development(Parameters::AleoTestCustom(8, 12, 256));
+    let environment = (*DevelopmentEnvironment::from(Parameters::TestCustom(8, 12, 256)).clone()).clone();
 
     // Instantiate the coordinator.
     let coordinator = coordinator(&environment).await?;
@@ -39,19 +39,13 @@ pub async fn main() -> anyhow::Result<()> {
     // Initialize the coordinator.
     let operator = coordinator.clone();
     {
-        task::spawn(async move {
-            info!("Chunk size is {}", environment.to_settings().5);
-            info!("{:#?}", environment.to_settings());
+        info!("Chunk size is {}", environment.parameters().5);
+        info!("{:#?}", environment.parameters());
 
-            operator.initialize().await.unwrap();
-        });
-    }
+        operator.initialize().await.unwrap();
 
-    // Initialize the backup procedure.
-    {
         task::spawn(async move {
             loop {
-                info!("Backing up coordinator (UNIMPLEMENTED)");
                 std::thread::sleep(std::time::Duration::from_secs(60));
             }
         });
