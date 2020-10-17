@@ -22,7 +22,6 @@ pub enum Parameters {
     AleoUniversal,
     AleoTest3Chunks,
     AleoTest8Chunks,
-    AleoTest20Chunks,
     AleoTestChunks(NumberOfChunks),
     AleoTestCustom(NumberOfChunks, Power, BatchSize),
     Custom(Settings),
@@ -37,7 +36,6 @@ impl Parameters {
             Parameters::AleoUniversal => Self::aleo_universal(),
             Parameters::AleoTest3Chunks => Self::aleo_test_3_chunks(),
             Parameters::AleoTest8Chunks => Self::aleo_test_8_chunks(),
-            Parameters::AleoTest20Chunks => Self::aleo_test_20_chunks(),
             Parameters::AleoTestChunks(number_of_chunks) => Self::aleo_test_chunks(number_of_chunks),
             Parameters::AleoTestCustom(number_of_chunks, power, batch_size) => {
                 Self::aleo_test_custom(number_of_chunks, power, batch_size)
@@ -86,7 +84,7 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(8_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(170_usize),
+            ChunkSize::from(172_usize),
         )
     }
 
@@ -97,18 +95,7 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(14_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(4095_usize),
-        )
-    }
-
-    fn aleo_test_20_chunks() -> Settings {
-        (
-            ContributionMode::Chunked,
-            ProvingSystem::Groth16,
-            CurveKind::Bls12_377,
-            Power::from(14_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(1638_usize),
+            ChunkSize::from(4096_usize),
         )
     }
 
@@ -399,13 +386,29 @@ mod tests {
     use crate::environment::*;
 
     #[test]
+    fn test_aleo_test_3_chunks() {
+        let parameters = Parameters::AleoTest3Chunks;
+        let (_, _, _, power, _, _) = parameters.to_settings();
+        assert_eq!(Power::from(8_usize), power);
+        assert_eq!(3, Environment::Test(parameters).number_of_chunks());
+    }
+
+    #[test]
+    fn test_aleo_test_8_chunks() {
+        let parameters = Parameters::AleoTest8Chunks;
+        let (_, _, _, power, _, _) = parameters.to_settings();
+        assert_eq!(Power::from(14_usize), power);
+        assert_eq!(8, Environment::Test(parameters).number_of_chunks());
+    }
+
+    #[test]
     fn test_custom_chunk_3() {
         let number_of_chunks = 3;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(10922_usize), chunk_size);
+        assert_eq!(ChunkSize::from(10923_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
             Environment::Test(parameters).number_of_chunks()
@@ -419,7 +422,7 @@ mod tests {
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(4095_usize), chunk_size);
+        assert_eq!(ChunkSize::from(4096_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
             Environment::Test(parameters).number_of_chunks()
@@ -433,7 +436,7 @@ mod tests {
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(1638_usize), chunk_size);
+        assert_eq!(ChunkSize::from(1639_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
             Environment::Test(parameters).number_of_chunks()

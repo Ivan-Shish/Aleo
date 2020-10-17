@@ -18,9 +18,6 @@ pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTes
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT_3: Environment = Environment::Test(Parameters::AleoTest3Chunks);
 
-/// Environment for testing purposes only.
-pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20Chunks);
-
 lazy_static! {
     /// Round start datetime for testing purposes only.
     pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);
