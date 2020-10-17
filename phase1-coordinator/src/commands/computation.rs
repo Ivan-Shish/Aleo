@@ -1,12 +1,12 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, Object, StorageLock},
+    storage::{Locator, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
-use setup_utils::{calculate_hash, UseCompression};
+use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
@@ -14,55 +14,56 @@ use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 #[allow(dead_code)]
 pub(crate) struct Computation;
 
+pub const SEED_LENGTH: usize = 32;
+pub type Seed = [u8; SEED_LENGTH];
+
 impl Computation {
     ///
-    /// Runs computation for a given environment, round height, chunk ID, and contribution ID.
+    /// Runs computation for a given environment, storage writer, challenge locator,
+    /// and response locator.
     ///
-    /// Executes the round computation on a given chunk ID and contribution ID.
+    /// This function assumes that the locator for the previous response file, challenge file,
+    /// and response file have been initialized, typically as part of a call to
+    /// `Coordinator::try_lock` to lock the contribution chunk.
     ///
     #[allow(dead_code)]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
-        round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
+        challenge_locator: &Locator,
+        response_locator: &Locator,
+        seed: Seed,
     ) -> anyhow::Result<()> {
-        info!(
-            "Starting computation on round {} chunk {} contribution {}",
-            round_height, chunk_id, contribution_id
-        );
         let start = Instant::now();
+        info!(
+            "Starting computation for\n\n\tChallenge: {}\n\tResponse : {}\n",
+            storage.to_path(challenge_locator)?,
+            storage.to_path(response_locator)?
+        );
 
-        // Fetch the parameter settings.
+        // Fetch the chunk ID from the response locator.
+        let chunk_id = match response_locator {
+            Locator::ContributionFile(_, chunk_id, _, _) => *chunk_id as usize,
+            _ => return Err(CoordinatorError::ContributionLocatorIncorrect.into()),
+        };
+
+        // Run computation on chunk.
         let settings = environment.to_settings();
-
-        // Fetch a contribution challenge locator.
-        let current_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
-
-        // Initialize and fetch a contribution response locator.
-        let next_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
-        if !storage.exists(next_locator) {
-            let expected_contribution_size = Object::contribution_file_size(environment, chunk_id, false);
-            storage.initialize(next_locator.clone(), expected_contribution_size)?;
-        }
-
-        // Execute computation on chunk.
         let (_, _, curve, _, _, _) = settings;
         if let Err(error) = match curve {
             CurveKind::Bls12_377 => Self::contribute(
                 environment,
-                storage.reader(current_locator)?.as_ref(),
-                storage.writer(next_locator)?.as_mut(),
+                storage.reader(challenge_locator)?.as_ref(),
+                storage.writer(response_locator)?.as_mut(),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
-                &mut thread_rng(),
+                derive_rng_from_seed(&seed[..]),
             ),
             CurveKind::BW6 => Self::contribute(
                 environment,
-                storage.reader(current_locator)?.as_ref(),
-                storage.writer(next_locator)?.as_mut(),
+                storage.reader(challenge_locator)?.as_ref(),
+                storage.writer(response_locator)?.as_mut(),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
-                &mut thread_rng(),
+                derive_rng_from_seed(&seed[..]),
             ),
         } {
             error!("Computation failed with {}", error);
@@ -70,15 +71,15 @@ impl Computation {
         }
 
         // Load a contribution response reader.
-        let reader = storage.reader(next_locator)?;
+        let reader = storage.reader(response_locator)?;
         let contribution_hash = calculate_hash(reader.as_ref());
         debug!("Response hash is {}", pretty_hash!(&contribution_hash));
-        debug!("Thank you for your contribution!");
 
         let elapsed = Instant::now().duration_since(start);
         info!(
-            "Completed computation on round {} chunk {} contribution {} in {:?}",
-            round_height, chunk_id, contribution_id, elapsed
+            "Completed computation on {} in {:?}",
+            storage.to_path(response_locator)?,
+            elapsed
         );
         Ok(())
     }
@@ -98,6 +99,7 @@ impl Computation {
 
         // Check that the challenge hash is not compressed.
         if UseCompression::Yes == compressed_inputs {
+            error!("Compressed contribution hashing is currently not supported");
             return Err(CoordinatorError::CompressedContributionHashingUnsupported);
         }
 
@@ -142,19 +144,21 @@ impl Computation {
 mod tests {
     use crate::{
         commands::{Computation, Initialization},
-        storage::{Locator, StorageLock},
+        storage::{Locator, Object, StorageLock},
         testing::prelude::*,
     };
+    use setup_utils::calculate_hash;
 
+    use crate::commands::{Seed, SEED_LENGTH};
+    use rand::RngCore;
     use tracing::{debug, trace};
 
     #[test]
     #[serial]
     fn test_computation_run() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         // Define test parameters.
-        let round_height = 0;
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
         // Define test storage.
@@ -162,26 +166,50 @@ mod tests {
         let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         // Generate a new challenge for the given parameters.
+        let round_height = 0;
         for chunk_id in 0..number_of_chunks {
             debug!("Initializing test chunk {}", chunk_id);
 
             // Run initialization on chunk.
-            let contribution_hash =
-                Initialization::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id).unwrap();
+            Initialization::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id).unwrap();
+        }
+
+        // Generate a new challenge for the given parameters.
+        let round_height = 1;
+        for chunk_id in 0..number_of_chunks {
+            trace!("Running computation on test chunk {}", chunk_id);
+
+            // Fetch the challenge locator.
+            let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
+            // Fetch the response locator.
+            let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            if !storage.exists(response_locator) {
+                let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
+                storage.initialize(response_locator.clone(), expected_filesize).unwrap();
+            }
 
             // Run computation on chunk.
-            Computation::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1).unwrap();
-
-            // Fetch the current contribution locator.
-            let locator = Locator::ContributionFile(round_height, chunk_id, 1, false);
-            let reader = storage.reader(&locator).unwrap();
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
+            Computation::run(
+                &TEST_ENVIRONMENT_3,
+                &mut storage,
+                challenge_locator,
+                response_locator,
+                seed,
+            )
+            .unwrap();
 
             // Check that the current contribution was generated based on the previous contribution hash.
-            for (i, (expected, candidate)) in contribution_hash
-                .iter()
-                .zip(reader.as_ref().chunks(64).next().unwrap())
-                .enumerate()
-            {
+            let challenge_hash = calculate_hash(&storage.reader(&challenge_locator).unwrap());
+            let saved_challenge_hash = storage
+                .reader(&response_locator)
+                .unwrap()
+                .chunks(64)
+                .next()
+                .unwrap()
+                .to_vec();
+            for (i, (expected, candidate)) in (challenge_hash.iter().zip(&saved_challenge_hash)).enumerate() {
                 trace!("Checking byte {} of expected hash", i);
                 assert_eq!(expected, candidate);
             }

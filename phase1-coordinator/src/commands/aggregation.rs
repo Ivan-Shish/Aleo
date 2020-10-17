@@ -12,7 +12,7 @@ use zexe_algebra::{Bls12_377, BW6_761};
 pub(crate) struct Aggregation;
 
 impl Aggregation {
-    /// Runs aggregation for a given environment and round.
+    /// Runs aggregation for a given environment, storage, and round.
     #[inline]
     pub(crate) fn run(environment: &Environment, storage: &mut StorageLock, round: &Round) -> anyhow::Result<()> {
         // Fetch the round height.
@@ -42,7 +42,7 @@ impl Aggregation {
         let readers = Self::readers(environment, storage, round)?;
         let contribution_readers: Vec<_> = readers.iter().map(|r| (r.as_ref(), compressed_output)).collect();
 
-        // Execute aggregation on given round.
+        // Run aggregation on the given round.
         let chunk_id = 0usize;
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
@@ -58,14 +58,44 @@ impl Aggregation {
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
-
         if let Err(error) = result {
             error!("Aggregation failed with {}", error);
-            Err(CoordinatorError::RoundAggregationFailed.into())
-        } else {
-            debug!("Completed aggregation on round {}", round_height);
-            Ok(())
+            return Err(CoordinatorError::RoundAggregationFailed.into());
         }
+
+        // trace!(
+        //     "{} {} {} Chunked parameters {:#?}",
+        //     contribution_readers[0].0.len(),
+        //     contribution_readers[1].0.len(),
+        //     contribution_readers[2].0.len(),
+        //     phase1_chunked_parameters!(Bls12_377, settings, chunk_id)
+        // );
+        // trace!("Full parameters {:#?}", phase1_full_parameters!(Bls12_377, settings));
+
+        // Run aggregate verification on the given round.
+        let settings = environment.to_settings();
+        let (_, _, curve, _, _, _) = settings;
+        match curve {
+            CurveKind::Bls12_377 => Phase1::aggregate_verification(
+                (
+                    &storage.reader(&round_locator)?.as_ref(),
+                    setup_utils::UseCompression::No,
+                    setup_utils::CheckForCorrectness::Full,
+                ),
+                &phase1_full_parameters!(Bls12_377, settings),
+            )?,
+            CurveKind::BW6 => Phase1::aggregate_verification(
+                (
+                    &storage.reader(&round_locator)?.as_ref(),
+                    setup_utils::UseCompression::No,
+                    setup_utils::CheckForCorrectness::Full,
+                ),
+                &phase1_full_parameters!(BW6_761, settings),
+            )?,
+        };
+
+        debug!("Completed aggregation on round {}", round_height);
+        Ok(())
     }
 
     /// Attempts to open every contribution for the given round and
@@ -119,14 +149,22 @@ impl Aggregation {
 
 #[cfg(test)]
 mod tests {
-    use crate::{commands::Aggregation, storage::StorageLock, testing::prelude::*, Coordinator};
+    use crate::{
+        commands::Aggregation,
+        storage::{Locator, StorageLock},
+        testing::prelude::*,
+        Coordinator,
+    };
 
+    use crate::commands::{Seed, SEED_LENGTH};
     use once_cell::sync::Lazy;
+    use rand::RngCore;
+    use tracing::*;
 
     #[test]
     #[serial]
     fn test_aggregation_run() {
-        initialize_test_environment();
+        initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
         let test_storage = coordinator.storage();
@@ -149,13 +187,15 @@ mod tests {
         let round_height = coordinator.current_round_height().unwrap();
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
         // Iterate over all chunk IDs.
         for chunk_id in 0..number_of_chunks {
             {
                 // Acquire the lock as contributor.
                 let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor.clone());
                 if try_lock.is_err() {
-                    println!(
+                    error!(
                         "Failed to acquire lock as contributor {:?}\n{}",
                         &contributor,
                         serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
@@ -164,9 +204,9 @@ mod tests {
                 }
 
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone());
+                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), seed);
                 if contribute.is_err() {
-                    println!(
+                    error!(
                         "Failed to run computation as contributor {:?}\n{}",
                         &contributor,
                         serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
@@ -177,7 +217,7 @@ mod tests {
                 // Add the contribution as the contributor.
                 let contribute = coordinator.add_contribution(chunk_id, &contributor.clone());
                 if contribute.is_err() {
-                    println!(
+                    error!(
                         "Failed to add contribution as contributor {:?}\n{}",
                         &contributor,
                         serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
@@ -189,20 +229,31 @@ mod tests {
                 // Acquire the lock as the verifier.
                 let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier.clone());
                 if try_lock.is_err() {
-                    println!(
+                    error!(
                         "Failed to acquire lock as verifier {:?}\n{}",
-                        &contributor,
+                        &verifier,
                         serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                     );
                     try_lock.unwrap();
                 }
 
+                // Run verification as verifier.
+                let verify = coordinator.run_verification(round_height, chunk_id, 1, &verifier);
+                if verify.is_err() {
+                    error!(
+                        "Failed to run verification as verifier {:?}\n{}",
+                        &verifier,
+                        serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
+                    );
+                    verify.unwrap();
+                }
+
                 // Run verification as the verifier.
                 let verify = coordinator.verify_contribution(chunk_id, &verifier.clone());
                 if verify.is_err() {
-                    println!(
+                    error!(
                         "Failed to run verification as verifier {:?}\n{}",
-                        &contributor,
+                        &verifier,
                         serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                     );
                     verify.unwrap();
@@ -220,6 +271,11 @@ mod tests {
 
             // Run aggregation on the round.
             Aggregation::run(&TEST_ENVIRONMENT_3, &mut storage, &round).unwrap();
+
+            // Fetch the round locator for the given round.
+            let round_locator = Locator::RoundFile(round_height);
+
+            assert!(storage.exists(&round_locator));
         }
     }
 }

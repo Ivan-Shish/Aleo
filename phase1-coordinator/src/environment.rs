@@ -166,7 +166,7 @@ impl Environment {
             Environment::Development(parameters) => parameters.to_settings(),
             Environment::Production(parameters) => parameters.to_settings(),
         };
-        total_size_in_g1!(proving_system, power) / chunk_size as u64
+        (total_size_in_g1!(proving_system, power) + chunk_size as u64 - 1) / chunk_size as u64
     }
 
     ///

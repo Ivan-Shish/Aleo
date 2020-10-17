@@ -12,6 +12,7 @@ use zexe_algebra::{Bls12_377, BW6_761};
 /// A data structure representing all possible types of keys in storage.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Locator {
+    CoordinatorState,
     RoundHeight,
     RoundState(u64),
     RoundFile(u64),
@@ -21,6 +22,7 @@ pub enum Locator {
 /// A data structure representing all possible types of values in storage.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Object {
+    CoordinatorState,
     RoundHeight(u64),
     RoundState(Round),
     RoundFile(Vec<u8>),
@@ -30,6 +32,7 @@ pub enum Object {
 impl Object {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
+            Object::CoordinatorState => vec![], // TODO (howardwu): Implement CoordinatorState storage.
             Object::RoundHeight(height) => serde_json::to_vec(height).expect("round height to bytes failed"),
             Object::RoundState(round) => serde_json::to_vec_pretty(round).expect("round state to bytes failed"),
             Object::RoundFile(round) => round.to_vec(),
@@ -40,6 +43,7 @@ impl Object {
     /// Returns the size in bytes of the object.
     pub fn size(&self) -> u64 {
         match self {
+            Object::CoordinatorState => 0,
             Object::RoundHeight(_) => self.to_bytes().len() as u64,
             Object::RoundState(_) => self.to_bytes().len() as u64,
             Object::RoundFile(round) => round.len() as u64,
