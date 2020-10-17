@@ -35,7 +35,7 @@ impl Contribution {
         &self.contributor_id
     }
 
-    /// Returns a reference to the contributor location, if it exists.
+    /// Returns a reference to the contributor locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
     pub fn get_contributed_location(&self) -> &Option<String> {
@@ -44,13 +44,15 @@ impl Contribution {
 
     /// Returns a reference to the verifier, if it exists.
     /// Otherwise returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn get_verifier(&self) -> &Option<Participant> {
         &self.verifier_id
     }
 
-    /// Returns a reference to the verifier location, if it exists.
+    /// Returns a reference to the verifier locator, if it exists.
     /// Otherwise returns `None`.
+    #[allow(dead_code)]
     #[inline]
     pub fn get_verified_location(&self) -> &Option<String> {
         &self.verified_locator
@@ -164,8 +166,6 @@ impl Contribution {
         Ok(())
     }
 
-    /// TODO (howardwu): Check that verified locator is stored.
-    ///
     /// Updates `verified` to `true` in this instance of `Contribution`,
     /// if the verifier ID and verified location are valid.
     ///
@@ -173,7 +173,7 @@ impl Contribution {
     /// returns a `CoordinatorError`.
     ///
     #[inline]
-    pub(crate) fn try_verify(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
+    pub(crate) fn set_verified(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
             return Err(CoordinatorError::ExpectedVerifier);
