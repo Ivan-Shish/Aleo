@@ -3,6 +3,7 @@ use crate::{
     objects::Round,
     storage::{Locator, Object, ObjectReader, ObjectWriter, Storage, StorageLocator, StorageObject},
     CoordinatorError,
+    CoordinatorState,
 };
 
 use itertools::Itertools;
@@ -67,12 +68,12 @@ impl Storage for Disk {
             }
         }
 
-        // Load or initialize the coordinator state.
-        {
-            // Create the coordinator state locator if it does not exist yet.
-            // if !storage.exists(&Locator::CoordinatorState) {
-            //     storage.insert(Locator::CoordinatorState, Object::CoordinatorState)?;
-            // }
+        // Create the coordinator state locator if it does not exist yet.
+        if !storage.exists(&Locator::CoordinatorState) {
+            storage.insert(
+                Locator::CoordinatorState,
+                Object::CoordinatorState(CoordinatorState::new(environment.clone())),
+            )?;
         }
 
         // Create the round height locator if it does not exist yet.
@@ -164,8 +165,8 @@ impl Storage for Disk {
 
         let object = match locator {
             Locator::CoordinatorState => {
-                // TODO (howardwu): Implement CoordinatorState storage.
-                Ok(Object::CoordinatorState)
+                let coordinator_state: CoordinatorState = serde_json::from_slice(&*reader)?;
+                Ok(Object::CoordinatorState(coordinator_state))
             }
             Locator::RoundHeight => {
                 let round_height: u64 = serde_json::from_slice(&*reader)?;
@@ -619,6 +620,7 @@ impl DiskManifest {
         Ok(file)
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn open_file(&mut self, locator: &Locator) -> Result<File, CoordinatorError> {
         // Check if the file exists.
@@ -694,6 +696,7 @@ impl DiskManifest {
         Ok(file)
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn close_file(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
         // Check that the file exists.
@@ -996,7 +999,7 @@ impl DiskResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::prelude::*;
+    // use crate::testing::prelude::*;
 
     #[test]
     fn test_to_path_coordinator_state() {

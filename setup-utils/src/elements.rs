@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Determines if point compression should be used.
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UseCompression {
     Yes,
     No,
@@ -17,7 +18,7 @@ impl fmt::Display for UseCompression {
 }
 
 /// Determines if points should be checked to be infinity.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CheckForCorrectness {
     Full,
     OnlyNonZero,

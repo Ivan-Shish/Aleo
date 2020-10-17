@@ -95,10 +95,10 @@ macro_rules! round_filesize {
 #[macro_export]
 macro_rules! storage {
     ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
-        match $env {
-            Environment::Test(_) => Box::new($l1::load($env)?),
-            Environment::Development(_) => Box::new($l2::load($env)?),
-            Environment::Production(_) => Box::new($l3::load($env)?),
+        match *$env.deployment() {
+            Deployment::Testing => Box::new($l1::load($env)?),
+            Deployment::Development => Box::new($l2::load($env)?),
+            Deployment::Production => Box::new($l3::load($env)?),
         }
     }};
 }

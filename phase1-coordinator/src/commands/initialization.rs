@@ -38,7 +38,7 @@ impl Initialization {
         storage.initialize(contribution_locator.clone(), expected_challenge_size as u64)?;
 
         // Run ceremony initialization on chunk.
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         if let Err(error) = match curve {
             CurveKind::Bls12_377 => Self::initialization(

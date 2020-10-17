@@ -41,7 +41,7 @@ impl Aggregation {
 
         // Run aggregation on the given round.
         let chunk_id = 0usize;
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
@@ -70,7 +70,7 @@ impl Aggregation {
         // trace!("Full parameters {:#?}", phase1_full_parameters!(Bls12_377, settings));
 
         // Run aggregate verification on the given round.
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         match curve {
             CurveKind::Bls12_377 => Phase1::aggregate_verification(
