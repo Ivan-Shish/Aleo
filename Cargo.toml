@@ -28,6 +28,7 @@ debug-assertions = false
 opt-level = 0
 
 [profile.test]
-opt-level = 0
+opt-level = 1
+incremental = true
 debug-assertions = true
 debug = true

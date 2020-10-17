@@ -11,11 +11,11 @@ use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
-#[allow(dead_code)]
-pub(crate) struct Computation;
-
 pub const SEED_LENGTH: usize = 32;
 pub type Seed = [u8; SEED_LENGTH];
+
+#[allow(dead_code)]
+pub(crate) struct Computation;
 
 impl Computation {
     ///
@@ -32,7 +32,7 @@ impl Computation {
         storage: &mut StorageLock,
         challenge_locator: &Locator,
         response_locator: &Locator,
-        seed: Seed,
+        seed: &Seed,
     ) -> anyhow::Result<()> {
         let start = Instant::now();
         info!(
@@ -48,7 +48,7 @@ impl Computation {
         };
 
         // Run computation on chunk.
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         if let Err(error) = match curve {
             CurveKind::Bls12_377 => Self::contribute(
@@ -196,7 +196,7 @@ mod tests {
                 &mut storage,
                 challenge_locator,
                 response_locator,
-                seed,
+                &seed,
             )
             .unwrap();
 

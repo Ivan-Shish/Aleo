@@ -420,10 +420,9 @@ impl ParticipantInfo {
     }
 }
 
-#[derive(Serialize)]
-pub(super) struct CoordinatorState {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoordinatorState {
     /// The parameters and settings of this coordinator.
-    #[serde(skip_serializing)]
     environment: Environment,
     /// The current status of the coordinator.
     status: CoordinatorStatus,
@@ -1473,6 +1472,8 @@ impl CoordinatorState {
 
         format!(
             r#"
+    STATUS REPORT
+            
     {} contributors and {} verifiers in the current round
     {} chunks are pending verification
 
@@ -1498,8 +1499,6 @@ impl CoordinatorState {
 #[cfg(test)]
 mod tests {
     use crate::{objects::participant::*, testing::prelude::*, CoordinatorState};
-
-    use tracing::trace;
 
     #[test]
     fn test_new() {
@@ -1534,7 +1533,7 @@ mod tests {
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor of the coordinator.
-        let contributor = environment.coordinator_contributor();
+        let contributor = test_coordinator_contributor(&environment).unwrap();
         assert!(contributor.is_contributor());
 
         // Initialize a new coordinator state.
@@ -1571,7 +1570,7 @@ mod tests {
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the verifier of the coordinator.
-        let verifier = environment.coordinator_verifier();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
         assert!(verifier.is_verifier());
 
         // Initialize a new coordinator state.
@@ -1608,8 +1607,8 @@ mod tests {
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
-        let contributor = environment.coordinator_contributor();
-        let verifier = environment.coordinator_verifier();
+        let contributor = test_coordinator_contributor(&environment).unwrap();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -1670,8 +1669,6 @@ mod tests {
 
     #[test]
     fn test_update_queue_assignment() {
-        test_logger();
-
         let environment = TEST_ENVIRONMENT.clone();
 
         // Initialize a new coordinator state.
@@ -1770,7 +1767,7 @@ mod tests {
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor of the coordinator.
-        let contributor = environment.coordinator_contributor();
+        let contributor = test_coordinator_contributor(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -1805,7 +1802,7 @@ mod tests {
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the verifier of the coordinator.
-        let verifier = environment.coordinator_verifier();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -1837,13 +1834,11 @@ mod tests {
 
     #[test]
     fn test_commit_next_round() {
-        test_logger();
-
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
-        let contributor = environment.coordinator_contributor();
-        let verifier = environment.coordinator_verifier();
+        let contributor = test_coordinator_contributor(&environment).unwrap();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -1919,13 +1914,11 @@ mod tests {
 
     #[test]
     fn test_rollback_next_round() {
-        test_logger();
-
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
-        let contributor = environment.coordinator_contributor();
-        let verifier = environment.coordinator_verifier();
+        let contributor = test_coordinator_contributor(&environment).unwrap();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());

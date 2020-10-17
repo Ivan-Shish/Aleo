@@ -5,6 +5,7 @@ use crate::{
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 type BatchSize = usize;
@@ -15,17 +16,23 @@ type Power = usize;
 
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Deployment {
+    Testing,
+    Development,
+    Production,
+}
+
 #[derive(Debug, Clone)]
 pub enum Parameters {
     AleoInner,
     AleoOuter,
     AleoUniversal,
-    AleoTest3Chunks,
-    AleoTest8Chunks,
-    AleoTest20Chunks,
-    AleoTestChunks(NumberOfChunks),
-    AleoTestCustom(NumberOfChunks, Power, BatchSize),
     Custom(Settings),
+    Test3Chunks,
+    Test8Chunks,
+    TestChunks(NumberOfChunks),
+    TestCustom(NumberOfChunks, Power, BatchSize),
 }
 
 impl Parameters {
@@ -35,14 +42,13 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::AleoTest3Chunks => Self::aleo_test_3_chunks(),
-            Parameters::AleoTest8Chunks => Self::aleo_test_8_chunks(),
-            Parameters::AleoTest20Chunks => Self::aleo_test_20_chunks(),
-            Parameters::AleoTestChunks(number_of_chunks) => Self::aleo_test_chunks(number_of_chunks),
-            Parameters::AleoTestCustom(number_of_chunks, power, batch_size) => {
-                Self::aleo_test_custom(number_of_chunks, power, batch_size)
-            }
             Parameters::Custom(settings) => settings.clone(),
+            Parameters::Test3Chunks => Self::test_3_chunks(),
+            Parameters::Test8Chunks => Self::test_8_chunks(),
+            Parameters::TestChunks(number_of_chunks) => Self::test_chunks(number_of_chunks),
+            Parameters::TestCustom(number_of_chunks, power, batch_size) => {
+                Self::test_custom(number_of_chunks, power, batch_size)
+            }
         }
     }
 
@@ -79,40 +85,29 @@ impl Parameters {
         )
     }
 
-    fn aleo_test_3_chunks() -> Settings {
+    fn test_3_chunks() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
             Power::from(8_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(170_usize),
+            ChunkSize::from(172_usize),
         )
     }
 
-    fn aleo_test_8_chunks() -> Settings {
+    fn test_8_chunks() -> Settings {
         (
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
             Power::from(14_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(4095_usize),
+            ChunkSize::from(4096_usize),
         )
     }
 
-    fn aleo_test_20_chunks() -> Settings {
-        (
-            ContributionMode::Chunked,
-            ProvingSystem::Groth16,
-            CurveKind::Bls12_377,
-            Power::from(14_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(1638_usize),
-        )
-    }
-
-    fn aleo_test_chunks(number_of_chunks: &NumberOfChunks) -> Settings {
+    fn test_chunks(number_of_chunks: &NumberOfChunks) -> Settings {
         let proving_system = ProvingSystem::Groth16;
         let power = 14_usize;
         let batch_size = 128_usize;
@@ -126,7 +121,7 @@ impl Parameters {
         )
     }
 
-    fn aleo_test_custom(number_of_chunks: &NumberOfChunks, power: &Power, batch_size: &BatchSize) -> Settings {
+    fn test_custom(number_of_chunks: &NumberOfChunks, power: &Power, batch_size: &BatchSize) -> Settings {
         let proving_system = ProvingSystem::Groth16;
         (
             ContributionMode::Chunked,
@@ -139,222 +134,165 @@ impl Parameters {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Environment {
-    Test(Parameters),
-    Development(Parameters),
-    Production(Parameters),
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Environment {
+    /// The parameter settings of this coordinator.
+    parameters: Settings,
+    /// The compressed input setting of the coordinator.
+    compressed_inputs: UseCompression,
+    /// The compressed output setting of the coordinator.
+    compressed_outputs: UseCompression,
+    /// The input correctness check preference of the coordinator.
+    check_input_for_correctness: CheckForCorrectness,
+
+    /// The minimum number of contributors permitted to participate in a round.
+    minimum_contributors_per_round: usize,
+    /// The maximum number of contributors permitted to participate in a round.
+    maximum_contributors_per_round: usize,
+    /// The minimum number of verifiers permitted to participate in a round.
+    minimum_verifiers_per_round: usize,
+    /// The maximum number of verifiers permitted to participate in a round.
+    maximum_verifiers_per_round: usize,
+    /// The number of chunks a contributor is authorized to lock in tandem in a round.
+    contributor_lock_chunk_limit: usize,
+    /// The number of chunks a verifier is authorized to lock in tandem in a round.
+    verifier_lock_chunk_limit: usize,
+    /// The number of minutes tolerated prior to assuming a contributor has dropped.
+    contributor_timeout_in_minutes: u16,
+    /// The number of minutes tolerated prior to assuming a verifier has dropped.
+    verifier_timeout_in_minutes: u16,
+    /// The number of drops tolerated by a participant before banning them from future rounds.
+    participant_ban_threshold: u16,
+
+    /// The contributors managed by the coordinator.
+    coordinator_contributors: Vec<Participant>,
+    /// The verifiers managed by the coordinator.
+    coordinator_verifiers: Vec<Participant>,
+
+    /// The software version number of the coordinator.
+    software_version: u64,
+    /// The deployment environment of this coordinator.
+    deployment: Deployment,
+    /// The base directory for disk storage of this coordinator.
+    local_base_directory: String,
+    /// The network address for the coordinator.
+    address: String,
+    /// The network port for the coordinator.
+    port: u16,
 }
 
 impl Environment {
+    ///
     /// Returns the parameter settings of the coordinator.
-    pub fn to_settings(&self) -> Settings {
-        match self {
-            Environment::Test(parameters) => parameters.to_settings(),
-            Environment::Development(parameters) => parameters.to_settings(),
-            Environment::Production(parameters) => parameters.to_settings(),
-        }
+    ///
+    pub fn parameters(&self) -> Settings {
+        self.parameters
     }
 
     ///
-    /// Returns the appropriate number of chunks for the coordinator
-    /// to run given a proof system, power and chunk size.
+    /// Returns the compressed input setting of the coordinator.
     ///
-    pub fn number_of_chunks(&self) -> u64 {
-        let (_, proving_system, _, power, _, chunk_size) = match self {
-            Environment::Test(parameters) => parameters.to_settings(),
-            Environment::Development(parameters) => parameters.to_settings(),
-            Environment::Production(parameters) => parameters.to_settings(),
-        };
-        (total_size_in_g1!(proving_system, power) + chunk_size as u64 - 1) / chunk_size as u64
+    /// The default choice should be `UseCompression::No` to minimize time
+    /// spent by contributors on decompressing inputs.
+    ///
+    pub const fn compressed_inputs(&self) -> UseCompression {
+        self.compressed_inputs
+    }
+
+    ///
+    /// Returns the compressed output setting of the coordinator.
+    ///
+    /// The default choice should be `UseCompression::Yes` to minimize time
+    /// spent by the coordinator and contributors on uploading chunks.
+    ///
+    pub const fn compressed_outputs(&self) -> UseCompression {
+        self.compressed_outputs
+    }
+
+    ///
+    /// Returns the input correctness check preference of the coordinator.
+    ///
+    /// The default choice should be `CheckForCorrectness::No` to minimize time
+    /// spent by the contributors on reading chunks.
+    ///
+    pub fn check_input_for_correctness(&self) -> CheckForCorrectness {
+        self.check_input_for_correctness
     }
 
     ///
     /// Returns the minimum number of contributors permitted to
     /// participate in a round.
     ///
-    pub fn minimum_contributors_per_round(&self) -> usize {
-        match self {
-            Environment::Test(_) => 1,
-            Environment::Development(_) => 1,
-            Environment::Production(_) => 1,
-        }
+    pub const fn minimum_contributors_per_round(&self) -> usize {
+        self.minimum_contributors_per_round
     }
 
     ///
     /// Returns the maximum number of contributors permitted to
     /// participate in a round.
     ///
-    pub fn maximum_contributors_per_round(&self) -> usize {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn maximum_contributors_per_round(&self) -> usize {
+        self.maximum_contributors_per_round
     }
 
     ///
     /// Returns the minimum number of verifiers permitted to
     /// participate in a round.
     ///
-    pub fn minimum_verifiers_per_round(&self) -> usize {
-        match self {
-            Environment::Test(_) => 1,
-            Environment::Development(_) => 1,
-            Environment::Production(_) => 1,
-        }
+    pub const fn minimum_verifiers_per_round(&self) -> usize {
+        self.minimum_verifiers_per_round
     }
 
     ///
     /// Returns the maximum number of verifiers permitted to
     /// participate in a round.
     ///
-    pub fn maximum_verifiers_per_round(&self) -> usize {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn maximum_verifiers_per_round(&self) -> usize {
+        self.maximum_verifiers_per_round
     }
 
     ///
     /// Returns the number of chunks a contributor is
     /// authorized to lock in tandem at any point during a round.
     ///
-    pub fn contributor_lock_chunk_limit(&self) -> usize {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn contributor_lock_chunk_limit(&self) -> usize {
+        self.contributor_lock_chunk_limit
     }
 
     ///
     /// Returns the number of chunks a verifier is
     /// authorized to lock in tandem at any point during a round.
     ///
-    pub fn verifier_lock_chunk_limit(&self) -> usize {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn verifier_lock_chunk_limit(&self) -> usize {
+        self.verifier_lock_chunk_limit
     }
 
     ///
     /// Returns the number of minutes the coordinator tolerates
     /// before assuming a contributor has disconnected.
     ///
-    pub fn contributor_timeout_in_minutes(&self) -> u16 {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn contributor_timeout_in_minutes(&self) -> u16 {
+        self.contributor_timeout_in_minutes
     }
 
     ///
     /// Returns the number of minutes the coordinator tolerates
     /// before assuming a verifier has disconnected.
     ///
-    pub fn verifier_timeout_in_minutes(&self) -> u16 {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn verifier_timeout_in_minutes(&self) -> u16 {
+        self.verifier_timeout_in_minutes
     }
 
     ///
     /// Returns the number of times the coordinator tolerates
     /// a dropped participant before banning them from future rounds.
     ///
-    pub fn participant_ban_threshold(&self) -> u16 {
-        match self {
-            Environment::Test(_) => 5,
-            Environment::Development(_) => 5,
-            Environment::Production(_) => 5,
-        }
+    pub const fn participant_ban_threshold(&self) -> u16 {
+        self.participant_ban_threshold
     }
 
     ///
-    /// Returns the compressed input preference of the coordinator.
-    ///
-    /// By default, the coordinator returns `false` to minimize time
-    /// spent by contributors on decompressing inputs.
-    ///
-    pub const fn compressed_inputs(&self) -> UseCompression {
-        match self {
-            Environment::Test(_) => UseCompression::No,
-            Environment::Development(_) => UseCompression::No,
-            Environment::Production(_) => UseCompression::No,
-        }
-    }
-
-    ///
-    /// Returns the compressed output preference of the coordinator.
-    ///
-    /// By default, the coordinator returns `true` to minimize time
-    /// spent by the coordinator and contributors on uploading chunks.
-    ///
-    pub const fn compressed_outputs(&self) -> UseCompression {
-        match self {
-            Environment::Test(_) => UseCompression::Yes,
-            Environment::Development(_) => UseCompression::Yes,
-            Environment::Production(_) => UseCompression::Yes,
-        }
-    }
-
-    ///
-    /// Returns the input correctness check preference of the coordinator.
-    ///
-    /// By default, the coordinator returns `false` to minimize time
-    /// spent by the contributors on reading chunks.
-    ///
-    pub fn check_input_for_correctness(&self) -> CheckForCorrectness {
-        match self {
-            Environment::Test(_) => CheckForCorrectness::No,
-            Environment::Development(_) => CheckForCorrectness::No,
-            Environment::Production(_) => CheckForCorrectness::No,
-        }
-    }
-
-    /// Returns the base URL for the coordinator.
-    pub fn base_url(&self) -> Url {
-        format!("http://{}:{}", self.address(), self.port())
-            .parse()
-            .expect("Unable to parse base URL")
-    }
-
-    /// Returns the network address of the coordinator.
-    pub const fn address(&self) -> &str {
-        match self {
-            Environment::Test(_) => "localhost",
-            Environment::Development(_) => "0.0.0.0",
-            Environment::Production(_) => "1.2.3.4",
-        }
-    }
-
-    /// Returns the network port of the coordinator.
-    pub const fn port(&self) -> u16 {
-        match self {
-            Environment::Test(_) => 8080,
-            Environment::Development(_) => 8080,
-            Environment::Production(_) => 8080,
-        }
-    }
-
-    /// Returns the base directory for the local locator of this coordinator.
-    pub const fn local_base_directory(&self) -> &str {
-        match self {
-            Environment::Test(_) => "./transcript/test",
-            Environment::Development(_) => "./transcript/development",
-            Environment::Production(_) => "./transcript",
-        }
-    }
-
-    ///
-    /// Returns the contributor managed by the coordinator.
+    /// Returns the contributors managed by the coordinator.
     ///
     /// The primary purpose of this is to establish an identity for the coordinator
     /// when running initialization of each round.
@@ -362,30 +300,64 @@ impl Environment {
     /// This can also be purposed for completing contributions of participants
     /// who may have dropped off and handed over control of their session.
     ///
-    pub fn coordinator_contributor(&self) -> Participant {
-        match self {
-            Environment::Test(_) => Participant::Contributor(format!("test-coordinator-contributor")),
-            Environment::Development(_) => Participant::Contributor(format!("development-coordinator-contributor")),
-            Environment::Production(_) => Participant::Contributor(format!("production-coordinator-contributor")),
-        }
+    pub const fn coordinator_contributors(&self) -> &Vec<Participant> {
+        &self.coordinator_contributors
     }
 
-    /// Returns a verifier managed by the coordinator.
-    pub fn coordinator_verifier(&self) -> Participant {
-        match self {
-            Environment::Test(_) => Participant::Verifier(format!("test-coordinator-verifier")),
-            Environment::Development(_) => Participant::Verifier(format!("development-coordinator-verifier")),
-            Environment::Production(_) => Participant::Verifier(format!("production-coordinator-verifier")),
-        }
+    /// Returns the verifiers managed by the coordinator.
+    pub const fn coordinator_verifiers(&self) -> &Vec<Participant> {
+        &self.coordinator_verifiers
     }
 
-    /// Returns the version number of the coordinator.
-    pub const fn version(&self) -> u64 {
-        match self {
-            Environment::Test(_) => 1,
-            Environment::Development(_) => 1,
-            Environment::Production(_) => 1,
-        }
+    ///
+    /// Returns the software version number of the coordinator.
+    ///
+    pub const fn software_version(&self) -> u64 {
+        self.software_version
+    }
+
+    ///
+    /// Returns the deployment environment of the coordinator.
+    ///
+    pub const fn deployment(&self) -> &Deployment {
+        &self.deployment
+    }
+
+    ///
+    /// Returns the base directory for disk storage of this coordinator.
+    ///
+    pub fn local_base_directory(&self) -> &str {
+        &self.local_base_directory
+    }
+
+    ///
+    /// Returns the network address of the coordinator.
+    ///
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    ///
+    /// Returns the network port of the coordinator.
+    ///
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    ///
+    /// Returns the base URL for the coordinator.
+    ///
+    pub fn base_url(&self) -> Url {
+        format!("http://{}:{}", self.address, self.port).parse().unwrap()
+    }
+
+    ///
+    /// Returns the appropriate number of chunks for the coordinator
+    /// to run given a proof system, power and chunk size.
+    ///
+    pub fn number_of_chunks(&self) -> u64 {
+        let (_, proving_system, _, power, _, chunk_size) = self.parameters;
+        (total_size_in_g1!(proving_system, power) + chunk_size as u64 - 1) / chunk_size as u64
     }
 
     /// Returns the storage system of the coordinator.
@@ -394,21 +366,194 @@ impl Environment {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestingEnvironment {
+    pub environment: Environment,
+}
+
+impl From<Parameters> for TestingEnvironment {
+    fn from(parameters: Parameters) -> Self {
+        let mut testing = Self::default();
+        testing.environment.parameters = parameters.to_settings();
+        testing
+    }
+}
+
+impl std::ops::Deref for TestingEnvironment {
+    type Target = Environment;
+
+    fn deref(&self) -> &Self::Target {
+        &self.environment
+    }
+}
+
+impl std::default::Default for TestingEnvironment {
+    fn default() -> Self {
+        Self {
+            environment: Environment {
+                parameters: Parameters::Test3Chunks.to_settings(),
+                compressed_inputs: UseCompression::No,
+                compressed_outputs: UseCompression::Yes,
+                check_input_for_correctness: CheckForCorrectness::No,
+
+                minimum_contributors_per_round: 1,
+                maximum_contributors_per_round: 5,
+                minimum_verifiers_per_round: 1,
+                maximum_verifiers_per_round: 5,
+                contributor_lock_chunk_limit: 5,
+                verifier_lock_chunk_limit: 5,
+                contributor_timeout_in_minutes: 5,
+                verifier_timeout_in_minutes: 5,
+                participant_ban_threshold: 5,
+
+                coordinator_contributors: vec![Participant::new_contributor("testing-coordinator-contributor")],
+                coordinator_verifiers: vec![Participant::new_verifier("testing-coordinator-verifier")],
+
+                software_version: 1,
+                deployment: Deployment::Testing,
+                local_base_directory: "./transcript/testing".to_string(),
+                address: "localhost".to_string(),
+                port: 8080,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevelopmentEnvironment {
+    environment: Environment,
+}
+
+impl From<Parameters> for DevelopmentEnvironment {
+    fn from(parameters: Parameters) -> Self {
+        let mut development = Self::default();
+        development.environment.parameters = parameters.to_settings();
+        development
+    }
+}
+
+impl std::ops::Deref for DevelopmentEnvironment {
+    type Target = Environment;
+
+    fn deref(&self) -> &Self::Target {
+        &self.environment
+    }
+}
+
+impl std::ops::DerefMut for DevelopmentEnvironment {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.environment
+    }
+}
+
+impl std::default::Default for DevelopmentEnvironment {
+    fn default() -> Self {
+        Self {
+            environment: Environment {
+                parameters: Parameters::AleoInner.to_settings(),
+                compressed_inputs: UseCompression::No,
+                compressed_outputs: UseCompression::Yes,
+                check_input_for_correctness: CheckForCorrectness::No,
+
+                minimum_contributors_per_round: 1,
+                maximum_contributors_per_round: 5,
+                minimum_verifiers_per_round: 1,
+                maximum_verifiers_per_round: 5,
+                contributor_lock_chunk_limit: 5,
+                verifier_lock_chunk_limit: 5,
+                contributor_timeout_in_minutes: 5,
+                verifier_timeout_in_minutes: 5,
+                participant_ban_threshold: 5,
+
+                coordinator_contributors: vec![Participant::new_contributor("development-coordinator-contributor")],
+                coordinator_verifiers: vec![Participant::new_verifier("development-coordinator-verifier")],
+
+                software_version: 1,
+                deployment: Deployment::Development,
+                local_base_directory: "./transcript/development".to_string(),
+                address: "0.0.0.0".to_string(),
+                port: 8080,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProductionEnvironment {
+    environment: Environment,
+}
+
+impl std::ops::Deref for ProductionEnvironment {
+    type Target = Environment;
+
+    fn deref(&self) -> &Self::Target {
+        &self.environment
+    }
+}
+
+impl std::default::Default for ProductionEnvironment {
+    fn default() -> Self {
+        Self {
+            environment: Environment {
+                parameters: Parameters::AleoInner.to_settings(),
+                compressed_inputs: UseCompression::No,
+                compressed_outputs: UseCompression::Yes,
+                check_input_for_correctness: CheckForCorrectness::No,
+
+                minimum_contributors_per_round: 1,
+                maximum_contributors_per_round: 5,
+                minimum_verifiers_per_round: 1,
+                maximum_verifiers_per_round: 5,
+                contributor_lock_chunk_limit: 5,
+                verifier_lock_chunk_limit: 5,
+                contributor_timeout_in_minutes: 5,
+                verifier_timeout_in_minutes: 5,
+                participant_ban_threshold: 5,
+
+                coordinator_contributors: vec![Participant::new_contributor("coordinator-contributor")],
+                coordinator_verifiers: vec![Participant::new_verifier("coordinator-verifier")],
+
+                software_version: 1,
+                deployment: Deployment::Production,
+                local_base_directory: "./transcript".to_string(),
+                address: "0.0.0.0".to_string(),
+                port: 443,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::environment::*;
 
     #[test]
+    fn test_aleo_test_3_chunks() {
+        let parameters = Parameters::Test3Chunks;
+        let (_, _, _, power, _, _) = parameters.to_settings();
+        assert_eq!(Power::from(8_usize), power);
+        assert_eq!(3, TestingEnvironment::from(parameters).number_of_chunks());
+    }
+
+    #[test]
+    fn test_aleo_test_8_chunks() {
+        let parameters = Parameters::Test8Chunks;
+        let (_, _, _, power, _, _) = parameters.to_settings();
+        assert_eq!(Power::from(14_usize), power);
+        assert_eq!(8, TestingEnvironment::from(parameters).number_of_chunks());
+    }
+
+    #[test]
     fn test_custom_chunk_3() {
         let number_of_chunks = 3;
 
-        let parameters = Parameters::AleoTestChunks(number_of_chunks);
+        let parameters = Parameters::TestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(10922_usize), chunk_size);
+        assert_eq!(ChunkSize::from(10923_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
-            Environment::Test(parameters).number_of_chunks()
+            TestingEnvironment::from(parameters).number_of_chunks()
         );
     }
 
@@ -416,13 +561,13 @@ mod tests {
     fn test_custom_chunk_8() {
         let number_of_chunks = 8;
 
-        let parameters = Parameters::AleoTestChunks(number_of_chunks);
+        let parameters = Parameters::TestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(4095_usize), chunk_size);
+        assert_eq!(ChunkSize::from(4096_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
-            Environment::Test(parameters).number_of_chunks()
+            TestingEnvironment::from(parameters).number_of_chunks()
         );
     }
 
@@ -430,13 +575,13 @@ mod tests {
     fn test_custom_chunk_20() {
         let number_of_chunks = 20;
 
-        let parameters = Parameters::AleoTestChunks(number_of_chunks);
+        let parameters = Parameters::TestChunks(number_of_chunks);
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(ChunkSize::from(1638_usize), chunk_size);
+        assert_eq!(ChunkSize::from(1639_usize), chunk_size);
         assert_eq!(
             number_of_chunks as u64,
-            Environment::Test(parameters).number_of_chunks()
+            TestingEnvironment::from(parameters).number_of_chunks()
         );
     }
 }

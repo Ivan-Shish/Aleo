@@ -78,14 +78,14 @@ macro_rules! total_size_in_g1 {
 /// and the number of powers.
 #[macro_export]
 macro_rules! chunk_size {
-    ($num_chunks:ident, $proving_system:ident, $power:ident) => {{ (total_size_in_g1!($proving_system, $power) / $num_chunks) }};
+    ($num_chunks:ident, $proving_system:ident, $power:ident) => {{ ((total_size_in_g1!($proving_system, $power) + $num_chunks - 1) / $num_chunks) }};
 }
 
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
-/// an instance of `Settings`, a round height, and a compressed setting.
+/// an instance of `Settings`, and a compressed setting.
 #[macro_export]
 macro_rules! round_filesize {
-    ($curve:ident, $settings:ident, $round:ident, $compressed:ident) => {{
+    ($curve:ident, $settings:ident, $compressed:ident) => {{
         let full_parameters = phase1_full_parameters!($curve, $settings);
         full_parameters.get_length($compressed) as u64
     }};
@@ -95,10 +95,10 @@ macro_rules! round_filesize {
 #[macro_export]
 macro_rules! storage {
     ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
-        match $env {
-            Environment::Test(_) => Box::new($l1::load($env)?),
-            Environment::Development(_) => Box::new($l2::load($env)?),
-            Environment::Production(_) => Box::new($l3::load($env)?),
+        match *$env.deployment() {
+            Deployment::Testing => Box::new($l1::load($env)?),
+            Deployment::Development => Box::new($l2::load($env)?),
+            Deployment::Production => Box::new($l3::load($env)?),
         }
     }};
 }
@@ -127,5 +127,13 @@ macro_rules! return_error {
     ($error:ident, $message:ident) => {{
         error!($message);
         return $error;
+    }};
+}
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! test_report {
+    ($function:expr) => {{
+        test_report(function_name!(), $function);
     }};
 }

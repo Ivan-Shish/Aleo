@@ -33,10 +33,7 @@ impl Aggregation {
         }
 
         // Initialize the round locator.
-        storage.initialize(
-            round_locator.clone(),
-            Object::round_file_size(environment, round_height),
-        )?;
+        storage.initialize(round_locator.clone(), Object::round_file_size(environment))?;
 
         // Load the contribution files.
         let readers = Self::readers(environment, storage, round)?;
@@ -44,7 +41,7 @@ impl Aggregation {
 
         // Run aggregation on the given round.
         let chunk_id = 0usize;
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
@@ -73,7 +70,7 @@ impl Aggregation {
         // trace!("Full parameters {:#?}", phase1_full_parameters!(Bls12_377, settings));
 
         // Run aggregate verification on the given round.
-        let settings = environment.to_settings();
+        let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;
         match curve {
             CurveKind::Bls12_377 => Phase1::aggregate_verification(
@@ -204,7 +201,7 @@ mod tests {
                 }
 
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), seed);
+                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), &seed);
                 if contribute.is_err() {
                     error!(
                         "Failed to run computation as contributor {:?}\n{}",
