@@ -33,10 +33,7 @@ impl Aggregation {
         }
 
         // Initialize the round locator.
-        storage.initialize(
-            round_locator.clone(),
-            Object::round_file_size(environment, round_height),
-        )?;
+        storage.initialize(round_locator.clone(), Object::round_file_size(environment))?;
 
         // Load the contribution files.
         let readers = Self::readers(environment, storage, round)?;
@@ -204,7 +201,7 @@ mod tests {
                 }
 
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), seed);
+                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), &seed);
                 if contribute.is_err() {
                     error!(
                         "Failed to run computation as contributor {:?}\n{}",

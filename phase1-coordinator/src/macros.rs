@@ -82,10 +82,10 @@ macro_rules! chunk_size {
 }
 
 /// Returns the final round filesize given an instantiation of `PairingEngine`,
-/// an instance of `Settings`, a round height, and a compressed setting.
+/// an instance of `Settings`, and a compressed setting.
 #[macro_export]
 macro_rules! round_filesize {
-    ($curve:ident, $settings:ident, $round:ident, $compressed:ident) => {{
+    ($curve:ident, $settings:ident, $compressed:ident) => {{
         let full_parameters = phase1_full_parameters!($curve, $settings);
         full_parameters.get_length($compressed) as u64
     }};

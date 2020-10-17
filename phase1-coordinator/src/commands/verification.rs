@@ -321,7 +321,7 @@ mod tests {
                 &mut storage,
                 challenge_locator,
                 response_locator,
-                seed,
+                &seed,
             )
             .unwrap();
 

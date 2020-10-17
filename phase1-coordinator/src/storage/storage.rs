@@ -52,13 +52,13 @@ impl Object {
     }
 
     /// Returns the expected file size of an aggregated round.
-    pub fn round_file_size(environment: &Environment, round_height: u64) -> u64 {
+    pub fn round_file_size(environment: &Environment) -> u64 {
         let compressed = environment.compressed_inputs();
         let settings = environment.to_settings();
         let (_, _, curve, _, _, _) = settings;
         match curve {
-            CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, round_height, compressed),
-            CurveKind::BW6 => round_filesize!(BW6_761, settings, round_height, compressed),
+            CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, compressed),
+            CurveKind::BW6 => round_filesize!(BW6_761, settings, compressed),
         }
     }
 
@@ -128,6 +128,9 @@ pub trait Storage: Send + Sync + StorageLocator + StorageObject {
     /// Returns `true` if a given locator exists in storage. Otherwise, returns `false`.
     fn exists(&self, locator: &Locator) -> bool;
 
+    /// Returns `true` if a given locator is opened in storage. Otherwise, returns `false`.
+    fn is_open(&self, locator: &Locator) -> bool;
+
     /// Returns a copy of an object at the given locator in storage, if it exists.
     fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError>;
 
@@ -140,11 +143,11 @@ pub trait Storage: Send + Sync + StorageLocator + StorageObject {
     /// Copies the object in the given source locator to the given destination locator.
     fn copy(&mut self, source_locator: &Locator, destination_locator: &Locator) -> Result<(), CoordinatorError>;
 
-    /// Returns the size of the object stored at the given locator.
-    fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
-
     /// Removes a object from storage for a given locator.
     fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError>;
+
+    /// Returns the size of the object stored at the given locator.
+    fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
 }
 
 pub trait StorageLocator {

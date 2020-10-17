@@ -10,13 +10,15 @@ use setup_utils::calculate_hash;
 use crate::commands::{Seed, SEED_LENGTH};
 use chrono::{DateTime, Utc};
 use rand::RngCore;
+use secrecy::{ExposeSecret, SecretVec};
 use std::{
+    convert::TryInto,
     fmt,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use tokio::{task, time::delay_for};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -62,6 +64,12 @@ pub enum CoordinatorError {
     IOError(std::io::Error),
     JsonError(serde_json::Error),
     LocatorDeserializationFailed,
+    LocatorFileAlreadyExists,
+    LocatorFileAlreadyExistsAndOpen,
+    LocatorFileAlreadyOpen,
+    LocatorFileMissing,
+    LocatorFileNotOpen,
+    LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
     NextRoundAlreadyInPrecommit,
     NextRoundShouldBeEmpty,
@@ -114,12 +122,15 @@ pub enum CoordinatorError {
     StorageFailed,
     StorageInitializationFailed,
     StorageLocatorAlreadyExists,
+    StorageLocatorAlreadyExistsAndOpen,
     StorageLocatorFormatIncorrect,
     StorageLocatorMissing,
+    StorageLocatorNotOpen,
     StorageLockFailed,
     StorageReaderFailed,
     StorageSizeLookupFailed,
     StorageUpdateFailed,
+    TryFromSliceError(std::array::TryFromSliceError),
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
     Url(url::ParseError),
@@ -143,6 +154,12 @@ impl From<serde_json::Error> for CoordinatorError {
 impl From<setup_utils::Error> for CoordinatorError {
     fn from(error: setup_utils::Error) -> Self {
         CoordinatorError::Phase1Setup(error)
+    }
+}
+
+impl From<std::array::TryFromSliceError> for CoordinatorError {
+    fn from(error: std::array::TryFromSliceError) -> Self {
+        CoordinatorError::TryFromSliceError(error)
     }
 }
 
@@ -212,13 +229,18 @@ impl Coordinator {
     ///
     #[inline]
     pub async fn initialize(&self) -> Result<(), CoordinatorError> {
+        info!("Coordinator is booting up");
+
+        // TODO (howardwu): Isolate this and persist it securely on device.
+        let seed = {
+            // Load or initialize the seed for the contributor of the coordinator.
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
+            SecretVec::new(seed.to_vec())
+        };
+
         // Fetch the current round height from storage.
         let current_round_height = self.current_round_height()?;
-
-        // Set the current round height for coordinator state.
-        let mut state = self.state.write().unwrap();
-        state.set_current_round_height(current_round_height);
-        drop(state);
 
         // If this is a new ceremony, execute the first round to initialize the ceremony.
         if current_round_height == 0 {
@@ -229,6 +251,9 @@ impl Coordinator {
             {
                 // Acquire the state write lock.
                 let mut state = self.state.write().unwrap();
+
+                // Set the current round height to initialize coordinator state.
+                state.set_current_round_height(current_round_height);
 
                 // Add the contributor and verifier of the coordinator to execute round 1.
                 state.add_to_queue(contributor.clone(), 10)?;
@@ -246,25 +271,29 @@ impl Coordinator {
             info!("Initialized round 1");
 
             info!("Add contributions and verifications for round 1");
-            let mut seed: Seed = [0; SEED_LENGTH];
-            rand::thread_rng().fill_bytes(&mut seed[..]);
-            for chunk_id in 0..self.environment.number_of_chunks() {
-                debug!("Computing contributions for round 1 chunk {}", chunk_id);
-                let (_chunk_id, _previous_response_locator, _challenge_locator, response_locator) =
-                    self.try_lock(&contributor)?;
-                self.run_computation(1, chunk_id, 1, &contributor, seed)?;
-                let _response_locator = self.try_contribute(&contributor, &response_locator)?;
-                debug!("Computed contributions for round 1 chunk {}", chunk_id);
+            for _ in 0..self.environment.number_of_chunks() {
+                {
+                    let (chunk_id, _previous_response, _challenge, response) = self.try_lock(&contributor)?;
 
-                debug!("Running verification for round 1 chunk {}", chunk_id);
-                let (_chunk_id, _challenge_locator, _response_locator, next_challenge_locator) =
-                    self.try_lock(&verifier)?;
-                let _next_challenge_locator = self.run_verification(1, chunk_id, 1, &verifier)?;
-                let _empty = self.try_verify(&verifier, &next_challenge_locator)?;
-                debug!("Running verification for round 1 chunk {}", chunk_id);
+                    debug!("Computing contributions for round 1 chunk {}", chunk_id);
+                    self.run_computation(1, chunk_id, 1, &contributor, seed.expose_secret()[..].try_into()?)?;
+                    let _response = self.try_contribute(&contributor, &response)?;
+                    debug!("Computed contributions for round 1 chunk {}", chunk_id);
+                }
+
+                {
+                    let (chunk_id, _challenge, _response, next_challenge) = self.try_lock(&verifier)?;
+
+                    debug!("Running verification for round 1 chunk {}", chunk_id);
+                    let _next_challenge = self.run_verification(1, chunk_id, 1, &verifier)?;
+                    self.try_verify(&verifier, &next_challenge)?;
+                    debug!("Running verification for round 1 chunk {}", chunk_id);
+                }
             }
             info!("Added contributions and verifications for round 1");
         }
+
+        info!("{}", serde_json::to_string_pretty(&self.current_round()?)?);
 
         // Clone the coordinator.
         let coordinator = self.clone();
@@ -280,6 +309,31 @@ impl Coordinator {
                 delay_for(Duration::from_secs(10)).await;
             }
         });
+
+        info!("Coordinator has booted up");
+        Ok(())
+    }
+
+    #[inline]
+    pub fn shutdown_listener(self) -> anyhow::Result<()> {
+        ctrlc::set_handler(move || {
+            warn!("\n\nATTENTION - Coordinator is shutting down...\n\n");
+
+            // Acquire the coordinator state lock.
+            let state = self.state.write().unwrap();
+            debug!("Coordinator has safely locked state");
+
+            // Print the final coordinator state.
+            let final_state = serde_json::to_string_pretty(&*state).unwrap();
+            info!("\n\nFinal Coordinator State\n\n{}\n\n", final_state);
+
+            // Acquire the storage lock.
+            let storage = self.storage.write().unwrap();
+            debug!("Coordinator has safely shutdown storage");
+
+            info!("\n\nCoordinator has safely shutdown all operations\n\nGoodbye.\n\n");
+            std::process::exit(0);
+        })?;
 
         Ok(())
     }
@@ -1309,7 +1363,7 @@ impl Coordinator {
         chunk_id: u64,
         contribution_id: u64,
         participant: &Participant,
-        seed: Seed,
+        seed: &Seed,
     ) -> Result<(), CoordinatorError> {
         info!(
             "Running computation for round {} chunk {} contribution {} as {}",
@@ -1742,7 +1796,7 @@ mod tests {
             rand::thread_rng().fill_bytes(&mut seed[..]);
             assert!(
                 coordinator
-                    .run_computation(round_height, chunk_id, contribution_id, &contributor, seed)
+                    .run_computation(round_height, chunk_id, contribution_id, &contributor, &seed)
                     .is_ok()
             );
         }
@@ -1784,7 +1838,7 @@ mod tests {
         rand::thread_rng().fill_bytes(&mut seed[..]);
         assert!(
             coordinator
-                .run_computation(round_height, chunk_id, contribution_id, contributor, seed)
+                .run_computation(round_height, chunk_id, contribution_id, contributor, &seed)
                 .is_ok()
         );
 
@@ -1869,7 +1923,7 @@ mod tests {
 
                 // Run computation as contributor.
                 let contribute =
-                    coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
+                    coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
                 if contribute.is_err() {
                     println!(
                         "Failed to run computation for chunk {} as contributor {:?}\n{}",
@@ -1988,7 +2042,7 @@ mod tests {
 
                     // Run computation as contributor.
                     let contribute =
-                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
+                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
@@ -2115,7 +2169,7 @@ mod tests {
                     };
 
                     let contribute =
-                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, seed);
+                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
@@ -2246,7 +2300,6 @@ mod tests {
     }
 
     #[test]
-    #[named]
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
