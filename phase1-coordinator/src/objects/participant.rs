@@ -1,23 +1,14 @@
-use rocket::{
-    data::{self, FromDataSimple},
-    http::{ContentType, Status},
-    Data,
-    Outcome,
-    Outcome::*,
-    Request,
+use serde::{
+    de::{Deserializer, Error},
+    Deserialize,
+    Serialize,
+    Serializer,
 };
-use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_diff::SerdeDiff;
-use std::{
-    fmt::{self},
-    io::Read,
-};
+use std::fmt::{self};
 
 pub type ContributorId = String;
 pub type VerifierId = String;
-
-// Always use a limit to prevent DoS attacks.
-const DATA_LIMIT: u64 = 256;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(untagged)]
@@ -27,9 +18,14 @@ pub enum Participant {
 }
 
 impl Participant {
-    /// Creates a new instance of `Participant`.
-    pub fn new_contributor(participant: String) -> Self {
-        Participant::Contributor(participant)
+    /// Creates a new contributor instance of `Participant`.
+    pub fn new_contributor(participant: &str) -> Self {
+        Participant::Contributor(participant.to_string())
+    }
+
+    /// Creates a new verifier instance of `Participant`.
+    pub fn new_verifier(participant: &str) -> Self {
+        Participant::Verifier(participant.to_string())
     }
 
     /// Returns `true` if the participant is a contributor.
@@ -48,26 +44,6 @@ impl Participant {
     }
 }
 
-impl FromDataSimple for Participant {
-    type Error = String;
-
-    fn from_data(req: &Request, data: Data) -> data::Outcome<Self, String> {
-        // Ensure the content type is correct before opening the data.
-        if req.content_type() != Some(&ContentType::new("application", "x-participant")) {
-            return Outcome::Forward(data);
-        }
-
-        // Read the data as a participant.
-        let mut participant = String::new();
-        if let Err(e) = data.open().take(DATA_LIMIT).read_to_string(&mut participant) {
-            return Failure((Status::InternalServerError, format!("{:?}", e)));
-        }
-
-        // By default, we will always set this to a contributor.
-        Success(Participant::new_contributor(participant))
-    }
-}
-
 impl fmt::Display for Participant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -77,7 +53,83 @@ impl fmt::Display for Participant {
     }
 }
 
+/// Serializes a optional participant to an optional string.
+pub fn serialize_optional_participant_to_optional_string<S>(
+    participant: &Option<Participant>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match participant {
+        Some(participant) => serializer.serialize_some(&match participant {
+            Participant::Contributor(id) => Some(("contributor", id.as_str())),
+            Participant::Verifier(id) => Some(("verifier", id.as_str())),
+        }),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Deserializes a optional participant to an optional string.
+pub fn deserialize_optional_participant_to_optional_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Participant>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        OptionalParticipant(Option<(String, String)>),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::OptionalParticipant(participant) => match participant {
+            Some((variant, id)) => match variant.as_str() {
+                "contributor" => Ok(Some(Participant::Contributor(id))),
+                "verifier" => Ok(Some(Participant::Verifier(id))),
+                _ => Ok(None),
+            },
+            None => Ok(None),
+        },
+    }
+}
+
+/// Serializes a participant to a string.
+pub fn serialize_participant_to_string<S>(participant: &Participant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_some(&match participant {
+        Participant::Contributor(id) => ("contributor", id.as_str()),
+        Participant::Verifier(id) => ("verifier", id.as_str()),
+    })
+}
+
+/// Deserializes a participant to a string.
+pub fn deserialize_participant_to_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ParticipantString {
+        Participant((String, String)),
+    }
+
+    match ParticipantString::deserialize(deserializer)? {
+        ParticipantString::Participant(participant) => match participant {
+            (variant, id) => match variant.as_str() {
+                "contributor" => Ok(Participant::Contributor(id)),
+                "verifier" => Ok(Participant::Verifier(id)),
+                _ => Err(D::Error::custom("invalid participant type")),
+            },
+        },
+    }
+}
+
 /// Deserializes a contributor from a string.
+#[allow(dead_code)]
 pub fn deserialize_contributor_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
 where
     D: Deserializer<'de>,
@@ -123,7 +175,6 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -133,19 +184,12 @@ where
                 result.push(Participant::Contributor(id))
             }
             Ok(result)
-        } // ParticipantString::Monolith(ids) => {
-          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
-          //
-          //     let mut result = Vec::with_capacity(ids.len());
-          //     for id in ids {
-          //         result.push(Participant::Contributor(id))
-          //     }
-          //     Ok(result)
-          // }
+        }
     }
 }
 
 /// Deserializes a verifier from a string.
+#[allow(dead_code)]
 pub fn deserialize_verifier_from_string<'de, D>(deserializer: D) -> Result<Participant, D::Error>
 where
     D: Deserializer<'de>,
@@ -191,7 +235,6 @@ where
     #[serde(untagged)]
     enum ParticipantString {
         List(Vec<String>),
-        // Monolith(String),
     }
 
     match ParticipantString::deserialize(deserializer)? {
@@ -201,14 +244,6 @@ where
                 result.push(Participant::Verifier(id))
             }
             Ok(result)
-        } // ParticipantString::Monolith(ids) => {
-          //     let ids: Vec<String> = serde_json::from_str(&ids).unwrap();
-          //
-          //     let mut result = Vec::with_capacity(ids.len());
-          //     for id in ids {
-          //         result.push(Participant::Verifier(id))
-          //     }
-          //     Ok(result)
-          // }
+        }
     }
 }
