@@ -1,6 +1,6 @@
 pub use super::{coordinator::*, round::*};
 
-pub use ::function_name::named;
+pub use function_name::named;
 pub use serde_diff::{Apply, Diff, SerdeDiff};
 pub use serial_test::serial;
 pub use tracing::*;
