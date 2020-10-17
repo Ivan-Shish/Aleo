@@ -3,6 +3,7 @@ use phase1_coordinator::{
     Coordinator,
 };
 
+use tokio::task;
 use tracing::info;
 
 #[cfg(not(feature = "silent"))]
@@ -13,25 +14,14 @@ fn init_logger() {
 
     static INSTANCE: OnceCell<()> = OnceCell::new();
     INSTANCE.get_or_init(|| {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
+        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
         tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     });
 }
 
 #[inline]
 async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
-    info!("Starting coordinator");
-    let coordinator = Coordinator::new(environment.clone())?;
-
-    info!("Chunk size is {}", environment.to_settings().5);
-    info!("{:#?}", environment.to_settings());
-
-    coordinator.initialize().await?;
-
-    info!("Coordinator is ready");
-    info!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
-
-    Ok(coordinator)
+    Ok(Coordinator::new(environment.clone())?)
 }
 
 #[tokio::main]
@@ -40,7 +30,38 @@ pub async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "silent"))]
     init_logger();
 
-    coordinator(&Environment::Development(Parameters::AleoTestCustom(8, 12, 256))).await?;
+    // Set the environment.
+    let environment = Environment::Development(Parameters::AleoTestCustom(8, 12, 256));
+
+    // Instantiate the coordinator.
+    let coordinator = coordinator(&environment).await?;
+
+    // Initialize the coordinator.
+    let operator = coordinator.clone();
+    {
+        task::spawn(async move {
+            info!("Chunk size is {}", environment.to_settings().5);
+            info!("{:#?}", environment.to_settings());
+
+            operator.initialize().await.unwrap();
+        });
+    }
+
+    // Initialize the backup procedure.
+    {
+        task::spawn(async move {
+            loop {
+                info!("Backing up coordinator (UNIMPLEMENTED)");
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        });
+    }
+
+    // Initialize the shutdown procedure.
+    let handler = coordinator.clone();
+    {
+        handler.shutdown_listener()?;
+    }
 
     Ok(())
 }

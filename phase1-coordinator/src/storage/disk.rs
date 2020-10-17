@@ -8,8 +8,9 @@ use crate::{
 use itertools::Itertools;
 use memmap::{MmapMut, MmapOptions};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fs::{self, File, OpenOptions},
     io::Write,
     path::Path,
@@ -22,8 +23,8 @@ use tracing::{debug, error, trace};
 pub struct Disk {
     environment: Environment,
     manifest: Arc<RwLock<DiskManifest>>,
-    locators: HashMap<Locator, (Arc<RwLock<MmapMut>>, File)>,
-    locator_path: DiskLocator,
+    open: HashMap<Locator, Arc<RwLock<MmapMut>>>,
+    resolver: DiskResolver,
 }
 
 impl Storage for Disk {
@@ -33,35 +34,45 @@ impl Storage for Disk {
     where
         Self: Sized,
     {
-        trace!("Loading storage");
+        trace!("Loading disk storage");
 
-        // Load the manifest for storage from disk.
-        let manifest = DiskManifest::load(environment.local_base_directory())?;
-        let locators_to_load = manifest.locators.clone();
-
-        // Create the `Storage` instance.
+        // Create a new `Storage` instance, and set the `Environment` and `DiskManifest`.
         let mut storage = Self {
             environment: environment.clone(),
-            manifest: Arc::new(RwLock::new(manifest)),
-            locators: HashMap::default(),
-            locator_path: DiskLocator {
-                base: environment.local_base_directory().to_string(),
-            },
+            manifest: Arc::new(RwLock::new(DiskManifest::load(environment.local_base_directory())?)),
+            open: HashMap::default(),
+            resolver: DiskResolver::new(environment.local_base_directory()),
         };
 
-        // Load the locators from the manifest.
-        for locator in locators_to_load.iter() {
-            let path = storage.to_path(locator)?;
-            trace!("Loading {}", path);
+        // Open the previously opened locators in the manifest.
+        {
+            // Acquire the manifest file read lock.
+            let manifest = storage.manifest.read().unwrap();
 
-            let file = OpenOptions::new().read(true).write(true).open(&path)?;
-            storage.locators.insert(
-                locator.clone(),
-                (
-                    Arc::new(RwLock::new(unsafe { MmapOptions::new().map_mut(&file)? })),
-                    file,
-                ),
-            );
+            // Open the previously opened locators in the manifest.
+            for locator in &manifest.open {
+                // Fetch the locator path.
+                let path = storage.to_path(&locator)?;
+
+                trace!("Loading {}", path);
+
+                // Fetch the locator file.
+                let file = manifest.reopen_file(locator)?;
+
+                // Load the file into memory.
+                let memory = unsafe { MmapOptions::new().map_mut(&file)? };
+
+                // Add the object to the set of opened locators.
+                storage.open.insert(locator.clone(), Arc::new(RwLock::new(memory)));
+            }
+        }
+
+        // Load or initialize the coordinator state.
+        {
+            // Create the coordinator state locator if it does not exist yet.
+            // if !storage.exists(&Locator::CoordinatorState) {
+            //     storage.insert(Locator::CoordinatorState, Object::CoordinatorState)?;
+            // }
         }
 
         // Create the round height locator if it does not exist yet.
@@ -69,7 +80,7 @@ impl Storage for Disk {
             storage.insert(Locator::RoundHeight, Object::RoundHeight(0))?;
         }
 
-        trace!("Loaded storage");
+        trace!("Loaded disk storage");
         Ok(storage)
     }
 
@@ -78,44 +89,23 @@ impl Storage for Disk {
     fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError> {
         trace!("Initializing {}", self.to_path(&locator)?);
 
-        // Check that the locator does not exist in storage.
+        // Check that the locator does not already exist in storage.
         if self.exists(&locator) {
+            error!("Locator in call to initialize() already exists in storage.");
             return Err(CoordinatorError::StorageLocatorAlreadyExists);
         }
 
         // Acquire the manifest file write lock.
         let mut manifest = self.manifest.write().unwrap();
 
-        // Initialize the directory for contribution files, if it does not exist.
-        if let Locator::ContributionFile(round_height, chunk_id, _, _) = locator {
-            // If the file directory does not exist, attempt to initialize it.
-            self.locator_path.chunk_directory_init(round_height, chunk_id);
-        }
-
-        // Load the file path.
-        let path = self.to_path(&locator)?;
-
         // Create the new file.
-        let file = OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
-
-        // Set the file to the given size.
-        trace!("Setting {} to {} bytes", self.to_path(&locator)?, size);
-        file.set_len(size)?;
+        let file = manifest.create_file(&locator, Some(size))?;
 
         // Add the file to the locators.
-        self.locators.insert(
+        self.open.insert(
             locator.clone(),
-            (
-                Arc::new(RwLock::new(unsafe { MmapOptions::new().map_mut(&file)? })),
-                file,
-            ),
+            Arc::new(RwLock::new(unsafe { MmapOptions::new().map_mut(&file)? })),
         );
-
-        // Add the locator to the manifest.
-        if !manifest.locators.insert(locator.clone()) {
-            error!("{} already exists", self.to_path(&locator)?);
-            return Err(CoordinatorError::StorageLocatorAlreadyExists);
-        }
 
         // Save the manifest update to disk.
         manifest.save()?;
@@ -128,10 +118,19 @@ impl Storage for Disk {
     #[inline]
     fn exists(&self, locator: &Locator) -> bool {
         let is_in_manifest = self.manifest.read().unwrap().contains(locator);
-        let is_in_locators = self.locators.contains_key(locator);
+        #[cfg(test)]
+        trace!("Checking if locator exists in storage (manifest = {})", is_in_manifest,);
+        is_in_manifest
+    }
+
+    /// Returns `true` if a given locator is opened in storage. Otherwise, returns `false`.
+    #[inline]
+    fn is_open(&self, locator: &Locator) -> bool {
+        let is_in_manifest = self.manifest.read().unwrap().contains(locator);
+        let is_in_locators = self.open.contains_key(locator);
         #[cfg(test)]
         trace!(
-            "Checking if locator exists in storage (manifest = {}, locators = {})",
+            "Checking if locator file is opened in storage (manifest = {}, locators = {})",
             is_in_manifest,
             is_in_locators
         );
@@ -143,18 +142,23 @@ impl Storage for Disk {
     fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError> {
         trace!("Fetching {}", self.to_path(locator)?);
 
-        // Check that the locator exists in storage.
-        if !self.exists(&locator) {
+        // Check that the given locator exists in storage.
+        if !self.exists(locator) {
             error!("Locator missing in call to get() in storage.");
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
+        // Check that the given locator is opened in storage.
+        if !self.is_open(locator) {
+            error!("Locator in call to get() is not opened in storage.");
+            return Err(CoordinatorError::StorageLocatorNotOpen);
+        }
+
         // Acquire the file read lock.
         let reader = self
-            .locators
+            .open
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
-            .0
             .read()
             .unwrap();
 
@@ -173,7 +177,7 @@ impl Storage for Disk {
             }
             Locator::RoundFile(round_height) => {
                 // Check that the round size is correct.
-                let expected = Object::round_file_size(&self.environment, *round_height);
+                let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
                 debug!("Round {} filesize is {}", round_height, found);
                 if found == 0 || expected != found {
@@ -212,7 +216,14 @@ impl Storage for Disk {
 
         // Check that the given locator does not exist in storage.
         if self.exists(&locator) {
+            error!("Locator in call to insert() already exists in storage.");
             return Err(CoordinatorError::StorageLocatorAlreadyExists);
+        }
+
+        // Check that the given locator is not opened in storage.
+        if self.is_open(&locator) {
+            error!("Locator in call to insert() is opened in storage.");
+            return Err(CoordinatorError::StorageLocatorAlreadyExistsAndOpen);
         }
 
         // Initialize the new file with the object size.
@@ -232,25 +243,32 @@ impl Storage for Disk {
 
         // Check that the given locator exists in storage.
         if !self.exists(locator) {
-            trace!("Locator missing in call to update() in storage.");
+            error!("Locator missing in call to update() in storage.");
             return Err(CoordinatorError::StorageLocatorMissing);
+        }
+
+        // Check that the given locator is opened in storage.
+        if !self.is_open(locator) {
+            error!("Locator in call to update() is not opened in storage.");
+            return Err(CoordinatorError::StorageLocatorNotOpen);
         }
 
         // Acquire the file write lock.
         let mut writer = self
-            .locators
+            .open
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
-            .0
             .write()
             .unwrap();
 
-        // Set the file size to the size of the given object.
-        let file = self.locators.get(locator).ok_or(CoordinatorError::StorageLockFailed)?;
-        file.1.set_len(object.size())?;
+        // Acquire the manifest file write lock.
+        let mut manifest = self.manifest.write().unwrap();
+
+        // Resize the file to the given object size.
+        let file = manifest.resize_file(&locator, object.size())?;
 
         // Update the writer.
-        *writer = unsafe { MmapOptions::new().map_mut(&file.1)? };
+        *writer = unsafe { MmapOptions::new().map_mut(&file)? };
 
         // Write the new object to the file.
         (*writer).as_mut().write_all(&object.to_bytes())?;
@@ -273,12 +291,13 @@ impl Storage for Disk {
 
         // Check that the given source locator exists in storage.
         if !self.exists(source_locator) {
-            trace!("Locator missing in call to copy() in storage.");
+            error!("Source locator missing in call to copy() in storage.");
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
         // Check that the given destination locator does NOT exist in storage.
         if self.exists(destination_locator) {
+            error!("Destination locator in call to copy() already exists in storage.");
             return Err(CoordinatorError::StorageLocatorAlreadyExists);
         }
 
@@ -295,6 +314,41 @@ impl Storage for Disk {
         Ok(())
     }
 
+    /// Removes the object corresponding to the given locator from storage.
+    #[inline]
+    fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
+        trace!("Removing {}", self.to_path(locator)?);
+
+        // Check that the locator does not exist in storage.
+        if self.exists(&locator) {
+            error!("Locator in call to remove() already exists in storage.");
+            return Err(CoordinatorError::StorageLocatorAlreadyExists);
+        }
+
+        // Acquire the manifest file write lock.
+        let mut manifest = self.manifest.write().unwrap();
+
+        // Acquire the file write lock.
+        let file = self
+            .open
+            .get(locator)
+            .ok_or(CoordinatorError::StorageLockFailed)?
+            .write()
+            .unwrap();
+
+        // Remove the locator from the manifest.
+        manifest.remove_file(locator)?;
+
+        // Remove the file write lock.
+        drop(file);
+
+        // Remove the locator from the locators.
+        self.open.remove(locator);
+
+        trace!("Removed {}", self.to_path(locator)?);
+        Ok(())
+    }
+
     /// Returns the size of the object stored at the given locator.
     #[inline]
     fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError> {
@@ -306,73 +360,26 @@ impl Storage for Disk {
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
-        let size = self
-            .locators
-            .get(locator)
-            .ok_or(CoordinatorError::StorageLockFailed)?
-            .1
-            .metadata()?
-            .len();
+        // Acquire the manifest file read lock.
+        let manifest = self.manifest.read().unwrap();
+
+        // Fetch the file size.
+        let size = manifest.size(locator)?;
 
         trace!("Fetched size of {}", self.to_path(&locator)?);
         Ok(size)
-    }
-
-    /// Removes the object corresponding to the given locator from storage.
-    #[inline]
-    fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
-        trace!("Removing {}", self.to_path(locator)?);
-
-        // Check that the locator does not exist in storage.
-        if self.exists(&locator) {
-            return Err(CoordinatorError::StorageLocatorAlreadyExists);
-        }
-
-        // Acquire the manifest file write lock.
-        let mut manifest = self.manifest.write().unwrap();
-
-        // Acquire the file write lock.
-        let file = self
-            .locators
-            .get(locator)
-            .ok_or(CoordinatorError::StorageLockFailed)?
-            .0
-            .write()
-            .unwrap();
-
-        // Fetch the locator file path.
-        let path = self.to_path(locator)?;
-
-        trace!("Removing {}", path);
-        fs::remove_file(path.clone())?;
-        trace!("Removed {}", path);
-
-        // Remove the file write lock.
-        drop(file);
-
-        // Remove the locator from the locators.
-        self.locators.remove(locator);
-
-        // Remove the locator from the manifest.
-        manifest.locators.remove(locator);
-
-        // Save the manifest update to disk.
-        manifest.save()?;
-
-        trace!("Removed {}", self.to_path(locator)?);
-        Ok(())
     }
 }
 
 impl StorageLocator for Disk {
     #[inline]
     fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError> {
-        self.locator_path.to_path(locator)
+        self.resolver.to_path(locator)
     }
 
     #[inline]
     fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError> {
-        self.locator_path.to_locator(path)
+        self.resolver.to_locator(path)
     }
 }
 
@@ -387,12 +394,17 @@ impl StorageObject for Disk {
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
+        // Check that the given locator is opened in storage.
+        if !self.is_open(locator) {
+            error!("Locator in call to reader() is not opened in storage.");
+            return Err(CoordinatorError::StorageLocatorNotOpen);
+        }
+
         // Acquire the file read lock.
         let reader = self
-            .locators
+            .open
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
-            .0
             .read()
             .unwrap();
 
@@ -402,7 +414,7 @@ impl StorageObject for Disk {
             Locator::RoundState(_) => Ok(reader),
             Locator::RoundFile(round_height) => {
                 // Check that the round size is correct.
-                let expected = Object::round_file_size(&self.environment, *round_height);
+                let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
                 debug!("Round {} filesize is {}", round_height, found);
                 if found != expected {
@@ -435,12 +447,17 @@ impl StorageObject for Disk {
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
-        // Acquire the file read lock.
+        // Check that the given locator is opened in storage.
+        if !self.is_open(locator) {
+            error!("Locator in call to writer() is not opened in storage.");
+            return Err(CoordinatorError::StorageLocatorNotOpen);
+        }
+
+        // Acquire the file write lock.
         let writer = self
-            .locators
+            .open
             .get(locator)
             .ok_or(CoordinatorError::StorageLockFailed)?
-            .0
             .write()
             .unwrap();
 
@@ -448,9 +465,9 @@ impl StorageObject for Disk {
             Locator::CoordinatorState => Ok(writer),
             Locator::RoundHeight => Ok(writer),
             Locator::RoundState(_) => Ok(writer),
-            Locator::RoundFile(round_height) => {
+            Locator::RoundFile(_) => {
                 // Check that the round size is correct.
-                let expected = Object::round_file_size(&self.environment, *round_height);
+                let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
                 debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
@@ -474,10 +491,17 @@ impl StorageObject for Disk {
     }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SerializedDiskManifest {
+    open: BTreeSet<String>,
+    locators: BTreeSet<String>,
+}
+
 #[derive(Debug)]
 struct DiskManifest {
+    open: HashSet<Locator>,
     locators: HashSet<Locator>,
-    resolver: DiskLocator,
+    resolver: DiskResolver,
 }
 
 impl DiskManifest {
@@ -487,64 +511,278 @@ impl DiskManifest {
         // Check the base directory exists.
         if !Path::new(base_directory).exists() {
             // Create the base directory if it does not exist.
-            std::fs::create_dir_all(base_directory).expect("unable to create the base directory");
+            fs::create_dir_all(base_directory).expect("unable to create the base directory");
         }
 
         // Create the resolver.
-        let resolver = DiskLocator {
-            base: base_directory.to_string(),
-        };
+        let resolver = DiskResolver::new(base_directory);
 
-        // Check that the storage file exists. If not, create a new storage file.
-        let locators = match !Path::new(&resolver.manifest()).exists() {
-            // Create and store a new instance of `DiskManifest`.
+        // Load the manifest.
+        match Path::new(&resolver.manifest()).exists() {
+            // Case 1 - A manifest exists on disk, load the locators from the manifest.
             true => {
-                // Serialize the paths.
-                let paths: Vec<String> = vec![];
-                let serialized = serde_json::to_string_pretty(&paths)?;
-
-                // Write the serialized paths to the manifest.
-                fs::write(Path::new(&resolver.manifest()), serialized)?;
-
-                HashSet::default()
-            }
-            false => {
                 // Read the serialized paths from the manifest.
                 let serialized = fs::read_to_string(&Path::new(&resolver.manifest()))?;
 
-                // Convert all paths to locators.
-                let paths: Vec<String> = serde_json::from_str(&serialized)?;
-                let locators: HashSet<Locator> = paths
+                // Check that all locator paths exist on disk.
+                let manifest: SerializedDiskManifest = serde_json::from_str(&serialized)?;
+                {
+                    // Check that all `open` locators exist in the set of all `locators`.
+                    for open in &manifest.open {
+                        if !manifest.locators.contains(open) {
+                            error!("{} is opened but missing in the manifest locators", open);
+                            return Err(CoordinatorError::LocatorFileMissing);
+                        }
+                    }
+
+                    // Check that all `locators` exist on disk.
+                    for locator in &manifest.locators {
+                        if !Path::new(locator).is_file() {
+                            error!("{} is in the manifest locators but missing on disk", locator);
+                            return Err(CoordinatorError::LocatorFileMissing);
+                        }
+                    }
+                }
+
+                // Fetch the open locators from the manifest.
+                let open: HashSet<Locator> = manifest
+                    .open
                     .par_iter()
                     .map(|path| resolver.to_locator(&path).unwrap())
                     .collect();
 
-                locators
-            }
-        };
+                // Fetch all locators from the manifest.
+                let locators: HashSet<Locator> = manifest
+                    .locators
+                    .par_iter()
+                    .map(|path| resolver.to_locator(&path).unwrap())
+                    .collect();
 
-        Ok(Self { locators, resolver })
+                Ok(Self {
+                    open,
+                    locators,
+                    resolver,
+                })
+            }
+            // Case 2 - No manifest exists on disk, create and store a new instance of `DiskManifest`.
+            false => {
+                // Serialize a new manifest.
+                let serialized = serde_json::to_string_pretty(&SerializedDiskManifest::default())?;
+
+                // Write the serialized manifest to disk.
+                fs::write(Path::new(&resolver.manifest()), serialized)?;
+
+                Ok(Self {
+                    open: HashSet::default(),
+                    locators: HashSet::default(),
+                    resolver,
+                })
+            }
+        }
+    }
+
+    #[inline]
+    fn create_file(&mut self, locator: &Locator, size: Option<u64>) -> Result<File, CoordinatorError> {
+        // Check if the file already exists.
+        if self.locators.contains(locator) {
+            return Err(CoordinatorError::LocatorFileAlreadyExists);
+        }
+
+        // Check if the file is already open.
+        if self.open.contains(locator) {
+            return Err(CoordinatorError::LocatorFileAlreadyExistsAndOpen);
+        }
+
+        // If the locator is a contribution file, initialize its directory.
+        if let Locator::ContributionFile(round_height, chunk_id, _, _) = locator {
+            self.resolver.chunk_directory_init(*round_height, *chunk_id);
+        }
+
+        // Load the file path.
+        let path = self.resolver.to_path(&locator)?;
+
+        // Open the file.
+        let file = OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
+
+        // Set the initial file size.
+        file.set_len(size.unwrap_or(1))?;
+
+        // Add the file to the set of locator files.
+        self.locators.insert(locator.clone());
+
+        // Add the file to the set of open files.
+        self.open.insert(locator.clone());
+
+        // Save the updated state.
+        self.save()?;
+
+        Ok(file)
+    }
+
+    #[inline]
+    fn open_file(&mut self, locator: &Locator) -> Result<File, CoordinatorError> {
+        // Check if the file exists.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to open_file() in storage.");
+            return Err(CoordinatorError::LocatorFileMissing);
+        }
+
+        // Check if the file is already open.
+        if self.open.contains(locator) {
+            return Err(CoordinatorError::LocatorFileAlreadyOpen);
+        }
+
+        // Load the file path.
+        let path = self.resolver.to_path(&locator)?;
+
+        // Open the file.
+        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+
+        // Add the file to the set of open files.
+        self.open.insert(locator.clone());
+
+        // Save the updated state.
+        self.save()?;
+
+        Ok(file)
+    }
+
+    #[inline]
+    fn reopen_file(&self, locator: &Locator) -> Result<File, CoordinatorError> {
+        // Check that the file exists.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to reopen_file() in storage.");
+            return Err(CoordinatorError::LocatorFileMissing);
+        }
+
+        // Check that the file is open.
+        if !self.open.contains(locator) {
+            return Err(CoordinatorError::LocatorFileNotOpen);
+        }
+
+        // Load the file path.
+        let path = self.resolver.to_path(&locator)?;
+
+        // Open the file.
+        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+
+        Ok(file)
+    }
+
+    #[inline]
+    fn resize_file(&mut self, locator: &Locator, size: u64) -> Result<File, CoordinatorError> {
+        // Check that the file exists.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to close_file() in storage.");
+            return Err(CoordinatorError::LocatorFileMissing);
+        }
+
+        // Check that the file is open.
+        if !self.open.contains(locator) {
+            return Err(CoordinatorError::LocatorFileShouldBeOpen);
+        }
+
+        // Load the file path.
+        let path = self.resolver.to_path(&locator)?;
+
+        // Open the file.
+        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+
+        // Resize the file.
+        file.set_len(size)?;
+
+        Ok(file)
+    }
+
+    #[inline]
+    fn close_file(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
+        // Check that the file exists.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to close_file() in storage.");
+            return Err(CoordinatorError::LocatorFileMissing);
+        }
+
+        // Check that the file is open.
+        if !self.open.contains(locator) {
+            return Err(CoordinatorError::LocatorFileShouldBeOpen);
+        }
+
+        // Remove the file from the set of open files.
+        self.open.remove(locator);
+
+        // Save the updated state.
+        self.save()?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn remove_file(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
+        // Check that the file exists.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to remove_file() in storage.");
+            return Err(CoordinatorError::LocatorFileMissing);
+        }
+
+        // Fetch the locator file path.
+        let path = self.resolver.to_path(locator)?;
+
+        trace!("Removing file {}", path);
+        fs::remove_file(path.clone())?;
+        trace!("Removed file {}", path);
+
+        // Remove the file from the set of locator files.
+        self.locators.remove(locator);
+
+        // Remove the file from the set of open files.
+        self.open.remove(locator);
+
+        // Save the updated state.
+        self.save()?;
+
+        Ok(())
     }
 
     #[inline]
     fn save(&mut self) -> Result<(), CoordinatorError> {
-        // Convert all locators to paths.
-        let mut paths: Vec<String> = self
+        // Serialize the open locators.
+        let open: BTreeSet<String> = self
+            .open
+            .par_iter()
+            .map(|locator| self.resolver.to_path(&locator).unwrap())
+            .collect();
+
+        // Serialize all locators.
+        let locators: BTreeSet<String> = self
             .locators
             .par_iter()
             .map(|locator| self.resolver.to_path(&locator).unwrap())
             .collect();
 
-        // Sort the list
-        paths.par_sort();
+        // Serialize the manifest.
+        let serialized = serde_json::to_string_pretty(&SerializedDiskManifest { open, locators })?;
 
-        // Serialize the paths.
-        let serialized = serde_json::to_string_pretty(&paths)?;
-
-        // Write the serialized paths to the manifest.
+        // Write the serialized manifest to disk.
         fs::write(Path::new(&self.resolver.manifest()), serialized)?;
 
         Ok(())
+    }
+
+    #[inline]
+    fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError> {
+        // Check that the given locator exists in storage.
+        if !self.locators.contains(locator) {
+            error!("Locator missing in call to size() in storage.");
+            return Err(CoordinatorError::StorageLocatorMissing);
+        }
+
+        // Load the file path.
+        let path = self.resolver.to_path(&locator)?;
+
+        // Open the file.
+        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+
+        Ok(file.metadata()?.len())
     }
 
     #[inline]
@@ -554,11 +792,18 @@ impl DiskManifest {
 }
 
 #[derive(Debug)]
-struct DiskLocator {
+struct DiskResolver {
     base: String,
 }
 
-impl StorageLocator for DiskLocator {
+impl DiskResolver {
+    #[inline]
+    fn new(base: &str) -> Self {
+        Self { base: base.to_string() }
+    }
+}
+
+impl StorageLocator for DiskResolver {
     #[inline]
     fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError> {
         let path = match locator {
@@ -708,7 +953,7 @@ impl StorageLocator for DiskLocator {
     }
 }
 
-impl DiskLocator {
+impl DiskResolver {
     /// Returns the storage manifest file path.
     #[inline]
     fn manifest(&self) -> String {
@@ -755,9 +1000,7 @@ mod tests {
 
     #[test]
     fn test_to_path_coordinator_state() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             "./transcript/test/coordinator.json",
@@ -767,9 +1010,7 @@ mod tests {
 
     #[test]
     fn test_to_locator_coordinator_state() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             Locator::CoordinatorState,
@@ -779,9 +1020,7 @@ mod tests {
 
     #[test]
     fn test_to_path_round_height() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             "./transcript/test/round_height",
@@ -791,9 +1030,7 @@ mod tests {
 
     #[test]
     fn test_to_locator_round_height() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             Locator::RoundHeight,
@@ -803,9 +1040,7 @@ mod tests {
 
     #[test]
     fn test_to_path_round_state() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             "./transcript/test/round_0/state.json",
@@ -823,9 +1058,7 @@ mod tests {
 
     #[test]
     fn test_to_locator_round_state() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             Locator::RoundState(0),
@@ -843,9 +1076,7 @@ mod tests {
 
     #[test]
     fn test_to_path_round_file() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             "./transcript/test/round_0/round_0.verified",
@@ -863,9 +1094,7 @@ mod tests {
 
     #[test]
     fn test_to_locator_round_file() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             Locator::RoundFile(0),
@@ -889,9 +1118,7 @@ mod tests {
 
     #[test]
     fn test_to_path_contribution_file() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             "./transcript/test/round_0/chunk_0/contribution_0.unverified",
@@ -968,9 +1195,7 @@ mod tests {
 
     #[test]
     fn test_to_locator_contribution_file() {
-        let locator = DiskLocator {
-            base: "./transcript/test".to_string(),
-        };
+        let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
             locator
