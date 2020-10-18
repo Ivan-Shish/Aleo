@@ -3,14 +3,14 @@ use phase1_coordinator::{
     Coordinator,
 };
 
-use tokio::task;
-use tracing::info;
+use std::time::Duration;
+use tokio::{task, time::delay_for};
+use tracing::*;
 
 #[cfg(not(feature = "silent"))]
 #[inline]
 fn init_logger() {
     use once_cell::sync::OnceCell;
-    use tracing::Level;
 
     static INSTANCE: OnceCell<()> = OnceCell::new();
     INSTANCE.get_or_init(|| {
@@ -25,7 +25,6 @@ async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 }
 
 #[tokio::main]
-#[inline]
 pub async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "silent"))]
     init_logger();
@@ -33,29 +32,37 @@ pub async fn main() -> anyhow::Result<()> {
     // Set the environment.
     let environment = (*DevelopmentEnvironment::from(Parameters::TestCustom(8, 12, 256)).clone()).clone();
 
+    info!("{:#?}", environment.parameters());
+
     // Instantiate the coordinator.
     let coordinator = coordinator(&environment).await?;
 
     // Initialize the coordinator.
     let operator = coordinator.clone();
-    {
-        info!("Chunk size is {}", environment.parameters().5);
-        info!("{:#?}", environment.parameters());
-
+    let ceremony = task::spawn(async move {
+        // Initialize the coordinator.
         operator.initialize().await.unwrap();
 
-        task::spawn(async move {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(60));
+        // Initialize the coordinator loop.
+        loop {
+            // Run the update operation.
+            if let Err(error) = operator.update().await {
+                error!("{}", error);
             }
-        });
-    }
+
+            // Sleep for 10 seconds in between iterations.
+            delay_for(Duration::from_secs(10)).await;
+        }
+    });
 
     // Initialize the shutdown procedure.
     let handler = coordinator.clone();
     {
+        debug!("Initializing the shutdown handler");
         handler.shutdown_listener()?;
     }
+
+    ceremony.await.expect("The ceremony handle has panicked");
 
     Ok(())
 }
