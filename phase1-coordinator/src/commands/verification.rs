@@ -285,12 +285,20 @@ mod tests {
         // Ensure the ceremony has not started.
         assert_eq!(0, coordinator.current_round_height().unwrap());
 
-        // Run initialization.
-        coordinator
-            .next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
-                Lazy::force(&TEST_VERIFIER_ID).clone(),
-            ])
-            .unwrap();
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
+            // Run initialization.
+            coordinator
+                .next_round(
+                    &mut storage,
+                    *TEST_STARTED_AT,
+                    vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()],
+                    vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+                )
+                .unwrap();
+        }
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height().unwrap());
