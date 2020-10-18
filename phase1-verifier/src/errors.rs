@@ -18,8 +18,8 @@ pub enum VerifierError {
     #[error("Failed to upload a new challenge file to {}", _0)]
     FailedChallengeUpload(String),
 
-    #[error("The coordinator failed to verify the uploaded challenge file {}", _0)]
-    FailedVerification(String),
+    #[error("The coordinator failed to verify the uploaded challenge file at chunk {}", _0)]
+    FailedVerification(u64),
 
     #[error("Failed to join the queue")]
     FailedToJoinQueue,

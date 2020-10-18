@@ -116,17 +116,14 @@ impl Verifier {
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
-    pub async fn verify_contribution(&self, verified_locator: &str) -> Result<String, VerifierError> {
+    pub async fn verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = format!("/coordinator/verify/{}", verified_locator);
+        let path = format!("/coordinator/verify/{}", chunk_id);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
-        info!(
-            "Verifier running verification of a response file at {} ",
-            verified_locator
-        );
+        info!("Verifier running verification of a contribution at chunk {}", chunk_id);
 
         let signature_path = format!("/api{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
@@ -138,8 +135,8 @@ impl Verifier {
         {
             Ok(response) => {
                 if !response.status().is_success() {
-                    error!("Failed to verify the challenge {}", verified_locator);
-                    return Err(VerifierError::FailedVerification(verified_locator.to_string()));
+                    error!("Failed to verify the challenge at chunk {}", chunk_id);
+                    return Err(VerifierError::FailedVerification(chunk_id));
                 }
 
                 Ok(response.text().await?)

@@ -4,7 +4,7 @@ use crate::{
 };
 use phase1::helpers::CurveKind;
 use phase1_cli::transform_pok_and_correctness;
-use phase1_coordinator::{environment::DevelopmentEnvironment, phase1_chunked_parameters, Participant};
+use phase1_coordinator::{environment::Development, phase1_chunked_parameters, Participant};
 use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -54,16 +54,12 @@ pub struct Verifier {
     pub(crate) verifier: Participant,
 
     /// The coordinator environment
-    pub(crate) environment: DevelopmentEnvironment,
+    pub(crate) environment: Development,
 }
 
 impl Verifier {
     /// Initialize a new verifier
-    pub fn new(
-        coordinator_api_url: String,
-        view_key: String,
-        environment: DevelopmentEnvironment,
-    ) -> Result<Self, VerifierError> {
+    pub fn new(coordinator_api_url: String, view_key: String, environment: Development) -> Result<Self, VerifierError> {
         let verifier_id = Address::from_view_key(&ViewKey::from_str(&view_key)?)?.to_string();
 
         Ok(Self {
@@ -91,6 +87,13 @@ impl Verifier {
     pub async fn start_verifier(&self) {
         // Run the verifier loop
         loop {
+            // TODO (raychu86): Modularize the verifier logic into a more digestible layout.
+
+            // TODO (raychu86): The sleep is currently at the top of the loop so it won't be
+            //  skipped by the `continue` calls. This will be updated in the verifier refactor.
+            // Sleep for 10 seconds
+            sleep(Duration::from_secs(10));
+
             // Attempt to join the queue
             if let Ok(response) = self.join_queue().await {
                 info!("Verifier {} joined the queue with status {}", self.verifier, response)
@@ -239,23 +242,20 @@ impl Verifier {
                 };
 
                 // Attempt to perform the verification with the uploaded challenge file at `next_challenge_locator`
-                match self.verify_contribution(&next_challenge_locator).await {
+                match self.verify_contribution(chunk_id).await {
                     Ok(response) => info!(
-                        "Verifier verified the response file {}. Response {}",
-                        next_challenge_locator, response
+                        "Verifier verified the response at chunk id {}. Response {}",
+                        chunk_id, response
                     ),
                     Err(err) => {
                         error!(
-                            "Failed to run verification on the next challenge {} (error: {})",
-                            &next_challenge_locator, err
+                            "Failed to verify the response at chunk id {} (error: {})",
+                            &chunk_id, err
                         );
                         continue;
                     }
                 }
             }
-
-            // Sleep for 10 seconds
-            sleep(Duration::from_secs(10));
         }
     }
 }
