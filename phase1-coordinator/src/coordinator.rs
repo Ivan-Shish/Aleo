@@ -223,11 +223,6 @@ impl Coordinator {
             Object::CoordinatorState(state) => state,
             _ => return Err(CoordinatorError::StorageFailed),
         };
-        // let state = (
-        //     storage.get(&Locator::CoordinatorState)?,
-        //     storage.writer(&Locator::CoordinatorState)?,
-        // );
-        // let state = StorageLock::Write(storage.writer(&Locator::CoordinatorState)?);
 
         Ok(Self {
             environment: environment.clone(),
