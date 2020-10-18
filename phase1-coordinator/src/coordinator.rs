@@ -15,9 +15,7 @@ use std::{
     convert::TryInto,
     fmt,
     sync::{Arc, RwLock},
-    time::Duration,
 };
-use tokio::{task, time::delay_for};
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
@@ -270,9 +268,6 @@ impl Coordinator {
 
                 // Update the state of the queue.
                 state.update_queue()?;
-
-                // Drop the state write lock.
-                drop(state);
             }
 
             info!("Initializing round 1");
@@ -306,53 +301,10 @@ impl Coordinator {
 
             // Set the current round height to initialize coordinator state.
             state.set_current_round_height(current_round_height);
-
-            // Drop the state write lock.
-            drop(state);
         }
 
         info!("{}", serde_json::to_string_pretty(&self.current_round()?)?);
-
-        // Clone the coordinator.
-        let coordinator = self.clone();
-
-        // Start a task thread for the coordinator.
-        task::spawn(async move {
-            // Initialize the coordinator loop.
-            loop {
-                // Run the update operation.
-                coordinator.update().await.unwrap();
-
-                // Sleep for 10 seconds in between iterations.
-                delay_for(Duration::from_secs(10)).await;
-            }
-        });
-
         info!("Coordinator has booted up");
-        Ok(())
-    }
-
-    #[inline]
-    pub fn shutdown_listener(self) -> anyhow::Result<()> {
-        ctrlc::set_handler(move || {
-            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
-
-            // Acquire the coordinator state lock.
-            let state = self.state.write().unwrap();
-            debug!("Coordinator has safely locked state");
-
-            // Print the final coordinator state.
-            let final_state = serde_json::to_string_pretty(&*state).unwrap();
-            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
-
-            // Acquire the storage lock.
-            let _storage = self.storage.write().unwrap();
-            debug!("Coordinator has safely shutdown storage");
-
-            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
-            std::process::exit(0);
-        })?;
-
         Ok(())
     }
 
@@ -401,6 +353,33 @@ impl Coordinator {
 
             trace!("Advanced ceremony to round {}", next_round_height);
         }
+
+        Ok(())
+    }
+
+    ///
+    /// Initializes a listener to handle the shutdown signal.
+    ///
+    #[inline]
+    pub fn shutdown_listener(self) -> anyhow::Result<()> {
+        ctrlc::set_handler(move || {
+            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
+
+            // Acquire the coordinator state lock.
+            let state = self.state.write().unwrap();
+            debug!("Coordinator has safely locked state");
+
+            // Print the final coordinator state.
+            let final_state = serde_json::to_string_pretty(&*state).unwrap();
+            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
+
+            // Acquire the storage lock.
+            let _storage = self.storage.write().unwrap();
+            debug!("Coordinator has safely shutdown storage");
+
+            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
+            std::process::exit(0);
+        })?;
 
         Ok(())
     }
