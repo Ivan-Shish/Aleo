@@ -1,5 +1,5 @@
 use phase1_coordinator::{
-    environment::{DevelopmentEnvironment, Environment, Parameters},
+    environment::{Development, Environment, Parameters},
     Coordinator,
 };
 
@@ -30,7 +30,7 @@ pub async fn main() -> anyhow::Result<()> {
     init_logger();
 
     // Set the environment.
-    let environment = (*DevelopmentEnvironment::from(Parameters::TestCustom(8, 12, 256)).clone()).clone();
+    let environment = (*Development::from(Parameters::TestCustom(8, 12, 256)).clone()).clone();
 
     info!("{:#?}", environment.parameters());
 

@@ -1,5 +1,5 @@
 use crate::{
-    environment::{Environment, Parameters, TestingEnvironment},
+    environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
     storage::{Storage, StorageLock},
     Coordinator,
