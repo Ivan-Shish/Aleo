@@ -23,12 +23,17 @@ impl Verifier {
         let view_key = ViewKey::from_str(&self.view_key)?;
         let aleo_address = Address::from_view_key(&view_key)?.to_string();
 
-        let path = format!("/queue/join/verifier/{}", aleo_address);
+        let method = "post";
+        let path = "/queue/join/verifier";
+
+        let signature_path = format!("/api{}", path);
+        let authentication = authenticate(&view_key, &method, &signature_path)?;
 
         info!("Attempting to join as verifier join the queue as {}", aleo_address);
 
         match Client::new()
             .post(&format!("{}{}", &coordinator_api_url, &path))
+            .header("Authorization", authentication.to_string())
             .send()
             .await
         {
@@ -40,6 +45,7 @@ impl Verifier {
 
                 // Parse the lock response
                 let queue_response = serde_json::from_value::<bool>(response.json().await?)?;
+                info!("{} joined the queue with status {}", aleo_address, queue_response);
                 Ok(queue_response)
             }
             Err(_) => {
