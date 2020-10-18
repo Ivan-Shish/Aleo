@@ -1901,6 +1901,115 @@ mod tests {
         Ok(())
     }
 
+    fn coordinator_verifier_full_chunk_verification_test() -> anyhow::Result<()> {
+        initialize_test_environment(&TEST_ENVIRONMENT_3);
+
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        initialize_coordinator(&coordinator)?;
+
+        // Check current round height is now 1.
+        let round_height = coordinator.current_round_height()?;
+        assert_eq!(1, round_height);
+
+        // Acquire the lock for chunk 0 as contributor 1.
+        let chunk_id = 0;
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+        assert!(coordinator.try_lock_chunk(chunk_id, &contributor).is_ok());
+
+        // Run computation on round 1 chunk 0 contribution 1.
+        let contribution_id = 1;
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
+        assert!(
+            coordinator
+                .run_computation(round_height, chunk_id, contribution_id, contributor, &seed)
+                .is_ok()
+        );
+
+        // Add round 1 chunk 0 contribution 1.
+        assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
+
+        // Acquire lock for round 1 chunk 0 contribution 1.
+        {
+            // Acquire the lock on chunk 0 for the verifier.
+            let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+            assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
+
+            // Check that chunk 0 is locked.
+            let round = coordinator.current_round()?;
+            let chunk = round.chunk(chunk_id)?;
+            assert!(chunk.is_locked());
+            assert!(!chunk.is_unlocked());
+
+            // Check that chunk 0 is locked by the verifier.
+            debug!("{:#?}", round);
+            assert!(chunk.is_locked_by(&verifier));
+        }
+
+        // Verify round 1 chunk 0 contribution 1.
+        {
+            let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+
+            // Run verification.
+            let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
+            assert!(verify.is_ok());
+
+            // Verify contribution 1.
+            coordinator.verify_contribution(chunk_id, &verifier)?;
+        }
+
+        // Continue the round with the second contributor
+
+        // Acquire the lock for chunk 0 as contributor 2.
+        let chunk_id = 0;
+        let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
+        assert!(coordinator.try_lock_chunk(chunk_id, &contributor_2).is_ok());
+
+        // Run computation on round 1 chunk 0 contribution 2.
+        let contribution_id = 2;
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
+        assert!(
+            coordinator
+                .run_computation(round_height, chunk_id, contribution_id, contributor_2, &seed)
+                .is_ok()
+        );
+
+        // Add round 1 chunk 0 contribution 2.
+        assert!(coordinator.add_contribution(chunk_id, &contributor_2).is_ok());
+
+        // Acquire lock for round 1 chunk 0 contribution 2.
+        {
+            // Acquire the lock on chunk 0 for the verifier.
+            let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+            assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
+
+            // Check that chunk 0 is locked.
+            let round = coordinator.current_round()?;
+            let chunk = round.chunk(chunk_id)?;
+            assert!(chunk.is_locked());
+            assert!(!chunk.is_unlocked());
+
+            // Check that chunk 0 is locked by the verifier.
+            debug!("{:#?}", round);
+            assert!(chunk.is_locked_by(&verifier));
+        }
+
+        // Verify round 1 chunk 0 contribution 1.
+        {
+            let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+
+            // Run verification.
+            let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
+            assert!(verify.is_ok());
+
+            // Verify contribution 2.
+            coordinator.verify_contribution(chunk_id, &verifier)?;
+        }
+
+        Ok(())
+    }
+
     // This test runs a round with a single coordinator and single verifier
     // The verifier instances are run on a separate thread to simulate an environment where
     // verification and contribution happen concurrently.
@@ -2300,6 +2409,13 @@ mod tests {
     #[serial]
     fn test_coordinator_verifier_verify_contribution() {
         test_report!(coordinator_verifier_verify_contribution_test);
+    }
+
+    #[test]
+    #[named]
+    #[serial]
+    fn test_coordinator_verifier_full_chunk_verification() {
+        test_report!(coordinator_verifier_full_chunk_verification_test);
     }
 
     #[test]
