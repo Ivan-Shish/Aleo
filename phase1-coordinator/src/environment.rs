@@ -366,6 +366,24 @@ impl Environment {
     }
 }
 
+impl From<Testing> for Environment {
+    fn from(deployment: Testing) -> Environment {
+        deployment.environment
+    }
+}
+
+impl From<Development> for Environment {
+    fn from(deployment: Development) -> Environment {
+        deployment.environment
+    }
+}
+
+impl From<Production> for Environment {
+    fn from(deployment: Production) -> Environment {
+        deployment.environment
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Testing {
     pub environment: Environment,
