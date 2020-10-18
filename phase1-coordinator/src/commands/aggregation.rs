@@ -172,10 +172,17 @@ mod tests {
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
 
-        // Run initialization.
-        coordinator
-            .next_round(*TEST_STARTED_AT, vec![contributor.clone()], vec![verifier.clone()])
-            .unwrap();
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
+            // Run initialization.
+            coordinator
+                .next_round(&mut storage, *TEST_STARTED_AT, vec![contributor.clone()], vec![
+                    verifier.clone(),
+                ])
+                .unwrap();
+        }
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height().unwrap());
@@ -189,8 +196,11 @@ mod tests {
         // Iterate over all chunk IDs.
         for chunk_id in 0..number_of_chunks {
             {
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
                 // Acquire the lock as contributor.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor.clone());
+                let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor.clone());
                 if try_lock.is_err() {
                     error!(
                         "Failed to acquire lock as contributor {:?}\n{}",
@@ -199,7 +209,8 @@ mod tests {
                     );
                     try_lock.unwrap();
                 }
-
+            }
+            {
                 // Run computation as contributor.
                 let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), &seed);
                 if contribute.is_err() {
@@ -223,8 +234,11 @@ mod tests {
                 }
             }
             {
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
                 // Acquire the lock as the verifier.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier.clone());
+                let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &verifier.clone());
                 if try_lock.is_err() {
                     error!(
                         "Failed to acquire lock as verifier {:?}\n{}",
@@ -233,7 +247,8 @@ mod tests {
                     );
                     try_lock.unwrap();
                 }
-
+            }
+            {
                 // Run verification as verifier.
                 let verify = coordinator.run_verification(round_height, chunk_id, 1, &verifier);
                 if verify.is_err() {

@@ -1,5 +1,5 @@
 use crate::{
-    environment::{Environment, Parameters, TestingEnvironment},
+    environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
     storage::{Storage, StorageLock},
     Coordinator,
@@ -18,10 +18,10 @@ use tracing::{error, info, warn};
 
 lazy_static! {
     /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT: Environment = (*TestingEnvironment::from(Parameters::Test8Chunks).clone()).clone();
+    pub static ref TEST_ENVIRONMENT: Environment = (*Testing::from(Parameters::Test8Chunks).clone()).clone();
 
     /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT_3: Environment = (*TestingEnvironment::from(Parameters::Test3Chunks).clone()).clone();
+    pub static ref TEST_ENVIRONMENT_3: Environment = (*Testing::from(Parameters::Test3Chunks).clone()).clone();
 
     /// Round start datetime for testing purposes only.
     pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);
@@ -46,21 +46,6 @@ lazy_static! {
 
     /// Verifier IDs for testing purposes only.
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
-}
-
-pub fn initialize_coordinator(
-    coordinator: &Coordinator,
-    contributors: Vec<Participant>,
-    verifiers: Vec<Participant>,
-) -> anyhow::Result<()> {
-    // Ensure the ceremony has not started.
-    assert_eq!(0, coordinator.current_round_height()?);
-    // Run initialization.
-    coordinator.next_round(*TEST_STARTED_AT, contributors, verifiers)?;
-    // Check current round height is now 1.
-    assert_eq!(1, coordinator.current_round_height()?);
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    Ok(())
 }
 
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {

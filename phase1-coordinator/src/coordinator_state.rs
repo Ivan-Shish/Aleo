@@ -604,6 +604,16 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns the current round height stored in the coordinator state.
+    ///
+    /// This function returns `0` if the current round height has not been set.
+    ///
+    #[inline]
+    pub(super) fn current_round_height(&mut self) -> u64 {
+        self.current_round_height.unwrap_or_default()
+    }
+
+    ///
     /// Updates the current round height stored in the coordinator state.
     ///
     #[inline]
@@ -1470,19 +1480,36 @@ impl CoordinatorState {
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
 
+        let current_round_finished = match self.is_current_round_finished() {
+            true => format!("Round {} is finished", self.current_round_height.unwrap_or_default()),
+            false => format!("Round {} is in progress", self.current_round_height.unwrap_or_default()),
+        };
+        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
+            true => format!("Round {} is ready to begin", next_round_height),
+            false => format!("Round {} is awaiting participants", next_round_height),
+        };
+
         format!(
             r#"
-    STATUS REPORT
-            
-    {} contributors and {} verifiers in the current round
-    {} chunks are pending verification
+    ---------------------
+    ||  STATUS REPORT  ||
+    ---------------------
 
-    {} contributors and {} verifiers assigned to the next round
-    {} contributors and {} verifiers in queue for the ceremony
+    | {}
+    | {}
 
-    {} participants dropped
-    {} participants banned
-        "#,
+    | {} contributors and {} verifiers in the current round
+    | {} chunks are pending verification
+
+    | {} contributors and {} verifiers assigned to the next round
+    | {} contributors and {} verifiers in queue for the ceremony
+
+    | {} participants dropped
+    | {} participants banned
+
+    "#,
+            current_round_finished,
+            precommit_next_round_ready,
             number_of_current_contributors,
             number_of_current_verifiers,
             number_of_pending_verifications,

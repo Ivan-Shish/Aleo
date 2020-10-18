@@ -367,11 +367,11 @@ impl Environment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestingEnvironment {
+pub struct Testing {
     pub environment: Environment,
 }
 
-impl From<Parameters> for TestingEnvironment {
+impl From<Parameters> for Testing {
     fn from(parameters: Parameters) -> Self {
         let mut testing = Self::default();
         testing.environment.parameters = parameters.to_settings();
@@ -379,7 +379,7 @@ impl From<Parameters> for TestingEnvironment {
     }
 }
 
-impl std::ops::Deref for TestingEnvironment {
+impl std::ops::Deref for Testing {
     type Target = Environment;
 
     fn deref(&self) -> &Self::Target {
@@ -387,7 +387,7 @@ impl std::ops::Deref for TestingEnvironment {
     }
 }
 
-impl std::default::Default for TestingEnvironment {
+impl std::default::Default for Testing {
     fn default() -> Self {
         Self {
             environment: Environment {
@@ -420,11 +420,11 @@ impl std::default::Default for TestingEnvironment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevelopmentEnvironment {
+pub struct Development {
     environment: Environment,
 }
 
-impl From<Parameters> for DevelopmentEnvironment {
+impl From<Parameters> for Development {
     fn from(parameters: Parameters) -> Self {
         let mut development = Self::default();
         development.environment.parameters = parameters.to_settings();
@@ -432,7 +432,7 @@ impl From<Parameters> for DevelopmentEnvironment {
     }
 }
 
-impl std::ops::Deref for DevelopmentEnvironment {
+impl std::ops::Deref for Development {
     type Target = Environment;
 
     fn deref(&self) -> &Self::Target {
@@ -440,13 +440,13 @@ impl std::ops::Deref for DevelopmentEnvironment {
     }
 }
 
-impl std::ops::DerefMut for DevelopmentEnvironment {
+impl std::ops::DerefMut for Development {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.environment
     }
 }
 
-impl std::default::Default for DevelopmentEnvironment {
+impl std::default::Default for Development {
     fn default() -> Self {
         Self {
             environment: Environment {
@@ -479,11 +479,11 @@ impl std::default::Default for DevelopmentEnvironment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProductionEnvironment {
+pub struct Production {
     environment: Environment,
 }
 
-impl std::ops::Deref for ProductionEnvironment {
+impl std::ops::Deref for Production {
     type Target = Environment;
 
     fn deref(&self) -> &Self::Target {
@@ -491,7 +491,7 @@ impl std::ops::Deref for ProductionEnvironment {
     }
 }
 
-impl std::default::Default for ProductionEnvironment {
+impl std::default::Default for Production {
     fn default() -> Self {
         Self {
             environment: Environment {
@@ -532,7 +532,7 @@ mod tests {
         let parameters = Parameters::Test3Chunks;
         let (_, _, _, power, _, _) = parameters.to_settings();
         assert_eq!(Power::from(8_usize), power);
-        assert_eq!(3, TestingEnvironment::from(parameters).number_of_chunks());
+        assert_eq!(3, Testing::from(parameters).number_of_chunks());
     }
 
     #[test]
@@ -540,7 +540,7 @@ mod tests {
         let parameters = Parameters::Test8Chunks;
         let (_, _, _, power, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
-        assert_eq!(8, TestingEnvironment::from(parameters).number_of_chunks());
+        assert_eq!(8, Testing::from(parameters).number_of_chunks());
     }
 
     #[test]
@@ -551,10 +551,7 @@ mod tests {
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(10923_usize), chunk_size);
-        assert_eq!(
-            number_of_chunks as u64,
-            TestingEnvironment::from(parameters).number_of_chunks()
-        );
+        assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
     }
 
     #[test]
@@ -565,10 +562,7 @@ mod tests {
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(4096_usize), chunk_size);
-        assert_eq!(
-            number_of_chunks as u64,
-            TestingEnvironment::from(parameters).number_of_chunks()
-        );
+        assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
     }
 
     #[test]
@@ -579,9 +573,6 @@ mod tests {
         let (_, _, _, power, _, chunk_size) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(1639_usize), chunk_size);
-        assert_eq!(
-            number_of_chunks as u64,
-            TestingEnvironment::from(parameters).number_of_chunks()
-        );
+        assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
     }
 }

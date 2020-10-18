@@ -15,9 +15,7 @@ use std::{
     convert::TryInto,
     fmt,
     sync::{Arc, RwLock},
-    time::Duration,
 };
-use tokio::{task, time::delay_for};
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
@@ -218,10 +216,18 @@ impl Coordinator {
     ///
     #[inline]
     pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
+        // Load an instance of storage.
+        let storage = environment.storage()?;
+        // Load an instance of coordinator state.
+        let state = match storage.get(&Locator::CoordinatorState)? {
+            Object::CoordinatorState(state) => state,
+            _ => return Err(CoordinatorError::StorageFailed),
+        };
+
         Ok(Self {
             environment: environment.clone(),
-            storage: Arc::new(RwLock::new(environment.storage()?)),
-            state: Arc::new(RwLock::new(CoordinatorState::new(environment))),
+            storage: Arc::new(RwLock::new(storage)),
+            state: Arc::new(RwLock::new(state)),
         })
     }
 
@@ -258,6 +264,9 @@ impl Coordinator {
                 .ok_or(CoordinatorError::VerifiersMissing)?;
 
             {
+                // Acquire the storage write lock.
+                let mut storage = self.storage.write().unwrap();
+
                 // Acquire the state write lock.
                 let mut state = self.state.write().unwrap();
 
@@ -271,8 +280,8 @@ impl Coordinator {
                 // Update the state of the queue.
                 state.update_queue()?;
 
-                // Drop the state write lock.
-                drop(state);
+                // Save the coordinator state in storage.
+                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
             }
 
             info!("Initializing round 1");
@@ -282,77 +291,40 @@ impl Coordinator {
             info!("Add contributions and verifications for round 1");
             for _ in 0..self.environment.number_of_chunks() {
                 {
-                    let (chunk_id, _previous_response, _challenge, response) = self.try_lock(&contributor)?;
+                    let (chunk_id, _previous_response, _challenge, _response) = self.try_lock(&contributor)?;
 
                     debug!("Computing contributions for round 1 chunk {}", chunk_id);
                     self.run_computation(1, chunk_id, 1, &contributor, seed.expose_secret()[..].try_into()?)?;
-                    let _response = self.try_contribute(&contributor, &response)?;
+                    let _response = self.try_contribute(&contributor, chunk_id)?;
                     debug!("Computed contributions for round 1 chunk {}", chunk_id);
                 }
 
                 {
-                    let (chunk_id, _challenge, _response, next_challenge) = self.try_lock(&verifier)?;
+                    let (chunk_id, _challenge, _response, _next_challenge) = self.try_lock(&verifier)?;
 
                     debug!("Running verification for round 1 chunk {}", chunk_id);
                     let _next_challenge = self.run_verification(1, chunk_id, 1, &verifier)?;
-                    self.try_verify(&verifier, &next_challenge)?;
+                    self.try_verify(&verifier, chunk_id)?;
                     debug!("Running verification for round 1 chunk {}", chunk_id);
                 }
             }
             info!("Added contributions and verifications for round 1");
         } else {
+            // Acquire the storage write lock.
+            let mut storage = self.storage.write().unwrap();
+
             // Acquire the state write lock.
             let mut state = self.state.write().unwrap();
 
             // Set the current round height to initialize coordinator state.
             state.set_current_round_height(current_round_height);
 
-            // Drop the state write lock.
-            drop(state);
+            // Save the coordinator state in storage.
+            storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
         }
 
         info!("{}", serde_json::to_string_pretty(&self.current_round()?)?);
-
-        // Clone the coordinator.
-        let coordinator = self.clone();
-
-        // Start a task thread for the coordinator.
-        task::spawn(async move {
-            // Initialize the coordinator loop.
-            loop {
-                // Run the update operation.
-                coordinator.update().await.unwrap();
-
-                // Sleep for 10 seconds in between iterations.
-                delay_for(Duration::from_secs(10)).await;
-            }
-        });
-
         info!("Coordinator has booted up");
-        Ok(())
-    }
-
-    #[inline]
-    pub fn shutdown_listener(self) -> anyhow::Result<()> {
-        ctrlc::set_handler(move || {
-            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
-
-            // Acquire the coordinator state lock.
-            let state = self.state.write().unwrap();
-            debug!("Coordinator has safely locked state");
-
-            // Print the final coordinator state.
-            let final_state = serde_json::to_string_pretty(&*state).unwrap();
-            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
-
-            // Acquire the storage lock.
-            let _storage = self.storage.write().unwrap();
-            debug!("Coordinator has safely shutdown storage");
-
-            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
-            std::process::exit(0);
-        })?;
-
         Ok(())
     }
 
@@ -364,10 +336,13 @@ impl Coordinator {
     pub async fn update(&self) -> Result<(), CoordinatorError> {
         // Process updates for the current round and check if the current round is finished.
         let (is_current_round_finished, is_next_round_ready) = {
+            // Acquire the storage write lock.
+            let mut storage = self.storage.write().unwrap();
+
             // Acquire the state write lock.
             let mut state = self.state.write().unwrap();
 
-            info!("\n\t{}", state.status_report());
+            info!("\n{}", state.status_report());
 
             // Update the state of the queue.
             state.update_queue()?;
@@ -384,8 +359,13 @@ impl Coordinator {
             // Ban any participants who meet the coordinator criteria.
             state.update_banned_participants()?;
 
-            // Determine if current round is finished and precommit to next round is ready.
-            (state.is_current_round_finished(), state.is_precommit_next_round_ready())
+            // Check if the current round is finished and precommit to next round is ready.
+            let output = (state.is_current_round_finished(), state.is_precommit_next_round_ready());
+
+            // Save the coordinator state in storage.
+            storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+            output
         };
 
         trace!("{} {}", is_current_round_finished, is_next_round_ready);
@@ -401,6 +381,38 @@ impl Coordinator {
 
             trace!("Advanced ceremony to round {}", next_round_height);
         }
+
+        Ok(())
+    }
+
+    ///
+    /// Initializes a listener to handle the shutdown signal.
+    ///
+    #[inline]
+    pub fn shutdown_listener(self) -> anyhow::Result<()> {
+        ctrlc::set_handler(move || {
+            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
+
+            // Acquire the storage lock.
+            let mut storage = self.storage.write().unwrap();
+            trace!("Coordinator has acquired the storage lock");
+
+            // Acquire the coordinator state lock.
+            let state = self.state.write().unwrap();
+            trace!("Coordinator has acquired the state lock");
+
+            // Save the coordinator state to storage.
+            let object = Object::CoordinatorState(state.clone());
+            storage.update(&Locator::CoordinatorState, object).unwrap();
+            debug!("Coordinator has safely shutdown storage");
+
+            // Print the final coordinator state.
+            let final_state = serde_json::to_string_pretty(&*state).unwrap();
+            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
+
+            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
+            std::process::exit(0);
+        })?;
 
         Ok(())
     }
@@ -510,10 +522,19 @@ impl Coordinator {
     ///
     #[inline]
     pub fn add_to_queue(&self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = self.storage.write().unwrap();
+
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
+
         // Attempt to add the participant to the next round.
-        state.add_to_queue(participant, reliability_score)
+        state.add_to_queue(participant, reliability_score)?;
+
+        // Save the coordinator state in storage.
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+        Ok(())
     }
 
     ///
@@ -521,10 +542,19 @@ impl Coordinator {
     ///
     #[inline]
     pub fn remove_from_queue(&self, participant: &Participant) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = self.storage.write().unwrap();
+
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
+
         // Attempt to remove the participant from the next round.
-        state.remove_from_queue(participant)
+        state.remove_from_queue(participant)?;
+
+        // Save the coordinator state in storage.
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+        Ok(())
     }
 
     ///
@@ -622,6 +652,9 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String, String), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
@@ -630,11 +663,14 @@ impl Coordinator {
         let chunk_id = state.pop_chunk_id(participant)?;
 
         trace!("Trying to lock chunk {} for {}", chunk_id, participant);
-        match self.try_lock_chunk(chunk_id, participant) {
+        match self.try_lock_chunk(&mut storage, chunk_id, participant) {
             // Case 1 - Participant acquired lock, return the locator.
             Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
                 trace!("Incrementing the number of locks held by {}", participant);
                 state.acquired_lock(participant, chunk_id)?;
+
+                // Save the coordinator state in storage.
+                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
 
                 info!("Acquired lock on chunk {} for {}", chunk_id, participant);
                 Ok((
@@ -649,6 +685,9 @@ impl Coordinator {
                 trace!("Failed to acquire lock and adding chunk ID back to participant queue");
                 state.push_front_chunk_id(participant, chunk_id)?;
 
+                // Save the coordinator state in storage.
+                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
                 error!("{}", error);
                 return Err(error);
             }
@@ -656,8 +695,11 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to add a contribution for the given unverified response file locator
-    /// from the given participant.
+    /// Attempts to add a contribution for the given chunk ID from the given participant.
+    ///
+    /// This function constructs the expected response locator for the given participant
+    /// and chunk ID, and checks that the participant has uploaded the response file
+    /// prior to adding the unverified contribution to the round state.
     ///
     /// On success, this function releases the lock from the contributor and returns
     /// the response file locator.
@@ -665,43 +707,22 @@ impl Coordinator {
     /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_contribute(
-        &self,
-        participant: &Participant,
-        unverified_locator: &str,
-    ) -> Result<String, CoordinatorError> {
-        // Check that the participant is a contributor.
-        if !participant.is_contributor() {
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-
-        // Fetch the chunk ID from the response file locator.
-        let chunk_id = match self.storage.read().unwrap().to_locator(unverified_locator)? {
-            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
-                // Check that the response file locator is unverified.
-                if verified == true {
-                    error!("{} provided a verified locator {}", participant, unverified_locator);
-                    return Err(CoordinatorError::ContributionLocatorIncorrect);
-                }
-
-                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
-                chunk_id
-            }
-            _ => {
-                error!("{} provided an irrelevant locator {}", participant, unverified_locator);
-                return Err(CoordinatorError::ContributionLocatorIncorrect);
-            }
-        };
-
+    pub fn try_contribute(&self, participant: &Participant, chunk_id: u64) -> Result<String, CoordinatorError> {
         trace!("Trying to add contribution from {} for chunk {}", chunk_id, participant);
         match self.add_contribution(chunk_id, participant) {
             // Case 1 - Participant added contribution, return the response file locator.
             Ok(locator) => {
+                // Acquire the storage write lock.
+                let mut storage = self.storage.write().unwrap();
+
                 // Acquire the state write lock.
                 let mut state = self.state.write().unwrap();
 
                 trace!("Release the lock on chunk {} from {}", chunk_id, participant);
                 state.released_lock(participant, chunk_id)?;
+
+                // Save the coordinator state in storage.
+                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
 
                 info!("Added contribution for chunk {} at {}", chunk_id, locator);
                 Ok(locator)
@@ -720,45 +741,29 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to add a verification with the given verified response file locator
-    /// from the given participant.
+    /// Attempts to add a verification for the given chunk ID from the given participant.
+    ///
+    /// This function constructs the expected next challenge locator for the given participant
+    /// and chunk ID, and checks that the participant has uploaded the next challenge file
+    /// prior to adding the verified contribution to the round state.
     ///
     #[inline]
-    pub fn try_verify(&self, participant: &Participant, verified_locator: &str) -> Result<(), CoordinatorError> {
-        // Check that the participant is a verifier.
-        if !participant.is_verifier() {
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-
-        // Fetch the chunk ID from the response file locator.
-        let chunk_id = match self.storage.read().unwrap().to_locator(verified_locator)? {
-            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
-                // Check that the response file locator is verified.
-                if verified == false {
-                    error!("{} provided an unverified locator {}", participant, verified_locator);
-                    return Err(CoordinatorError::ContributionLocatorIncorrect);
-                }
-
-                // TODO (howardwu): Load a reader for the unverified response file and verified file.
-                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
-
-                chunk_id
-            }
-            _ => {
-                error!("{} provided an irrelevant locator {}", participant, verified_locator);
-                return Err(CoordinatorError::ContributionLocatorIncorrect);
-            }
-        };
-
+    pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
         trace!("Trying to add verification from {} for chunk {}", chunk_id, participant);
         match self.verify_contribution(chunk_id, participant) {
             // Case 1 - Participant verified contribution, return the response file locator.
             Ok(locator) => {
+                // Acquire the storage write lock.
+                let mut storage = self.storage.write().unwrap();
+
                 // Acquire the state write lock.
                 let mut state = self.state.write().unwrap();
 
                 trace!("Decrementing the number of locks held by {}", participant);
                 state.released_lock(participant, chunk_id)?;
+
+                // Save the coordinator state in storage.
+                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
 
                 info!("Added verification for chunk {}", chunk_id);
                 Ok(locator)
@@ -781,19 +786,39 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_advance(&self) -> Result<u64, CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
+        // Check that the current round height matches in storage and state.
+        let current_round_height = {
+            // Fetch the current round height from storage.
+            let current_round_height_in_storage = Self::load_current_round_height(&storage)?;
+            trace!("Current round height in storage is {}", current_round_height_in_storage);
+
+            // Fetch the current round height from coordinator state.
+            let current_round_height = state.current_round_height();
+            trace!("Current round height in coordinator state is {}", current_round_height);
+
+            // Check that the current round height matches in storage and state.
+            match current_round_height_in_storage == current_round_height {
+                true => current_round_height,
+                false => return Err(CoordinatorError::RoundHeightMismatch),
+            }
+        };
+
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
-        match state.precommit_next_round(self.current_round_height()? + 1) {
+        let result = match state.precommit_next_round(current_round_height + 1) {
             // Case 1 - Precommit succeed, attempt to advance the round.
             Ok((contributors, verifiers)) => {
                 // Fetch the current time.
                 let now = Utc::now();
 
                 trace!("Trying to add advance to the next round");
-                match self.next_round(now, contributors, verifiers) {
+                match self.next_round(&mut storage, now, contributors, verifiers) {
                     // Case 1a - Coordinator advanced the round.
                     Ok(next_round_height) => {
                         // If success, update coordinator state to next round.
@@ -819,7 +844,12 @@ impl Coordinator {
                 error!("{}", error);
                 Err(error)
             }
-        }
+        };
+
+        // Save the coordinator state in storage.
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+        result
     }
 }
 
@@ -838,6 +868,7 @@ impl Coordinator {
     #[inline]
     pub(crate) fn try_lock_chunk(
         &self,
+        mut storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<(String, String, String), CoordinatorError> {
@@ -845,9 +876,6 @@ impl Coordinator {
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
-
-        // Acquire the storage lock.
-        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
@@ -879,8 +907,8 @@ impl Coordinator {
     ///
     /// Attempts to add a contribution for a given chunk ID from a given participant.
     ///
-    /// This function assumes the participant is a contributor and has just uploaded
-    /// their response file to the coordinator. The coordinator proceeds to sanity check
+    /// This function checks that the participant is a contributor and has uploaded
+    /// a valid response file to the coordinator. The coordinator sanity checks
     /// (however, does not verify) the contribution before accepting the response file.
     ///
     /// On success, this function releases the chunk lock from the contributor and
@@ -911,22 +939,22 @@ impl Coordinator {
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
-
         trace!("Current round height from storage is {}", current_round_height);
 
         // Fetch the current round from storage.
         let mut round = Self::load_current_round(&storage)?;
+        {
+            // Check that the participant is an authorized contributor to the current round.
+            if !round.is_contributor(participant) {
+                error!("{} is unauthorized to contribute to chunk {})", participant, chunk_id);
+                return Err(CoordinatorError::UnauthorizedChunkContributor);
+            }
 
-        // Check that the participant is an authorized contributor to the current round.
-        if !round.is_contributor(participant) {
-            error!("{} is unauthorized to contribute to chunk {})", participant, chunk_id);
-            return Err(CoordinatorError::UnauthorizedChunkContributor);
-        }
-
-        // Check that the chunk lock is currently held by this contributor.
-        if !round.is_chunk_locked_by(chunk_id, participant) {
-            error!("{} should have lock on chunk {} but does not", participant, chunk_id);
-            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+            // Check that the chunk lock is currently held by this contributor.
+            if !round.is_chunk_locked_by(chunk_id, participant) {
+                error!("{} should have lock on chunk {} but does not", participant, chunk_id);
+                return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+            }
         }
 
         // Fetch the expected number of contributions for the current round.
@@ -945,7 +973,6 @@ impl Coordinator {
         let challenge_file_locator =
             Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
         let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
-
         {
             // Fetch a challenge file reader.
             let challenge_reader = storage.reader(&challenge_file_locator)?;
@@ -995,22 +1022,24 @@ impl Coordinator {
     ///
     /// Attempts to run verification in the current round for a given chunk ID and participant.
     ///
+    /// This function checks that the participant is a verifier and has uploaded
+    /// a valid next challenge file to the coordinator. The coordinator sanity checks
+    /// that the next challenge file contains the hash of the corresponding response file.
+    ///
     /// On success, this function stores the next challenge locator into the round transcript
     /// and releases the chunk lock from the verifier.
     ///
     #[inline]
     pub(crate) fn verify_contribution(&self, chunk_id: u64, participant: &Participant) -> Result<(), CoordinatorError> {
         info!("Attempting to verify a contribution for chunk {}", chunk_id);
-        {
-            // Check that the chunk ID is valid.
-            if chunk_id > self.environment.number_of_chunks() {
-                return Err(CoordinatorError::ChunkIdInvalid);
-            }
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
 
-            // Check that the participant is a verifier.
-            if !participant.is_verifier() {
-                return Err(CoordinatorError::ExpectedVerifier);
-            }
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
         }
 
         // Acquire the storage lock.
@@ -1050,7 +1079,6 @@ impl Coordinator {
                 false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
             }
         };
-
         {
             // Compute the response hash.
             let response_hash = calculate_hash(&storage.reader(&Locator::ContributionFile(
@@ -1121,6 +1149,7 @@ impl Coordinator {
     #[inline]
     pub(crate) fn next_round(
         &self,
+        mut storage: &mut StorageLock,
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
         verifiers: Vec<Participant>,
@@ -1133,9 +1162,6 @@ impl Coordinator {
         if verifiers.is_empty() {
             return Err(CoordinatorError::VerifierMissing);
         }
-
-        // Acquire the storage lock.
-        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
@@ -1351,26 +1377,6 @@ impl Coordinator {
             current_round_height, new_height
         );
         Ok(new_height)
-    }
-
-    ///
-    /// Returns a reference to the instantiation of `Environment` that this
-    /// coordinator is using.
-    ///
-    #[allow(dead_code)]
-    #[inline]
-    pub(super) fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
-    ///
-    /// Returns a reference to the instantiation of `Storage` that this
-    /// coordinator is using.
-    ///
-    #[allow(dead_code)]
-    #[inline]
-    pub(super) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
-        self.storage.clone()
     }
 
     ///
@@ -1613,11 +1619,31 @@ impl Coordinator {
             false => Err(CoordinatorError::RoundDoesNotExist),
         }
     }
+
+    ///
+    /// Returns a reference to the instantiation of `Environment` that this
+    /// coordinator is using.
+    ///
+    #[allow(dead_code)]
+    #[inline]
+    pub(super) fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Storage` that this
+    /// coordinator is using.
+    ///
+    #[cfg(test)]
+    #[inline]
+    pub(super) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
+        self.storage.clone()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{environment::*, testing::prelude::*, Coordinator};
+    use crate::{environment::*, storage::StorageLock, testing::prelude::*, Coordinator};
 
     use crate::commands::{Seed, SEED_LENGTH};
     use chrono::Utc;
@@ -1629,15 +1655,22 @@ mod tests {
         // Ensure the ceremony has not started.
         assert_eq!(0, coordinator.current_round_height()?);
 
-        // Run initialization.
-        coordinator.next_round(
-            *TEST_STARTED_AT,
-            vec![
-                Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
-                Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
-            ],
-            vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
-        )?;
+        {
+            // Acquire the storage write lock.
+            let storage = coordinator.storage();
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run initialization.
+            coordinator.next_round(
+                &mut storage,
+                *TEST_STARTED_AT,
+                vec![
+                    Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+                    Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+                ],
+                vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+            )?;
+        }
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height()?);
@@ -1650,10 +1683,19 @@ mod tests {
         // Ensure the ceremony has not started.
         assert_eq!(0, coordinator.current_round_height()?);
 
-        // Run initialization.
-        coordinator.next_round(*TEST_STARTED_AT, vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()], vec![
-            Lazy::force(&TEST_VERIFIER_ID).clone(),
-        ])?;
+        {
+            // Acquire the storage write lock.
+            let storage = coordinator.storage();
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run initialization.
+            coordinator.next_round(
+                &mut storage,
+                *TEST_STARTED_AT,
+                vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()],
+                vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+            )?;
+        }
 
         // Check current round height is now 1.
         assert_eq!(1, coordinator.current_round_height()?);
@@ -1682,19 +1724,26 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let storage = coordinator.storage();
 
         // Ensure the ceremony has not started.
         assert_eq!(0, coordinator.current_round_height()?);
 
-        // Run initialization.
-        coordinator.next_round(
-            Utc::now(),
-            vec![
-                Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
-                Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
-            ],
-            vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
-        )?;
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run initialization.
+            coordinator.next_round(
+                &mut storage,
+                Utc::now(),
+                vec![
+                    Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+                    Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+                ],
+                vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
+            )?;
+        }
 
         {
             // Check round 0 is complete.
@@ -1727,33 +1776,37 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_contributor_try_lock_test() -> anyhow::Result<()> {
+    fn coordinator_contributor_try_lock_chunk_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
-        initialize_coordinator(&coordinator)?;
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
         let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
 
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let storage = coordinator.storage();
+        initialize_coordinator(&coordinator)?;
+
         {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
             // Acquire the lock for chunk 0 as contributor 1.
-            assert!(coordinator.try_lock_chunk(0, &contributor).is_ok());
+            assert!(coordinator.try_lock_chunk(&mut storage, 0, &contributor).is_ok());
 
             // Attempt to acquire the lock for chunk 0 as contributor 1 again.
-            assert!(coordinator.try_lock_chunk(0, &contributor).is_err());
+            assert!(coordinator.try_lock_chunk(&mut storage, 0, &contributor).is_err());
 
             // Acquire the lock for chunk 1 as contributor 1.
-            assert!(coordinator.try_lock_chunk(1, &contributor).is_ok());
+            assert!(coordinator.try_lock_chunk(&mut storage, 1, &contributor).is_ok());
 
             // Attempt to acquire the lock for chunk 0 as contributor 2.
-            assert!(coordinator.try_lock_chunk(0, &contributor_2).is_err());
+            assert!(coordinator.try_lock_chunk(&mut storage, 0, &contributor_2).is_err());
 
             // Attempt to acquire the lock for chunk 1 as contributor 2.
-            assert!(coordinator.try_lock_chunk(1, &contributor_2).is_err());
+            assert!(coordinator.try_lock_chunk(&mut storage, 1, &contributor_2).is_err());
 
             // Acquire the lock for chunk 1 as contributor 2.
-            assert!(coordinator.try_lock_chunk(2, &contributor_2).is_ok());
+            assert!(coordinator.try_lock_chunk(&mut storage, 2, &contributor_2).is_ok());
         }
 
         {
@@ -1792,12 +1845,19 @@ mod tests {
     fn coordinator_contributor_add_contribution_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
-        // Acquire the lock for chunk 0 as contributor 1.
-        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
-        coordinator.try_lock_chunk(0, &contributor)?;
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Acquire the lock for chunk 0 as contributor 1.
+            coordinator.try_lock_chunk(&mut storage, 0, &contributor)?;
+        }
 
         // Run computation on round 1 chunk 0 contribution 1.
         {
@@ -1844,7 +1904,10 @@ mod tests {
     fn coordinator_verifier_verify_contribution_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
         // Check current round height is now 1.
@@ -1853,8 +1916,12 @@ mod tests {
 
         // Acquire the lock for chunk 0 as contributor 1.
         let chunk_id = 0;
-        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
-        assert!(coordinator.try_lock_chunk(chunk_id, &contributor).is_ok());
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            assert!(coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor).is_ok());
+        }
 
         // Run computation on round 1 chunk 0 contribution 1.
         let contribution_id = 1;
@@ -1873,7 +1940,12 @@ mod tests {
         {
             // Acquire the lock on chunk 0 for the verifier.
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-            assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
+            {
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(storage.write().unwrap());
+
+                assert!(coordinator.try_lock_chunk(&mut storage, chunk_id, &verifier).is_ok());
+            }
 
             // Check that chunk 0 is locked.
             let round = coordinator.current_round()?;
@@ -1916,6 +1988,7 @@ mod tests {
         }));
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let storage = coordinator.storage();
         initialize_coordinator_single_contributor(&coordinator)?;
 
         // Check current round height is now 1.
@@ -1929,12 +2002,17 @@ mod tests {
         let mut verifier_threads = vec![];
 
         let contribution_id = 1;
+
         let mut seed: Seed = [0; SEED_LENGTH];
         rand::thread_rng().fill_bytes(&mut seed[..]);
+
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             {
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(storage.write().unwrap());
+
                 // Acquire the lock as contributor.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor);
                 if try_lock.is_err() {
                     println!(
                         "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
@@ -1944,7 +2022,8 @@ mod tests {
                     );
                     try_lock?;
                 }
-
+            }
+            {
                 // Run computation as contributor.
                 let contribute =
                     coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
@@ -1973,40 +2052,46 @@ mod tests {
 
             // Spawn a thread to concurrently verify the contributions.
             let coordinator_clone = coordinator.clone();
+            let storage_clone = storage.clone();
             let verifier_thread = std::thread::spawn(move || {
                 let verifier = verifier.clone();
+                {
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage_clone.write().unwrap());
 
-                // Acquire the lock as the verifier.
-                let try_lock = coordinator_clone.try_lock_chunk(chunk_id, &verifier);
-                if try_lock.is_err() {
-                    println!(
-                        "Failed to acquire lock as verifier {:?}\n{}",
-                        verifier.clone(),
-                        serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
-                    );
-                    panic!(format!("{:?}", try_lock.unwrap()))
+                    // Acquire the lock as the verifier.
+                    let try_lock = coordinator_clone.try_lock_chunk(&mut storage, chunk_id, &verifier);
+                    if try_lock.is_err() {
+                        println!(
+                            "Failed to acquire lock as verifier {:?}\n{}",
+                            verifier.clone(),
+                            serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                        );
+                        panic!(format!("{:?}", try_lock.unwrap()))
+                    }
                 }
+                {
+                    // Run verification as verifier.
+                    let verify = coordinator_clone.run_verification(round_height, chunk_id, contribution_id, &verifier);
+                    if verify.is_err() {
+                        error!(
+                            "Failed to run verification as verifier {:?}\n{}",
+                            &verifier,
+                            serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                        );
+                        verify.unwrap();
+                    }
 
-                // Run verification as verifier.
-                let verify = coordinator_clone.run_verification(round_height, chunk_id, contribution_id, &verifier);
-                if verify.is_err() {
-                    error!(
-                        "Failed to run verification as verifier {:?}\n{}",
-                        &verifier,
-                        serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
-                    );
-                    verify.unwrap();
-                }
-
-                // Add the verification as the verifier.
-                let verify = coordinator_clone.verify_contribution(chunk_id, &verifier);
-                if verify.is_err() {
-                    println!(
-                        "Failed to run verification as verifier {:?}\n{}",
-                        verifier.clone(),
-                        serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
-                    );
-                    panic!(format!("{:?}", verify.unwrap()))
+                    // Add the verification as the verifier.
+                    let verify = coordinator_clone.verify_contribution(chunk_id, &verifier);
+                    if verify.is_err() {
+                        println!(
+                            "Failed to run verification as verifier {:?}\n{}",
+                            verifier.clone(),
+                            serde_json::to_string_pretty(&coordinator_clone.current_round().unwrap()).unwrap()
+                        );
+                        panic!(format!("{:?}", verify.unwrap()))
+                    }
                 }
             });
             verifier_threads.push(verifier_thread);
@@ -2023,6 +2108,7 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
         // Check current round height is now 1.
@@ -2037,6 +2123,7 @@ mod tests {
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
 
         let mut seeds = HashMap::new();
+
         // Iterate over all chunk IDs.
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // As contribution ID 0 is initialized by the coordinator, iterate from
@@ -2045,16 +2132,22 @@ mod tests {
                 let contributor = &contributors[contribution_id as usize - 1].clone();
                 trace!("{} is processing contribution {}", contributor, contribution_id);
                 {
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Acquire the lock as contributor.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                    let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor);
                     if try_lock.is_err() {
-                        error!(
-                            "Failed to acquire lock as contributor {:?}\n{}",
+                        println!(
+                            "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
+                            chunk_id,
                             &contributor,
                             serde_json::to_string_pretty(&coordinator.current_round()?)?
                         );
                         try_lock?;
                     }
+                }
+                {
                     let seed = if seeds.contains_key(&contribution_id) {
                         seeds[&contribution_id]
                     } else {
@@ -2088,8 +2181,11 @@ mod tests {
                     }
                 }
                 {
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
+                    let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &verifier);
                     if try_lock.is_err() {
                         error!(
                             "Failed to acquire lock as verifier {:?}\n{}",
@@ -2098,7 +2194,8 @@ mod tests {
                         );
                         try_lock?;
                     }
-
+                }
+                {
                     // Run verification as verifier.
                     let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
                     if verify.is_err() {
@@ -2129,8 +2226,13 @@ mod tests {
             serde_json::to_string_pretty(&coordinator.current_round()?)?
         );
 
-        // Run aggregation and transition from round 1 to round 2.
-        coordinator.next_round(Utc::now(), contributors, vec![verifier.clone()])?;
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run aggregation and transition from round 1 to round 2.
+            coordinator.next_round(&mut storage, Utc::now(), contributors, vec![verifier.clone()])?;
+        }
 
         println!(
             "Finished aggregation with this transcript {}",
@@ -2144,13 +2246,24 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let storage = coordinator.storage();
+
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let verifier = Lazy::force(&TEST_VERIFIER_ID);
 
         // Ensure the ceremony has not started.
         assert_eq!(0, coordinator.current_round_height()?);
-        // Run initialization.
-        coordinator.next_round(*TEST_STARTED_AT, vec![contributor.clone()], vec![verifier.clone()])?;
+
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run initialization.
+            coordinator.next_round(&mut storage, *TEST_STARTED_AT, vec![contributor.clone()], vec![
+                verifier.clone(),
+            ])?;
+        }
+
         // Check current round height is now 1.
         let round_height = coordinator.current_round_height()?;
         assert_eq!(1, round_height);
@@ -2171,8 +2284,11 @@ mod tests {
             // contribution ID 1 up to the expected number of contributions.
             for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
                 {
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Acquire the lock as contributor.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor);
+                    let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor);
                     if try_lock.is_err() {
                         error!(
                             "Failed to acquire lock as contributor {:?}\n{}",
@@ -2181,7 +2297,8 @@ mod tests {
                         );
                         try_lock?;
                     }
-
+                }
+                {
                     // Run computation as contributor.
                     let seed = if seeds.contains_key(&contribution_id) {
                         seeds[&contribution_id]
@@ -2215,8 +2332,11 @@ mod tests {
                     }
                 }
                 {
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
+                    let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &verifier);
                     if try_lock.is_err() {
                         error!(
                             "Failed to acquire lock as verifier {:?}\n{}",
@@ -2225,7 +2345,8 @@ mod tests {
                         );
                         try_lock?;
                     }
-
+                }
+                {
                     // Run verification as verifier.
                     let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
                     if verify.is_err() {
@@ -2256,8 +2377,15 @@ mod tests {
             serde_json::to_string_pretty(&coordinator.current_round()?)?
         );
 
-        // Run aggregation and transition from round 1 to round 2.
-        coordinator.next_round(Utc::now(), vec![contributor.clone()], vec![verifier.clone()])?;
+        {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
+            // Run aggregation and transition from round 1 to round 2.
+            coordinator.next_round(&mut storage, Utc::now(), vec![contributor.clone()], vec![
+                verifier.clone(),
+            ])?;
+        }
 
         info!(
             "Finished aggregation with this transcript {}",
@@ -2284,8 +2412,8 @@ mod tests {
     #[test]
     #[named]
     #[serial]
-    fn test_coordinator_contributor_try_lock() {
-        test_report!(coordinator_contributor_try_lock_test);
+    fn test_coordinator_contributor_try_lock_chunk() {
+        test_report!(coordinator_contributor_try_lock_chunk_test);
     }
 
     #[test]
@@ -2327,7 +2455,7 @@ mod tests {
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
-        let environment = &*TestingEnvironment::from(Parameters::TestChunks(4096));
+        let environment = &*Testing::from(Parameters::TestChunks(4096));
         initialize_test_environment(environment);
 
         let coordinator = Coordinator::new(environment.clone()).unwrap();
