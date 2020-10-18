@@ -33,6 +33,7 @@ impl Object {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Object::CoordinatorState(state) => {
+                tracing::trace!("{:#?}\n\n\n", state);
                 serde_json::to_vec_pretty(state).expect("coordinator state to bytes failed")
             }
             Object::RoundHeight(height) => serde_json::to_vec(height).expect("round height to bytes failed"),

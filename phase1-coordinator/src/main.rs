@@ -14,7 +14,7 @@ fn init_logger() {
 
     static INSTANCE: OnceCell<()> = OnceCell::new();
     INSTANCE.get_or_init(|| {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
+        let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
         tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     });
 }
