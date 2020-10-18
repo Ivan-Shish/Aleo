@@ -291,20 +291,20 @@ impl Coordinator {
             info!("Add contributions and verifications for round 1");
             for _ in 0..self.environment.number_of_chunks() {
                 {
-                    let (chunk_id, _previous_response, _challenge, response) = self.try_lock(&contributor)?;
+                    let (chunk_id, _previous_response, _challenge, _response) = self.try_lock(&contributor)?;
 
                     debug!("Computing contributions for round 1 chunk {}", chunk_id);
                     self.run_computation(1, chunk_id, 1, &contributor, seed.expose_secret()[..].try_into()?)?;
-                    let _response = self.try_contribute(&contributor, &response)?;
+                    let _response = self.try_contribute(&contributor, chunk_id)?;
                     debug!("Computed contributions for round 1 chunk {}", chunk_id);
                 }
 
                 {
-                    let (chunk_id, _challenge, _response, next_challenge) = self.try_lock(&verifier)?;
+                    let (chunk_id, _challenge, _response, _next_challenge) = self.try_lock(&verifier)?;
 
                     debug!("Running verification for round 1 chunk {}", chunk_id);
                     let _next_challenge = self.run_verification(1, chunk_id, 1, &verifier)?;
-                    self.try_verify(&verifier, &next_challenge)?;
+                    self.try_verify(&verifier, chunk_id)?;
                     debug!("Running verification for round 1 chunk {}", chunk_id);
                 }
             }
@@ -695,8 +695,11 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to add a contribution for the given unverified response file locator
-    /// from the given participant.
+    /// Attempts to add a contribution for the given chunk ID from the given participant.
+    ///
+    /// This function constructs the expected response locator for the given participant
+    /// and chunk ID, and checks that the participant has uploaded the response file
+    /// prior to adding the unverified contribution to the round state.
     ///
     /// On success, this function releases the lock from the contributor and returns
     /// the response file locator.
@@ -704,34 +707,7 @@ impl Coordinator {
     /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn try_contribute(
-        &self,
-        participant: &Participant,
-        unverified_locator: &str,
-    ) -> Result<String, CoordinatorError> {
-        // Check that the participant is a contributor.
-        if !participant.is_contributor() {
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-
-        // Fetch the chunk ID from the response file locator.
-        let chunk_id = match self.storage.read().unwrap().to_locator(unverified_locator)? {
-            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
-                // Check that the response file locator is unverified.
-                if verified == true {
-                    error!("{} provided a verified locator {}", participant, unverified_locator);
-                    return Err(CoordinatorError::ContributionLocatorIncorrect);
-                }
-
-                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
-                chunk_id
-            }
-            _ => {
-                error!("{} provided an irrelevant locator {}", participant, unverified_locator);
-                return Err(CoordinatorError::ContributionLocatorIncorrect);
-            }
-        };
-
+    pub fn try_contribute(&self, participant: &Participant, chunk_id: u64) -> Result<String, CoordinatorError> {
         trace!("Trying to add contribution from {} for chunk {}", chunk_id, participant);
         match self.add_contribution(chunk_id, participant) {
             // Case 1 - Participant added contribution, return the response file locator.
@@ -765,36 +741,14 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to add a verification with the given verified response file locator
-    /// from the given participant.
+    /// Attempts to add a verification for the given chunk ID from the given participant.
+    ///
+    /// This function constructs the expected next challenge locator for the given participant
+    /// and chunk ID, and checks that the participant has uploaded the next challenge file
+    /// prior to adding the verified contribution to the round state.
     ///
     #[inline]
-    pub fn try_verify(&self, participant: &Participant, verified_locator: &str) -> Result<(), CoordinatorError> {
-        // Check that the participant is a verifier.
-        if !participant.is_verifier() {
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-
-        // Fetch the chunk ID from the response file locator.
-        let chunk_id = match self.storage.read().unwrap().to_locator(verified_locator)? {
-            Locator::ContributionFile(_round_height, chunk_id, _contribution_id, verified) => {
-                // Check that the response file locator is verified.
-                if verified == false {
-                    error!("{} provided an unverified locator {}", participant, verified_locator);
-                    return Err(CoordinatorError::ContributionLocatorIncorrect);
-                }
-
-                // TODO (howardwu): Load a reader for the unverified response file and verified file.
-                // TODO (howardwu): Check that the given locator corresponds to the correct response file.
-
-                chunk_id
-            }
-            _ => {
-                error!("{} provided an irrelevant locator {}", participant, verified_locator);
-                return Err(CoordinatorError::ContributionLocatorIncorrect);
-            }
-        };
-
+    pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
         trace!("Trying to add verification from {} for chunk {}", chunk_id, participant);
         match self.verify_contribution(chunk_id, participant) {
             // Case 1 - Participant verified contribution, return the response file locator.
@@ -953,8 +907,8 @@ impl Coordinator {
     ///
     /// Attempts to add a contribution for a given chunk ID from a given participant.
     ///
-    /// This function assumes the participant is a contributor and has just uploaded
-    /// their response file to the coordinator. The coordinator proceeds to sanity check
+    /// This function checks that the participant is a contributor and has uploaded
+    /// a valid response file to the coordinator. The coordinator sanity checks
     /// (however, does not verify) the contribution before accepting the response file.
     ///
     /// On success, this function releases the chunk lock from the contributor and
@@ -985,22 +939,22 @@ impl Coordinator {
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
-
         trace!("Current round height from storage is {}", current_round_height);
 
         // Fetch the current round from storage.
         let mut round = Self::load_current_round(&storage)?;
+        {
+            // Check that the participant is an authorized contributor to the current round.
+            if !round.is_contributor(participant) {
+                error!("{} is unauthorized to contribute to chunk {})", participant, chunk_id);
+                return Err(CoordinatorError::UnauthorizedChunkContributor);
+            }
 
-        // Check that the participant is an authorized contributor to the current round.
-        if !round.is_contributor(participant) {
-            error!("{} is unauthorized to contribute to chunk {})", participant, chunk_id);
-            return Err(CoordinatorError::UnauthorizedChunkContributor);
-        }
-
-        // Check that the chunk lock is currently held by this contributor.
-        if !round.is_chunk_locked_by(chunk_id, participant) {
-            error!("{} should have lock on chunk {} but does not", participant, chunk_id);
-            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+            // Check that the chunk lock is currently held by this contributor.
+            if !round.is_chunk_locked_by(chunk_id, participant) {
+                error!("{} should have lock on chunk {} but does not", participant, chunk_id);
+                return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+            }
         }
 
         // Fetch the expected number of contributions for the current round.
@@ -1019,7 +973,6 @@ impl Coordinator {
         let challenge_file_locator =
             Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
         let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
-
         {
             // Fetch a challenge file reader.
             let challenge_reader = storage.reader(&challenge_file_locator)?;
@@ -1069,22 +1022,24 @@ impl Coordinator {
     ///
     /// Attempts to run verification in the current round for a given chunk ID and participant.
     ///
+    /// This function checks that the participant is a verifier and has uploaded
+    /// a valid next challenge file to the coordinator. The coordinator sanity checks
+    /// that the next challenge file contains the hash of the corresponding response file.
+    ///
     /// On success, this function stores the next challenge locator into the round transcript
     /// and releases the chunk lock from the verifier.
     ///
     #[inline]
     pub(crate) fn verify_contribution(&self, chunk_id: u64, participant: &Participant) -> Result<(), CoordinatorError> {
         info!("Attempting to verify a contribution for chunk {}", chunk_id);
-        {
-            // Check that the chunk ID is valid.
-            if chunk_id > self.environment.number_of_chunks() {
-                return Err(CoordinatorError::ChunkIdInvalid);
-            }
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
 
-            // Check that the participant is a verifier.
-            if !participant.is_verifier() {
-                return Err(CoordinatorError::ExpectedVerifier);
-            }
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
         }
 
         // Acquire the storage lock.
@@ -1124,7 +1079,6 @@ impl Coordinator {
                 false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
             }
         };
-
         {
             // Compute the response hash.
             let response_hash = calculate_hash(&storage.reader(&Locator::ContributionFile(
