@@ -48,21 +48,6 @@ lazy_static! {
     pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 }
 
-pub fn initialize_coordinator(
-    coordinator: &Coordinator,
-    contributors: Vec<Participant>,
-    verifiers: Vec<Participant>,
-) -> anyhow::Result<()> {
-    // Ensure the ceremony has not started.
-    assert_eq!(0, coordinator.current_round_height()?);
-    // Run initialization.
-    coordinator.next_round(*TEST_STARTED_AT, contributors, verifiers)?;
-    // Check current round height is now 1.
-    assert_eq!(1, coordinator.current_round_height()?);
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    Ok(())
-}
-
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let coordinator = Coordinator::new(environment.clone())?;

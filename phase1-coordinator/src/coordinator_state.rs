@@ -604,6 +604,16 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns the current round height stored in the coordinator state.
+    ///
+    /// This function returns `0` if the current round height has not been set.
+    ///
+    #[inline]
+    pub(super) fn current_round_height(&mut self) -> u64 {
+        self.current_round_height.unwrap_or_default()
+    }
+
+    ///
     /// Updates the current round height stored in the coordinator state.
     ///
     #[inline]
