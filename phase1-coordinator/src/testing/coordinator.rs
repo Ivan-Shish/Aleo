@@ -18,10 +18,10 @@ use tracing::{error, info, warn};
 
 lazy_static! {
     /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT: Environment = (*TestingEnvironment::from(Parameters::Test8Chunks).clone()).clone();
+    pub static ref TEST_ENVIRONMENT: Environment = (*Testing::from(Parameters::Test8Chunks).clone()).clone();
 
     /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT_3: Environment = (*TestingEnvironment::from(Parameters::Test3Chunks).clone()).clone();
+    pub static ref TEST_ENVIRONMENT_3: Environment = (*Testing::from(Parameters::Test3Chunks).clone()).clone();
 
     /// Round start datetime for testing purposes only.
     pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);

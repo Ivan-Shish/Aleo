@@ -319,7 +319,7 @@ impl Coordinator {
             // Acquire the state write lock.
             let mut state = self.state.write().unwrap();
 
-            info!("\n\t{}", state.status_report());
+            info!("\n{}", state.status_report());
 
             // Update the state of the queue.
             state.update_queue()?;
