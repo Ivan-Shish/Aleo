@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{
     de::{Deserializer, Error},
-    ser::{SerializeSeq, SerializeTuple, Serializer},
+    ser::Serializer,
     Deserialize,
     Serialize,
 };
