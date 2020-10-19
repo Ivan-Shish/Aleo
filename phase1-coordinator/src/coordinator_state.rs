@@ -2283,6 +2283,125 @@ mod tests {
     }
 
     #[test]
+    fn test_round_2x1() {
+        test_logger();
+
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier = TEST_VERIFIER_ID.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.set_current_round_height(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier.clone(), 10).unwrap();
+        state.update_queue().unwrap();
+        assert!(state.is_current_round_finished());
+        assert!(state.is_precommit_next_round_ready());
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        assert_eq!(3, state.queue.len());
+        assert_eq!(0, state.next.len());
+        state.precommit_next_round(next_round_height).unwrap();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(3, state.next.len());
+        state.commit_next_round();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(0, state.next.len());
+
+        // Process every chunk in the round as contributor 1 and contributor 2.
+        let offset = 4;
+        let number_of_chunks = environment.number_of_chunks();
+        for i in 0..number_of_chunks {
+            assert_eq!(Some(next_round_height), state.current_round_height);
+            assert_eq!(2, state.current_contributors.len());
+            assert_eq!(1, state.current_verifiers.len());
+            assert_eq!(0, state.pending_verification.len());
+            assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.dropped.len());
+            assert_eq!(0, state.banned.len());
+
+            // Fetch a pending task for contributor 1.
+            let task = state.pop_task(&contributor_1).unwrap();
+            let chunk_id = i as u64;
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
+            let assigned_verifier_1 = state
+                .completed_task(&contributor_1, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+            assert_eq!(verifier, assigned_verifier_1);
+
+            // Fetch a pending task for contributor 2.
+            let task = state.pop_task(&contributor_2).unwrap();
+            let chunk_id_2 = (i as u64 + offset) % number_of_chunks;
+            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
+            let assigned_verifier_2 = state
+                .completed_task(&contributor_2, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(2, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+            assert_eq!(assigned_verifier_1, assigned_verifier_2);
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&verifier).unwrap();
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&verifier).unwrap();
+            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(0, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            {
+                // Update the state of current round contributors.
+                state.update_current_contributors().unwrap();
+
+                // Update the state of current round verifiers.
+                state.update_current_verifiers().unwrap();
+
+                // Drop disconnected participants from the current round.
+                state.update_dropped_participants().unwrap();
+
+                // Ban any participants who meet the coordinator criteria.
+                state.update_banned_participants().unwrap();
+            }
+        }
+
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(0, state.current_contributors.len());
+        assert_eq!(0, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(2, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(1, state.finished_verifiers.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.dropped.len());
+        assert_eq!(0, state.banned.len());
+    }
+
+    #[test]
     fn test_round_2x2() {
         test_logger();
 
@@ -2367,8 +2486,6 @@ mod tests {
             }
         }
 
-        println!("{:#?}", state);
-
         // Process every chunk in the round as contributor 2.
         let offset = 4;
         for i in offset..offset + number_of_chunks {
@@ -2418,8 +2535,6 @@ mod tests {
                 state.update_banned_participants().unwrap();
             }
         }
-
-        println!("{:#?}", state);
 
         assert_eq!(Some(next_round_height), state.current_round_height);
         assert_eq!(0, state.current_contributors.len());
