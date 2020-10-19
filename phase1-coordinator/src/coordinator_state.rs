@@ -2,9 +2,17 @@ use crate::{environment::Environment, objects::participant::*, CoordinatorError}
 
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, LinkedList};
-use tracing::{debug, error, trace, warn};
+use serde::{
+    de::{Deserializer, Error},
+    ser::Serializer,
+    Deserialize,
+    Serialize,
+};
+use std::{
+    collections::{HashMap, HashSet, LinkedList},
+    str::FromStr,
+};
+use tracing::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(super) enum CoordinatorStatus {
@@ -37,12 +45,12 @@ pub(super) struct ParticipantInfo {
     finished_at: Option<DateTime<Utc>>,
     /// The timestamp when this participant was dropped from the round.
     dropped_at: Option<DateTime<Utc>>,
-    /// The list of chunk IDs that this participant has left to compute.
-    pending_chunks: LinkedList<u64>,
     /// The set of chunk IDs that this participant is computing.
     locked_chunks: HashSet<u64>,
-    /// The list of chunk IDs that this participant has computed.
-    completed_chunks: LinkedList<u64>,
+    /// The list of (chunk ID, contribution ID) tasks that this participant has left to compute.
+    pending_tasks: LinkedList<(u64, u64)>,
+    /// The list of (chunk ID, contribution ID) tasks that this participant has computed.
+    completed_tasks: LinkedList<(u64, u64)>,
 }
 
 impl ParticipantInfo {
@@ -59,9 +67,9 @@ impl ParticipantInfo {
             started_at: None,
             finished_at: None,
             dropped_at: None,
-            pending_chunks: LinkedList::new(),
             locked_chunks: HashSet::new(),
-            completed_chunks: LinkedList::new(),
+            pending_tasks: LinkedList::new(),
+            completed_tasks: LinkedList::new(),
         }
     }
 
@@ -85,18 +93,18 @@ impl ParticipantInfo {
             return false;
         }
 
-        // Check that the participant has no more pending chunks.
-        if !self.pending_chunks.is_empty() {
-            return false;
-        }
-
         // Check that the participant has no more locked chunks.
         if !self.locked_chunks.is_empty() {
             return false;
         }
 
-        // Check that the participant has completed chunks.
-        if self.completed_chunks.is_empty() {
+        // Check that the participant has no more pending tasks.
+        if !self.pending_tasks.is_empty() {
+            return false;
+        }
+
+        // Check that the participant has completed tasks.
+        if self.completed_tasks.is_empty() {
             return false;
         }
 
@@ -108,7 +116,7 @@ impl ParticipantInfo {
     /// and sets the start time as the current time.
     ///
     #[inline]
-    fn start(&mut self, chunks: LinkedList<u64>) -> Result<(), CoordinatorError> {
+    fn start(&mut self, tasks: LinkedList<(u64, u64)>) -> Result<(), CoordinatorError> {
         // Check that the participant has a valid round height set.
         if self.round_height == 0 {
             return Err(CoordinatorError::ParticipantRoundHeightInvalid);
@@ -119,13 +127,18 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyStarted);
         }
 
-        // Check that the participant has no pending or locked chunks.
-        if !self.pending_chunks.is_empty() || !self.locked_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantHasRemainingChunks);
+        // Check that the participant has no locked chunks.
+        if !self.locked_chunks.is_empty() {
+            return Err(CoordinatorError::ParticipantAlreadyHasLockedChunks);
         }
 
-        // Check that the participant has not completed chunks already.
-        if !self.completed_chunks.is_empty() {
+        // Check that the participant has no pending tasks.
+        if !self.pending_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingTasks);
+        }
+
+        // Check that the participant has not completed any tasks yet.
+        if !self.completed_tasks.is_empty() {
             return Err(CoordinatorError::ParticipantAlreadyStarted);
         }
 
@@ -135,16 +148,19 @@ impl ParticipantInfo {
         // Set the participant info to reflect them starting now.
         self.last_seen = now;
         self.started_at = Some(now);
-        self.pending_chunks = chunks;
+        self.pending_tasks = tasks;
 
         Ok(())
     }
 
     ///
-    /// Adds the given chunk ID in FIFO order for the participant to process.
+    /// Adds the given (chunk ID, contribution ID) task in FIFO order for the participant to process.
     ///
     #[inline]
-    fn push_back_chunk_id(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+    fn push_back_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Set the task as the given chunk ID and contribution ID.
+        let task = (chunk_id, contribution_id);
+
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -160,27 +176,35 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the chunk ID was not already added to the pending chunks.
-        if self.pending_chunks.contains(&chunk_id) {
-            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
-        }
-
-        // Check that the chunk ID was not already locked or completed.
-        if self.locked_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+        // Check that if the participant is a contributor, this chunk is not currently locked.
+        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
-        // Add the chunk ID to the front of the linked list.
-        self.pending_chunks.push_back(chunk_id);
+        // Check that the task was not already added to the pending tasks.
+        if self.pending_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
+        // Check that the participant has not already completed the task.
+        if self.completed_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+        }
+
+        // Add the task to the back of the pending tasks.
+        self.pending_tasks.push_back(task);
 
         Ok(())
     }
 
     ///
-    /// Adds the given chunk ID in LIFO order for the participant to process.
+    /// Adds the given (chunk ID, contribution ID) task in LIFO order for the participant to process.
     ///
     #[inline]
-    fn push_front_chunk_id(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+    fn push_front_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Set the task as the given chunk ID and contribution ID.
+        let task = (chunk_id, contribution_id);
+
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -196,28 +220,33 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the chunk ID was not already added to the pending chunks.
-        if self.pending_chunks.contains(&chunk_id) {
-            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
-        }
-
-        // Check that the chunk ID was not already locked or completed.
-        if self.locked_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+        // Check that if the participant is a contributor, this chunk is not currently locked.
+        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
-        // Add the chunk ID to the front of the linked list.
-        self.pending_chunks.push_front(chunk_id);
+        // Check that the task was not already added to the pending tasks.
+        if self.pending_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
+        // Check that the participant has not already completed the task.
+        if self.completed_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+        }
+
+        // Add the task to the front of the pending tasks.
+        self.pending_tasks.push_front(task);
 
         Ok(())
     }
 
     ///
-    /// Pops the next chunk ID the participant should process,
+    /// Pops the next (chunk ID, contribution ID) task the participant should process,
     /// in FIFO order when added to the linked list.
     ///
     #[inline]
-    fn pop_chunk_id(&mut self) -> Result<u64, CoordinatorError> {
+    fn pop_task(&mut self) -> Result<(u64, u64), CoordinatorError> {
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -233,18 +262,18 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the participant has pending chunks.
-        if self.pending_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantHasNoRemainingChunks);
+        // Check that the participant has pending tasks.
+        if self.pending_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasNoRemainingTasks);
         }
 
         // Update the last seen time.
         self.last_seen = Utc::now();
 
-        // Fetch the next chunk ID in order as stored.
-        match self.pending_chunks.pop_front() {
-            Some(chunk_id) => Ok(chunk_id),
-            None => Err(CoordinatorError::ParticipantHasNoRemainingChunks),
+        // Fetch the next task in order as stored.
+        match self.pending_tasks.pop_front() {
+            Some(task) => Ok(task),
+            None => Err(CoordinatorError::ParticipantHasNoRemainingTasks),
         }
     }
 
@@ -268,9 +297,26 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the participant was authorized to lock this chunk.
-        if self.pending_chunks.contains(&chunk_id) || self.completed_chunks.contains(&chunk_id) {
+        // Check that this chunk is not currently locked by the participant.
+        if self.locked_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
+        }
+
+        // Check that if the participant is a contributor, this chunk was not already pending.
+        if self.id.is_contributor() && self.pending_tasks.par_iter().filter(|(id, _)| *id == chunk_id).count() > 0 {
             return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
+        }
+
+        // Check that if the participant is a contributor, this chunk was not already completed.
+        if self.id.is_contributor()
+            && self
+                .completed_tasks
+                .par_iter()
+                .filter(|(id, _)| *id == chunk_id)
+                .count()
+                > 0
+        {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
 
         // Update the last seen time.
@@ -303,12 +349,12 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if self.pending_chunks.contains(&chunk_id) || !self.locked_chunks.contains(&chunk_id) {
+        if !self.locked_chunks.contains(&chunk_id) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
-        // Check that the participant has not already completed this chunk.
-        if self.completed_chunks.contains(&chunk_id) {
+        // Check that if the participant is a contributor, this chunk was not already completed.
+        if self.id.is_contributor() && self.completed_tasks.par_iter().filter(|(i, _)| *i == chunk_id).count() > 0 {
             return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
 
@@ -318,8 +364,53 @@ impl ParticipantInfo {
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
 
-        // Adds the given chunk ID to the completed chunks.
-        self.completed_chunks.push_back(chunk_id);
+        Ok(())
+    }
+
+    ///
+    /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
+    /// for this participant.
+    ///
+    #[inline]
+    fn completed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Set the task as the given chunk ID and contribution ID.
+        let task = (chunk_id, contribution_id);
+
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant released the lock for this chunk.
+        if self.locked_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
+        // Check that the participant does not have a pending task remaining for this.
+        if self.pending_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantStillHasTaskAsPending);
+        }
+
+        // Check that the participant has not already completed the task.
+        if self.completed_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedTask);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Add the task to the completed tasks.
+        self.completed_tasks.push_back(task);
 
         Ok(())
     }
@@ -344,19 +435,19 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the participant has no more pending chunks.
-        if !self.pending_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantHasRemainingChunks);
-        }
-
         // Check that the participant has no more locked chunks.
         if !self.locked_chunks.is_empty() {
             return Err(CoordinatorError::ParticipantStillHasLocks);
         }
 
-        // Check that the participant has completed chunks.
-        if self.completed_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantDidNotWork);
+        // Check that the participant has no more pending tasks.
+        if !self.pending_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingTasks);
+        }
+
+        // Check that the participant has completed tasks.
+        if self.completed_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantDidNotDoWork);
         }
 
         // Fetch the current time.
@@ -389,14 +480,14 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the participant has no more pending chunks.
-        if !self.pending_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantHasRemainingChunks);
-        }
-
         // Check that the participant has no more locked chunks.
         if !self.locked_chunks.is_empty() {
             return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
+        // Check that the participant has no more pending tasks.
+        if !self.pending_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingTasks);
         }
 
         // Fetch the current time.
@@ -436,8 +527,8 @@ pub struct CoordinatorState {
     current_contributors: HashMap<Participant, ParticipantInfo>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
-    /// The map of chunks pending verification in the current round.
-    pending_verification: HashMap<u64, Participant>,
+    /// The map of tasks pending verification in the current round.
+    pending_verification: HashMap<Task, Participant>,
     /// The map of each round height to the corresponding contributors from that round.
     finished_contributors: HashMap<u64, ParticipantInfo>,
     /// The map of each round height to the corresponding verifiers from that round.
@@ -623,13 +714,14 @@ impl CoordinatorState {
     }
 
     ///
-    /// Adds the given chunk ID to the participant to process.
+    /// Adds the given (chunk ID, contribution ID) pair to the participant to process.
     ///
     #[inline]
-    pub(super) fn push_front_chunk_id(
+    pub(super) fn push_front_task(
         &mut self,
         participant: &Participant,
         chunk_id: u64,
+        contribution_id: u64,
     ) -> Result<(), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
@@ -639,29 +731,29 @@ impl CoordinatorState {
         // Add the chunk ID to the pending chunks of the given participant.
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant) => Ok(participant.push_front_chunk_id(chunk_id)?),
+                Some(participant) => Ok(participant.push_front_task(chunk_id, contribution_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => Ok(participant.push_front_chunk_id(chunk_id)?),
+                Some(participant) => Ok(participant.push_front_task(chunk_id, contribution_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
     }
 
     ///
-    /// Pops the next chunk ID the participant should process.
+    /// Pops the next (chunk ID, contribution ID) task that the participant should process.
     ///
     #[inline]
-    pub(super) fn pop_chunk_id(&mut self, participant: &Participant) -> Result<u64, CoordinatorError> {
+    pub(super) fn pop_task(&mut self, participant: &Participant) -> Result<(u64, u64), CoordinatorError> {
         // Remove the next chunk ID from the pending chunks of the given participant.
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant) => Ok(participant.pop_chunk_id()?),
+                Some(participant) => Ok(participant.pop_task()?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => Ok(participant.pop_chunk_id()?),
+                Some(participant) => Ok(participant.pop_task()?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
@@ -672,12 +764,19 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn acquired_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                // Acquire the chunk lock for the contributor.
                 Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                // Acquire the chunk lock for the verifier.
                 Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
@@ -689,80 +788,144 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant_info) => {
-                    // Release the chunk lock from the contributor.
-                    participant_info.released_lock(chunk_id)?;
-
-                    trace!("Adding chunk {} to the queue of pending verifications", chunk_id);
-                    self.add_pending_verification(chunk_id)?;
-
-                    Ok(())
-                }
+                // Release the chunk lock from the contributor.
+                Some(participant) => Ok(participant.released_lock(chunk_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => {
-                    // Release the chunk lock from the verifier.
-                    participant.released_lock(chunk_id)?;
-
-                    trace!("Removing chunk {} from the queue of pending verifications", chunk_id);
-                    self.remove_pending_verification(chunk_id)?;
-
-                    Ok(())
-                }
+                // Release the chunk lock from the verifier.
+                Some(participant) => Ok(participant.released_lock(chunk_id)?),
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
     }
 
     ///
-    /// Adds the given chunk ID to the map of chunks that are pending verification.
-    /// The chunk is assigned to the verifier with the least number of chunks in its queue.
+    /// Adds the given (chunk ID, contribution ID) task to the pending verification set.
+    /// The verification task is then assigned to the verifier with the least number of tasks in its queue.
     ///
     #[inline]
-    pub(super) fn add_pending_verification(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
-        // Check that the set pending verification does not already contain the chunk ID.
-        if self.pending_verification.contains_key(&chunk_id) {
+    pub(super) fn add_pending_verification(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Check that the pending verification set does not already contain the chunk ID.
+        if self
+            .pending_verification
+            .contains_key(&Task::new(chunk_id, contribution_id))
+        {
             return Err(CoordinatorError::ChunkIdAlreadyAdded);
         }
 
         let verifier = match self
             .current_verifiers
             .par_iter()
-            .min_by_key(|(_, v)| v.pending_chunks.len() + v.locked_chunks.len())
+            .min_by_key(|(_, v)| v.pending_tasks.len() + v.locked_chunks.len())
         {
             Some((verifier, _verifier_info)) => verifier.clone(),
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
-        trace!("Assigning chunk {} to {} for verification", chunk_id, verifier);
+        info!(
+            "Assigning (chunk {}, contribution {}) to {} for verification",
+            chunk_id, contribution_id, verifier
+        );
 
         match self.current_verifiers.get_mut(&verifier) {
-            Some(verifier_info) => verifier_info.push_back_chunk_id(chunk_id)?,
+            Some(verifier_info) => verifier_info.push_back_task(chunk_id, contribution_id)?,
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
-        self.pending_verification.insert(chunk_id, verifier);
+        self.pending_verification
+            .insert(Task::new(chunk_id, contribution_id), verifier);
 
         Ok(())
     }
 
     ///
-    /// Remove the given chunk ID from the map of chunks that are pending verification.
+    /// Remove the given (chunk ID, contribution ID) task from the map of chunks that are pending verification.
     ///
     #[inline]
-    pub(super) fn remove_pending_verification(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+    pub(super) fn remove_pending_verification(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
         // Check that the set pending verification does not already contain the chunk ID.
-        if !self.pending_verification.contains_key(&chunk_id) {
+        if !self
+            .pending_verification
+            .contains_key(&Task::new(chunk_id, contribution_id))
+        {
             return Err(CoordinatorError::ChunkIdMissing);
         }
 
-        trace!("Removing chunk {} from the pending verifications", chunk_id);
-        self.pending_verification.remove(&chunk_id);
+        debug!(
+            "Removing (chunk {}, contribution {}) from the pending verifications",
+            chunk_id, contribution_id
+        );
+
+        self.pending_verification.remove(&Task::new(chunk_id, contribution_id));
 
         Ok(())
+    }
+
+    ///
+    /// Adds the given (chunk ID, contribution ID) task to the completed tasks of the given participant,
+    /// and removes the chunk ID from the locks held by the given participant.
+    ///
+    #[inline]
+    pub(super) fn completed_task(
+        &mut self,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Release the chunk lock from the participant.
+        self.released_lock(participant, chunk_id)?;
+
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                // Adds the task to the list of completed tasks for the contributor,
+                // and add the task to the pending verification set.
+                Some(participant) => {
+                    participant.completed_task(chunk_id, contribution_id)?;
+                    Ok(self.add_pending_verification(chunk_id, contribution_id)?)
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                // Adds the task to the list of completed tasks for the verifier,
+                // and remove the task from the pending verification set.
+                Some(participant) => {
+                    participant.completed_task(chunk_id, contribution_id)?;
+                    Ok(self.remove_pending_verification(chunk_id, contribution_id)?)
+                }
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
     }
 
     ///
@@ -1005,18 +1168,18 @@ impl CoordinatorState {
                 continue;
             }
 
-            // Check that the contributor has no more pending chunks.
-            if !contributor_info.pending_chunks.is_empty() {
-                continue;
-            }
-
             // Check that the contributor has no more locked chunks.
             if !contributor_info.locked_chunks.is_empty() {
                 continue;
             }
 
-            // Check that the contributor has completed chunks.
-            if contributor_info.completed_chunks.is_empty() {
+            // Check that the contributor has no more pending tasks.
+            if !contributor_info.pending_tasks.is_empty() {
+                continue;
+            }
+
+            // Check that the contributor has completed tasks.
+            if contributor_info.completed_tasks.is_empty() {
                 continue;
             }
 
@@ -1065,8 +1228,8 @@ impl CoordinatorState {
                     continue;
                 }
 
-                // Check that the verifier has no more pending chunks.
-                if !verifier_info.pending_chunks.is_empty() {
+                // Check that the verifier has no more pending tasks.
+                if !verifier_info.pending_tasks.is_empty() {
                     continue;
                 }
 
@@ -1075,8 +1238,8 @@ impl CoordinatorState {
                     continue;
                 }
 
-                // Check that the verifier has completed chunks.
-                if verifier_info.completed_chunks.is_empty() {
+                // Check that the verifier has completed tasks.
+                if verifier_info.completed_tasks.is_empty() {
                     continue;
                 }
 
@@ -1282,6 +1445,42 @@ impl CoordinatorState {
 
         // Create the initial chunk locking sequence for each contributor.
         {
+            /* ***********************************************************************************
+             *   The following is the approach for contributor task assignments.
+             * ***********************************************************************************
+             *
+             *   N := NUMBER_OF_CONTRIBUTORS
+             *   BUCKET_SIZE := NUMBER_OF_CHUNKS / NUMBER_OF_CONTRIBUTORS
+             *
+             * ***********************************************************************************
+             *
+             *   [    BUCKET 1    |    BUCKET 2    |    BUCKET 3    |  . . .  |    BUCKET N    ]
+             *
+             *   [  CONTRIBUTOR 1  --------------------------------------------------------->  ]
+             *   [  ------------->  CONTRIBUTOR 2  ------------------------------------------  ]
+             *   [  ------------------------------>  CONTRIBUTOR 3  -------------------------  ]
+             *   [                                        .                                    ]
+             *   [                                        .                                    ]
+             *   [                                        .                                    ]
+             *   [  --------------------------------------------------------->  CONTRIBUTOR N  ]
+             *
+             * ***********************************************************************************
+             *
+             *   1. Sort the round contributors from most reliable to least reliable.
+             *
+             *   2. Assign CONTRIBUTOR 1 to BUCKET 1, CONTRIBUTOR 2 to BUCKET 2,
+             *      CONTRIBUTOR 3 to BUCKET 3, ..., CONTRIBUTOR N to BUCKET N,
+             *      as the starting INDEX to contribute to in the round.
+             *
+             *   3. Construct the set of tasks for each contributor as follows:
+             *
+             *      for ID in 0..NUMBER_OF_CHUNKS:
+             *          CHUNK_ID := (INDEX * BUCKET_SIZE + ID) % NUMBER_OF_CHUNKS
+             *          CONTRIBUTION_ID := INDEX.
+             *
+             * ***********************************************************************************
+             */
+
             // Sort the contributors by their reliability (in order of highest to lowest number).
             contributors.par_sort_by(|a, b| ((b.1).0).cmp(&(&a.1).0));
 
@@ -1295,11 +1494,12 @@ impl CoordinatorState {
                 let start = index as u64 * bucket_size;
                 let end = start + number_of_chunks;
 
-                // Add the chunk ID in FIFO ordering.
-                let mut chunk_ids = LinkedList::new();
+                // Add the tasks in FIFO ordering.
+                let mut tasks = LinkedList::new();
                 for index in start..end {
                     let chunk_id = index % number_of_chunks;
-                    chunk_ids.push_back(chunk_id);
+                    let contribution_id = index;
+                    tasks.push_back((chunk_id, contribution_id));
                 }
 
                 // Check that each participant is storing the correct round height.
@@ -1310,10 +1510,10 @@ impl CoordinatorState {
 
                 // Initialize the participant info for the contributor.
                 let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability);
-                participant_info.start(chunk_ids)?;
+                participant_info.start(tasks)?;
 
                 // Check that the chunk IDs are set in the participant information.
-                if participant_info.pending_chunks.is_empty() {
+                if participant_info.pending_tasks.is_empty() {
                     return Err(CoordinatorError::ParticipantNotReady);
                 }
 
@@ -1520,6 +1720,50 @@ impl CoordinatorState {
             number_of_dropped_participants,
             number_of_banned_participants
         )
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Task {
+    chunk_id: u64,
+    contribution_id: u64,
+}
+
+impl Task {
+    #[inline]
+    pub fn new(chunk_id: u64, contribution_id: u64) -> Self {
+        Self {
+            chunk_id,
+            contribution_id,
+        }
+    }
+}
+
+impl Serialize for Task {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{}/{}", self.chunk_id, self.contribution_id))
+    }
+}
+
+impl<'de> Deserialize<'de> for Task {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
+        #[derive(Deserialize)]
+        enum PVS {
+            String(String),
+            Tuple((u64, u64)),
+        }
+        match PVS::deserialize(deserializer)? {
+            PVS::String(output) => {
+                let mut tuple = output.split("/");
+                Ok(Task::new(
+                    u64::from_str(&tuple.next().ok_or(D::Error::custom("invalid chunk ID"))?)
+                        .map_err(|_| D::Error::custom("invalid chunk ID"))?,
+                    u64::from_str(&tuple.next().ok_or(D::Error::custom("invalid contribution ID"))?)
+                        .map_err(|_| D::Error::custom("invalid contribution ID"))?,
+                ))
+            }
+            PVS::Tuple(output) => Ok(Task::new(output.0, output.1)),
+        }
     }
 }
 
