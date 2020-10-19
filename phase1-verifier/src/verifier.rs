@@ -4,12 +4,31 @@ use crate::{
 };
 use phase1::helpers::CurveKind;
 use phase1_cli::transform_pok_and_correctness;
-use phase1_coordinator::{environment::Development, phase1_chunked_parameters, Participant};
+use phase1_coordinator::{environment::Environment, phase1_chunked_parameters, Participant};
+use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
 use std::{fs, str::FromStr, thread::sleep, time::Duration};
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
+
+/// Returns a pretty print of the given hash bytes for logging.
+macro_rules! pretty_hash {
+    ($hash:expr) => {{
+        let mut output = format!("\n\n");
+        for line in $hash.chunks(16) {
+            output += "\t";
+            for section in line.chunks(4) {
+                for b in section {
+                    output += &format!("{:02x}", b);
+                }
+                output += " ";
+            }
+            output += "\n";
+        }
+        output
+    }};
+}
 
 ///
 /// This lock response bundles the data required for the verifier
@@ -54,12 +73,12 @@ pub struct Verifier {
     pub(crate) verifier: Participant,
 
     /// The coordinator environment
-    pub(crate) environment: Development,
+    pub(crate) environment: Environment,
 }
 
 impl Verifier {
     /// Initialize a new verifier
-    pub fn new(coordinator_api_url: String, view_key: String, environment: Development) -> Result<Self, VerifierError> {
+    pub fn new(coordinator_api_url: String, view_key: String, environment: Environment) -> Result<Self, VerifierError> {
         let verifier_id = Address::from_view_key(&ViewKey::from_str(&view_key)?)?.to_string();
 
         Ok(Self {
@@ -165,6 +184,10 @@ impl Verifier {
                     response_file.len(),
                     &response_locator
                 );
+
+                // Compute the response hash using the response file.
+                let response_hash = calculate_hash(&response_file);
+
                 write_to_file(&response_locator, response_file);
 
                 // Create the parent directory for the `next_challenge_locator`
@@ -220,6 +243,24 @@ impl Verifier {
                         continue;
                     }
                 };
+
+                let next_challenge_hash = calculate_hash(&next_challenge_file);
+                debug!("The next challenge hash is {}", pretty_hash!(&next_challenge_hash));
+
+                info!("Check that the response hash matches the next challenge hash");
+
+                {
+                    // Fetch the saved response hash in the next challenge file.
+                    let saved_response_hash = next_challenge_file.chunks(64).next().unwrap().to_vec();
+
+                    // Check that the response hash matches the next challenge hash.
+                    debug!("The response hash is {}", pretty_hash!(&response_hash));
+                    debug!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+                    if response_hash.as_slice() != saved_response_hash {
+                        error!("Response hash does not match the saved response hash.");
+                        continue;
+                    }
+                }
 
                 // Upload the new challenge file to `next_challenge_locator`
                 match self
