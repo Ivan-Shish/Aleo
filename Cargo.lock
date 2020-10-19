@@ -1982,6 +1982,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "setup-utils",
  "snarkos-toolkit",
  "thiserror",
  "tokio",
