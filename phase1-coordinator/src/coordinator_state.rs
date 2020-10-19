@@ -1530,12 +1530,33 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn status_report(&self) -> String {
+        let current_round_height = self.current_round_height.unwrap_or_default();
+        let next_round_height = current_round_height + 1;
+
+        let current_round_finished = match self.is_current_round_finished() {
+            true => format!("Round {} is finished", current_round_height),
+            false => format!("Round {} is in progress", current_round_height),
+        };
+        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
+            true => format!("Round {} is ready to begin", next_round_height),
+            false => format!("Round {} is awaiting participants", next_round_height),
+        };
+
         let number_of_current_contributors = self.current_contributors.len();
         let number_of_current_verifiers = self.current_verifiers.len();
+        let number_of_finished_contributors = self
+            .finished_contributors
+            .get(&current_round_height)
+            .get_or_insert(&HashMap::new())
+            .len();
+        let number_of_finished_verifiers = self
+            .finished_verifiers
+            .get(&current_round_height)
+            .get_or_insert(&HashMap::new())
+            .len();
         let number_of_pending_verifications = self.pending_verification.len();
 
         // Parse the queue for assigned contributors and verifiers of the next round.
-        let next_round_height = self.current_round_height.unwrap_or_default() + 1;
         let number_of_assigned_contributors = self
             .queue
             .clone()
@@ -1555,25 +1576,17 @@ impl CoordinatorState {
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
 
-        let current_round_finished = match self.is_current_round_finished() {
-            true => format!("Round {} is finished", self.current_round_height.unwrap_or_default()),
-            false => format!("Round {} is in progress", self.current_round_height.unwrap_or_default()),
-        };
-        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
-            true => format!("Round {} is ready to begin", next_round_height),
-            false => format!("Round {} is awaiting participants", next_round_height),
-        };
-
         format!(
             r#"
-    ---------------------
-    ||  STATUS REPORT  ||
-    ---------------------
+    ----------------------------------------------------------------
+    ||                        STATUS REPORT                       ||
+    ----------------------------------------------------------------
 
     | {}
     | {}
 
-    | {} contributors and {} verifiers in the current round
+    | {} contributors and {} verifiers active in the current round
+    | {} contributors and {} verifiers completed the current round
     | {} chunks are pending verification
 
     | {} contributors and {} verifiers assigned to the next round
@@ -1587,6 +1600,8 @@ impl CoordinatorState {
             precommit_next_round_ready,
             number_of_current_contributors,
             number_of_current_verifiers,
+            number_of_finished_contributors,
+            number_of_finished_verifiers,
             number_of_pending_verifications,
             number_of_assigned_contributors,
             number_of_assigned_verifiers,
