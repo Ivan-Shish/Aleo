@@ -30,7 +30,7 @@ pub async fn main() -> anyhow::Result<()> {
     init_logger();
 
     // Set the environment.
-    let environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
+    let environment: Environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
 
     info!("{:#?}", environment.parameters());
 
