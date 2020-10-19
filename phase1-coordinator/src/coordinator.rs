@@ -861,6 +861,27 @@ impl Coordinator {
 
         result
     }
+
+    ///
+    /// Returns the chunk ID from the given contribution file locator path.
+    ///
+    /// If the given locator path is invalid, returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn contribution_locator_to_chunk_id(&self, locator_path: &str) -> Result<u64, CoordinatorError> {
+        // Acquire the storage lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        // Fetch the chunk ID corresponding to the given locator path.
+        let locator = storage.to_locator(&locator_path)?;
+        match &locator {
+            Locator::ContributionFile(_, chunk_id, _, _) => match storage.exists(&locator) {
+                true => Ok(*chunk_id),
+                false => Err(CoordinatorError::ContributionLocatorMissing),
+            },
+            _ => Err(CoordinatorError::ContributionLocatorIncorrect),
+        }
+    }
 }
 
 impl Coordinator {
