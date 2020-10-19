@@ -19,12 +19,16 @@ async fn main() {
     let view_key = ViewKey::from_str(&view_key).expect("Invalid view key");
     let _address = Address::from_view_key(&view_key).expect("Invalid view key. Address not derived correctly");
 
-    let environment = Development::from(Parameters::Test3Chunks);
+    let environment = Development::from(Parameters::TestCustom(8, 12, 256));
 
     // Initialize the verifier
     info!("Initializing verifier...");
-    let verifier = Verifier::new(coordinator_api_url.to_string(), view_key.to_string(), environment)
-        .expect("failed to initialize verifier");
+    let verifier = Verifier::new(
+        coordinator_api_url.to_string(),
+        view_key.to_string(),
+        environment.into(),
+    )
+    .expect("failed to initialize verifier");
 
     verifier.start_verifier().await;
 }
