@@ -3,7 +3,7 @@ use crate::{environment::Environment, objects::participant::*, CoordinatorError}
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{
-    de::{Deserializer, Error},
+    de::{self, Deserializer, Error},
     ser::Serializer,
     Deserialize,
     Serialize,
@@ -1747,29 +1747,28 @@ impl Serialize for Task {
 
 impl<'de> Deserialize<'de> for Task {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
-        #[derive(Deserialize)]
-        enum PVS {
-            String(String),
-            Tuple((u64, u64)),
-        }
-        match PVS::deserialize(deserializer)? {
-            PVS::String(output) => {
-                let mut tuple = output.split("/");
-                Ok(Task::new(
-                    u64::from_str(&tuple.next().ok_or(D::Error::custom("invalid chunk ID"))?)
-                        .map_err(|_| D::Error::custom("invalid chunk ID"))?,
-                    u64::from_str(&tuple.next().ok_or(D::Error::custom("invalid contribution ID"))?)
-                        .map_err(|_| D::Error::custom("invalid contribution ID"))?,
-                ))
-            }
-            PVS::Tuple(output) => Ok(Task::new(output.0, output.1)),
-        }
+        let s = String::deserialize(deserializer)?;
+
+        let mut task = s.split("/");
+        let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;
+        let contribution_id = task.next().ok_or(D::Error::custom("invalid contribution ID"))?;
+        Ok(Task::new(
+            u64::from_str(&chunk_id).map_err(de::Error::custom)?,
+            u64::from_str(&contribution_id).map_err(de::Error::custom)?,
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{objects::participant::*, testing::prelude::*, CoordinatorState};
+    use crate::{coordinator_state::Task, objects::participant::*, testing::prelude::*, CoordinatorState};
+
+    #[test]
+    fn test_task() {
+        let task = Task::new(0, 1);
+        assert_eq!("\"0/1\"", serde_json::to_string(&task).unwrap());
+        assert_eq!(task, serde_json::from_str("\"0/1\"").unwrap());
+    }
 
     #[test]
     fn test_new() {
