@@ -2835,7 +2835,7 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b417
 [[package]]
 name = "snarkos-profiler"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS#c9e5f823b8493f8c3a6c43e6f4dfd16173b99957"
+source = "git+https://github.com/AleoHQ/snarkOS#e36edb20550ee8a6d2503bbaebb5de7755988b3f"
 dependencies = [
  "colored",
 ]
