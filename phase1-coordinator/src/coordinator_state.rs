@@ -48,9 +48,9 @@ pub(super) struct ParticipantInfo {
     /// The set of chunk IDs that this participant is computing.
     locked_chunks: HashSet<u64>,
     /// The list of (chunk ID, contribution ID) tasks that this participant has left to compute.
-    pending_tasks: LinkedList<(u64, u64)>,
+    pending_tasks: LinkedList<Task>,
     /// The list of (chunk ID, contribution ID) tasks that this participant has computed.
-    completed_tasks: LinkedList<(u64, u64)>,
+    completed_tasks: LinkedList<Task>,
 }
 
 impl ParticipantInfo {
@@ -88,11 +88,6 @@ impl ParticipantInfo {
             return false;
         }
 
-        // Check that the participant has already finished the round.
-        if self.finished_at.is_none() {
-            return false;
-        }
-
         // Check that the participant has no more locked chunks.
         if !self.locked_chunks.is_empty() {
             return false;
@@ -103,12 +98,13 @@ impl ParticipantInfo {
             return false;
         }
 
-        // Check that the participant has completed tasks.
-        if self.completed_tasks.is_empty() {
+        // Check that if the participant is a contributor, that they completed tasks.
+        if self.id.is_contributor() && self.completed_tasks.is_empty() {
             return false;
         }
 
-        true
+        // Check if the participant has already finished the round.
+        self.finished_at.is_some()
     }
 
     ///
@@ -116,7 +112,7 @@ impl ParticipantInfo {
     /// and sets the start time as the current time.
     ///
     #[inline]
-    fn start(&mut self, tasks: LinkedList<(u64, u64)>) -> Result<(), CoordinatorError> {
+    fn start(&mut self, tasks: LinkedList<Task>) -> Result<(), CoordinatorError> {
         // Check that the participant has a valid round height set.
         if self.round_height == 0 {
             return Err(CoordinatorError::ParticipantRoundHeightInvalid);
@@ -159,7 +155,7 @@ impl ParticipantInfo {
     #[inline]
     fn push_back_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
         // Set the task as the given chunk ID and contribution ID.
-        let task = (chunk_id, contribution_id);
+        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -203,7 +199,7 @@ impl ParticipantInfo {
     #[inline]
     fn push_front_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
         // Set the task as the given chunk ID and contribution ID.
-        let task = (chunk_id, contribution_id);
+        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -246,7 +242,7 @@ impl ParticipantInfo {
     /// in FIFO order when added to the linked list.
     ///
     #[inline]
-    fn pop_task(&mut self) -> Result<(u64, u64), CoordinatorError> {
+    fn pop_task(&mut self) -> Result<Task, CoordinatorError> {
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -303,7 +299,14 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk was not already pending.
-        if self.id.is_contributor() && self.pending_tasks.par_iter().filter(|(id, _)| *id == chunk_id).count() > 0 {
+        if self.id.is_contributor()
+            && self
+                .pending_tasks
+                .par_iter()
+                .filter(|task| task.contains(chunk_id))
+                .count()
+                > 0
+        {
             return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
         }
 
@@ -312,7 +315,7 @@ impl ParticipantInfo {
             && self
                 .completed_tasks
                 .par_iter()
-                .filter(|(id, _)| *id == chunk_id)
+                .filter(|task| task.contains(chunk_id))
                 .count()
                 > 0
         {
@@ -329,10 +332,14 @@ impl ParticipantInfo {
     }
 
     ///
-    /// Removes the given chunk ID from the locked chunks held by this participant.
+    /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
+    /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
     #[inline]
-    fn released_lock(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+    fn completed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        // Set the task as the given chunk ID and contribution ID.
+        let task = Task::new(chunk_id, contribution_id);
+
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -353,49 +360,6 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
-        // Check that if the participant is a contributor, this chunk was not already completed.
-        if self.id.is_contributor() && self.completed_tasks.par_iter().filter(|(i, _)| *i == chunk_id).count() > 0 {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
-        }
-
-        // Update the last seen time.
-        self.last_seen = Utc::now();
-
-        // Remove the given chunk ID from the locked chunks.
-        self.locked_chunks.remove(&chunk_id);
-
-        Ok(())
-    }
-
-    ///
-    /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
-    /// for this participant.
-    ///
-    #[inline]
-    fn completed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
-        // Set the task as the given chunk ID and contribution ID.
-        let task = (chunk_id, contribution_id);
-
-        // Check that the participant has started in the round.
-        if self.started_at.is_none() {
-            return Err(CoordinatorError::ParticipantHasNotStarted);
-        }
-
-        // Check that the participant was not dropped from the round.
-        if self.dropped_at.is_some() {
-            return Err(CoordinatorError::ParticipantWasDropped);
-        }
-
-        // Check that the participant has not finished the round.
-        if self.finished_at.is_some() {
-            return Err(CoordinatorError::ParticipantAlreadyFinished);
-        }
-
-        // Check that the participant released the lock for this chunk.
-        if self.locked_chunks.contains(&chunk_id) {
-            return Err(CoordinatorError::ParticipantStillHasLocks);
-        }
-
         // Check that the participant does not have a pending task remaining for this.
         if self.pending_tasks.contains(&task) {
             return Err(CoordinatorError::ParticipantStillHasTaskAsPending);
@@ -406,8 +370,23 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinishedTask);
         }
 
+        // Check that if the participant is a contributor, this chunk was not already completed.
+        if self.id.is_contributor()
+            && self
+                .completed_tasks
+                .par_iter()
+                .filter(|task| task.contains(chunk_id))
+                .count()
+                > 0
+        {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+        }
+
         // Update the last seen time.
         self.last_seen = Utc::now();
+
+        // Remove the given chunk ID from the locked chunks.
+        self.locked_chunks.remove(&chunk_id);
 
         // Add the task to the completed tasks.
         self.completed_tasks.push_back(task);
@@ -445,8 +424,8 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantHasRemainingTasks);
         }
 
-        // Check that the participant has completed tasks.
-        if self.completed_tasks.is_empty() {
+        // Check that if the participant is a contributor, that they completed tasks.
+        if self.id.is_contributor() && self.completed_tasks.is_empty() {
             return Err(CoordinatorError::ParticipantDidNotDoWork);
         }
 
@@ -530,9 +509,9 @@ pub struct CoordinatorState {
     /// The map of tasks pending verification in the current round.
     pending_verification: HashMap<Task, Participant>,
     /// The map of each round height to the corresponding contributors from that round.
-    finished_contributors: HashMap<u64, ParticipantInfo>,
+    finished_contributors: HashMap<u64, HashMap<Participant, ParticipantInfo>>,
     /// The map of each round height to the corresponding verifiers from that round.
-    finished_verifiers: HashMap<u64, ParticipantInfo>,
+    finished_verifiers: HashMap<u64, HashMap<Participant, ParticipantInfo>>,
     /// The list of information about participants that dropped in current and past rounds.
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
@@ -585,19 +564,9 @@ impl CoordinatorState {
         // Check that all contributions have undergone verification.
         self.pending_verification.is_empty()
             // Check that all current contributors are finished.
-            && (self
-            .current_contributors
-            .par_iter()
-            .filter(|(_, p)| !p.is_finished())
-            .count()
-            == 0)
+            && self.current_contributors.is_empty()
             // Check that all current verifiers are finished.
-            && (self
-            .current_verifiers
-            .par_iter()
-            .filter(|(_, p)| !p.is_finished())
-            .count()
-            == 0)
+            && self.current_verifiers.is_empty()
     }
 
     ///
@@ -745,15 +714,27 @@ impl CoordinatorState {
     /// Pops the next (chunk ID, contribution ID) task that the participant should process.
     ///
     #[inline]
-    pub(super) fn pop_task(&mut self, participant: &Participant) -> Result<(u64, u64), CoordinatorError> {
+    pub(super) fn pop_task(&mut self, participant: &Participant) -> Result<Task, CoordinatorError> {
+        // Fetch the contributor and verifier chunk lock limit.
+        let contributor_limit = self.environment.contributor_lock_chunk_limit();
+        let verifier_limit = self.environment.verifier_lock_chunk_limit();
+
         // Remove the next chunk ID from the pending chunks of the given participant.
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant) => Ok(participant.pop_task()?),
+                // Check that the participant is holding less than the chunk lock limit.
+                Some(participant_info) => match participant_info.locked_chunks.len() < contributor_limit {
+                    true => Ok(participant_info.pop_task()?),
+                    false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
+                },
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => Ok(participant.pop_task()?),
+                // Check that the participant is holding less than the chunk lock limit.
+                Some(participant_info) => match participant_info.locked_chunks.len() < verifier_limit {
+                    true => Ok(participant_info.pop_task()?),
+                    false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
+                },
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
@@ -784,39 +765,17 @@ impl CoordinatorState {
     }
 
     ///
-    /// Removes the given chunk ID from the locks held by the given participant.
-    ///
-    #[inline]
-    pub(super) fn released_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
-        // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
-            return Err(CoordinatorError::ChunkIdInvalid);
-        }
-
-        match participant {
-            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                // Release the chunk lock from the contributor.
-                Some(participant) => Ok(participant.released_lock(chunk_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
-            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                // Release the chunk lock from the verifier.
-                Some(participant) => Ok(participant.released_lock(chunk_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
-        }
-    }
-
-    ///
     /// Adds the given (chunk ID, contribution ID) task to the pending verification set.
     /// The verification task is then assigned to the verifier with the least number of tasks in its queue.
+    ///
+    /// On success, this function returns the verifier that was assigned to the verification task.
     ///
     #[inline]
     pub(super) fn add_pending_verification(
         &mut self,
         chunk_id: u64,
         contribution_id: u64,
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -850,20 +809,22 @@ impl CoordinatorState {
         };
 
         self.pending_verification
-            .insert(Task::new(chunk_id, contribution_id), verifier);
+            .insert(Task::new(chunk_id, contribution_id), verifier.clone());
 
-        Ok(())
+        Ok(verifier)
     }
 
     ///
     /// Remove the given (chunk ID, contribution ID) task from the map of chunks that are pending verification.
+    ///
+    /// On success, this function returns the verifier that completed the verification task.
     ///
     #[inline]
     pub(super) fn remove_pending_verification(
         &mut self,
         chunk_id: u64,
         contribution_id: u64,
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -882,14 +843,20 @@ impl CoordinatorState {
             chunk_id, contribution_id
         );
 
-        self.pending_verification.remove(&Task::new(chunk_id, contribution_id));
+        // Remove the task from the pending verification.
+        let verifier = self
+            .pending_verification
+            .remove(&Task::new(chunk_id, contribution_id))
+            .ok_or(CoordinatorError::VerifierMissing)?;
 
-        Ok(())
+        Ok(verifier)
     }
 
     ///
     /// Adds the given (chunk ID, contribution ID) task to the completed tasks of the given participant,
     /// and removes the chunk ID from the locks held by the given participant.
+    ///
+    /// On success, this function returns the verifier assigned to the verification task.
     ///
     #[inline]
     pub(super) fn completed_task(
@@ -897,14 +864,11 @@ impl CoordinatorState {
         participant: &Participant,
         chunk_id: u64,
         contribution_id: u64,
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
-
-        // Release the chunk lock from the participant.
-        self.released_lock(participant, chunk_id)?;
 
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
@@ -925,100 +889,6 @@ impl CoordinatorState {
                 }
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
-        }
-    }
-
-    ///
-    /// Adds the given participant to the next round if they are permitted to participate.
-    ///
-    #[deprecated]
-    #[allow(dead_code)]
-    #[inline]
-    pub(super) fn add_to_next_round(
-        &mut self,
-        participant: Participant,
-        round_height: u64,
-        reliability_score: u8,
-    ) -> Result<(), CoordinatorError> {
-        // Check that the participant is not already added to the next round.
-        if self.next.contains_key(&participant) {
-            return Err(CoordinatorError::ParticipantAlreadyAdded);
-        }
-
-        // Check that the given round height is one above the current round height.
-        match self.current_round_height {
-            Some(current_round_height) => {
-                if round_height != current_round_height + 1 {
-                    error!(
-                        "Attempting to add a participant to a next round of {} when the coordinator is on round {}",
-                        round_height, current_round_height
-                    );
-                    return Err(CoordinatorError::RoundHeightMismatch);
-                }
-            }
-            _ => return Err(CoordinatorError::RoundHeightNotSet),
-        }
-
-        // Check if there is space to add the given participant to the next round.
-        match participant {
-            Participant::Contributor(_) => {
-                // Check if the contributor is authorized.
-                if !self.is_authorized_contributor(&participant) {
-                    return Err(CoordinatorError::ParticipantUnauthorized);
-                }
-
-                // Filter the next round participants into contributors.
-                let num_contributors = self.next.par_iter().filter(|(p, _)| p.is_contributor()).count();
-
-                if num_contributors < self.environment.maximum_contributors_per_round() {
-                    // Add the contributor to the next round.
-                    self.next.insert(
-                        participant.clone(),
-                        ParticipantInfo::new(participant, round_height, reliability_score),
-                    );
-                    return Ok(());
-                }
-            }
-            Participant::Verifier(_) => {
-                // Check if the verifier is authorized.
-                if !self.is_authorized_verifier(&participant) {
-                    return Err(CoordinatorError::ParticipantUnauthorized);
-                }
-
-                // Filter the next round participants into verifiers.
-                let num_verifiers = self.next.par_iter().filter(|(p, _)| p.is_verifier()).count();
-
-                if num_verifiers < self.environment.maximum_verifiers_per_round() {
-                    // Add the verifier to the next round.
-                    self.next.insert(
-                        participant.clone(),
-                        ParticipantInfo::new(participant, round_height, reliability_score),
-                    );
-                    return Ok(());
-                }
-            }
-        }
-
-        Err(CoordinatorError::ParticipantUnauthorized)
-    }
-
-    ///
-    /// Removes the given participant from the next round.
-    ///
-    #[deprecated]
-    #[allow(dead_code)]
-    #[inline]
-    pub(super) fn remove_from_next_round(&mut self, participant: Participant) -> Result<(), CoordinatorError> {
-        // Remove the participant from the next round.
-        match self.next.remove(&participant) {
-            Some(participant_info) => {
-                // Add them back into the queue.
-                if let Ok(_) = self.add_to_queue(participant_info.id, participant_info.reliability) {
-                    trace!("Added {} back into the queue", participant);
-                }
-                Ok(())
-            }
-            _ => Err(CoordinatorError::ParticipantMissing),
         }
     }
 
@@ -1150,44 +1020,53 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn update_current_contributors(&mut self) -> Result<(), CoordinatorError> {
-        for (contributor, contributor_info) in self.current_contributors.iter_mut() {
-            trace!("{:#?}", contributor_info);
+        // Fetch the current round height.
+        let current_round_height = self.current_round_height.ok_or(CoordinatorError::RoundHeightNotSet)?;
 
-            // Check that the contributor already started in the round.
-            if contributor_info.started_at.is_none() {
-                continue;
-            }
+        // Fetch the current number of contributors.
+        let number_of_current_contributors = self.current_contributors.len();
 
-            // Check that the contributor was not dropped from the round.
-            if contributor_info.dropped_at.is_some() {
-                continue;
-            }
+        // Initialize a map for newly finished contributors.
+        let mut newly_finished: HashMap<Participant, ParticipantInfo> = HashMap::new();
 
-            // Check that the contributor has not already finished the round.
-            if contributor_info.finished_at.is_some() {
-                continue;
-            }
+        // Iterate through all of the current contributors and check if they have finished.
+        self.current_contributors = self
+            .current_contributors
+            .clone()
+            .into_iter()
+            .filter(|(contributor, contributor_info)| {
+                // Check if the contributor has finished.
+                if contributor_info.is_finished() {
+                    return false;
+                }
 
-            // Check that the contributor has no more locked chunks.
-            if !contributor_info.locked_chunks.is_empty() {
-                continue;
-            }
+                // Attempt to set the contributor as finished.
+                let mut finished_info = contributor_info.clone();
+                if let Err(_) = finished_info.finish() {
+                    return true;
+                }
 
-            // Check that the contributor has no more pending tasks.
-            if !contributor_info.pending_tasks.is_empty() {
-                continue;
-            }
+                // Add the contributor to the set of finished contributors.
+                newly_finished.insert(contributor.clone(), finished_info.clone());
 
-            // Check that the contributor has completed tasks.
-            if contributor_info.completed_tasks.is_empty() {
-                continue;
-            }
+                debug!("{} has finished", contributor);
+                false
+            })
+            .collect();
 
-            // Set the contributor as finished.
-            contributor_info.finish()?;
-
-            debug!("{} has finished", contributor);
+        // Check that the update preserves the same number of contributors.
+        if number_of_current_contributors != self.current_contributors.len() + newly_finished.len() {
+            return Err(CoordinatorError::RoundUpdateCorruptedStateOfContributors);
         }
+
+        trace!("Marking {} current contributors as finished", newly_finished.len());
+
+        // Update the map of finished contributors.
+        match self.finished_contributors.get_mut(&current_round_height) {
+            Some(contributors) => contributors.extend(newly_finished.into_iter()),
+            None => return Err(CoordinatorError::RoundCommitFailedOrCorrupted),
+        };
+
         Ok(())
     }
 
@@ -1199,55 +1078,58 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn update_current_verifiers(&mut self) -> Result<(), CoordinatorError> {
         // Check if the contributors are finished.
-        let is_contributors_finished = self
-            .current_contributors
-            .par_iter()
-            .filter(|(_, p)| !p.is_finished())
-            .count()
-            == 0;
+        let is_contributors_finished = self.current_contributors.is_empty();
 
         // If all contributors are finished, this means there are no new verification jobs
         // to be added to the pending verifications queue. So if a verifier is finished
         // with their verifications, then they are finished for this round.
         if is_contributors_finished {
-            for (verifier, verifier_info) in self.current_verifiers.iter_mut() {
-                trace!("{:#?}", verifier_info);
+            // Fetch the current round height.
+            let current_round_height = self.current_round_height.ok_or(CoordinatorError::RoundHeightNotSet)?;
 
-                // Check that the verifier already started in the round.
-                if verifier_info.started_at.is_none() {
-                    continue;
-                }
+            // Fetch the current number of verifiers.
+            let number_of_current_verifiers = self.current_verifiers.len();
 
-                // Check that the verifier was not dropped from the round.
-                if verifier_info.dropped_at.is_some() {
-                    continue;
-                }
+            // Initialize a map for newly finished verifiers.
+            let mut newly_finished: HashMap<Participant, ParticipantInfo> = HashMap::new();
 
-                // Check that the verifier has not already finished the round.
-                if verifier_info.finished_at.is_some() {
-                    continue;
-                }
+            // Iterate through all of the current verifiers and check if they have finished.
+            self.current_verifiers = self
+                .current_verifiers
+                .clone()
+                .into_iter()
+                .filter(|(verifier, verifier_info)| {
+                    // Check if the verifier has finished.
+                    if verifier_info.is_finished() {
+                        return false;
+                    }
 
-                // Check that the verifier has no more pending tasks.
-                if !verifier_info.pending_tasks.is_empty() {
-                    continue;
-                }
+                    // Attempt to set the verifier as finished.
+                    let mut finished_info = verifier_info.clone();
+                    if let Err(_) = finished_info.finish() {
+                        return true;
+                    }
 
-                // Check that the verifier has no more locked chunks.
-                if !verifier_info.locked_chunks.is_empty() {
-                    continue;
-                }
+                    // Add the verifier to the set of finished verifier.
+                    newly_finished.insert(verifier.clone(), finished_info.clone());
 
-                // Check that the verifier has completed tasks.
-                if verifier_info.completed_tasks.is_empty() {
-                    continue;
-                }
+                    debug!("{} has finished", verifier);
+                    false
+                })
+                .collect();
 
-                // Set the verifier as finished.
-                verifier_info.finish()?;
-
-                debug!("{} has finished", verifier);
+            // Check that the update preserves the same number of verifiers.
+            if number_of_current_verifiers != self.current_verifiers.len() + newly_finished.len() {
+                return Err(CoordinatorError::RoundUpdateCorruptedStateOfVerifiers);
             }
+
+            trace!("Marking {} current verifiers as finished", newly_finished.len());
+
+            // Update the map of finished verifiers.
+            match self.finished_verifiers.get_mut(&current_round_height) {
+                Some(contributors) => contributors.extend(newly_finished.into_iter()),
+                None => return Err(CoordinatorError::RoundCommitFailedOrCorrupted),
+            };
         }
 
         Ok(())
@@ -1342,7 +1224,7 @@ impl CoordinatorState {
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
         trace!("Attempting to run precommit for round {}", next_round_height);
 
-        // Check that the coordinator is not already in precommit.
+        // Check that the coordinator is not already in the precommit stage.
         if self.status == CoordinatorStatus::Precommit {
             return Err(CoordinatorError::NextRoundAlreadyInPrecommit);
         }
@@ -1489,17 +1371,17 @@ impl CoordinatorState {
             let bucket_size = number_of_chunks / number_of_contributors as u64;
 
             // Set the chunk ID ordering for each contributor.
-            for (index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
+            for (bucket_index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
                 // Determine the starting and ending indices.
-                let start = index as u64 * bucket_size;
+                let start = bucket_index as u64 * bucket_size;
                 let end = start + number_of_chunks;
 
                 // Add the tasks in FIFO ordering.
                 let mut tasks = LinkedList::new();
                 for index in start..end {
                     let chunk_id = index % number_of_chunks;
-                    let contribution_id = index;
-                    tasks.push_back((chunk_id, contribution_id));
+                    let contribution_id = bucket_index + 1;
+                    tasks.push_back(Task::new(chunk_id, contribution_id as u64));
                 }
 
                 // Check that each participant is storing the correct round height.
@@ -1575,33 +1457,20 @@ impl CoordinatorState {
         }
 
         // Increment the current round height.
-        self.current_round_height = match self.current_round_height {
+        let next_round_height = match self.current_round_height {
             Some(current_round_height) => {
                 trace!("Coordinator has advanced to round {}", current_round_height + 1);
-                Some(current_round_height + 1)
+                current_round_height + 1
             }
             None => {
                 error!("Coordinator cannot commit to the next round without initializing the round height");
                 return;
             }
         };
+        self.current_round_height = Some(next_round_height);
 
         // Set the current status to the commit.
         self.status = CoordinatorStatus::Commit;
-
-        // Add all current round participants to the finished list.
-        for (_, contributor_info) in self.current_contributors.clone() {
-            self.finished_contributors
-                .insert(contributor_info.round_height, contributor_info);
-        }
-        for (_, verifier_info) in self.current_verifiers.clone() {
-            self.finished_verifiers
-                .insert(verifier_info.round_height, verifier_info);
-        }
-
-        // Reset the current round map.
-        self.current_contributors = HashMap::new();
-        self.current_verifiers = HashMap::new();
 
         // Add all participants from next to current.
         for (participant, participant_info) in self.next.iter() {
@@ -1614,6 +1483,12 @@ impl CoordinatorState {
                     .insert(participant.clone(), participant_info.clone()),
             };
         }
+
+        // Initialize the finished contributors map for the next round.
+        self.finished_contributors.insert(next_round_height, HashMap::new());
+
+        // Initialize the finished verifiers map for the next round.
+        self.finished_verifiers.insert(next_round_height, HashMap::new());
 
         // Reset the next round map.
         self.next = HashMap::new();
@@ -1655,12 +1530,33 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn status_report(&self) -> String {
+        let current_round_height = self.current_round_height.unwrap_or_default();
+        let next_round_height = current_round_height + 1;
+
+        let current_round_finished = match self.is_current_round_finished() {
+            true => format!("Round {} is finished", current_round_height),
+            false => format!("Round {} is in progress", current_round_height),
+        };
+        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
+            true => format!("Round {} is ready to begin", next_round_height),
+            false => format!("Round {} is awaiting participants", next_round_height),
+        };
+
         let number_of_current_contributors = self.current_contributors.len();
         let number_of_current_verifiers = self.current_verifiers.len();
+        let number_of_finished_contributors = self
+            .finished_contributors
+            .get(&current_round_height)
+            .get_or_insert(&HashMap::new())
+            .len();
+        let number_of_finished_verifiers = self
+            .finished_verifiers
+            .get(&current_round_height)
+            .get_or_insert(&HashMap::new())
+            .len();
         let number_of_pending_verifications = self.pending_verification.len();
 
         // Parse the queue for assigned contributors and verifiers of the next round.
-        let next_round_height = self.current_round_height.unwrap_or_default() + 1;
         let number_of_assigned_contributors = self
             .queue
             .clone()
@@ -1680,25 +1576,17 @@ impl CoordinatorState {
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
 
-        let current_round_finished = match self.is_current_round_finished() {
-            true => format!("Round {} is finished", self.current_round_height.unwrap_or_default()),
-            false => format!("Round {} is in progress", self.current_round_height.unwrap_or_default()),
-        };
-        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
-            true => format!("Round {} is ready to begin", next_round_height),
-            false => format!("Round {} is awaiting participants", next_round_height),
-        };
-
         format!(
             r#"
-    ---------------------
-    ||  STATUS REPORT  ||
-    ---------------------
+    ----------------------------------------------------------------
+    ||                        STATUS REPORT                       ||
+    ----------------------------------------------------------------
 
     | {}
     | {}
 
-    | {} contributors and {} verifiers in the current round
+    | {} contributors and {} verifiers active in the current round
+    | {} contributors and {} verifiers completed the current round
     | {} chunks are pending verification
 
     | {} contributors and {} verifiers assigned to the next round
@@ -1712,6 +1600,8 @@ impl CoordinatorState {
             precommit_next_round_ready,
             number_of_current_contributors,
             number_of_current_verifiers,
+            number_of_finished_contributors,
+            number_of_finished_verifiers,
             number_of_pending_verifications,
             number_of_assigned_contributors,
             number_of_assigned_verifiers,
@@ -1724,9 +1614,9 @@ impl CoordinatorState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Task {
-    chunk_id: u64,
-    contribution_id: u64,
+pub(crate) struct Task {
+    pub(crate) chunk_id: u64,
+    pub(crate) contribution_id: u64,
 }
 
 impl Task {
@@ -1736,6 +1626,11 @@ impl Task {
             chunk_id,
             contribution_id,
         }
+    }
+
+    #[inline]
+    pub fn contains(&self, chunk_id: u64) -> bool {
+        self.chunk_id == chunk_id
     }
 }
 
@@ -2259,5 +2154,410 @@ mod tests {
         assert_eq!(0, state.banned.len());
         assert!(state.is_current_round_finished());
         assert!(state.is_precommit_next_round_ready());
+    }
+
+    #[test]
+    fn test_pop_and_complete_tasks_contributor() {
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch the contributor and verifier of the coordinator.
+        let contributor = test_coordinator_contributor(&environment).unwrap();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.set_current_round_height(current_round_height);
+        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(verifier.clone(), 10).unwrap();
+        state.update_queue().unwrap();
+        assert!(state.is_current_round_finished());
+        assert!(state.is_precommit_next_round_ready());
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height).unwrap();
+        state.commit_next_round();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(0, state.next.len());
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(1, state.current_contributors.len());
+        assert_eq!(1, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.len());
+        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.dropped.len());
+        assert_eq!(0, state.banned.len());
+
+        // Fetch the maximum number of tasks permitted for a contributor.
+        let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
+        for chunk_id in 0..contributor_lock_chunk_limit {
+            // Fetch a pending task for the contributor.
+            let task = state.pop_task(&contributor).unwrap();
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor, task.chunk_id).unwrap();
+            state
+                .completed_task(&contributor, chunk_id as u64, task.contribution_id)
+                .unwrap();
+            assert_eq!(chunk_id, state.pending_verification.len());
+        }
+
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(1, state.current_contributors.len());
+        assert_eq!(1, state.current_verifiers.len());
+        assert_eq!(contributor_lock_chunk_limit, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.len());
+        assert_eq!(0, state.finished_verifiers.len());
+
+        // Attempt to fetch past the permitted lock chunk limit.
+        for _ in 0..10 {
+            let try_task = state.pop_task(&contributor);
+            assert!(try_task.is_err());
+        }
+    }
+
+    #[test]
+    fn test_pop_and_complete_tasks_verifier() {
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch the contributor and verifier of the coordinator.
+        let contributor = test_coordinator_contributor(&environment).unwrap();
+        let verifier = test_coordinator_verifier(&environment).unwrap();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.set_current_round_height(current_round_height);
+        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(verifier.clone(), 10).unwrap();
+        state.update_queue().unwrap();
+        assert!(state.is_current_round_finished());
+        assert!(state.is_precommit_next_round_ready());
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height).unwrap();
+        state.commit_next_round();
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(1, state.current_contributors.len());
+        assert_eq!(1, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.len());
+        assert_eq!(0, state.finished_verifiers.len());
+
+        // Ensure that the verifier cannot pop a task prior to a contributor completing a task.
+        let try_task = state.pop_task(&verifier);
+        assert!(try_task.is_err());
+
+        // Fetch the maximum number of tasks permitted for a contributor.
+        let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
+        for i in 0..contributor_lock_chunk_limit {
+            // Fetch a pending task for the contributor.
+            let task = state.pop_task(&contributor).unwrap();
+            let chunk_id = i as u64;
+            assert_eq!((chunk_id, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor, chunk_id).unwrap();
+            state
+                .completed_task(&contributor, chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(i, state.pending_verification.len());
+        }
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(1, state.current_contributors.len());
+        assert_eq!(1, state.current_verifiers.len());
+        assert_eq!(contributor_lock_chunk_limit, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.len());
+        assert_eq!(0, state.finished_verifiers.len());
+
+        // Fetch the maximum number of tasks permitted for a verifier.
+        for i in 0..environment.verifier_lock_chunk_limit() {
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&verifier).unwrap();
+            assert_eq!((i as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(contributor_lock_chunk_limit - i, state.pending_verification.len());
+        }
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(1, state.current_contributors.len());
+        assert_eq!(1, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.len());
+        assert_eq!(0, state.finished_verifiers.len());
+
+        // Attempt to fetch past the permitted lock chunk limit.
+        for _ in 0..10 {
+            let try_task = state.pop_task(&verifier);
+            assert!(try_task.is_err());
+        }
+    }
+
+    #[test]
+    fn test_round_2x1() {
+        test_logger();
+
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier = TEST_VERIFIER_ID.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.set_current_round_height(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier.clone(), 10).unwrap();
+        state.update_queue().unwrap();
+        assert!(state.is_current_round_finished());
+        assert!(state.is_precommit_next_round_ready());
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        assert_eq!(3, state.queue.len());
+        assert_eq!(0, state.next.len());
+        state.precommit_next_round(next_round_height).unwrap();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(3, state.next.len());
+        state.commit_next_round();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(0, state.next.len());
+
+        // Process every chunk in the round as contributor 1 and contributor 2.
+        let offset = 4;
+        let number_of_chunks = environment.number_of_chunks();
+        for i in 0..number_of_chunks {
+            assert_eq!(Some(next_round_height), state.current_round_height);
+            assert_eq!(2, state.current_contributors.len());
+            assert_eq!(1, state.current_verifiers.len());
+            assert_eq!(0, state.pending_verification.len());
+            assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.dropped.len());
+            assert_eq!(0, state.banned.len());
+
+            // Fetch a pending task for contributor 1.
+            let task = state.pop_task(&contributor_1).unwrap();
+            let chunk_id = i as u64;
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
+            let assigned_verifier_1 = state
+                .completed_task(&contributor_1, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+            assert_eq!(verifier, assigned_verifier_1);
+
+            // Fetch a pending task for contributor 2.
+            let task = state.pop_task(&contributor_2).unwrap();
+            let chunk_id_2 = (i as u64 + offset) % number_of_chunks;
+            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
+            let assigned_verifier_2 = state
+                .completed_task(&contributor_2, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(2, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+            assert_eq!(assigned_verifier_1, assigned_verifier_2);
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&verifier).unwrap();
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&verifier).unwrap();
+            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(0, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            {
+                // Update the state of current round contributors.
+                state.update_current_contributors().unwrap();
+
+                // Update the state of current round verifiers.
+                state.update_current_verifiers().unwrap();
+
+                // Drop disconnected participants from the current round.
+                state.update_dropped_participants().unwrap();
+
+                // Ban any participants who meet the coordinator criteria.
+                state.update_banned_participants().unwrap();
+            }
+        }
+
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(0, state.current_contributors.len());
+        assert_eq!(0, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(2, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(1, state.finished_verifiers.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.dropped.len());
+        assert_eq!(0, state.banned.len());
+    }
+
+    #[test]
+    fn test_round_2x2() {
+        test_logger();
+
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier_1 = TEST_VERIFIER_ID.clone();
+        let verifier_2 = TEST_VERIFIER_ID_2.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.set_current_round_height(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier_1.clone(), 10).unwrap();
+        state.add_to_queue(verifier_2.clone(), 9).unwrap();
+        state.update_queue().unwrap();
+        assert!(state.is_current_round_finished());
+        assert!(state.is_precommit_next_round_ready());
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        assert_eq!(4, state.queue.len());
+        assert_eq!(0, state.next.len());
+        state.precommit_next_round(next_round_height).unwrap();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(4, state.next.len());
+        state.commit_next_round();
+        assert_eq!(0, state.queue.len());
+        assert_eq!(0, state.next.len());
+
+        // Process every chunk in the round as contributor 1.
+        let number_of_chunks = environment.number_of_chunks();
+        for i in 0..number_of_chunks {
+            assert_eq!(Some(next_round_height), state.current_round_height);
+            assert_eq!(2, state.current_contributors.len());
+            assert_eq!(2, state.current_verifiers.len());
+            assert_eq!(0, state.pending_verification.len());
+            assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.dropped.len());
+            assert_eq!(0, state.banned.len());
+
+            // Fetch a pending task for the contributor.
+            let task = state.pop_task(&contributor_1).unwrap();
+            let chunk_id = i as u64;
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
+            let assigned_verifier = state
+                .completed_task(&contributor_1, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&assigned_verifier).unwrap();
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&assigned_verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(0, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            {
+                // Update the state of current round contributors.
+                state.update_current_contributors().unwrap();
+
+                // Update the state of current round verifiers.
+                state.update_current_verifiers().unwrap();
+
+                // Drop disconnected participants from the current round.
+                state.update_dropped_participants().unwrap();
+
+                // Ban any participants who meet the coordinator criteria.
+                state.update_banned_participants().unwrap();
+            }
+        }
+
+        // Process every chunk in the round as contributor 2.
+        let offset = 4;
+        for i in offset..offset + number_of_chunks {
+            assert_eq!(Some(next_round_height), state.current_round_height);
+            assert_eq!(1, state.current_contributors.len());
+            assert_eq!(2, state.current_verifiers.len());
+            assert_eq!(0, state.pending_verification.len());
+            assert_eq!(1, state.finished_contributors.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
+            assert_eq!(0, state.dropped.len());
+            assert_eq!(0, state.banned.len());
+
+            // Fetch a pending task for the contributor.
+            let task = state.pop_task(&contributor_2).unwrap();
+            let chunk_id = i as u64 % number_of_chunks;
+            assert_eq!((chunk_id, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
+            let assigned_verifier = state
+                .completed_task(&contributor_2, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(1, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            // Fetch a pending task for the verifier.
+            let task = state.pop_task(&assigned_verifier).unwrap();
+            assert_eq!((chunk_id, 2), (task.chunk_id, task.contribution_id));
+
+            state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
+            state
+                .completed_task(&assigned_verifier, task.chunk_id, task.contribution_id)
+                .unwrap();
+            assert_eq!(0, state.pending_verification.len());
+            assert!(!state.is_current_round_finished());
+
+            {
+                // Update the state of current round contributors.
+                state.update_current_contributors().unwrap();
+
+                // Update the state of current round verifiers.
+                state.update_current_verifiers().unwrap();
+
+                // Drop disconnected participants from the current round.
+                state.update_dropped_participants().unwrap();
+
+                // Ban any participants who meet the coordinator criteria.
+                state.update_banned_participants().unwrap();
+            }
+        }
+
+        assert_eq!(Some(next_round_height), state.current_round_height);
+        assert_eq!(0, state.current_contributors.len());
+        assert_eq!(0, state.current_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(2, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(2, state.finished_verifiers.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.dropped.len());
+        assert_eq!(0, state.banned.len());
     }
 }

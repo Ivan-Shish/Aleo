@@ -86,6 +86,7 @@ pub enum CoordinatorError {
     ParticipantBanned,
     ParticipantDidNotDoWork,
     ParticipantDidntLockChunkId,
+    ParticipantHasLockedMaximumChunks,
     ParticipantHasNotStarted,
     ParticipantHasNoRemainingTasks,
     ParticipantHasRemainingTasks,
@@ -104,6 +105,7 @@ pub enum CoordinatorError {
     QueueIsEmpty,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
+    RoundCommitFailedOrCorrupted,
     RoundContributorsMissing,
     RoundContributorsNotUnique,
     RoundDirectoryMissing,
@@ -119,6 +121,8 @@ pub enum CoordinatorError {
     RoundNumberOfContributorsUnauthorized,
     RoundNumberOfVerifiersUnauthorized,
     RoundShouldNotExist,
+    RoundUpdateCorruptedStateOfContributors,
+    RoundUpdateCorruptedStateOfVerifiers,
     RoundVerifiersMissing,
     RoundVerifiersNotUnique,
     StorageCopyFailed,
@@ -372,8 +376,6 @@ impl Coordinator {
 
             output
         };
-
-        trace!("{} {}", is_current_round_finished, is_next_round_ready);
 
         // Check if the current round is finished and the next round is ready.
         if is_current_round_finished && is_next_round_ready {
@@ -663,9 +665,12 @@ impl Coordinator {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
-        // Attempt to fetch the next chunk ID for the given participant.
-        trace!("Fetching next chunk ID for {}", participant);
-        let (chunk_id, contribution_id) = state.pop_task(participant)?;
+        // Attempt to fetch the next chunk ID and contribution ID for the given participant.
+        trace!("Fetching next task for {}", participant);
+        let (chunk_id, contribution_id) = {
+            let task = state.pop_task(participant)?;
+            (task.chunk_id, task.contribution_id)
+        };
 
         trace!("Trying to lock chunk {} for {}", chunk_id, participant);
         match self.try_lock_chunk(&mut storage, chunk_id, participant) {
@@ -855,6 +860,27 @@ impl Coordinator {
         storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
 
         result
+    }
+
+    ///
+    /// Returns the chunk ID from the given contribution file locator path.
+    ///
+    /// If the given locator path is invalid, returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub fn contribution_locator_to_chunk_id(&self, locator_path: &str) -> Result<u64, CoordinatorError> {
+        // Acquire the storage lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        // Fetch the chunk ID corresponding to the given locator path.
+        let locator = storage.to_locator(&locator_path)?;
+        match &locator {
+            Locator::ContributionFile(_, chunk_id, _, _) => match storage.exists(&locator) {
+                true => Ok(*chunk_id),
+                false => Err(CoordinatorError::ContributionLocatorMissing),
+            },
+            _ => Err(CoordinatorError::ContributionLocatorIncorrect),
+        }
     }
 }
 

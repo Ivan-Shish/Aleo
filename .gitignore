@@ -11,3 +11,5 @@ tmp_*
 **.idea/
 
 **/*.DS_Store
+
+**/*.env
