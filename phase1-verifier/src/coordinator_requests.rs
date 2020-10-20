@@ -24,10 +24,9 @@ impl Verifier {
         let aleo_address = Address::from_view_key(&view_key)?.to_string();
 
         let method = "post";
-        let path = "/queue/verifier/join";
+        let path = "/v1/queue/verifier/join";
 
-        let signature_path = format!("/v1{}", path);
-        let authentication = authenticate(&view_key, &method, &signature_path)?;
+        let authentication = authenticate(&view_key, &method, &path)?;
 
         info!("Attempting to join as verifier join the queue as {}", aleo_address);
 
@@ -68,12 +67,10 @@ impl Verifier {
     pub async fn lock_chunk(&self) -> Result<LockResponse, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = "/verifier/try_lock";
+        let path = "/v1/verifier/try_lock";
 
         let view_key = ViewKey::from_str(&self.view_key)?;
-
-        let signature_path = format!("/v1{}", path);
-        let authentication = authenticate(&view_key, &method, &signature_path)?;
+        let authentication = authenticate(&view_key, &method, &path)?;
 
         info!("Verifier attempting to lock a chunk");
 
@@ -119,13 +116,13 @@ impl Verifier {
     pub async fn verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = format!("/verifier/try_verify/{}", chunk_id);
+        let path = format!("/v1/verifier/try_verify/{}", chunk_id);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
         info!("Verifier running verification of a contribution at chunk {}", chunk_id);
 
-        let signature_path = format!("/v1{}", path.replace("./", ""));
+        let signature_path = format!("{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .post(&format!("{}{}", &coordinator_api_url, &path))
@@ -162,13 +159,13 @@ impl Verifier {
     pub async fn download_response_file(&self, response_locator: &str) -> Result<Vec<u8>, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "get";
-        let path = format!("/download/response/{}", response_locator);
+        let path = format!("/v1/download/response/{}", response_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
         info!("Verifier downloading a response file at {} ", response_locator);
 
-        let signature_path = format!("/v1{}", path.replace("./", ""));
+        let signature_path = format!("{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .get(&format!("{}{}", &coordinator_api_url, &path))
@@ -205,13 +202,13 @@ impl Verifier {
     pub async fn download_challenge_file(&self, challenge_locator: &str) -> Result<Vec<u8>, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "get";
-        let path = format!("/download/challenge/{}", challenge_locator);
+        let path = format!("/v1/download/challenge/{}", challenge_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
         info!("Verifier downloading a challenge file at {} ", challenge_locator);
 
-        let signature_path = format!("/v1{}", path.replace("./", ""));
+        let signature_path = format!("{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
         match Client::new()
             .get(&format!("{}{}", &coordinator_api_url, &path))
@@ -252,11 +249,11 @@ impl Verifier {
     ) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
-        let path = format!("/upload/challenge/{}", next_challenge_locator);
+        let path = format!("/v1/upload/challenge/{}", next_challenge_locator);
 
         let view_key = ViewKey::from_str(&self.view_key)?;
 
-        let signature_path = format!("/v1{}", path.replace("./", ""));
+        let signature_path = format!("{}", path.replace("./", ""));
         let authentication = authenticate(&view_key, &method, &signature_path)?;
 
         info!(
