@@ -6,6 +6,7 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, Phase1};
 
+use std::time::Instant;
 use tracing::{debug, error, trace};
 use zexe_algebra::{Bls12_377, BW6_761};
 
@@ -15,6 +16,8 @@ impl Aggregation {
     /// Runs aggregation for a given environment, storage, and round.
     #[inline]
     pub(crate) fn run(environment: &Environment, storage: &mut StorageLock, round: &Round) -> anyhow::Result<()> {
+        let start = Instant::now();
+
         // Fetch the round height.
         let round_height = round.round_height();
         debug!("Starting aggregation on round {}", round_height);
@@ -91,7 +94,8 @@ impl Aggregation {
             )?,
         };
 
-        debug!("Completed aggregation on round {}", round_height);
+        let elapsed = Instant::now().duration_since(start);
+        debug!("Completed aggregation on round {} in {:?}", round_height, elapsed);
         Ok(())
     }
 
