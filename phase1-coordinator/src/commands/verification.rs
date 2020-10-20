@@ -6,7 +6,7 @@ use crate::{
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
 use setup_utils::{calculate_hash, CheckForCorrectness, GenericArray, U64};
 
-use std::io::Write;
+use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -32,6 +32,7 @@ impl Verification {
             "Starting verification of round {} chunk {} contribution {}",
             round_height, chunk_id, current_contribution_id
         );
+        let start = Instant::now();
 
         // Check that this is not the initial contribution.
         if (round_height == 0 || round_height == 1) && current_contribution_id == 0 {
@@ -60,9 +61,10 @@ impl Verification {
             return Err(error);
         }
 
+        let elapsed = Instant::now().duration_since(start);
         info!(
-            "Completed verification of round {} chunk {} contribution {}",
-            round_height, chunk_id, current_contribution_id
+            "Completed verification of round {} chunk {} contribution {} in {:?}",
+            round_height, chunk_id, current_contribution_id, elapsed
         );
         Ok(())
     }
