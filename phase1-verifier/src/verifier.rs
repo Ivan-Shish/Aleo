@@ -110,8 +110,8 @@ impl Verifier {
 
             // TODO (raychu86): The sleep is currently at the top of the loop so it won't be
             //  skipped by the `continue` calls. This will be updated in the verifier refactor.
-            // Sleep for 10 seconds
-            sleep(Duration::from_secs(10));
+            // Sleep for 5 seconds
+            sleep(Duration::from_secs(5));
 
             // Attempt to join the queue
             if let Ok(response) = self.join_queue().await {
