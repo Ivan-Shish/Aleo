@@ -1658,6 +1658,7 @@ dependencies = [
  "cfg-if 0.1.10",
  "criterion",
  "derivative",
+ "ff-fft",
  "itertools 0.8.2",
  "num-traits",
  "phase1",
