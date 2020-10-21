@@ -16,7 +16,6 @@ use std::{
     fmt,
     sync::{Arc, RwLock},
 };
-use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
@@ -436,6 +435,90 @@ impl Coordinator {
     }
 
     ///
+    /// Returns the total number of contributors currently in the queue.
+    ///  
+    #[inline]
+    pub fn number_of_queue_contributors(&self) -> usize {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the number of queued contributors.
+        state.number_of_queue_contributors()
+    }
+
+    ///
+    /// Returns the total number of verifiers currently in the queue.
+    ///
+    #[inline]
+    pub fn number_of_queue_verifiers(&self) -> usize {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the number of queued verifiers.
+        state.number_of_queue_verifiers()
+    }
+
+    ///
+    /// Returns a list of the contributors currently in the queue.
+    ///
+    #[inline]
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the queue contributors.
+        state.queue_contributors()
+    }
+
+    ///
+    /// Returns a list of the verifiers currently in the queue.
+    ///
+    #[inline]
+    pub fn queue_verifiers(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the queue verifiers.
+        state.queue_verifiers()
+    }
+
+    ///
+    /// Adds the given participant to the queue if they are permitted to participate.
+    ///
+    #[inline]
+    pub fn add_to_queue(&self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = self.storage.write().unwrap();
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to add the participant to the next round.
+        state.add_to_queue(participant, reliability_score)?;
+
+        // Save the coordinator state in storage.
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+        Ok(())
+    }
+
+    ///
+    /// Removes the given participant from the queue if they are in the queue.
+    ///
+    #[inline]
+    pub fn remove_from_queue(&self, participant: &Participant) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = self.storage.write().unwrap();
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Attempt to remove the participant from the next round.
+        state.remove_from_queue(participant)?;
+
+        // Save the coordinator state in storage.
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+        Ok(())
+    }
+
+    ///
     /// Returns `true` if the given participant is authorized as a
     /// contributor and listed in the contributor IDs for this round.
     ///
@@ -511,68 +594,6 @@ impl Coordinator {
         }
 
         true
-    }
-
-    ///
-    /// Returns the total number of contributors currently in the queue.
-    ///  
-    #[inline]
-    pub fn number_of_queued_contributors(&self) -> usize {
-        // Acquire a state read lock.
-        let state = self.state.read().unwrap();
-        // Fetch the number of queued contributors.
-        state.number_of_queued_contributors()
-    }
-
-    ///
-    /// Returns the total number of verifiers currently in the queue.
-    ///
-    #[inline]
-    pub fn number_of_queued_verifiers(&self) -> usize {
-        // Acquire a state read lock.
-        let state = self.state.read().unwrap();
-        // Fetch the number of queued verifiers.
-        state.number_of_queued_verifiers()
-    }
-
-    ///
-    /// Adds the given participant to the queue if they are permitted to participate.
-    ///
-    #[inline]
-    pub fn add_to_queue(&self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
-        // Acquire the storage write lock.
-        let mut storage = self.storage.write().unwrap();
-
-        // Acquire the state write lock.
-        let mut state = self.state.write().unwrap();
-
-        // Attempt to add the participant to the next round.
-        state.add_to_queue(participant, reliability_score)?;
-
-        // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
-
-        Ok(())
-    }
-
-    ///
-    /// Removes the given participant from the queue if they are in the queue.
-    ///
-    #[inline]
-    pub fn remove_from_queue(&self, participant: &Participant) -> Result<(), CoordinatorError> {
-        // Acquire the storage write lock.
-        let mut storage = self.storage.write().unwrap();
-
-        // Acquire the state write lock.
-        let mut state = self.state.write().unwrap();
-
-        // Attempt to remove the participant from the next round.
-        state.remove_from_queue(participant)?;
-
-        // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
-
-        Ok(())
     }
 
     ///

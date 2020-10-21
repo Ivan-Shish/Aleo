@@ -541,6 +541,62 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns `true` if the given participant is a contributor in the queue.
+    ///
+    #[inline]
+    pub(super) fn is_queue_contributor(&self, participant: &Participant) -> bool {
+        participant.is_contributor() && self.queue.contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier in the queue.
+    ///
+    #[inline]
+    pub(super) fn is_queue_verifier(&self, participant: &Participant) -> bool {
+        participant.is_verifier() && self.queue.contains_key(participant)
+    }
+
+    ///
+    /// Returns the total number of contributors currently in the queue.
+    ///  
+    #[inline]
+    pub(super) fn number_of_queue_contributors(&self) -> usize {
+        self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count()
+    }
+
+    ///
+    /// Returns the total number of verifiers currently in the queue.
+    ///
+    #[inline]
+    pub(super) fn number_of_queue_verifiers(&self) -> usize {
+        self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count()
+    }
+
+    ///
+    /// Returns a list of the contributors currently in the queue.
+    ///
+    #[inline]
+    pub(super) fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+        self.queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, _)| p.is_contributor())
+            .collect()
+    }
+
+    ///
+    /// Returns a list of the verifiers currently in the queue.
+    ///
+    #[inline]
+    pub(super) fn queue_verifiers(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+        self.queue
+            .clone()
+            .into_par_iter()
+            .filter(|(p, _)| p.is_verifier())
+            .collect()
+    }
+
+    ///
     /// Returns `true` if the given participant is an authorized contributor in the ceremony.
     ///
     #[inline]
@@ -554,6 +610,25 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn is_authorized_verifier(&self, participant: &Participant) -> bool {
         participant.is_verifier() && !self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns the current round height stored in the coordinator state.
+    ///
+    /// This function returns `0` if the current round height has not been set.
+    ///
+    #[inline]
+    pub(super) fn current_round_height(&mut self) -> u64 {
+        self.current_round_height.unwrap_or_default()
+    }
+
+    ///
+    /// Updates the current round height stored in the coordinator state.
+    ///
+    #[inline]
+    pub(super) fn set_current_round_height(&mut self, current_round_height: u64) {
+        self.status = CoordinatorStatus::Initialized;
+        self.current_round_height = Some(current_round_height);
     }
 
     ///
@@ -645,41 +720,6 @@ impl CoordinatorState {
         }
 
         true
-    }
-
-    ///
-    /// Returns the total number of contributors currently in the queue.
-    ///  
-    #[inline]
-    pub(super) fn number_of_queued_contributors(&self) -> usize {
-        self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count()
-    }
-
-    ///
-    /// Returns the total number of verifiers currently in the queue.
-    ///
-    #[inline]
-    pub(super) fn number_of_queued_verifiers(&self) -> usize {
-        self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count()
-    }
-
-    ///
-    /// Returns the current round height stored in the coordinator state.
-    ///
-    /// This function returns `0` if the current round height has not been set.
-    ///
-    #[inline]
-    pub(super) fn current_round_height(&mut self) -> u64 {
-        self.current_round_height.unwrap_or_default()
-    }
-
-    ///
-    /// Updates the current round height stored in the coordinator state.
-    ///
-    #[inline]
-    pub(super) fn set_current_round_height(&mut self, current_round_height: u64) {
-        self.status = CoordinatorStatus::Initialized;
-        self.current_round_height = Some(current_round_height);
     }
 
     ///
@@ -966,13 +1006,17 @@ impl CoordinatorState {
         let mut queue: Vec<_> = self.queue.clone().into_par_iter().map(|(p, (r, _))| (p, r)).collect();
         queue.par_sort_by(|a, b| (b.1).cmp(&a.1));
 
-        // Parse the queue participants into contributors and verifiers.
+        // Parse the queue participants into contributors and verifiers,
+        // and check that they are not banned participants.
         let contributors: Vec<(_, _)> = queue
             .clone()
             .into_par_iter()
-            .filter(|(p, _)| p.is_contributor())
+            .filter(|(p, _)| p.is_contributor() && !self.banned.contains(&p))
             .collect();
-        let verifiers: Vec<(_, _)> = queue.into_par_iter().filter(|(p, _)| p.is_verifier()).collect();
+        let verifiers: Vec<(_, _)> = queue
+            .into_par_iter()
+            .filter(|(p, _)| p.is_verifier() && !self.banned.contains(&p))
+            .collect();
 
         // Fetch the permitted number of contributors and verifiers.
         let maximum_contributors = self.environment.maximum_contributors_per_round();
@@ -1570,8 +1614,8 @@ impl CoordinatorState {
             .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
             .count();
 
-        let number_of_queued_contributors = self.number_of_queued_contributors();
-        let number_of_queued_verifiers = self.number_of_queued_verifiers();
+        let number_of_queue_contributors = self.number_of_queue_contributors();
+        let number_of_queue_verifiers = self.number_of_queue_verifiers();
 
         let number_of_dropped_participants = self.dropped.len();
         let number_of_banned_participants = self.banned.len();
@@ -1605,8 +1649,8 @@ impl CoordinatorState {
             number_of_pending_verifications,
             number_of_assigned_contributors,
             number_of_assigned_verifiers,
-            number_of_queued_contributors,
-            number_of_queued_verifiers,
+            number_of_queue_contributors,
+            number_of_queue_verifiers,
             number_of_dropped_participants,
             number_of_banned_participants
         )
