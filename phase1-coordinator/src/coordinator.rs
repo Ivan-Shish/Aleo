@@ -298,6 +298,26 @@ impl Coordinator {
             self.try_advance()?;
             info!("Initialized round 1");
 
+            fn contribute(coordinator: &Coordinator, contributor: &Participant, seed: &[u8; 32]) -> anyhow::Result<()> {
+                let (chunk_id, _previous_response, _challenge, _response) = coordinator.try_lock(contributor)?;
+
+                debug!("Computing contributions for round 1 chunk {}", chunk_id);
+                coordinator.run_computation(1, chunk_id, 1, contributor, seed)?;
+                let _response = coordinator.try_contribute(contributor, chunk_id)?;
+                debug!("Computed contributions for round 1 chunk {}", chunk_id);
+                Ok(())
+            }
+
+            fn verify(coordinator: &Coordinator, verifier: &Participant) -> anyhow::Result<()> {
+                let (chunk_id, _challenge, _response, _next_challenge) = coordinator.try_lock(&verifier)?;
+
+                debug!("Running verification for round 1 chunk {}", chunk_id);
+                let _next_challenge = coordinator.run_verification(1, chunk_id, 1, &verifier)?;
+                coordinator.try_verify(&verifier, chunk_id)?;
+                debug!("Running verification for round 1 chunk {}", chunk_id);
+                Ok(())
+            }
+
             info!("Add contributions and verifications for round 1");
             for _ in 0..self.environment.number_of_chunks() {
                 let coordinator = self.clone();
@@ -305,35 +325,8 @@ impl Coordinator {
                 let verifier = verifier.clone();
                 let seed = seed.clone();
 
-                // task::spawn(async move {
-                fn contribute(
-                    coordinator: &Coordinator,
-                    contributor: &Participant,
-                    seed: &[u8; 32],
-                ) -> anyhow::Result<()> {
-                    let (chunk_id, _previous_response, _challenge, _response) = coordinator.try_lock(contributor)?;
-
-                    debug!("Computing contributions for round 1 chunk {}", chunk_id);
-                    coordinator.run_computation(1, chunk_id, 1, contributor, seed)?;
-                    let _response = coordinator.try_contribute(contributor, chunk_id)?;
-                    debug!("Computed contributions for round 1 chunk {}", chunk_id);
-                    Ok(())
-                }
-
-                fn verify(coordinator: &Coordinator, verifier: &Participant) -> anyhow::Result<()> {
-                    let (chunk_id, _challenge, _response, _next_challenge) = coordinator.try_lock(&verifier)?;
-
-                    debug!("Running verification for round 1 chunk {}", chunk_id);
-                    let _next_challenge = coordinator.run_verification(1, chunk_id, 1, &verifier)?;
-                    coordinator.try_verify(&verifier, chunk_id)?;
-                    debug!("Running verification for round 1 chunk {}", chunk_id);
-                    Ok(())
-                }
-
-                let seed = seed.expose_secret()[..].try_into().expect("Seed failed");
-                contribute(&coordinator, &contributor, seed).expect("Contribute failed");
-                verify(&coordinator, &verifier).expect("Verify failed");
-                // });
+                contribute(&coordinator, &contributor, seed.expose_secret()[..].try_into()?)?;
+                verify(&coordinator, &verifier)?;
             }
             info!("Added contributions and verifications for round 1");
         } else {
