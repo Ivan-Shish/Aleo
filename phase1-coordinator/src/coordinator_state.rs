@@ -627,8 +627,17 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn set_current_round_height(&mut self, current_round_height: u64) {
-        self.status = CoordinatorStatus::Initialized;
+        // Set the current round height to the given round height.
         self.current_round_height = Some(current_round_height);
+
+        // Initialize the finished contributors map for the current round.
+        self.finished_contributors.insert(current_round_height, HashMap::new());
+
+        // Initialize the finished verifiers map for the current round.
+        self.finished_verifiers.insert(current_round_height, HashMap::new());
+
+        // Set the status to initialized.
+        self.status = CoordinatorStatus::Initialized;
     }
 
     ///
@@ -1853,8 +1862,8 @@ mod tests {
         assert_eq!(0, state.current_contributors.len());
         assert_eq!(0, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&current_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&current_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
 
@@ -2043,6 +2052,8 @@ mod tests {
 
     #[test]
     fn test_commit_next_round() {
+        test_logger();
+
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -2113,8 +2124,8 @@ mod tests {
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
         assert!(!state.is_current_round_finished());
@@ -2123,6 +2134,8 @@ mod tests {
 
     #[test]
     fn test_rollback_next_round() {
+        test_logger();
+
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -2192,8 +2205,8 @@ mod tests {
         assert_eq!(0, state.current_contributors.len());
         assert_eq!(0, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&current_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&current_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
         assert!(state.is_current_round_finished());
@@ -2228,8 +2241,8 @@ mod tests {
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
 
@@ -2241,18 +2254,15 @@ mod tests {
             assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
 
             state.acquired_lock(&contributor, task.chunk_id).unwrap();
-            state
-                .completed_task(&contributor, chunk_id as u64, task.contribution_id)
-                .unwrap();
-            assert_eq!(chunk_id, state.pending_verification.len());
+            assert_eq!(0, state.pending_verification.len());
         }
 
         assert_eq!(Some(next_round_height), state.current_round_height);
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
-        assert_eq!(contributor_lock_chunk_limit, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.pending_verification.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {
@@ -2287,8 +2297,8 @@ mod tests {
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Ensure that the verifier cannot pop a task prior to a contributor completing a task.
         let try_task = state.pop_task(&verifier);
@@ -2306,14 +2316,14 @@ mod tests {
             state
                 .completed_task(&contributor, chunk_id, task.contribution_id)
                 .unwrap();
-            assert_eq!(i, state.pending_verification.len());
+            assert_eq!(i + 1, state.pending_verification.len());
         }
         assert_eq!(Some(next_round_height), state.current_round_height);
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
         assert_eq!(contributor_lock_chunk_limit, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Fetch the maximum number of tasks permitted for a verifier.
         for i in 0..environment.verifier_lock_chunk_limit() {
@@ -2325,14 +2335,14 @@ mod tests {
             state
                 .completed_task(&verifier, task.chunk_id, task.contribution_id)
                 .unwrap();
-            assert_eq!(contributor_lock_chunk_limit - i, state.pending_verification.len());
+            assert_eq!(contributor_lock_chunk_limit - i - 1, state.pending_verification.len());
         }
         assert_eq!(Some(next_round_height), state.current_round_height);
         assert_eq!(1, state.current_contributors.len());
         assert_eq!(1, state.current_verifiers.len());
         assert_eq!(0, state.pending_verification.len());
-        assert_eq!(0, state.finished_contributors.len());
-        assert_eq!(0, state.finished_verifiers.len());
+        assert_eq!(0, state.finished_contributors.get(&next_round_height).unwrap().len());
+        assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {

@@ -435,6 +435,28 @@ impl Coordinator {
     }
 
     ///
+    /// Returns `true` if the given participant is a contributor in the queue.
+    ///
+    #[inline]
+    pub fn is_queue_contributor(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the queue verifiers.
+        state.is_queue_contributor(&participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier in the queue.
+    ///
+    #[inline]
+    pub fn is_queue_verifier(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the queue verifiers.
+        state.is_queue_verifier(&participant)
+    }
+
+    ///
     /// Returns the total number of contributors currently in the queue.
     ///  
     #[inline]
