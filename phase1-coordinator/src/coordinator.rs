@@ -937,7 +937,7 @@ impl Coordinator {
         // Add the updated round to storage.
         match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
-                info!("{} acquired lock on chunk {}", participant, chunk_id);
+                debug!("{} acquired lock on chunk {}", participant, chunk_id);
                 Ok((
                     storage.to_path(&previous_contribution_locator)?,
                     storage.to_path(&current_contribution_locator)?,
