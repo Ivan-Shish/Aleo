@@ -1073,7 +1073,7 @@ impl CoordinatorState {
     ///
     /// Updates the state of verifiers in the current round.
     ///
-    /// This function never be run prior to calling `update_current_contributors`.
+    /// This function should never be run prior to calling `update_current_contributors`.
     ///
     #[inline]
     pub(super) fn update_current_verifiers(&mut self) -> Result<(), CoordinatorError> {

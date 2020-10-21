@@ -384,9 +384,26 @@ impl From<Production> for Environment {
     }
 }
 
+// TODO (howardwu): Convert the implementation to a procedural macro.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Testing {
     pub environment: Environment,
+}
+
+impl Testing {
+    #[inline]
+    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.minimum_contributors_per_round = minimum;
+        deployment
+    }
+
+    #[inline]
+    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.maximum_contributors_per_round = maximum;
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -437,16 +454,33 @@ impl std::default::Default for Testing {
     }
 }
 
+// TODO (howardwu): Convert the implementation to a procedural macro.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Development {
     environment: Environment,
 }
 
+impl Development {
+    #[inline]
+    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.minimum_contributors_per_round = minimum;
+        deployment
+    }
+
+    #[inline]
+    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.maximum_contributors_per_round = maximum;
+        deployment
+    }
+}
+
 impl From<Parameters> for Development {
     fn from(parameters: Parameters) -> Self {
-        let mut development = Self::default();
-        development.environment.parameters = parameters.to_settings();
-        development
+        let mut testing = Self::default();
+        testing.environment.parameters = parameters.to_settings();
+        testing
     }
 }
 
@@ -496,9 +530,34 @@ impl std::default::Default for Development {
     }
 }
 
+// TODO (howardwu): Convert the implementation to a procedural macro.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Production {
     environment: Environment,
+}
+
+impl Production {
+    #[inline]
+    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.minimum_contributors_per_round = minimum;
+        deployment
+    }
+
+    #[inline]
+    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.maximum_contributors_per_round = maximum;
+        deployment
+    }
+}
+
+impl From<Parameters> for Production {
+    fn from(parameters: Parameters) -> Self {
+        let mut testing = Self::default();
+        testing.environment.parameters = parameters.to_settings();
+        testing
+    }
 }
 
 impl std::ops::Deref for Production {
