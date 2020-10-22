@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 #[macro_use]
 extern crate lazy_static;
 
