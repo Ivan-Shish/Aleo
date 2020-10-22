@@ -321,7 +321,7 @@ impl Storage for Disk {
         trace!("Removing {}", self.to_path(locator)?);
 
         // Check that the locator does not exist in storage.
-        if self.exists(&locator) {
+        if !self.exists(&locator) {
             error!("Locator in call to remove() already exists in storage.");
             return Err(CoordinatorError::StorageLocatorAlreadyExists);
         }

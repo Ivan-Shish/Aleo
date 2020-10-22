@@ -35,6 +35,8 @@ pub(super) struct ParticipantInfo {
     round_height: u64,
     /// The reliability of the participant from an initial calibration.
     reliability: u8,
+    /// The bucket ID that this participant starts contributing from.
+    bucket_id: u64,
     /// The timestamp of the first seen instance of this participant.
     first_seen: DateTime<Utc>,
     /// The timestamp of the last seen instance of this participant.
@@ -47,30 +49,48 @@ pub(super) struct ParticipantInfo {
     dropped_at: Option<DateTime<Utc>>,
     /// The set of chunk IDs that this participant is computing.
     locked_chunks: HashSet<u64>,
-    /// The list of (chunk ID, contribution ID) tasks that this participant has left to compute.
+    /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
+    assigned_tasks: LinkedList<Task>,
+    /// The list of (chunk ID, contribution ID) tasks that this participant is currently computing.
     pending_tasks: LinkedList<Task>,
-    /// The list of (chunk ID, contribution ID) tasks that this participant has computed.
+    /// The list of (chunk ID, contribution ID) tasks that this participant finished computing.
     completed_tasks: LinkedList<Task>,
 }
 
 impl ParticipantInfo {
     #[inline]
-    fn new(participant: Participant, round_height: u64, reliability: u8) -> Self {
+    fn new(participant: Participant, round_height: u64, reliability: u8, bucket_id: u64) -> Self {
         // Fetch the current time.
         let now = Utc::now();
         Self {
             id: participant,
             round_height,
             reliability,
+            bucket_id,
             first_seen: now,
             last_seen: now,
             started_at: None,
             finished_at: None,
             dropped_at: None,
             locked_chunks: HashSet::new(),
+            assigned_tasks: LinkedList::new(),
             pending_tasks: LinkedList::new(),
             completed_tasks: LinkedList::new(),
         }
+    }
+
+    ///
+    /// Returns `true` if the participant is dropped from the current round.
+    ///
+    #[inline]
+    fn is_dropped(&self) -> bool {
+        // Check that the participant has not already finished the round.
+        if self.is_finished() {
+            return false;
+        }
+
+        // Check if the participant was dropped from the round.
+        self.dropped_at.is_some()
     }
 
     ///
@@ -93,6 +113,11 @@ impl ParticipantInfo {
             return false;
         }
 
+        // Check that the participant has no more assigned tasks.
+        if !self.assigned_tasks.is_empty() {
+            return false;
+        }
+
         // Check that the participant has no more pending tasks.
         if !self.pending_tasks.is_empty() {
             return false;
@@ -103,7 +128,7 @@ impl ParticipantInfo {
             return false;
         }
 
-        // Check if the participant has already finished the round.
+        // Check if the participant has finished the round.
         self.finished_at.is_some()
     }
 
@@ -113,6 +138,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn start(&mut self, tasks: LinkedList<Task>) -> Result<(), CoordinatorError> {
+        trace!("Starting {}", self.id);
+
         // Check that the participant has a valid round height set.
         if self.round_height == 0 {
             return Err(CoordinatorError::ParticipantRoundHeightInvalid);
@@ -126,6 +153,11 @@ impl ParticipantInfo {
         // Check that the participant has no locked chunks.
         if !self.locked_chunks.is_empty() {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunks);
+        }
+
+        // Check that the participant has no assigned tasks.
+        if !self.assigned_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasAssignedTasks);
         }
 
         // Check that the participant has no pending tasks.
@@ -144,7 +176,7 @@ impl ParticipantInfo {
         // Set the participant info to reflect them starting now.
         self.last_seen = now;
         self.started_at = Some(now);
-        self.pending_tasks = tasks;
+        self.assigned_tasks = tasks;
 
         Ok(())
     }
@@ -154,6 +186,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn push_back_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Pushing back task for {}", self.id);
+
         // Set the task as the given chunk ID and contribution ID.
         let task = Task::new(chunk_id, contribution_id);
 
@@ -177,18 +211,23 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
-        // Check that the task was not already added to the pending tasks.
-        if self.pending_tasks.contains(&task) {
+        // Check that the task was not already given the assigned task.
+        if self.assigned_tasks.contains(&task) {
             return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
+        // Check that the task was not already in progress.
+        if self.pending_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
         // Check that the participant has not already completed the task.
         if self.completed_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
 
         // Add the task to the back of the pending tasks.
-        self.pending_tasks.push_back(task);
+        self.assigned_tasks.push_back(task);
 
         Ok(())
     }
@@ -198,6 +237,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn push_front_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Pushing front task for {}", self.id);
+
         // Set the task as the given chunk ID and contribution ID.
         let task = Task::new(chunk_id, contribution_id);
 
@@ -221,18 +262,23 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
+        // Check that the task was not already given the assigned task.
+        if self.assigned_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+        }
+
         // Check that the task was not already added to the pending tasks.
         if self.pending_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyAddedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
         // Check that the participant has not already completed the task.
         if self.completed_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
 
         // Add the task to the front of the pending tasks.
-        self.pending_tasks.push_front(task);
+        self.assigned_tasks.push_front(task);
 
         Ok(())
     }
@@ -243,6 +289,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn pop_task(&mut self) -> Result<Task, CoordinatorError> {
+        trace!("Popping task for {}", self.id);
+
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -258,8 +306,8 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyFinished);
         }
 
-        // Check that the participant has pending tasks.
-        if self.pending_tasks.is_empty() {
+        // Check that the participant has assigned tasks.
+        if self.assigned_tasks.is_empty() {
             return Err(CoordinatorError::ParticipantHasNoRemainingTasks);
         }
 
@@ -267,8 +315,13 @@ impl ParticipantInfo {
         self.last_seen = Utc::now();
 
         // Fetch the next task in order as stored.
-        match self.pending_tasks.pop_front() {
-            Some(task) => Ok(task),
+        match self.assigned_tasks.pop_front() {
+            Some(task) => {
+                // Add the task to the front of the pending tasks.
+                self.pending_tasks.push_back(task.clone());
+
+                Ok(task)
+            }
             None => Err(CoordinatorError::ParticipantHasNoRemainingTasks),
         }
     }
@@ -278,6 +331,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn acquired_lock(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Acquiring lock on chunk {} for {}", chunk_id, self.id);
+
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -298,14 +353,14 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
-        // Check that if the participant is a contributor, this chunk was not already pending.
+        // Check that if the participant is a contributor, this chunk was popped and already pending.
         if self.id.is_contributor()
             && self
                 .pending_tasks
                 .par_iter()
                 .filter(|task| task.contains(chunk_id))
                 .count()
-                > 0
+                == 0
         {
             return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
         }
@@ -332,11 +387,85 @@ impl ParticipantInfo {
     }
 
     ///
+    /// Reverts the given (chunk ID, contribution ID) task to the list of assigned tasks
+    /// from the list of pending tasks.
+    ///    
+    #[inline]
+    fn rollback_pending_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Rolling back pending task on chunk {} for {}", chunk_id, self.id);
+
+        // Set the task as the given chunk ID and contribution ID.
+        let task = Task::new(chunk_id, contribution_id);
+
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that this chunk is not currently locked by the participant.
+        if self.locked_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
+        }
+
+        // Check that if the participant is a contributor, this chunk was popped and already pending.
+        if self.id.is_contributor()
+            && self
+                .pending_tasks
+                .par_iter()
+                .filter(|task| task.contains(chunk_id))
+                .count()
+                == 0
+        {
+            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
+        }
+
+        // Check that if the participant is a contributor, this chunk was not already completed.
+        if self.id.is_contributor()
+            && self
+                .completed_tasks
+                .par_iter()
+                .filter(|task| task.contains(chunk_id))
+                .count()
+                > 0
+        {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Remove the task from the pending tasks.
+        self.pending_tasks = self
+            .pending_tasks
+            .clone()
+            .into_par_iter()
+            .filter(|t| *t != task)
+            .collect();
+
+        // Add the task to the front of the assigned tasks.
+        self.assigned_tasks.push_front(task);
+
+        Ok(())
+    }
+
+    ///
     /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
     #[inline]
     fn completed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Completing task for {}", self.id);
+
         // Set the task as the given chunk ID and contribution ID.
         let task = Task::new(chunk_id, contribution_id);
 
@@ -360,9 +489,14 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
-        // Check that the participant does not have a pending task remaining for this.
-        if self.pending_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantStillHasTaskAsPending);
+        // Check that the participant does not have a assigned task remaining for this.
+        if self.assigned_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
+        }
+
+        // Check that the participant has a pending task for this.
+        if !self.pending_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantMissingPendingTask);
         }
 
         // Check that the participant has not already completed the task.
@@ -388,8 +522,42 @@ impl ParticipantInfo {
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
 
+        // Remove the task from the pending tasks.
+        self.pending_tasks = self
+            .pending_tasks
+            .clone()
+            .into_par_iter()
+            .filter(|t| *t != task)
+            .collect();
+
         // Add the task to the completed tasks.
         self.completed_tasks.push_back(task);
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the participant to dropped and saves the current time as the dropped time.
+    ///
+    #[inline]
+    fn drop(&mut self) -> Result<(), CoordinatorError> {
+        trace!("Dropping {}", self.id);
+
+        // Check that the participant was not already dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyDropped);
+        }
+
+        // Check that the participant has not already finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Fetch the current time.
+        let now = Utc::now();
+
+        // Set the participant info to reflect them dropping now.
+        self.dropped_at = Some(now);
 
         Ok(())
     }
@@ -399,6 +567,8 @@ impl ParticipantInfo {
     ///
     #[inline]
     fn finish(&mut self) -> Result<(), CoordinatorError> {
+        trace!("Finishing {}", self.id);
+
         // Check that the participant already started in the round.
         if self.started_at.is_none() {
             return Err(CoordinatorError::ParticipantHasNotStarted);
@@ -417,6 +587,11 @@ impl ParticipantInfo {
         // Check that the participant has no more locked chunks.
         if !self.locked_chunks.is_empty() {
             return Err(CoordinatorError::ParticipantStillHasLocks);
+        }
+
+        // Check that the participant has no more assigned tasks.
+        if !self.assigned_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingTasks);
         }
 
         // Check that the participant has no more pending tasks.
@@ -440,45 +615,6 @@ impl ParticipantInfo {
     }
 
     ///
-    /// Sets the participant to dropped and saves the current time as the dropped time.
-    ///
-    #[inline]
-    fn drop(&mut self) -> Result<(), CoordinatorError> {
-        // Check that the participant already started in the round.
-        if self.started_at.is_none() {
-            return Err(CoordinatorError::ParticipantHasNotStarted);
-        }
-
-        // Check that the participant was not already dropped from the round.
-        if self.dropped_at.is_some() {
-            return Err(CoordinatorError::ParticipantAlreadyDropped);
-        }
-
-        // Check that the participant has not already finished the round.
-        if self.finished_at.is_some() {
-            return Err(CoordinatorError::ParticipantAlreadyFinished);
-        }
-
-        // Check that the participant has no more locked chunks.
-        if !self.locked_chunks.is_empty() {
-            return Err(CoordinatorError::ParticipantStillHasLocks);
-        }
-
-        // Check that the participant has no more pending tasks.
-        if !self.pending_tasks.is_empty() {
-            return Err(CoordinatorError::ParticipantHasRemainingTasks);
-        }
-
-        // Fetch the current time.
-        let now = Utc::now();
-
-        // Set the participant info to reflect them dropping now.
-        self.dropped_at = Some(now);
-
-        Ok(())
-    }
-
-    ///
     /// Resets the participant information.
     ///
     #[deprecated]
@@ -486,7 +622,7 @@ impl ParticipantInfo {
     #[inline]
     fn reset(&mut self) {
         warn!("Resetting the state of participant {}", self.id);
-        *self = Self::new(self.id.clone(), self.round_height, self.reliability);
+        *self = Self::new(self.id.clone(), self.round_height, self.reliability, 0);
     }
 }
 
@@ -516,6 +652,8 @@ pub struct CoordinatorState {
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
     banned: Vec<Participant>,
+    /// TODO (howardwu): Remove this and formalize a round metadata struct.
+    number_of_contributors: u64,
 }
 
 impl CoordinatorState {
@@ -537,6 +675,8 @@ impl CoordinatorState {
             finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
             banned: Vec::new(),
+            /// TODO (howardwu): Remove this and formalize a round metadata struct.
+            number_of_contributors: 0,
         }
     }
 
@@ -554,6 +694,70 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn is_queue_verifier(&self, participant: &Participant) -> bool {
         participant.is_verifier() && self.queue.contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is an authorized contributor in the ceremony.
+    ///
+    #[inline]
+    pub(super) fn is_authorized_contributor(&self, participant: &Participant) -> bool {
+        participant.is_contributor() && !self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is an authorized verifier in the ceremony.
+    ///
+    #[inline]
+    pub(super) fn is_authorized_verifier(&self, participant: &Participant) -> bool {
+        participant.is_verifier() && !self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is actively contributing
+    /// in the current round.
+    ///
+    #[inline]
+    pub(super) fn is_current_contributor(&self, participant: &Participant) -> bool {
+        self.is_authorized_contributor(participant) && self.current_contributors.contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is actively verifying
+    /// in the current round.
+    ///
+    #[inline]
+    pub(super) fn is_current_verifier(&self, participant: &Participant) -> bool {
+        self.is_authorized_verifier(participant) && self.current_verifiers.contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant has finished contributing
+    /// in the current round.
+    ///
+    #[inline]
+    pub(super) fn is_finished_contributor(&self, participant: &Participant) -> bool {
+        let current_round_height = self.current_round_height.unwrap_or_default();
+        participant.is_contributor()
+            && self
+                .finished_contributors
+                .get(&current_round_height)
+                .get_or_insert(&HashMap::new())
+                .contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant has finished verifying
+    /// in the current round.
+    ///
+    #[inline]
+    pub(super) fn is_finished_verifier(&self, participant: &Participant) -> bool {
+        let current_round_height = self.current_round_height.unwrap_or_default();
+        participant.is_verifier()
+            && self
+                .finished_verifiers
+                .get(&current_round_height)
+                .get_or_insert(&HashMap::new())
+                .contains_key(participant)
     }
 
     ///
@@ -597,28 +801,12 @@ impl CoordinatorState {
     }
 
     ///
-    /// Returns `true` if the given participant is an authorized contributor in the ceremony.
-    ///
-    #[inline]
-    pub(super) fn is_authorized_contributor(&self, participant: &Participant) -> bool {
-        participant.is_contributor() && !self.banned.contains(participant)
-    }
-
-    ///
-    /// Returns `true` if the given participant is an authorized verifier in the ceremony.
-    ///
-    #[inline]
-    pub(super) fn is_authorized_verifier(&self, participant: &Participant) -> bool {
-        participant.is_verifier() && !self.banned.contains(participant)
-    }
-
-    ///
     /// Returns the current round height stored in the coordinator state.
     ///
     /// This function returns `0` if the current round height has not been set.
     ///
     #[inline]
-    pub(super) fn current_round_height(&mut self) -> u64 {
+    pub(super) fn current_round_height(&self) -> u64 {
         self.current_round_height.unwrap_or_default()
     }
 
@@ -732,6 +920,82 @@ impl CoordinatorState {
     }
 
     ///
+    /// Adds the given participant to the queue if they are permitted to participate.
+    ///
+    #[inline]
+    pub(super) fn add_to_queue(
+        &mut self,
+        participant: Participant,
+        reliability_score: u8,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the participant is not banned from participating.
+        if self.banned.contains(&participant) {
+            return Err(CoordinatorError::ParticipantBanned);
+        }
+
+        // Check that the participant is not already added to the queue.
+        if self.queue.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        // Check that the participant is not in precommit for the next round.
+        if self.next.contains_key(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyAdded);
+        }
+
+        match &participant {
+            Participant::Contributor(_) => {
+                // Check if the contributor is authorized.
+                if !self.is_authorized_contributor(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Check that the contributor is not in the current round.
+                if self.current_contributors.contains_key(&participant) {
+                    return Err(CoordinatorError::ParticipantInCurrentRoundCannotJoinQueue);
+                }
+            }
+            Participant::Verifier(_) => {
+                // Check if the verifier is authorized.
+                if !self.is_authorized_verifier(&participant) {
+                    return Err(CoordinatorError::ParticipantUnauthorized);
+                }
+
+                // Check that the verifier is not in the current round.
+                if self.current_verifiers.contains_key(&participant) {
+                    return Err(CoordinatorError::ParticipantInCurrentRoundCannotJoinQueue);
+                }
+            }
+        }
+
+        // Add the participant to the queue.
+        self.queue.insert(participant, (reliability_score, None));
+
+        Ok(())
+    }
+
+    ///
+    /// Removes the given participant from the queue.
+    ///
+    #[inline]
+    pub(super) fn remove_from_queue(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is not already in precommit for the next round.
+        if self.next.contains_key(participant) {
+            return Err(CoordinatorError::ParticipantAlreadyPrecommitted);
+        }
+
+        // Check that the participant is exists in the queue.
+        if !self.queue.contains_key(participant) {
+            return Err(CoordinatorError::ParticipantMissing);
+        }
+
+        // Remove the participant from the queue.
+        self.queue.remove(participant);
+
+        Ok(())
+    }
+
+    ///
     /// Adds the given (chunk ID, contribution ID) pair to the participant to process.
     ///
     #[inline]
@@ -814,6 +1078,36 @@ impl CoordinatorState {
     }
 
     ///
+    /// Reverts the given (chunk ID, contribution ID) task to the list of assigned tasks
+    /// from the list of pending tasks.
+    ///
+    #[inline]
+    pub(super) fn rollback_pending_task(
+        &mut self,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                // Acquire the chunk lock for the contributor.
+                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                // Acquire the chunk lock for the verifier.
+                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id)?),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
     /// Adds the given (chunk ID, contribution ID) task to the pending verification set.
     /// The verification task is then assigned to the verifier with the least number of tasks in its queue.
     ///
@@ -841,7 +1135,7 @@ impl CoordinatorState {
         let verifier = match self
             .current_verifiers
             .par_iter()
-            .min_by_key(|(_, v)| v.pending_tasks.len() + v.locked_chunks.len())
+            .min_by_key(|(_, v)| v.assigned_tasks.len() + v.pending_tasks.len() + v.locked_chunks.len())
         {
             Some((verifier, _verifier_info)) => verifier.clone(),
             None => return Err(CoordinatorError::VerifierMissing),
@@ -942,62 +1236,213 @@ impl CoordinatorState {
     }
 
     ///
-    /// Adds the given participant to the queue if they are permitted to participate.
+    /// Drops the given participant from the queue, precommit, and current round.
+    ///
+    /// The dropped participant information preserves the state of locked chunks,
+    /// pending tasks, and completed tasks, as reference in case this state is
+    /// necessary in the future.
+    ///
+    /// On success, this function returns a `Justification` for the coordinator to use.
     ///
     #[inline]
-    pub(super) fn add_to_queue(
-        &mut self,
-        participant: Participant,
-        reliability_score: u8,
-    ) -> Result<(), CoordinatorError> {
-        // Check that the participant is not already added to the queue.
-        if self.queue.contains_key(&participant) {
-            return Err(CoordinatorError::ParticipantAlreadyAdded);
+    pub(super) fn drop_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
+        // Initialize the indicator variable.
+        let mut is_current_participant = true;
+
+        // Remove the participant from the queue.
+        if self.queue.contains_key(participant) {
+            trace!("Removing {} from the queue", participant);
+            self.queue.remove(participant);
+
+            // Set the indicator variable.
+            is_current_participant = false;
         }
 
-        // Check that the participant is not banned from participating.
-        if self.banned.contains(&participant) {
-            return Err(CoordinatorError::ParticipantBanned);
+        // Remove the participant from the precommit for the next round.
+        if self.next.contains_key(participant) {
+            trace!("Removing {} from the precommit for the next round", participant);
+            self.next.remove(participant);
+
+            // Set the indicator variable.
+            is_current_participant = false;
+
+            // Trigger a rollback as the precommit has changed.
+            self.rollback_next_round();
         }
 
-        match &participant {
+        // Return if the participant is from the queue or precommit.
+        if !is_current_participant {
+            return Ok(Justification::Inactive);
+        }
+
+        // Fetch the current participant information.
+        let mut participant_info = match participant {
+            Participant::Contributor(_) => self
+                .current_contributors
+                .get_mut(participant)
+                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .clone(),
+            Participant::Verifier(_) => self
+                .current_verifiers
+                .get_mut(participant)
+                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .clone(),
+        };
+
+        // Check that the participant is not already dropped.
+        if participant_info.is_dropped() {
+            return Err(CoordinatorError::ParticipantAlreadyDropped);
+        }
+
+        // Check that the participant is not already finished.
+        if participant_info.is_finished() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Fetch the locked chunks and tasks.
+        let bucket_id = participant_info.bucket_id;
+        let locked_chunks: Vec<u64> = participant_info.locked_chunks.clone().into_iter().collect();
+        let tasks: Vec<Task> = match participant {
+            Participant::Contributor(_) => participant_info.completed_tasks.clone().into_iter().collect(),
+            Participant::Verifier(_) => {
+                let mut tasks = participant_info.assigned_tasks.clone();
+                tasks.append(&mut participant_info.pending_tasks.clone());
+                tasks.into_iter().collect()
+            }
+        };
+
+        // TODO (howardwu): Rewrite this section to replace the strawman approach. Shift contribution IDs
+        //  and move all affected contribution files by shifting their IDs down by 1.
+
+        // Drop the contributor from the current round, and update participant info and coordinator state.
+        match participant {
             Participant::Contributor(_) => {
-                // Check if the contributor is authorized.
-                if !self.is_authorized_contributor(&participant) {
-                    return Err(CoordinatorError::ParticipantUnauthorized);
+                // All contributors with a contribution ID less than the contribution ID of this
+                // contributor must recompute their contributions.
+                //
+                // The reset starts from index 1 as index 0 is the verified contribution file
+                // corresponding to the final response from the previous round.
+                for candidate_bucket_id in 1..participant_info.bucket_id {
+                    // Iterate through the current contributors to find the correct contributor,
+                    // who must exist in `self.current_contributors` as their progress is bounded
+                    // by the dropped contributor.
+                    for contributor_info in self.current_contributors.values_mut() {
+                        // Check if the current contributor is the correct contributor.
+                        if candidate_bucket_id == contributor_info.bucket_id {
+                            contributor_info.assigned_tasks = initialize_tasks(
+                                candidate_bucket_id,
+                                self.environment.number_of_chunks() as u64,
+                                self.number_of_contributors as u64,
+                            );
+                            contributor_info.pending_tasks = LinkedList::new();
+                            contributor_info.completed_tasks = LinkedList::new();
+
+                            break;
+                        }
+                    }
                 }
 
-                // Add the contributor to the queue.
-                self.queue.insert(participant, (reliability_score, None));
+                // Set the participant as dropped.
+                participant_info.drop()?;
+
+                // Remove the current verifier from the coordinator state.
+                self.current_contributors.remove(&participant);
+
+                // Add the participant info to the dropped participants.
+                self.dropped.push(participant_info);
             }
             Participant::Verifier(_) => {
-                // Check if the verifier is authorized.
-                if !self.is_authorized_verifier(&participant) {
-                    return Err(CoordinatorError::ParticipantUnauthorized);
+                // Add just the current pending tasks to a pending verifications list.
+                let mut pending_verifications = vec![];
+                for task in &tasks {
+                    pending_verifications.push((task.chunk_id, task.contribution_id));
                 }
 
-                // Add the contributor to the queue.
-                self.queue.insert(participant, (reliability_score, None));
+                // Set the participant as dropped.
+                participant_info.drop()?;
+
+                // Remove the current verifier from the coordinator state.
+                self.current_verifiers.remove(&participant);
+
+                // TODO (howardwu): Make this operation atomic.
+                for (chunk_id, contribution_id) in pending_verifications {
+                    // Remove the task from the pending verifications.
+                    self.remove_pending_verification(chunk_id, contribution_id)?;
+
+                    // Reassign all pending verification tasks to new verifiers.
+                    self.add_pending_verification(chunk_id, contribution_id)?;
+                }
+
+                // Add the participant info to the dropped participants.
+                self.dropped.push(participant_info);
             }
         }
 
-        Ok(())
+        let contributor = self
+            .environment
+            .coordinator_contributors()
+            .first()
+            .ok_or(CoordinatorError::ContributorsMissing)?;
+
+        let round_height = self.current_round_height().clone();
+
+        if self.current_contributors.contains_key(&contributor) {
+            let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
+            participant_info.start(initialize_tasks(
+                bucket_id,
+                self.environment.number_of_chunks(),
+                self.number_of_contributors,
+            ))?;
+
+            self.current_contributors.insert(contributor.clone(), participant_info);
+        }
+
+        debug!("{} was dropped from the ceremony", participant);
+
+        Ok(Justification::DropCurrent(
+            participant.clone(),
+            bucket_id,
+            locked_chunks,
+            tasks,
+        ))
     }
 
     ///
-    /// Removes the given participant from the queue.
+    /// Bans the given participant from the queue, precommit, and current round.
     ///
     #[inline]
-    pub(super) fn remove_from_queue(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
-        // Check that the participant is exists in the queue.
-        if !self.queue.contains_key(participant) {
-            return Err(CoordinatorError::ParticipantMissing);
+    pub(super) fn ban_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
+        // Check that the participant is not already banned from participating.
+        if self.banned.contains(&participant) {
+            return Err(CoordinatorError::ParticipantAlreadyBanned);
         }
 
-        // Remove the participant from the queue.
-        self.queue.remove(participant);
+        // Drop the participant from the queue, precommit, and current round.
+        match self.drop_participant(participant)? {
+            Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks) => {
+                // Add the participant to the banned list.
+                self.banned.push(participant.clone());
 
-        Ok(())
+                debug!("{} was banned from the ceremony", participant);
+
+                Ok(Justification::BanCurrent(participant, bucket_id, locked_chunks, tasks))
+            }
+            _ => Err(CoordinatorError::JustificationInvalid),
+        }
+    }
+
+    ///
+    /// Unbans the given participant from joining the queue.
+    ///
+    #[inline]
+    pub(super) fn unban_participant(&mut self, participant: &Participant) {
+        // Remove the participant from the banned list.
+        self.banned = self
+            .banned
+            .clone()
+            .into_par_iter()
+            .filter(|p| p != participant)
+            .collect();
     }
 
     ///
@@ -1189,10 +1634,12 @@ impl CoordinatorState {
     }
 
     ///
-    /// Checks the current round for disconnected participants.
+    /// Updates the current round for dropped participants.
+    ///
+    /// On success, returns a list of justifications for the coordinator to take actions on.
     ///
     #[inline]
-    pub(super) fn update_dropped_participants(&mut self) -> Result<(), CoordinatorError> {
+    pub(super) fn update_dropped_participants(&mut self) -> Result<Vec<Justification>, CoordinatorError> {
         // Fetch the timeout threshold for contributors and verifiers.
         let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
         let verifier_timeout = self.environment.verifier_timeout_in_minutes() as i64;
@@ -1200,54 +1647,46 @@ impl CoordinatorState {
         // Fetch the current time.
         let now = Utc::now();
 
+        // Initialize the list of justifications.
+        let mut justifications = vec![];
+
         // Process the contributors.
-        for (participant, mut participant_info) in self.current_contributors.clone() {
+        for (participant, participant_info) in &self.current_contributors.clone() {
             // Fetch the elapsed time.
             let elapsed = now - participant_info.last_seen;
 
             // Check if the participant is still live.
             if elapsed.num_minutes() > contributor_timeout {
-                // Set the participant as dropped.
-                participant_info.drop()?;
-
-                // TODO (howardwu): Release any outstanding locks.
-
-                self.dropped.push(participant_info);
-                self.current_contributors.remove(&participant);
-
-                debug!("{} is being dropped", participant);
+                // Drop the participant.
+                justifications.push(self.drop_participant(participant)?);
             }
         }
 
         // Process the verifiers.
-        for (participant, mut participant_info) in self.current_verifiers.clone() {
+        for (participant, participant_info) in &self.current_verifiers.clone() {
             // Fetch the elapsed time.
             let elapsed = now - participant_info.last_seen;
 
             // Check if the participant is still live.
             if elapsed.num_minutes() > verifier_timeout {
-                // Set the participant as dropped.
-                participant_info.drop()?;
-
-                // TODO (howardwu): Release any outstanding locks.
-
-                self.dropped.push(participant_info);
-                self.current_verifiers.remove(&participant);
-
-                debug!("{} is being dropped", participant);
+                // Drop the participant.
+                justifications.push(self.drop_participant(participant)?);
             }
         }
 
-        Ok(())
+        Ok(justifications)
     }
 
     ///
-    /// Checks the list of dropped participants for participants who
+    /// Updates the list of dropped participants for participants who
     /// meet the ban criteria of the coordinator.
+    ///
+    /// Note that as this function only checks dropped participants who have already
+    /// been processed, we do not need to call `CoordinatorState::ban_participant`.
     ///
     #[inline]
     pub(super) fn update_banned_participants(&mut self) -> Result<(), CoordinatorError> {
-        for participant_info in self.dropped.iter() {
+        for participant_info in self.dropped.clone() {
             // Fetch the number of times this participant has been dropped.
             let count = self
                 .dropped
@@ -1421,21 +1860,11 @@ impl CoordinatorState {
 
             // Fetch the number of chunks and bucket size.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
-            let bucket_size = number_of_chunks / number_of_contributors as u64;
 
             // Set the chunk ID ordering for each contributor.
             for (bucket_index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
-                // Determine the starting and ending indices.
-                let start = bucket_index as u64 * bucket_size;
-                let end = start + number_of_chunks;
-
-                // Add the tasks in FIFO ordering.
-                let mut tasks = LinkedList::new();
-                for index in start..end {
-                    let chunk_id = index % number_of_chunks;
-                    let contribution_id = bucket_index + 1;
-                    tasks.push_back(Task::new(chunk_id, contribution_id as u64));
-                }
+                let bucket_id = bucket_index as u64;
+                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64);
 
                 // Check that each participant is storing the correct round height.
                 if next_round != next_round_height && next_round != current_round_height + 1 {
@@ -1444,11 +1873,12 @@ impl CoordinatorState {
                 }
 
                 // Initialize the participant info for the contributor.
-                let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability);
+                let mut participant_info =
+                    ParticipantInfo::new(participant.clone(), next_round_height, reliability, bucket_id);
                 participant_info.start(tasks)?;
 
                 // Check that the chunk IDs are set in the participant information.
-                if participant_info.pending_tasks.is_empty() {
+                if participant_info.assigned_tasks.is_empty() {
                     return Err(CoordinatorError::ParticipantNotReady);
                 }
 
@@ -1472,7 +1902,7 @@ impl CoordinatorState {
             }
 
             // Initialize the participant info for the verifier.
-            let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability);
+            let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability, 0);
             participant_info.start(LinkedList::new())?;
 
             // Add the verifier to staging for the next round.
@@ -1488,6 +1918,9 @@ impl CoordinatorState {
         // Update the coordinator state to the updated queue and next map.
         self.queue = queue;
         self.next = next;
+
+        // TODO (howardwu): Remove this and formalize a round metadata struct.
+        self.number_of_contributors = number_of_contributors as u64;
 
         // Set the coordinator status to precommit.
         self.status = CoordinatorStatus::Precommit;
@@ -1666,6 +2099,64 @@ impl CoordinatorState {
     }
 }
 
+fn initialize_tasks(
+    starting_bucket_id: u64, // 0-indexed
+    number_of_chunks: u64,
+    number_of_contributors: u64,
+) -> LinkedList<Task> {
+    let number_of_buckets = number_of_contributors;
+
+    // Fetch the bucket size.
+    let bucket_size = number_of_chunks / number_of_buckets as u64;
+
+    // It takes `number_of_contributors * bucket_size` to get to initial stable state.
+    // You will jump up (total_jumps - starting_bucket_id) times.
+    let number_of_initial_steps = (number_of_contributors - 1) - starting_bucket_id;
+    let number_of_final_steps = starting_bucket_id;
+    let mut initial_steps = 0;
+    let mut final_steps = 0;
+
+    // Compute the start and end indices.
+    let start = starting_bucket_id * bucket_size;
+    let end = start + number_of_chunks;
+
+    // Add the tasks in FIFO ordering.
+    let mut tasks = LinkedList::new();
+    tasks.push_back(Task::new(start % number_of_chunks, 1));
+
+    // Skip one from the start index and calculate the chunk ID and contribution ID to the end.
+    for current_index in start + 1..end {
+        let chunk_id = current_index % number_of_chunks;
+
+        // Check if we have initial steps to increment.
+        if initial_steps < number_of_initial_steps {
+            initial_steps += 1;
+        }
+
+        // Check if we have iterated past the modulus and are in final steps.
+        if current_index >= number_of_chunks {
+            // Check if we have final steps to increment.
+            if final_steps < number_of_final_steps {
+                final_steps += 1;
+            }
+        }
+
+        // Compute the contribution ID.
+        let steps = (initial_steps + final_steps) % number_of_contributors;
+        let contribution_id = steps + 1;
+
+        tasks.push_back(Task::new(chunk_id, contribution_id as u64));
+    }
+
+    tasks
+}
+
+pub(crate) enum Justification {
+    BanCurrent(Participant, u64, Vec<u64>, Vec<Task>),
+    DropCurrent(Participant, u64, Vec<u64>, Vec<Task>),
+    Inactive,
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct Task {
     pub(crate) chunk_id: u64,
@@ -1709,13 +2200,32 @@ impl<'de> Deserialize<'de> for Task {
 
 #[cfg(test)]
 mod tests {
-    use crate::{coordinator_state::Task, objects::participant::*, testing::prelude::*, CoordinatorState};
+    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState};
 
     #[test]
     fn test_task() {
         let task = Task::new(0, 1);
         assert_eq!("\"0/1\"", serde_json::to_string(&task).unwrap());
         assert_eq!(task, serde_json::from_str("\"0/1\"").unwrap());
+    }
+
+    #[test]
+    fn test_initialize_tasks() {
+        let bucket_id = 0;
+        let number_of_chunks = 3;
+        let number_of_contributors = 2;
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+        assert_eq!(Some(Task::new(0, 1)), tasks.next());
+        assert_eq!(Some(Task::new(1, 2)), tasks.next());
+        assert_eq!(Some(Task::new(2, 2)), tasks.next());
+
+        let bucket_id = 1;
+        let number_of_chunks = 3;
+        let number_of_contributors = 2;
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+        assert_eq!(Some(Task::new(1, 1)), tasks.next());
+        assert_eq!(Some(Task::new(2, 1)), tasks.next());
+        assert_eq!(Some(Task::new(0, 2)), tasks.next());
     }
 
     #[test]

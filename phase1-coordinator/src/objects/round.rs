@@ -1,4 +1,5 @@
 use crate::{
+    coordinator_state::Justification,
     environment::Environment,
     objects::{participant::*, Chunk},
     storage::{Locator, Object, StorageLock},
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
 use std::{collections::HashSet, hash::Hash};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 /// A helper function used to check that each list of participants is unique.
 fn has_unique_elements<T>(iter: T) -> bool
@@ -179,15 +180,11 @@ impl Round {
     #[inline]
     pub fn is_contributor(&self, participant: &Participant) -> bool {
         // Check that the participant is a contributor.
-        if !participant.is_contributor() {
-            return false;
+        match participant {
+            // Check that the participant is a contributor for the given round height.
+            Participant::Contributor(_) => self.contributor_ids.contains(participant),
+            Participant::Verifier(_) => false,
         }
-        // Check that the participant is not a verifier.
-        if participant.is_verifier() {
-            return false;
-        }
-        // Check that the participant is a contributor for the given round height.
-        self.contributor_ids.contains(participant)
     }
 
     ///
@@ -199,20 +196,18 @@ impl Round {
     ///
     #[inline]
     pub fn is_verifier(&self, participant: &Participant) -> bool {
-        // Check that the participant is not a contributor.
-        if participant.is_contributor() {
-            return false;
-        }
         // Check that the participant is a verifier.
-        if !participant.is_verifier() {
-            return false;
+        match participant {
+            Participant::Contributor(_) => false,
+            // Check that the participant is a verifier for the given round height.
+            Participant::Verifier(_) => self.verifier_ids.contains(participant),
         }
-        // Check that the participant is a verifier for the given round height.
-        self.verifier_ids.contains(participant)
     }
 
+    ///
     /// Returns a reference to the chunk, if it exists.
     /// Otherwise returns `None`.
+    ///
     #[inline]
     pub fn chunk(&self, chunk_id: u64) -> Result<&Chunk, CoordinatorError> {
         // Fetch the chunk with the given chunk ID.
@@ -228,13 +223,17 @@ impl Round {
         }
     }
 
+    ///
     /// Returns a reference to a list of the chunks.
+    ///
     #[inline]
     pub fn chunks(&self) -> &Vec<Chunk> {
         &self.chunks
     }
 
+    ///
     /// Returns the expected number of contributions.
+    ///
     #[inline]
     pub fn expected_number_of_contributions(&self) -> u64 {
         // The expected number of contributions is one more than
@@ -243,8 +242,10 @@ impl Round {
         self.number_of_contributors() + 1
     }
 
+    ///
     /// Returns `true` if the chunk corresponding to the given chunk ID is
     /// locked by the given participant. Otherwise, returns `false`.
+    ///
     #[inline]
     pub fn is_chunk_locked_by(&self, chunk_id: u64, participant: &Participant) -> bool {
         match self.chunk(chunk_id) {
@@ -253,7 +254,9 @@ impl Round {
         }
     }
 
+    ///
     /// Returns the number of locks held by the given participant in this round.
+    ///
     #[inline]
     pub fn number_of_locks_held(&self, participant: &Participant) -> Result<u64, CoordinatorError> {
         debug!("Checking the lock count for {}", participant);
@@ -287,6 +290,27 @@ impl Round {
 
         debug!("{} is holding {} locks", participant, number_of_locks_held);
         Ok(number_of_locks_held)
+    }
+
+    ///
+    /// Returns `true` if all chunks are unlocked and all contributions in all chunks
+    /// have been verified. Otherwise, returns `false`.
+    ///
+    #[inline]
+    pub fn is_complete(&self) -> bool {
+        // Check that all chunks are unlocked.
+        let number_of_locks_held = self.chunks.par_iter().filter(|chunk| chunk.is_locked()).count();
+        if number_of_locks_held > 0 {
+            trace!("{} chunks are locked in round {}", &number_of_locks_held, self.height);
+            return false;
+        }
+
+        // Check that all contributions in all chunks have been verified.
+        self.chunks
+            .par_iter()
+            .filter(|chunk| !chunk.is_complete(self.expected_number_of_contributions()))
+            .collect::<Vec<_>>()
+            .is_empty()
     }
 
     ///
@@ -553,23 +577,6 @@ impl Round {
         ))
     }
 
-    /// Returns a mutable reference to the chunk, if it exists.
-    /// Otherwise returns `None`.
-    #[inline]
-    pub(crate) fn chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
-        // Fetch the chunk with the given chunk ID.
-        let chunk = match self.chunks.get_mut(chunk_id as usize) {
-            Some(chunk) => chunk,
-            _ => return Err(CoordinatorError::ChunkMissing),
-        };
-
-        // Check the ID in the chunk matches the given chunk ID.
-        match chunk.chunk_id() == chunk_id {
-            true => Ok(chunk),
-            false => Err(CoordinatorError::ChunkIdMismatch),
-        }
-    }
-
     ///
     /// Updates the contribution corresponding to a given chunk ID and
     /// contribution ID as verified.
@@ -599,24 +606,211 @@ impl Round {
     }
 
     ///
-    /// Returns `true` if all chunks are unlocked and all contributions in all chunks
-    /// have been verified. Otherwise, returns `false`.
+    /// Returns a mutable reference to the chunk, if it exists.
+    /// Otherwise returns `None`.
     ///
     #[inline]
-    pub(crate) fn is_complete(&self) -> bool {
-        // Check that all chunks are unlocked.
-        let number_of_locks_held = self.chunks.par_iter().filter(|chunk| chunk.is_locked()).count();
-        if number_of_locks_held > 0 {
-            trace!("{} chunks are locked in round {}", &number_of_locks_held, self.height);
-            return false;
+    pub(crate) fn chunk_mut(&mut self, chunk_id: u64) -> Result<&mut Chunk, CoordinatorError> {
+        // Fetch the chunk with the given chunk ID.
+        let chunk = match self.chunks.get_mut(chunk_id as usize) {
+            Some(chunk) => chunk,
+            _ => return Err(CoordinatorError::ChunkMissing),
+        };
+
+        // Check the ID in the chunk matches the given chunk ID.
+        match chunk.chunk_id() == chunk_id {
+            true => Ok(chunk),
+            false => Err(CoordinatorError::ChunkIdMismatch),
+        }
+    }
+
+    ///
+    /// Removes the locks for the current round from the given chunk IDs.
+    ///
+    /// If the given justification is not valid for this operation,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the given chunk IDs in the justification are not currently locked,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the given participant is not the current lock holder of the given chunk IDs,
+    /// this function will return a `CoordinatorError`.
+    ///
+    pub(crate) fn remove_locks_unsafe(
+        &mut self,
+        storage: &mut StorageLock,
+        justification: &Justification,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the justification is valid for this operation, and fetch the necessary state.
+        let (participant, locked_chunks) = match justification {
+            Justification::BanCurrent(participant, _, locked_chunks, _) => (participant, locked_chunks),
+            Justification::DropCurrent(participant, _, locked_chunks, _) => (participant, locked_chunks),
+            _ => return Err(CoordinatorError::JustificationInvalid),
+        };
+
+        // Check that the participant is the lock holder for each chunk.
+        if locked_chunks
+            .par_iter()
+            .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
+            .count()
+            != 0
+        {
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
-        // Check that all contributions in all chunks have been verified.
-        self.chunks
-            .par_iter()
-            .filter(|chunk| !chunk.is_complete(self.expected_number_of_contributions()))
-            .collect::<Vec<_>>()
-            .is_empty()
+        // Remove the response locator for a contributor, and remove the next challenge locator
+        // for both a contributor and verifier.
+        for chunk_id in locked_chunks {
+            // Fetch the current round height.
+            let current_round_height = self.round_height();
+            // Fetch the chunk corresponding to the given chunk ID.
+            let chunk = self.chunk(*chunk_id)?;
+            // Fetch the current contribution ID.
+            let current_contribution_id = chunk.current_contribution_id() - 1;
+            // Fetch the expected number of contributions for the current round.
+            let expected_number_of_contributions = self.expected_number_of_contributions();
+
+            // Check that the participant is authorized to acquire the lock
+            // associated with the given chunk ID for the current round,
+            // and fetch the appropriate contribution locator.
+            match participant {
+                Participant::Contributor(_) => {
+                    // Check that the participant is an *authorized* contributor
+                    // for the current round.
+                    if !self.is_contributor(participant) {
+                        error!("{} is not an authorized contributor", participant);
+                        return Err(CoordinatorError::UnauthorizedChunkContributor);
+                    }
+
+                    // Check that the current contribution has been verified.
+                    if !chunk.current_contribution()?.is_verified() {
+                        return Err(CoordinatorError::ContributionMissingVerification);
+                    }
+
+                    // Fetch the next contribution ID.
+                    let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
+
+                    // Remove the response locator.
+                    let response_locator =
+                        Locator::ContributionFile(current_round_height, *chunk_id, next_contribution_id, false);
+                    storage.remove(&response_locator)?;
+                }
+                Participant::Verifier(_) => {
+                    // Check that the participant is an *authorized* verifier
+                    // for the current round.
+                    if !self.is_verifier(participant) {
+                        error!("{} is not an authorized verifier", participant);
+                        return Err(CoordinatorError::UnauthorizedChunkVerifier);
+                    }
+                }
+            };
+
+            // Fetch whether this is the final contribution of the specified chunk.
+            let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
+            // Remove the next challenge locator.
+            match is_final_contribution {
+                // This is the final contribution in the chunk.
+                true => storage.remove(&Locator::ContributionFile(current_round_height + 1, *chunk_id, 0, true))?,
+                // This is a typical contribution in the chunk.
+                false => storage.remove(&Locator::ContributionFile(
+                    current_round_height,
+                    *chunk_id,
+                    current_contribution_id,
+                    true,
+                ))?,
+            }
+        }
+
+        // Remove the lock for each given chunk ID.
+        for chunk_id in locked_chunks {
+            warn!("Removing the lock for chunk {} from {}", chunk_id, participant);
+            self.chunk_mut(*chunk_id)?.set_lock_holder_unsafe(None);
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Removes the contributions from the current round from the
+    /// given (chunk ID, contribution ID) tasks.
+    ///
+    /// If the given justification is not valid for this operation,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the given (chunk ID, contribution ID) tasks in the justification
+    /// are not currently locked, this function will return a `CoordinatorError`.
+    ///
+    /// If the given participant is not the current lock holder of the given chunk IDs,
+    /// this function will return a `CoordinatorError`.
+    ///
+    pub(crate) fn remove_chunk_contributions_unsafe(
+        &mut self,
+        storage: &mut StorageLock,
+        justification: &Justification,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the justification is valid for this operation, and fetch the necessary state.
+        let (participant, tasks) = match justification {
+            Justification::BanCurrent(participant, _, _, tasks) => (participant, tasks),
+            Justification::DropCurrent(participant, _, _, tasks) => (participant, tasks),
+            _ => return Err(CoordinatorError::JustificationInvalid),
+        };
+
+        for task in tasks {
+            warn!(
+                "Removing chunk {} contribution {} from {}",
+                task.chunk_id, task.contribution_id, participant
+            );
+            match participant {
+                // Remove the given contribution from each chunk in the current round.
+                Participant::Contributor(_) => {
+                    self.chunk_mut(task.chunk_id)?
+                        .get_contribution_mut(task.contribution_id)?
+                        .clear_contributor_unsafe(participant)?;
+                    storage.remove(&Locator::ContributionFile(
+                        self.height,
+                        task.chunk_id,
+                        task.contribution_id,
+                        false,
+                    ))?;
+
+                    // Fetch the expected number of contributions for the current round.
+                    let expected_number_of_contributions = self.expected_number_of_contributions();
+
+                    // Remove the verified locator, if it is verified.
+                    let chunk = self.chunk_mut(task.chunk_id)?;
+                    let contribution = chunk.get_contribution_mut(task.contribution_id)?;
+                    if let Some(verifier) = contribution.get_verifier().clone() {
+                        contribution.clear_verifier_unsafe(&verifier)?;
+
+                        // Fetch whether this is the final contribution of the specified chunk.
+                        let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
+                        // Remove the next challenge locator.
+                        match is_final_contribution {
+                            // This is the final contribution in the chunk.
+                            true => storage.remove(&Locator::ContributionFile(
+                                self.round_height() + 1,
+                                task.chunk_id,
+                                0,
+                                true,
+                            ))?,
+                            // This is a typical contribution in the chunk.
+                            false => storage.remove(&Locator::ContributionFile(
+                                self.round_height(),
+                                task.chunk_id,
+                                task.contribution_id,
+                                true,
+                            ))?,
+                        }
+                    }
+                }
+                Participant::Verifier(_) => self
+                    .chunk_mut(task.chunk_id)?
+                    .get_contribution_mut(task.contribution_id)?
+                    .clear_verifier_unsafe(participant)?,
+            };
+        }
+
+        Ok(())
     }
 }
 

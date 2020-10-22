@@ -1,3 +1,4 @@
+#[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 
@@ -21,3 +22,6 @@ pub(crate) mod storage;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+
+#[cfg(test)]
+pub mod tests;

@@ -63,15 +63,6 @@ impl Aggregation {
             return Err(CoordinatorError::RoundAggregationFailed.into());
         }
 
-        // trace!(
-        //     "{} {} {} Chunked parameters {:#?}",
-        //     contribution_readers[0].0.len(),
-        //     contribution_readers[1].0.len(),
-        //     contribution_readers[2].0.len(),
-        //     phase1_chunked_parameters!(Bls12_377, settings, chunk_id)
-        // );
-        // trace!("Full parameters {:#?}", phase1_full_parameters!(Bls12_377, settings));
-
         // Run aggregate verification on the given round.
         let settings = environment.parameters();
         let (_, _, curve, _, _, _) = settings;

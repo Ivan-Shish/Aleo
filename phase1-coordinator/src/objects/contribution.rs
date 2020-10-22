@@ -204,4 +204,42 @@ impl Contribution {
         self.verified = true;
         Ok(())
     }
+
+    ///
+    /// Clears a contributor and contributed location from this instance of `Contribution`.
+    ///
+    #[inline]
+    pub(super) fn clear_contributor_unsafe(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is a contributor.
+        if !participant.is_contributor() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        self.contributor_id = None;
+        self.contributed_locator = None;
+
+        Ok(())
+    }
+
+    ///
+    /// Clears a verifier and verified location from this instance of `Contribution`.
+    ///
+    /// Note that this function RESETs the state of `verified`.
+    /// This operation subsequently allows a verifier to assign themselves
+    /// to verify this contribution, and only after completing verification,
+    /// proceed to call another function to update `verified`.
+    ///
+    #[inline]
+    pub(super) fn clear_verifier_unsafe(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+
+        self.verifier_id = None;
+        self.verified_locator = None;
+        self.verified = false;
+
+        Ok(())
+    }
 }

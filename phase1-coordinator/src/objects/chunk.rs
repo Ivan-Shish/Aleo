@@ -7,7 +7,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
-use tracing::trace;
+use tracing::{trace, warn};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +78,11 @@ impl Chunk {
     /// Otherwise, returns `false`.
     #[inline]
     pub fn is_locked_by(&self, participant: &Participant) -> bool {
+        // Check that the chunk is locked.
+        if self.is_unlocked() {
+            return false;
+        }
+
         // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
         match &self.lock_holder {
             Some(lock_holder) => *lock_holder == *participant,
@@ -307,7 +312,7 @@ impl Chunk {
         }
 
         // Set the lock holder as the participant.
-        self.lock_holder = Some(participant);
+        self.set_lock_holder(Some(participant));
         Ok(())
     }
 
@@ -342,7 +347,7 @@ impl Chunk {
             .push(Contribution::new_contributor(participant.clone(), contributed_locator)?);
 
         // Release the lock on this chunk from the contributor.
-        self.lock_holder = None;
+        self.set_lock_holder(None);
 
         Ok(())
     }
@@ -388,7 +393,7 @@ impl Chunk {
                 contribution.set_verified(&participant)?;
 
                 // Release the lock on this chunk from the verifier.
-                self.lock_holder = None;
+                self.set_lock_holder(None);
 
                 trace!("Verification of contribution {} succeeded", contribution_id);
                 Ok(())
@@ -398,10 +403,23 @@ impl Chunk {
 
     /// Returns a mutable reference to a contribution given a contribution ID.
     #[inline]
-    fn get_contribution_mut(&mut self, contribution_id: u64) -> Result<&mut Contribution, CoordinatorError> {
+    pub(super) fn get_contribution_mut(&mut self, contribution_id: u64) -> Result<&mut Contribution, CoordinatorError> {
         match self.contributions.get_mut(contribution_id as usize) {
             Some(contribution) => Ok(contribution),
             _ => Err(CoordinatorError::ContributionMissing),
         }
+    }
+
+    /// Sets the lock holder for this chunk as the given lock holder.
+    #[inline]
+    pub(super) fn set_lock_holder_unsafe(&mut self, lock_holder: Option<Participant>) {
+        warn!("Resetting the lock for chunk {} to {:?}", self.chunk_id, lock_holder);
+        self.set_lock_holder(lock_holder);
+    }
+
+    /// Sets the lock holder for this chunk as the given lock holder.
+    #[inline]
+    fn set_lock_holder(&mut self, lock_holder: Option<Participant>) {
+        self.lock_holder = lock_holder;
     }
 }

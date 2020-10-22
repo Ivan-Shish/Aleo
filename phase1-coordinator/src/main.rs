@@ -4,7 +4,7 @@ use phase1_coordinator::{
 };
 
 use std::time::Duration;
-use tokio::{task, time::delay_for};
+use tokio::{task, time::sleep};
 use tracing::*;
 
 #[cfg(not(feature = "silent"))]
@@ -41,17 +41,17 @@ pub async fn main() -> anyhow::Result<()> {
     let operator = coordinator.clone();
     let ceremony = task::spawn(async move {
         // Initialize the coordinator.
-        operator.initialize().await.unwrap();
+        operator.initialize().unwrap();
 
         // Initialize the coordinator loop.
         loop {
             // Run the update operation.
-            if let Err(error) = operator.update().await {
+            if let Err(error) = operator.update() {
                 error!("{}", error);
             }
 
             // Sleep for 10 seconds in between iterations.
-            delay_for(Duration::from_secs(10)).await;
+            sleep(Duration::from_secs(10)).await;
         }
     });
 

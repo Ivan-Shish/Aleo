@@ -7,14 +7,16 @@ use crate::{
 };
 
 use chrono::{DateTime, TimeZone, Utc};
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
 use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Level};
+
+static INSTANCE: OnceCell<()> = OnceCell::new();
 
 lazy_static! {
     /// Environment for testing purposes only.
@@ -71,19 +73,27 @@ pub fn test_coordinator_verifier(environment: &Environment) -> anyhow::Result<Pa
         .clone())
 }
 
-pub fn initialize_test_environment(environment: &Environment) {
+pub fn initialize_test_environment(environment: &Environment) -> Environment {
     #[cfg(not(feature = "silent"))]
     test_logger();
 
     clear_test_storage(environment);
+    environment.clone()
+}
+
+pub fn initialize_test_environment_with_debug(environment: &Environment) -> Environment {
+    #[cfg(not(feature = "silent"))]
+    INSTANCE.get_or_init(|| {
+        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
+        tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    });
+
+    clear_test_storage(environment);
+    environment.clone()
 }
 
 #[cfg(not(feature = "silent"))]
 pub(crate) fn test_logger() {
-    use once_cell::sync::OnceCell;
-    use tracing::Level;
-
-    static INSTANCE: OnceCell<()> = OnceCell::new();
     INSTANCE.get_or_init(|| {
         let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
         tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");

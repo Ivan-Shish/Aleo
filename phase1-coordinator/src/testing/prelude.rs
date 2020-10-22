@@ -13,8 +13,7 @@ pub fn test_report<T, F>(name: &str, function: F)
 where
     F: Fn() -> anyhow::Result<T> + RefUnwindSafe,
 {
-    let invocation = catch_unwind(|| function());
-    match invocation {
+    match catch_unwind(|| function()) {
         Ok(outcome) => match &outcome {
             Ok(_) => {
                 let message = format!("{} [SUCCESS] {} passed.{}", BAR, name, BAR);
