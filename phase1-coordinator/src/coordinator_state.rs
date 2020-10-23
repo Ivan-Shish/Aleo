@@ -173,9 +173,13 @@ impl ParticipantInfo {
         // Fetch the current time.
         let now = Utc::now();
 
-        // Set the participant info to reflect them starting now.
+        // Update the last seen time.
         self.last_seen = now;
+
+        // Set the start time to reflect the current time.
         self.started_at = Some(now);
+
+        // Set the assigned tasks to the given tasks.
         self.assigned_tasks = tasks;
 
         Ok(())
@@ -225,6 +229,9 @@ impl ParticipantInfo {
         if self.completed_tasks.contains(&task) {
             return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
 
         // Add the task to the back of the pending tasks.
         self.assigned_tasks.push_back(task);
@@ -276,6 +283,9 @@ impl ParticipantInfo {
         if self.completed_tasks.contains(&task) {
             return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
         }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
 
         // Add the task to the front of the pending tasks.
         self.assigned_tasks.push_front(task);
@@ -453,7 +463,7 @@ impl ParticipantInfo {
             .collect();
 
         // Add the task to the front of the assigned tasks.
-        self.assigned_tasks.push_front(task);
+        self.push_front_task(task.chunk_id, task.contribution_id)?;
 
         Ok(())
     }
@@ -607,8 +617,10 @@ impl ParticipantInfo {
         // Fetch the current time.
         let now = Utc::now();
 
-        // Set the participant info to reflect them finishing now.
+        // Update the last seen time.
         self.last_seen = now;
+
+        // Set the finish time to reflect the current time.
         self.finished_at = Some(now);
 
         Ok(())
@@ -996,38 +1008,10 @@ impl CoordinatorState {
     }
 
     ///
-    /// Adds the given (chunk ID, contribution ID) pair to the participant to process.
-    ///
-    #[inline]
-    pub(super) fn push_front_task(
-        &mut self,
-        participant: &Participant,
-        chunk_id: u64,
-        contribution_id: u64,
-    ) -> Result<(), CoordinatorError> {
-        // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
-            return Err(CoordinatorError::ChunkIdInvalid);
-        }
-
-        // Add the chunk ID to the pending chunks of the given participant.
-        match participant {
-            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                Some(participant) => Ok(participant.push_front_task(chunk_id, contribution_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
-            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                Some(participant) => Ok(participant.push_front_task(chunk_id, contribution_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
-            },
-        }
-    }
-
-    ///
     /// Pops the next (chunk ID, contribution ID) task that the participant should process.
     ///
     #[inline]
-    pub(super) fn pop_task(&mut self, participant: &Participant) -> Result<Task, CoordinatorError> {
+    pub(super) fn fetch_task(&mut self, participant: &Participant) -> Result<Task, CoordinatorError> {
         // Fetch the contributor and verifier chunk lock limit.
         let contributor_limit = self.environment.contributor_lock_chunk_limit();
         let verifier_limit = self.environment.verifier_lock_chunk_limit();
@@ -1378,23 +1362,27 @@ impl CoordinatorState {
             }
         }
 
-        let contributor = self
-            .environment
-            .coordinator_contributors()
-            .first()
-            .ok_or(CoordinatorError::ContributorsMissing)?;
+        // Assign the coordinator contributor to the dropped tasks.
+        {
+            let contributor = self
+                .environment
+                .coordinator_contributors()
+                .first()
+                .ok_or(CoordinatorError::ContributorsMissing)?;
 
-        let round_height = self.current_round_height().clone();
+            let round_height = self.current_round_height().clone();
 
-        if self.current_contributors.contains_key(&contributor) {
-            let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
-            participant_info.start(initialize_tasks(
-                bucket_id,
-                self.environment.number_of_chunks(),
-                self.number_of_contributors,
-            ))?;
+            if self.current_contributors.contains_key(&contributor) {
+                let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
+                participant_info.start(initialize_tasks(
+                    bucket_id,
+                    self.environment.number_of_chunks(),
+                    self.number_of_contributors,
+                ))?;
+                trace!("{:?}", participant_info);
 
-            self.current_contributors.insert(contributor.clone(), participant_info);
+                self.current_contributors.insert(contributor.clone(), participant_info);
+            }
         }
 
         debug!("{} was dropped from the ceremony", participant);
@@ -2128,13 +2116,16 @@ fn initialize_tasks(
     for current_index in start + 1..end {
         let chunk_id = current_index % number_of_chunks;
 
+        // Check if this is a new bucket.
+        let is_new_bucket = (chunk_id % bucket_size) == 0;
+
         // Check if we have initial steps to increment.
-        if initial_steps < number_of_initial_steps {
+        if is_new_bucket && initial_steps < number_of_initial_steps {
             initial_steps += 1;
         }
 
         // Check if we have iterated past the modulus and are in final steps.
-        if current_index >= number_of_chunks {
+        if is_new_bucket && current_index >= number_of_chunks {
             // Check if we have final steps to increment.
             if final_steps < number_of_final_steps {
                 final_steps += 1;
@@ -2202,6 +2193,8 @@ impl<'de> Deserialize<'de> for Task {
 mod tests {
     use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState};
 
+    use std::collections::HashSet;
+
     #[test]
     fn test_task() {
         let task = Task::new(0, 1);
@@ -2226,6 +2219,29 @@ mod tests {
         assert_eq!(Some(Task::new(1, 1)), tasks.next());
         assert_eq!(Some(Task::new(2, 1)), tasks.next());
         assert_eq!(Some(Task::new(0, 2)), tasks.next());
+    }
+
+    #[test]
+    fn test_initialize_tasks_unique() {
+        test_logger();
+
+        fn test_uniqueness_of_tasks(number_of_chunks: u64, number_of_contributors: u64) {
+            let mut all_tasks = HashSet::new();
+            for bucket_id in 0..number_of_contributors {
+                // trace!("Contributor {}", bucket_id);
+                let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+                while let Some(task) = tasks.next() {
+                    assert!(all_tasks.insert(task));
+                }
+            }
+        }
+
+        for number_of_contributors in 1..32 {
+            trace!("{} contributors", number_of_contributors,);
+            for number_of_chunks in number_of_contributors..256 {
+                test_uniqueness_of_tasks(number_of_chunks, number_of_contributors);
+            }
+        }
     }
 
     #[test]
@@ -2760,7 +2776,7 @@ mod tests {
         let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
         for chunk_id in 0..contributor_lock_chunk_limit {
             // Fetch a pending task for the contributor.
-            let task = state.pop_task(&contributor).unwrap();
+            let task = state.fetch_task(&contributor).unwrap();
             assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
 
             state.acquired_lock(&contributor, task.chunk_id).unwrap();
@@ -2776,7 +2792,7 @@ mod tests {
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {
-            let try_task = state.pop_task(&contributor);
+            let try_task = state.fetch_task(&contributor);
             assert!(try_task.is_err());
         }
     }
@@ -2811,14 +2827,14 @@ mod tests {
         assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Ensure that the verifier cannot pop a task prior to a contributor completing a task.
-        let try_task = state.pop_task(&verifier);
+        let try_task = state.fetch_task(&verifier);
         assert!(try_task.is_err());
 
         // Fetch the maximum number of tasks permitted for a contributor.
         let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
         for i in 0..contributor_lock_chunk_limit {
             // Fetch a pending task for the contributor.
-            let task = state.pop_task(&contributor).unwrap();
+            let task = state.fetch_task(&contributor).unwrap();
             let chunk_id = i as u64;
             assert_eq!((chunk_id, 1), (task.chunk_id, task.contribution_id));
 
@@ -2838,7 +2854,7 @@ mod tests {
         // Fetch the maximum number of tasks permitted for a verifier.
         for i in 0..environment.verifier_lock_chunk_limit() {
             // Fetch a pending task for the verifier.
-            let task = state.pop_task(&verifier).unwrap();
+            let task = state.fetch_task(&verifier).unwrap();
             assert_eq!((i as u64, 1), (task.chunk_id, task.contribution_id));
 
             state.acquired_lock(&verifier, task.chunk_id).unwrap();
@@ -2856,7 +2872,7 @@ mod tests {
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {
-            let try_task = state.pop_task(&verifier);
+            let try_task = state.fetch_task(&verifier);
             assert!(try_task.is_err());
         }
     }
@@ -2897,6 +2913,10 @@ mod tests {
         // Process every chunk in the round as contributor 1 and contributor 2.
         let offset = 4;
         let number_of_chunks = environment.number_of_chunks();
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let mut tasks1 = tasks1.iter();
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let mut tasks2 = tasks2.iter();
         for i in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(2, state.current_contributors.len());
@@ -2908,9 +2928,9 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for contributor 1.
-            let task = state.pop_task(&contributor_1).unwrap();
-            let chunk_id = i as u64;
-            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&contributor_1).unwrap();
+            let expected_task1 = tasks1.next();
+            assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
             let assigned_verifier_1 = state
@@ -2921,9 +2941,9 @@ mod tests {
             assert_eq!(verifier, assigned_verifier_1);
 
             // Fetch a pending task for contributor 2.
-            let task = state.pop_task(&contributor_2).unwrap();
-            let chunk_id_2 = (i as u64 + offset) % number_of_chunks;
-            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&contributor_2).unwrap();
+            let expected_task2 = tasks2.next();
+            assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
             let assigned_verifier_2 = state
@@ -2934,8 +2954,8 @@ mod tests {
             assert_eq!(assigned_verifier_1, assigned_verifier_2);
 
             // Fetch a pending task for the verifier.
-            let task = state.pop_task(&verifier).unwrap();
-            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&verifier).unwrap();
+            assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&verifier, task.chunk_id).unwrap();
             state
@@ -2945,8 +2965,8 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.pop_task(&verifier).unwrap();
-            assert_eq!((chunk_id_2 as u64, 2), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&verifier).unwrap();
+            assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&verifier, task.chunk_id).unwrap();
             state
@@ -3017,6 +3037,8 @@ mod tests {
 
         // Process every chunk in the round as contributor 1.
         let number_of_chunks = environment.number_of_chunks();
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let mut tasks1 = tasks1.iter();
         for i in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(2, state.current_contributors.len());
@@ -3028,9 +3050,9 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for the contributor.
-            let task = state.pop_task(&contributor_1).unwrap();
-            let chunk_id = i as u64;
-            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&contributor_1).unwrap();
+            let expected_task1 = tasks1.next();
+            assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
             let assigned_verifier = state
@@ -3040,8 +3062,8 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.pop_task(&assigned_verifier).unwrap();
-            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&assigned_verifier).unwrap();
+            assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
             state
@@ -3067,6 +3089,8 @@ mod tests {
 
         // Process every chunk in the round as contributor 2.
         let offset = 4;
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let mut tasks2 = tasks2.iter();
         for i in offset..offset + number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(1, state.current_contributors.len());
@@ -3078,9 +3102,9 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for the contributor.
-            let task = state.pop_task(&contributor_2).unwrap();
-            let chunk_id = i as u64 % number_of_chunks;
-            assert_eq!((chunk_id, 2), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&contributor_2).unwrap();
+            let expected_task2 = tasks2.next();
+            assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
             let assigned_verifier = state
@@ -3090,8 +3114,8 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.pop_task(&assigned_verifier).unwrap();
-            assert_eq!((chunk_id, 2), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&assigned_verifier).unwrap();
+            assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
             state

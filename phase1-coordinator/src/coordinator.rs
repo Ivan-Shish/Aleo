@@ -17,7 +17,6 @@ use std::{
     fmt,
     sync::{Arc, RwLock},
 };
-use tokio::runtime;
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
@@ -794,7 +793,7 @@ impl Coordinator {
         // Attempt to fetch the next chunk ID and contribution ID for the given participant.
         trace!("Fetching next task for {}", participant);
         let (chunk_id, contribution_id) = {
-            let task = state.pop_task(participant)?;
+            let task = state.fetch_task(participant)?;
             (task.chunk_id, task.contribution_id)
         };
 
@@ -1768,9 +1767,9 @@ impl Coordinator {
         let current_round_height = round.round_height();
 
         // Check the justification and extract the locked chunks and tasks.
-        let (bucket_id, locked_chunks, tasks) = match justification {
-            Justification::BanCurrent(_, bucket_id, ref locked_chunks, ref tasks) => (bucket_id, locked_chunks, tasks),
-            Justification::DropCurrent(_, bucket_id, ref locked_chunks, ref tasks) => (bucket_id, locked_chunks, tasks),
+        let (locked_chunks, tasks) = match justification {
+            Justification::BanCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
+            Justification::DropCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -1791,16 +1790,16 @@ impl Coordinator {
         // Save the updated round to storage.
         storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
 
-        // Initialize a supplemental contributor.
-        let rt = runtime::Builder::new_multi_thread()
-            .thread_name("contributor-core")
-            .worker_threads(16)
-            .enable_io()
-            .enable_time()
-            .build()
-            .unwrap();
-
-        let coordinator = self.clone();
+        // // Initialize a supplemental contributor.
+        // let rt = runtime::Builder::new_multi_thread()
+        //     .thread_name("contributor-core")
+        //     .worker_threads(16)
+        //     .enable_io()
+        //     .enable_time()
+        //     .build()
+        //     .unwrap();
+        //
+        // let coordinator = self.clone();
 
         // rt.spawn(async move {
         //     for task in tasks {
