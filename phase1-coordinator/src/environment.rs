@@ -437,8 +437,8 @@ impl std::default::Default for Testing {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 5,
+                contributor_timeout_in_minutes: 20,
+                verifier_timeout_in_minutes: 20,
                 participant_ban_threshold: 5,
 
                 coordinator_contributors: vec![Participant::new_contributor("testing-coordinator-contributor")],
@@ -513,8 +513,8 @@ impl std::default::Default for Development {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 5,
+                contributor_timeout_in_minutes: 20,
+                verifier_timeout_in_minutes: 20,
                 participant_ban_threshold: 5,
 
                 coordinator_contributors: vec![Participant::new_contributor("development-coordinator-contributor")],
@@ -583,8 +583,8 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 5,
+                contributor_timeout_in_minutes: 20,
+                verifier_timeout_in_minutes: 20,
                 participant_ban_threshold: 5,
 
                 coordinator_contributors: vec![Participant::new_contributor("coordinator-contributor")],
