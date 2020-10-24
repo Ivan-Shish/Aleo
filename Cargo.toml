@@ -5,7 +5,6 @@ members = [
     "phase1",
     "phase1-cli",
     "phase1-coordinator",
-    "phase1-verifier",
     "phase1-wasm",
     "phase2",
     "setup-utils",
