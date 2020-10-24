@@ -17,6 +17,7 @@ pub enum Locator {
     RoundState(u64),
     RoundFile(u64),
     ContributionFile(u64, u64, u64, bool),
+    ContributionFileSignature(u64, u64, u64, bool),
 }
 
 /// A data structure representing all possible types of values in storage.
@@ -27,6 +28,7 @@ pub enum Object {
     RoundState(Round),
     RoundFile(Vec<u8>),
     ContributionFile(Vec<u8>),
+    ContributionFileSignature(Vec<u8>),
 }
 
 impl Object {
@@ -39,6 +41,7 @@ impl Object {
             Object::RoundState(round) => serde_json::to_vec_pretty(round).expect("round state to bytes failed"),
             Object::RoundFile(round) => round.to_vec(),
             Object::ContributionFile(contribution) => contribution.to_vec(),
+            Object::ContributionFileSignature(signature) => signature.to_vec(),
         }
     }
 
@@ -50,6 +53,7 @@ impl Object {
             Object::RoundState(_) => self.to_bytes().len() as u64,
             Object::RoundFile(round) => round.len() as u64,
             Object::ContributionFile(contribution) => contribution.len() as u64,
+            Object::ContributionFileSignature(signature) => signature.len() as u64,
         }
     }
 

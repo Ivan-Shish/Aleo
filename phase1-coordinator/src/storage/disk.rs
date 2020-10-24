@@ -204,6 +204,11 @@ impl Storage for Disk {
                 contribution_file.write_all(&*reader)?;
                 Ok(Object::ContributionFile(contribution_file))
             }
+            Locator::ContributionFileSignature(_, _, _, _) => {
+                let mut contribution_file_signature: Vec<u8> = vec![];
+                contribution_file_signature.write_all(&*reader)?;
+                Ok(Object::ContributionFileSignature(contribution_file_signature))
+            }
         };
 
         trace!("Fetched {}", self.to_path(locator)?);
@@ -435,6 +440,7 @@ impl StorageObject for Disk {
                 }
                 Ok(reader)
             }
+            Locator::ContributionFileSignature(_, _, _, _) => Ok(reader),
         }
     }
 
@@ -488,6 +494,7 @@ impl StorageObject for Disk {
                 }
                 Ok(writer)
             }
+            Locator::ContributionFileSignature(_, _, _, _) => Ok(writer),
         }
     }
 }
@@ -825,6 +832,16 @@ impl StorageLocator for DiskResolver {
                     true => format!("{}/contribution_{}.verified", path, contribution_id),
                     // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified`.
                     false => format!("{}/contribution_{}.unverified", path, contribution_id),
+                }
+            }
+            Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, verified) => {
+                // Fetch the chunk directory path.
+                let path = self.chunk_directory(*round_height, *chunk_id);
+                match verified {
+                    // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.verified.signature`.
+                    true => format!("{}/contribution_{}.verified.signature", path, contribution_id),
+                    // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified.signature`.
+                    false => format!("{}/contribution_{}.unverified.signature", path, contribution_id),
                 }
             }
         };
