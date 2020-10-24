@@ -163,6 +163,10 @@ pub struct Environment {
     verifier_timeout_in_minutes: u16,
     /// The number of drops tolerated by a participant before banning them from future rounds.
     participant_ban_threshold: u16,
+    /// The setting to allow current contributors to join the queue for the next round.
+    allow_current_contributors_in_queue: bool,
+    /// The setting to allow current verifiers to join the queue for the next round.
+    allow_current_verifiers_in_queue: bool,
 
     /// The contributors managed by the coordinator.
     coordinator_contributors: Vec<Participant>,
@@ -289,6 +293,22 @@ impl Environment {
     ///
     pub const fn participant_ban_threshold(&self) -> u16 {
         self.participant_ban_threshold
+    }
+
+    ///
+    /// Returns the setting to allow current contributors to
+    /// join the queue for the next round.
+    ///
+    pub const fn allow_current_contributors_in_queue(&self) -> bool {
+        self.allow_current_contributors_in_queue
+    }
+
+    ///
+    /// Returns the setting to allow current verifiers to
+    /// join the queue for the next round.
+    ///
+    pub const fn allow_current_verifiers_in_queue(&self) -> bool {
+        self.allow_current_verifiers_in_queue
     }
 
     ///
@@ -437,9 +457,11 @@ impl std::default::Default for Testing {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 20,
-                verifier_timeout_in_minutes: 20,
+                contributor_timeout_in_minutes: 30,
+                verifier_timeout_in_minutes: 30,
                 participant_ban_threshold: 5,
+                allow_current_contributors_in_queue: true,
+                allow_current_verifiers_in_queue: true,
 
                 coordinator_contributors: vec![Participant::new_contributor("testing-coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("testing-coordinator-verifier")],
@@ -513,9 +535,11 @@ impl std::default::Default for Development {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 20,
-                verifier_timeout_in_minutes: 20,
+                contributor_timeout_in_minutes: 30,
+                verifier_timeout_in_minutes: 30,
                 participant_ban_threshold: 5,
+                allow_current_contributors_in_queue: true,
+                allow_current_verifiers_in_queue: true,
 
                 coordinator_contributors: vec![Participant::new_contributor("development-coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("development-coordinator-verifier")],
@@ -583,9 +607,11 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 20,
-                verifier_timeout_in_minutes: 20,
+                contributor_timeout_in_minutes: 30,
+                verifier_timeout_in_minutes: 30,
                 participant_ban_threshold: 5,
+                allow_current_contributors_in_queue: true,
+                allow_current_verifiers_in_queue: true,
 
                 coordinator_contributors: vec![Participant::new_contributor("coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("coordinator-verifier")],

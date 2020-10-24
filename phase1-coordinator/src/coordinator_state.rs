@@ -963,7 +963,9 @@ impl CoordinatorState {
                 }
 
                 // Check that the contributor is not in the current round.
-                if self.current_contributors.contains_key(&participant) {
+                if !self.environment.allow_current_contributors_in_queue()
+                    && self.current_contributors.contains_key(&participant)
+                {
                     return Err(CoordinatorError::ParticipantInCurrentRoundCannotJoinQueue);
                 }
             }
@@ -974,7 +976,9 @@ impl CoordinatorState {
                 }
 
                 // Check that the verifier is not in the current round.
-                if self.current_verifiers.contains_key(&participant) {
+                if !self.environment.allow_current_verifiers_in_queue()
+                    && self.current_verifiers.contains_key(&participant)
+                {
                     return Err(CoordinatorError::ParticipantInCurrentRoundCannotJoinQueue);
                 }
             }
@@ -2911,13 +2915,12 @@ mod tests {
         assert_eq!(0, state.next.len());
 
         // Process every chunk in the round as contributor 1 and contributor 2.
-        let offset = 4;
         let number_of_chunks = environment.number_of_chunks();
         let tasks1 = initialize_tasks(0, number_of_chunks, 2);
         let mut tasks1 = tasks1.iter();
         let tasks2 = initialize_tasks(1, number_of_chunks, 2);
         let mut tasks2 = tasks2.iter();
-        for i in 0..number_of_chunks {
+        for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(2, state.current_contributors.len());
             assert_eq!(1, state.current_verifiers.len());
@@ -3039,7 +3042,7 @@ mod tests {
         let number_of_chunks = environment.number_of_chunks();
         let tasks1 = initialize_tasks(0, number_of_chunks, 2);
         let mut tasks1 = tasks1.iter();
-        for i in 0..number_of_chunks {
+        for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(2, state.current_contributors.len());
             assert_eq!(2, state.current_verifiers.len());
@@ -3088,10 +3091,9 @@ mod tests {
         }
 
         // Process every chunk in the round as contributor 2.
-        let offset = 4;
         let tasks2 = initialize_tasks(1, number_of_chunks, 2);
         let mut tasks2 = tasks2.iter();
-        for i in offset..offset + number_of_chunks {
+        for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
             assert_eq!(1, state.current_contributors.len());
             assert_eq!(2, state.current_verifiers.len());
