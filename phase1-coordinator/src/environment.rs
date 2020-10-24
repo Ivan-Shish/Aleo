@@ -59,7 +59,7 @@ impl Parameters {
             CurveKind::Bls12_377,
             Power::from(20_usize),
             BatchSize::from(64_usize),
-            ChunkSize::from(2048_usize),
+            ChunkSize::from(32768_usize),
         )
     }
 
