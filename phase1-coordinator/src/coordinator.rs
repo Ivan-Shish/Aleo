@@ -1,6 +1,6 @@
 use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
-    coordinator_state::{CoordinatorState, Justification},
+    coordinator_state::{CoordinatorState, Justification, ParticipantInfo},
     environment::Environment,
     objects::{participant::*, Round},
     storage::{Locator, Object, Storage, StorageLock},
@@ -38,6 +38,7 @@ pub enum CoordinatorError {
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
+    ContributionFailed,
     ContributionFileSizeMismatch,
     ContributionHashMismatch,
     ContributionIdIsNonzero,
@@ -54,6 +55,7 @@ pub enum CoordinatorError {
     ContributionsComplete,
     ContributorAlreadyContributed,
     ContributorsMissing,
+    DropParticipantFailed,
     ExpectedContributor,
     ExpectedVerifier,
     Error(anyhow::Error),
@@ -96,7 +98,9 @@ pub enum CoordinatorError {
     ParticipantHasNoRemainingTasks,
     ParticipantHasRemainingTasks,
     ParticipantInCurrentRoundCannotJoinQueue,
+    ParticipantLockedChunkWithManyContributions,
     ParticipantMissing,
+    ParticipantMissingDisposingTask,
     ParticipantMissingPendingTask,
     ParticipantNotFound,
     ParticipantNotReady,
@@ -485,6 +489,28 @@ impl Coordinator {
     }
 
     ///
+    /// Returns a list of the contributors currently in the round.
+    ///
+    #[inline]
+    pub fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the current contributors.
+        state.current_contributors()
+    }
+
+    ///
+    /// Returns a list of the verifiers currently in the round.
+    ///
+    #[inline]
+    pub fn current_verifiers(&self) -> Vec<(Participant, ParticipantInfo)> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the current verifiers.
+        state.current_verifiers()
+    }
+
+    ///
     /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
@@ -790,19 +816,18 @@ impl Coordinator {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
-        // Attempt to fetch the next chunk ID and contribution ID for the given participant.
-        trace!("Fetching next task for {}", participant);
-        let (chunk_id, contribution_id) = {
-            let task = state.fetch_task(participant)?;
-            (task.chunk_id, task.contribution_id)
-        };
+        // Check that the participant is in the current round, and has not been dropped or finished.
+        if !state.is_current_contributor(participant) && !state.is_current_verifier(participant) {
+            return Err(CoordinatorError::ParticipantUnauthorized);
+        }
 
-        trace!(
-            "Locking chunk {} contribution {} for {}",
-            chunk_id,
-            contribution_id,
-            participant
-        );
+        // Attempt to fetch the next chunk ID and contribution ID for the given participant.
+        let task = state.fetch_task(participant)?;
+        let (chunk_id, contribution_id) = (task.chunk_id(), task.contribution_id());
+        trace!("Fetched next task {:?} for {}", task, participant);
+
+        debug!("Locking chunk {} for {}", chunk_id, participant);
+
         match self.try_lock_chunk(&mut storage, chunk_id, participant) {
             // Case 1 - Participant acquired lock, return the locator.
             Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
@@ -850,36 +875,75 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_contribute(&self, participant: &Participant, chunk_id: u64) -> Result<String, CoordinatorError> {
-        debug!("Trying to add contribution from {} for chunk {}", chunk_id, participant);
-        match self.add_contribution(chunk_id, participant) {
-            // Case 1 - Participant added contribution, return the response file locator.
-            Ok((locator, contribution_id)) => {
-                // Acquire the storage write lock.
-                let mut storage = self.storage.write().unwrap();
+        // Check that the participant is a contributor.
+        if !participant.is_contributor() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
 
-                // Acquire the state write lock.
-                let mut state = self.state.write().unwrap();
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
 
-                trace!("Release the lock on chunk {} from {}", chunk_id, participant);
-                state.completed_task(participant, chunk_id, contribution_id)?;
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
 
-                // Save the coordinator state in storage.
-                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        // Check that the participant is in the current round, and has not been dropped or finished.
+        if !state.is_current_contributor(participant) {
+            return Err(CoordinatorError::ParticipantUnauthorized);
+        }
 
-                info!("Added contribution from {} for chunk {}", participant, chunk_id);
-                Ok(locator)
-            }
-            // Case 2 - Participant failed to add their contribution, remove the contribution file.
-            Err(error) => {
-                info!("Failed to add a contribution and removing the contribution file");
-                // self.state.push_chunk_id(participant, chunk_id)?;
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
-                // TODO (howardwu): Delete the response file.
+        // Fetch the current round height from storage.
+        let round_height = Self::load_current_round_height(&storage)?;
+        trace!("Current round height in storage is {}", round_height);
 
-                error!("{}", error);
-                return Err(error);
+        // Check if the participant should dispose the response being contributed.
+        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)? {
+            let contribution_id = task.contribution_id();
+
+            // Move the task to the disposed tasks of the contributor.
+            state.disposed_task(participant, chunk_id, contribution_id)?;
+
+            // Remove the response file from storage.
+            let response = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+            storage.remove(&response)?;
+
+            return Ok(storage.to_path(&response)?);
+        }
+
+        // Check if the participant has this chunk ID in a pending task.
+        if let Some(task) = state.lookup_pending_task(participant, chunk_id)? {
+            debug!("Adding contribution from {} for chunk {}", participant, chunk_id);
+
+            match self.add_contribution(&mut storage, chunk_id, participant) {
+                // Case 1 - Participant added contribution, return the response file locator.
+                Ok((locator, contribution_id)) => {
+                    trace!("Release the lock on chunk {} from {}", chunk_id, participant);
+                    state.completed_task(participant, chunk_id, contribution_id)?;
+
+                    // Save the coordinator state in storage.
+                    storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+                    info!("Added contribution from {} for chunk {}", participant, chunk_id);
+                    return Ok(locator);
+                }
+                // Case 2 - Participant failed to add their contribution, remove the contribution file.
+                Err(error) => {
+                    info!("Failed to add a contribution and removing the contribution file");
+                    // Remove the invalid response file from storage.
+                    let response = Locator::ContributionFile(round_height, chunk_id, task.contribution_id(), false);
+                    storage.remove(&response)?;
+
+                    error!("{}", error);
+                    return Err(error);
+                }
             }
         }
+
+        Err(CoordinatorError::ContributionFailed)
     }
 
     ///
@@ -891,36 +955,95 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
-        debug!("Trying to add verification from {} for chunk {}", chunk_id, participant);
-        match self.verify_contribution(chunk_id, participant) {
-            // Case 1 - Participant verified contribution, return the response file locator.
-            Ok(contribution_id) => {
-                // Acquire the storage write lock.
-                let mut storage = self.storage.write().unwrap();
+        // Check that the participant is a verifier.
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
 
-                // Acquire the state write lock.
-                let mut state = self.state.write().unwrap();
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
 
-                trace!("Release the lock on chunk {} from {}", chunk_id, participant);
-                state.completed_task(participant, chunk_id, contribution_id)?;
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
 
-                // Save the coordinator state in storage.
-                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        // Check that the participant is in the current round, and has not been dropped or finished.
+        if !state.is_current_verifier(participant) {
+            return Err(CoordinatorError::ParticipantUnauthorized);
+        }
 
-                info!("Added verification from {} for chunk {}", participant, chunk_id);
-                Ok(())
-            }
-            // Case 2 - Participant failed to add their contribution, remove the contribution file.
-            Err(error) => {
-                info!("Failed to add a verification and removing the contribution file");
-                // self.state.push_chunk_id(participant, chunk_id)?;
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
-                // TODO (howardwu): Delete the response file.
+        // Check if the participant should dispose the response being contributed.
+        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)? {
+            let contribution_id = task.contribution_id();
 
-                error!("{}", error);
-                return Err(error);
+            // Move the task to the disposed tasks of the verifier.
+            state.disposed_task(participant, chunk_id, contribution_id)?;
+
+            // Fetch the current round from storage.
+            let round = Self::load_current_round(&storage)?;
+
+            // Fetch the next challenge locator.
+            let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
+            let next_challenge = match is_final_contribution {
+                true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
+                false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
+            };
+
+            // Remove the next challenge file from storage.
+            storage.remove(&next_challenge)?;
+
+            return Ok(());
+        }
+
+        // Check if the participant has this chunk ID in a pending task.
+        if let Some(task) = state.lookup_pending_task(participant, chunk_id)? {
+            let contribution_id = task.contribution_id();
+
+            debug!(
+                "Adding verification from {} for chunk {} contribution {}",
+                participant, chunk_id, contribution_id
+            );
+
+            match self.verify_contribution(&mut storage, chunk_id, participant) {
+                // Case 1 - Participant verified contribution, return the response file locator.
+                Ok(contribution_id) => {
+                    trace!("Release the lock on chunk {} from {}", chunk_id, participant);
+                    state.completed_task(participant, chunk_id, contribution_id)?;
+
+                    // Save the coordinator state in storage.
+                    storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+
+                    info!("Added verification from {} for chunk {}", participant, chunk_id);
+                    return Ok(());
+                }
+                // Case 2 - Participant failed to add their contribution, remove the contribution file.
+                Err(error) => {
+                    info!("Failed to add a verification and removing the contribution file");
+
+                    // Fetch the current round from storage.
+                    let round = Self::load_current_round(&storage)?;
+
+                    // Fetch the next challenge locator.
+                    let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
+                    let next_challenge = match is_final_contribution {
+                        true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
+                        false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
+                    };
+
+                    // Remove the invalid next challenge file from storage.
+                    storage.remove(&next_challenge)?;
+
+                    error!("{}", error);
+                    return Err(error);
+                }
             }
         }
+
+        Err(CoordinatorError::VerificationFailed)
     }
 
     ///
@@ -1082,23 +1205,11 @@ impl Coordinator {
     #[inline]
     pub(crate) fn add_contribution(
         &self,
+        storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<(String, u64), CoordinatorError> {
         debug!("Adding contribution from {} to chunk {}", participant, chunk_id);
-
-        // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
-            return Err(CoordinatorError::ChunkIdInvalid);
-        }
-
-        // Check that the participant is a contributor.
-        if !participant.is_contributor() {
-            return Err(CoordinatorError::ExpectedContributor);
-        }
-
-        // Acquire the storage lock.
-        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
@@ -1164,17 +1275,16 @@ impl Coordinator {
         }
 
         // Add the contribution response to the current chunk.
-        round
-            .chunk_mut(chunk_id)?
-            .add_contribution(participant, storage.to_path(&response_file_locator)?)?;
+        round.chunk_mut(chunk_id)?.add_contribution(
+            contribution_id,
+            participant,
+            storage.to_path(&response_file_locator)?,
+        )?;
 
         // Add the updated round to storage.
         match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
-                {
-                    // TODO (howardwu): Send job to run verification on new chunk.
-                }
                 debug!("{} added a contribution to chunk {}", participant, chunk_id);
                 Ok((storage.to_path(&response_file_locator)?, contribution_id))
             }
@@ -1197,22 +1307,11 @@ impl Coordinator {
     #[inline]
     pub(crate) fn verify_contribution(
         &self,
+        storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<u64, CoordinatorError> {
         debug!("Attempting to verify a contribution for chunk {}", chunk_id);
-        // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
-            return Err(CoordinatorError::ChunkIdInvalid);
-        }
-
-        // Check that the participant is a verifier.
-        if !participant.is_verifier() {
-            return Err(CoordinatorError::ExpectedVerifier);
-        }
-
-        // Acquire the storage write lock.
-        let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
@@ -1237,7 +1336,7 @@ impl Coordinator {
         // Fetch the chunk corresponding to the given chunk ID.
         let chunk = round.chunk(chunk_id)?;
         // Fetch the current contribution ID.
-        let current_contribution_id = chunk.current_contribution_id();
+        let contribution_id = chunk.current_contribution_id();
 
         // Fetch the next challenge locator.
         let next_challenge = {
@@ -1245,7 +1344,7 @@ impl Coordinator {
             let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
             match is_final_contribution {
                 true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
-                false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
+                false => Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
             }
         };
         {
@@ -1253,7 +1352,7 @@ impl Coordinator {
             let response_hash = calculate_hash(&storage.reader(&Locator::ContributionFile(
                 current_round_height,
                 chunk_id,
-                current_contribution_id,
+                contribution_id,
                 false,
             ))?);
 
@@ -1267,8 +1366,8 @@ impl Coordinator {
                 .to_vec();
 
             // Check that the response hash matches the next challenge hash.
-            debug!("The response hash is {}", pretty_hash!(&response_hash));
-            debug!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+            info!("The response hash is {}", pretty_hash!(&response_hash));
+            info!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
             if response_hash.as_slice() != saved_response_hash {
                 error!("Response hash does not match the saved response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
@@ -1278,7 +1377,7 @@ impl Coordinator {
         // Sets the current contribution as verified in the current round.
         round.verify_contribution(
             chunk_id,
-            current_contribution_id,
+            contribution_id,
             participant.clone(),
             storage.to_path(&next_challenge)?,
         )?;
@@ -1289,9 +1388,9 @@ impl Coordinator {
                 debug!("Updated round {} in storage", current_round_height);
                 debug!(
                     "{} verified chunk {} contribution {}",
-                    participant, chunk_id, current_contribution_id
+                    participant, chunk_id, contribution_id
                 );
-                Ok(current_contribution_id)
+                Ok(contribution_id)
             }
             _ => Err(CoordinatorError::StorageUpdateFailed),
         }
@@ -1776,16 +1875,20 @@ impl Coordinator {
         // Convert the tasks into contribution file locators.
         let locators: Vec<Locator> = tasks
             .par_iter()
-            .map(|task| Locator::ContributionFile(current_round_height, task.chunk_id, task.contribution_id, true))
+            .map(|task| Locator::ContributionFile(current_round_height, task.chunk_id(), task.contribution_id(), true))
             .collect();
 
-        trace!("Removing locked chunks and tasks");
+        warn!("Removing locked chunks and all impacted contributions");
 
         // Remove the lock from the specified chunks.
         round.remove_locks_unsafe(&mut storage, &justification)?;
 
+        warn!("Removed locked chunks");
+
         // Remove the contributions from the specified chunks.
         round.remove_chunk_contributions_unsafe(&mut storage, &justification)?;
+
+        warn!("Removed impacted contributions");
 
         // Save the updated round to storage.
         storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
@@ -2155,9 +2258,16 @@ mod tests {
 
         // Add contribution for round 1 chunk 0 contribution 1.
         {
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
             // Add round 1 chunk 0 contribution 1.
             let chunk_id = 0;
-            assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
+            assert!(
+                coordinator
+                    .add_contribution(&mut storage, chunk_id, &contributor)
+                    .is_ok()
+            );
 
             // Check chunk 0 lock is released.
             let round = coordinator.current_round()?;
@@ -2184,25 +2294,33 @@ mod tests {
 
         // Acquire the lock for chunk 0 as contributor 1.
         let chunk_id = 0;
+        let contribution_id = 1;
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(storage.write().unwrap());
 
             assert!(coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor).is_ok());
         }
+        {
+            // Run computation on round 1 chunk 0 contribution 1.
+            let mut seed: Seed = [0; SEED_LENGTH];
+            rand::thread_rng().fill_bytes(&mut seed[..]);
+            assert!(
+                coordinator
+                    .run_computation(round_height, chunk_id, contribution_id, contributor, &seed)
+                    .is_ok()
+            );
 
-        // Run computation on round 1 chunk 0 contribution 1.
-        let contribution_id = 1;
-        let mut seed: Seed = [0; SEED_LENGTH];
-        rand::thread_rng().fill_bytes(&mut seed[..]);
-        assert!(
-            coordinator
-                .run_computation(round_height, chunk_id, contribution_id, contributor, &seed)
-                .is_ok()
-        );
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
 
-        // Add round 1 chunk 0 contribution 1.
-        assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
+            // Add round 1 chunk 0 contribution 1.
+            assert!(
+                coordinator
+                    .add_contribution(&mut storage, chunk_id, &contributor)
+                    .is_ok()
+            );
+        }
 
         // Acquire lock for round 1 chunk 0 contribution 1.
         {
@@ -2234,8 +2352,11 @@ mod tests {
             let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
             assert!(verify.is_ok());
 
+            // Acquire the storage write lock.
+            let mut storage = StorageLock::Write(storage.write().unwrap());
+
             // Verify contribution 1.
-            coordinator.verify_contribution(chunk_id, &verifier)?;
+            coordinator.verify_contribution(&mut storage, chunk_id, &verifier)?;
         }
 
         Ok(())
@@ -2305,8 +2426,11 @@ mod tests {
                     contribute?;
                 }
 
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(storage.write().unwrap());
+
                 // Add the contribution as the contributor.
-                let contribute = coordinator.add_contribution(chunk_id, &contributor);
+                let contribute = coordinator.add_contribution(&mut storage, chunk_id, &contributor);
                 if contribute.is_err() {
                     println!(
                         "Failed to add contribution for chunk {} as contributor {:?}\n{}",
@@ -2350,8 +2474,11 @@ mod tests {
                         verify.unwrap();
                     }
 
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage_clone.write().unwrap());
+
                     // Add the verification as the verifier.
-                    let verify = coordinator_clone.verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator_clone.verify_contribution(&mut storage, chunk_id, &verifier);
                     if verify.is_err() {
                         println!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -2437,8 +2564,11 @@ mod tests {
                         contribute?;
                     }
 
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Add the contribution as the contributor.
-                    let contribute = coordinator.add_contribution(chunk_id, &contributor);
+                    let contribute = coordinator.add_contribution(&mut storage, chunk_id, &contributor);
                     if contribute.is_err() {
                         error!(
                             "Failed to add contribution as contributor {:?}\n{}",
@@ -2475,8 +2605,11 @@ mod tests {
                         verify?;
                     }
 
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Add the verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator.verify_contribution(&mut storage, chunk_id, &verifier);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -2588,8 +2721,11 @@ mod tests {
                         contribute?;
                     }
 
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Add the contribution as the contributor.
-                    let contribute = coordinator.add_contribution(chunk_id, &contributor);
+                    let contribute = coordinator.add_contribution(&mut storage, chunk_id, &contributor);
                     if contribute.is_err() {
                         error!(
                             "Failed to add contribution as contributor {:?}\n{}",
@@ -2626,8 +2762,11 @@ mod tests {
                         verify?;
                     }
 
+                    // Acquire the storage write lock.
+                    let mut storage = StorageLock::Write(storage.write().unwrap());
+
                     // Add the verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator.verify_contribution(&mut storage, chunk_id, &verifier);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",

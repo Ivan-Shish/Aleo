@@ -687,10 +687,8 @@ impl Round {
                         return Err(CoordinatorError::ContributionMissingVerification);
                     }
 
-                    // Fetch the next contribution ID.
+                    // Fetch the next contribution ID and remove the response locator.
                     let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
-
-                    // Remove the response locator.
                     let response_locator =
                         Locator::ContributionFile(current_round_height, *chunk_id, next_contribution_id, false);
                     storage.remove(&response_locator)?;
@@ -755,59 +753,44 @@ impl Round {
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
+        // Check if the participant is a verifier. As verifications are not dependent
+        // on each other, no further update is necessary in the round state.
+        if participant.is_verifier() {
+            warn!("Skipping removal of contributions as {} is a verifier", participant);
+            return Ok(());
+        }
+
+        // Remove the given contribution from each chunk in the current round.
         for task in tasks {
-            warn!(
-                "Removing chunk {} contribution {} from {}",
-                task.chunk_id, task.contribution_id, participant
-            );
-            match participant {
-                // Remove the given contribution from each chunk in the current round.
-                Participant::Contributor(_) => {
-                    self.chunk_mut(task.chunk_id)?
-                        .get_contribution_mut(task.contribution_id)?
-                        .clear_contributor_unsafe(participant)?;
-                    storage.remove(&Locator::ContributionFile(
-                        self.height,
-                        task.chunk_id,
-                        task.contribution_id,
-                        false,
-                    ))?;
+            let chunk = self.chunk_mut(task.chunk_id())?;
+            if let Ok(contribution) = chunk.get_contribution(task.chunk_id()) {
+                warn!(
+                    "Removing chunk {} contribution {}",
+                    task.chunk_id(),
+                    task.contribution_id()
+                );
 
-                    // Fetch the expected number of contributions for the current round.
-                    let expected_number_of_contributions = self.expected_number_of_contributions();
-
-                    // Remove the verified locator, if it is verified.
-                    let chunk = self.chunk_mut(task.chunk_id)?;
-                    let contribution = chunk.get_contribution_mut(task.contribution_id)?;
-                    if let Some(verifier) = contribution.get_verifier().clone() {
-                        contribution.clear_verifier_unsafe(&verifier)?;
-
-                        // Fetch whether this is the final contribution of the specified chunk.
-                        let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
-                        // Remove the next challenge locator.
-                        match is_final_contribution {
-                            // This is the final contribution in the chunk.
-                            true => storage.remove(&Locator::ContributionFile(
-                                self.round_height() + 1,
-                                task.chunk_id,
-                                0,
-                                true,
-                            ))?,
-                            // This is a typical contribution in the chunk.
-                            false => storage.remove(&Locator::ContributionFile(
-                                self.round_height(),
-                                task.chunk_id,
-                                task.contribution_id,
-                                true,
-                            ))?,
-                        }
-                    }
+                // Remove the unverified contribution file, if it exists.
+                if let Some(locator) = contribution.get_contributed_location() {
+                    let path = storage.to_locator(&locator)?;
+                    storage.remove(&path)?;
                 }
-                Participant::Verifier(_) => self
-                    .chunk_mut(task.chunk_id)?
-                    .get_contribution_mut(task.contribution_id)?
-                    .clear_verifier_unsafe(participant)?,
-            };
+
+                // Remove the verified contribution file, if it exists.
+                if let Some(locator) = contribution.get_verified_location() {
+                    let path = storage.to_locator(&locator)?;
+                    storage.remove(&path)?;
+                }
+
+                chunk.remove_contribution_unsafe(task.contribution_id());
+                warn!(
+                    "Removed chunk {} contribution {}",
+                    task.chunk_id(),
+                    task.contribution_id()
+                );
+            } else {
+                warn!("Skipping removal of contribution {}", task.contribution_id());
+            }
         }
 
         Ok(())

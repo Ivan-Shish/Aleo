@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
+use std::collections::BTreeMap;
 use tracing::{trace, warn};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
@@ -20,7 +21,7 @@ pub struct Chunk {
     )]
     lock_holder: Option<Participant>,
     #[serde_diff(opaque)]
-    contributions: Vec<Contribution>,
+    contributions: BTreeMap<u64, Contribution>,
 }
 
 impl Chunk {
@@ -41,7 +42,10 @@ impl Chunk {
             true => Ok(Self {
                 chunk_id,
                 lock_holder: None,
-                contributions: vec![Contribution::new_verifier(0, participant, verifier_locator)?],
+                contributions: [(0, Contribution::new_verifier(0, participant, verifier_locator)?)]
+                    .iter()
+                    .cloned()
+                    .collect(),
             }),
             false => Err(CoordinatorError::ExpectedVerifier),
         }
@@ -100,7 +104,7 @@ impl Chunk {
     /// Returns a reference to a contribution given a contribution ID.
     #[inline]
     pub fn get_contribution(&self, contribution_id: u64) -> Result<&Contribution, CoordinatorError> {
-        match self.contributions.get(contribution_id as usize) {
+        match self.contributions.get(&contribution_id) {
             Some(contribution) => Ok(contribution),
             _ => Err(CoordinatorError::ContributionMissing),
         }
@@ -108,7 +112,7 @@ impl Chunk {
 
     /// Returns a reference to a list of contributions in this chunk.
     #[inline]
-    pub fn get_contributions(&self) -> &Vec<Contribution> {
+    pub fn get_contributions(&self) -> &BTreeMap<u64, Contribution> {
         &self.contributions
     }
 
@@ -222,7 +226,7 @@ impl Chunk {
         let verifications_complete = (self
             .get_contributions()
             .par_iter()
-            .filter(|contribution| contribution.is_verified())
+            .filter(|(_, contribution)| contribution.is_verified())
             .count() as u64)
             == expected_contributions;
 
@@ -273,7 +277,7 @@ impl Chunk {
             let matches: Vec<_> = self
                 .contributions
                 .par_iter()
-                .filter(|contribution| *contribution.get_contributor() == Some(participant.clone()))
+                .filter(|(_, contribution)| *contribution.get_contributor() == Some(participant.clone()))
                 .collect();
             if !matches.is_empty() {
                 return Err(CoordinatorError::ContributorAlreadyContributed);
@@ -329,6 +333,7 @@ impl Chunk {
     #[inline]
     pub(crate) fn add_contribution(
         &mut self,
+        contribution_id: u64,
         participant: &Participant,
         contributed_locator: String,
     ) -> Result<(), CoordinatorError> {
@@ -343,8 +348,10 @@ impl Chunk {
         }
 
         // Add the contribution to this chunk.
-        self.contributions
-            .push(Contribution::new_contributor(participant.clone(), contributed_locator)?);
+        self.contributions.insert(
+            contribution_id,
+            Contribution::new_contributor(participant.clone(), contributed_locator)?,
+        );
 
         // Release the lock on this chunk from the contributor.
         self.set_lock_holder(None);
@@ -378,7 +385,10 @@ impl Chunk {
         }
 
         // Fetch the contribution to be verified from the chunk.
-        let contribution = self.get_contribution_mut(contribution_id)?;
+        let contribution = match self.contributions.get_mut(&contribution_id) {
+            Some(contribution) => contribution,
+            _ => return Err(CoordinatorError::ContributionMissing),
+        };
 
         // Attempt to assign the verifier to the contribution.
         contribution.assign_verifier(participant.clone(), verified_locator)?;
@@ -401,13 +411,11 @@ impl Chunk {
         }
     }
 
-    /// Returns a mutable reference to a contribution given a contribution ID.
+    /// Removes the contribution corresponding to the given contribution ID.
     #[inline]
-    pub(super) fn get_contribution_mut(&mut self, contribution_id: u64) -> Result<&mut Contribution, CoordinatorError> {
-        match self.contributions.get_mut(contribution_id as usize) {
-            Some(contribution) => Ok(contribution),
-            _ => Err(CoordinatorError::ContributionMissing),
-        }
+    pub(super) fn remove_contribution_unsafe(&mut self, contribution_id: u64) {
+        warn!("Removed chunk {} contribution {}", self.chunk_id, contribution_id);
+        self.contributions.remove(&contribution_id);
     }
 
     /// Sets the lock holder for this chunk as the given lock holder.

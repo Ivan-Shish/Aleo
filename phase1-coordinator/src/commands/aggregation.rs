@@ -217,8 +217,11 @@ mod tests {
                     contribute.unwrap();
                 }
 
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
                 // Add the contribution as the contributor.
-                let contribute = coordinator.add_contribution(chunk_id, &contributor.clone());
+                let contribute = coordinator.add_contribution(&mut storage, chunk_id, &contributor.clone());
                 if contribute.is_err() {
                     error!(
                         "Failed to add contribution as contributor {:?}\n{}",
@@ -255,8 +258,11 @@ mod tests {
                     verify.unwrap();
                 }
 
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(test_storage.write().unwrap());
+
                 // Run verification as the verifier.
-                let verify = coordinator.verify_contribution(chunk_id, &verifier.clone());
+                let verify = coordinator.verify_contribution(&mut storage, chunk_id, &verifier.clone());
                 if verify.is_err() {
                     error!(
                         "Failed to run verification as verifier {:?}\n{}",

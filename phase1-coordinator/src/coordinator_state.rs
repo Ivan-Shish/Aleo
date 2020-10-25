@@ -24,7 +24,7 @@ pub(super) enum CoordinatorStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct ParticipantInfo {
+pub struct ParticipantInfo {
     /// The ID of the participant.
     #[serde(
         serialize_with = "serialize_participant_to_string",
@@ -55,6 +55,10 @@ pub(super) struct ParticipantInfo {
     pending_tasks: LinkedList<Task>,
     /// The list of (chunk ID, contribution ID) tasks that this participant finished computing.
     completed_tasks: LinkedList<Task>,
+    /// The list of (chunk ID, contribution ID) tasks that are pending disposal while computing.
+    disposing_tasks: LinkedList<Task>,
+    /// The list of (chunk ID, contribution ID) tasks that are disposed of while computing.
+    disposed_tasks: LinkedList<Task>,
 }
 
 impl ParticipantInfo {
@@ -76,7 +80,51 @@ impl ParticipantInfo {
             assigned_tasks: LinkedList::new(),
             pending_tasks: LinkedList::new(),
             completed_tasks: LinkedList::new(),
+            disposing_tasks: LinkedList::new(),
+            disposed_tasks: LinkedList::new(),
         }
+    }
+
+    ///
+    /// Returns the set of chunk IDs that this participant is computing.
+    ///
+    pub fn locked_chunks(&self) -> &HashSet<u64> {
+        &self.locked_chunks
+    }
+
+    ///
+    /// Returns the list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
+    ///
+    pub fn assigned_tasks(&self) -> &LinkedList<Task> {
+        &self.assigned_tasks
+    }
+
+    ///
+    /// Returns the list of (chunk ID, contribution ID) tasks that this participant is currently computing.
+    ///
+    pub fn pending_tasks(&self) -> &LinkedList<Task> {
+        &self.pending_tasks
+    }
+
+    ///
+    /// Returns the list of (chunk ID, contribution ID) tasks that this participant finished computing.
+    ///
+    pub fn completed_tasks(&self) -> &LinkedList<Task> {
+        &self.completed_tasks
+    }
+
+    ///
+    /// Returns the list of (chunk ID, contribution ID) tasks that are pending disposal while computing.
+    ///
+    pub fn disposing_tasks(&self) -> &LinkedList<Task> {
+        &self.disposing_tasks
+    }
+
+    ///
+    /// Returns the list of (chunk ID, contribution ID) tasks that are disposed of while computing.
+    ///
+    pub fn disposed_tasks(&self) -> &LinkedList<Task> {
+        &self.disposed_tasks
     }
 
     ///
@@ -120,6 +168,11 @@ impl ParticipantInfo {
 
         // Check that the participant has no more pending tasks.
         if !self.pending_tasks.is_empty() {
+            return false;
+        }
+
+        // Check that the participant is not disposing tasks.
+        if !self.disposing_tasks.is_empty() {
             return false;
         }
 
@@ -167,6 +220,16 @@ impl ParticipantInfo {
 
         // Check that the participant has not completed any tasks yet.
         if !self.completed_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Check that the participant is not disposing tasks.
+        if !self.disposing_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Check that the participant has not discarded any tasks yet.
+        if !self.disposed_tasks.is_empty() {
             return Err(CoordinatorError::ParticipantAlreadyStarted);
         }
 
@@ -399,7 +462,10 @@ impl ParticipantInfo {
     ///
     /// Reverts the given (chunk ID, contribution ID) task to the list of assigned tasks
     /// from the list of pending tasks.
-    ///    
+    ///
+    /// This function is used to move a pending task back as an assigned task when the
+    /// participant fails to acquire the lock for the chunk ID corresponding to the task.
+    ///
     #[inline]
     fn rollback_pending_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
         trace!("Rolling back pending task on chunk {} for {}", chunk_id, self.id);
@@ -463,7 +529,7 @@ impl ParticipantInfo {
             .collect();
 
         // Add the task to the front of the assigned tasks.
-        self.push_front_task(task.chunk_id, task.contribution_id)?;
+        self.push_front_task(task.chunk_id(), task.contribution_id())?;
 
         Ok(())
     }
@@ -547,6 +613,67 @@ impl ParticipantInfo {
     }
 
     ///
+    /// Disposes the given (chunk ID, contribution ID) task to the list of disposed tasks
+    /// and removes the given chunk ID from the locked chunks held by this participant.
+    ///
+    #[inline]
+    fn disposed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+        trace!("Disposed task for {}", self.id);
+
+        // Set the task as the given chunk ID and contribution ID.
+        let task = Task::new(chunk_id, contribution_id);
+
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant had locked this chunk.
+        if !self.locked_chunks.contains(&chunk_id) {
+            return Err(CoordinatorError::ParticipantDidntLockChunkId);
+        }
+
+        // Check that the participant does not have a assigned task remaining for this.
+        if self.assigned_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
+        }
+
+        // Check that the participant has a disposing task for this.
+        if !self.disposing_tasks.contains(&task) {
+            return Err(CoordinatorError::ParticipantMissingDisposingTask);
+        }
+
+        // Update the last seen time.
+        self.last_seen = Utc::now();
+
+        // Remove the given chunk ID from the locked chunks.
+        self.locked_chunks.remove(&chunk_id);
+
+        // Remove the task from the disposing tasks.
+        self.disposing_tasks = self
+            .disposing_tasks
+            .clone()
+            .into_par_iter()
+            .filter(|t| *t != task)
+            .collect();
+
+        // Add the task to the completed tasks.
+        self.disposed_tasks.push_back(task);
+
+        Ok(())
+    }
+
+    ///
     /// Sets the participant to dropped and saves the current time as the dropped time.
     ///
     #[inline]
@@ -612,6 +739,11 @@ impl ParticipantInfo {
         // Check that if the participant is a contributor, that they completed tasks.
         if self.id.is_contributor() && self.completed_tasks.is_empty() {
             return Err(CoordinatorError::ParticipantDidNotDoWork);
+        }
+
+        // Check that the participant is not disposing tasks.
+        if !self.disposing_tasks.is_empty() {
+            return Err(CoordinatorError::ParticipantHasRemainingTasks);
         }
 
         // Fetch the current time.
@@ -810,6 +942,22 @@ impl CoordinatorState {
             .into_par_iter()
             .filter(|(p, _)| p.is_verifier())
             .collect()
+    }
+
+    ///
+    /// Returns a list of the contributors currently in the round.
+    ///
+    #[inline]
+    pub(super) fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
+        self.current_contributors.clone().into_iter().collect()
+    }
+
+    ///
+    /// Returns a list of the verifiers currently in the round.
+    ///
+    #[inline]
+    pub(super) fn current_verifiers(&self) -> Vec<(Participant, ParticipantInfo)> {
+        self.current_verifiers.clone().into_iter().collect()
     }
 
     ///
@@ -1096,6 +1244,128 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns the (chunk ID, contribution ID) task if the given participant has the
+    /// given chunk ID in a pending task.
+    ///
+    pub(super) fn lookup_pending_task(
+        &self,
+        participant: &Participant,
+        chunk_id: u64,
+    ) -> Result<Option<&Task>, CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Fetch the participant info for the given participant.
+        let participant_info = match participant {
+            Participant::Contributor(_) => match self.current_contributors.get(participant) {
+                Some(participant_info) => participant_info,
+                None => return Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get(participant) {
+                Some(participant_info) => participant_info,
+                None => return Err(CoordinatorError::ParticipantNotFound),
+            },
+        };
+
+        // Check that the given chunk ID is locked by the participant,
+        // and filter the pending tasks for the given chunk ID.
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+            true => participant_info
+                .pending_tasks
+                .par_iter()
+                .filter(|t| t.contains(chunk_id))
+                .collect(),
+            false => return Err(CoordinatorError::ParticipantDidntLockChunkId),
+        };
+
+        match output.len() {
+            0 => Ok(None),
+            1 => Ok(Some(output[0])),
+            _ => return Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
+        }
+    }
+
+    ///
+    /// Returns the (chunk ID, contribution ID) task if the given participant is disposing a task
+    /// for the given chunk ID.
+    ///
+    pub(super) fn lookup_disposing_task(
+        &self,
+        participant: &Participant,
+        chunk_id: u64,
+    ) -> Result<Option<&Task>, CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        // Fetch the participant info for the given participant.
+        let participant_info = match participant {
+            Participant::Contributor(_) => match self.current_contributors.get(participant) {
+                Some(participant_info) => participant_info,
+                None => return Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get(participant) {
+                Some(participant_info) => participant_info,
+                None => return Err(CoordinatorError::ParticipantNotFound),
+            },
+        };
+
+        // Check that the given chunk ID is locked by the participant,
+        // and filter the disposing tasks for the given chunk ID.
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+            true => participant_info
+                .disposing_tasks
+                .par_iter()
+                .filter(|t| t.contains(chunk_id))
+                .collect(),
+            false => return Err(CoordinatorError::ParticipantDidntLockChunkId),
+        };
+
+        match output.len() {
+            0 => Ok(None),
+            1 => Ok(Some(output[0])),
+            _ => return Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
+        }
+    }
+
+    ///
+    /// Disposes the given (chunk ID, contribution ID) task to the disposed tasks of the given participant,
+    ///
+    #[inline]
+    pub(super) fn disposed_task(
+        &mut self,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if chunk_id > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        warn!(
+            "Disposing chunk {} contribution {} from {}",
+            chunk_id, contribution_id, participant
+        );
+
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                // Move the disposing task to the list of disposed tasks for the contributor.
+                Some(participant) => participant.disposed_task(chunk_id, contribution_id),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
+                // Move the disposing task to the list of disposed tasks for the verifier.
+                Some(participant) => participant.disposed_task(chunk_id, contribution_id),
+                None => Err(CoordinatorError::ParticipantNotFound),
+            },
+        }
+    }
+
+    ///
     /// Adds the given (chunk ID, contribution ID) task to the pending verification set.
     /// The verification task is then assigned to the verifier with the least number of tasks in its queue.
     ///
@@ -1234,169 +1504,215 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn drop_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
-        // Initialize the indicator variable.
-        let mut is_current_participant = true;
+        warn!("Dropping {} from the ceremony", participant);
 
-        // Remove the participant from the queue.
-        if self.queue.contains_key(participant) {
-            trace!("Removing {} from the queue", participant);
-            self.queue.remove(participant);
+        // Remove the participant from the queue and precommit, if present.
+        if self.queue.contains_key(participant) || self.next.contains_key(participant) {
+            // Remove the participant from the queue.
+            if self.queue.contains_key(participant) {
+                trace!("Removing {} from the queue", participant);
+                self.queue.remove(participant);
+            }
 
-            // Set the indicator variable.
-            is_current_participant = false;
-        }
+            // Remove the participant from the precommit for the next round.
+            if self.next.contains_key(participant) {
+                trace!("Removing {} from the precommit for the next round", participant);
+                self.next.remove(participant);
+                // Trigger a rollback as the precommit has changed.
+                self.rollback_next_round();
+            }
 
-        // Remove the participant from the precommit for the next round.
-        if self.next.contains_key(participant) {
-            trace!("Removing {} from the precommit for the next round", participant);
-            self.next.remove(participant);
-
-            // Set the indicator variable.
-            is_current_participant = false;
-
-            // Trigger a rollback as the precommit has changed.
-            self.rollback_next_round();
-        }
-
-        // Return if the participant is from the queue or precommit.
-        if !is_current_participant {
             return Ok(Justification::Inactive);
         }
 
         // Fetch the current participant information.
-        let mut participant_info = match participant {
+        let participant_info = match participant {
             Participant::Contributor(_) => self
                 .current_contributors
-                .get_mut(participant)
+                .get(participant)
                 .ok_or(CoordinatorError::ParticipantNotFound)?
                 .clone(),
             Participant::Verifier(_) => self
                 .current_verifiers
-                .get_mut(participant)
+                .get(participant)
                 .ok_or(CoordinatorError::ParticipantNotFound)?
                 .clone(),
         };
+        {
+            // Check that the participant is not already dropped.
+            if participant_info.is_dropped() {
+                return Err(CoordinatorError::ParticipantAlreadyDropped);
+            }
 
-        // Check that the participant is not already dropped.
-        if participant_info.is_dropped() {
-            return Err(CoordinatorError::ParticipantAlreadyDropped);
+            // Check that the participant is not already finished.
+            if participant_info.is_finished() {
+                return Err(CoordinatorError::ParticipantAlreadyFinished);
+            }
         }
 
-        // Check that the participant is not already finished.
-        if participant_info.is_finished() {
-            return Err(CoordinatorError::ParticipantAlreadyFinished);
-        }
-
-        // Fetch the locked chunks and tasks.
+        // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
-        let locked_chunks: Vec<u64> = participant_info.locked_chunks.clone().into_iter().collect();
+        let locked_chunks: Vec<u64> = participant_info.locked_chunks.iter().cloned().collect();
         let tasks: Vec<Task> = match participant {
-            Participant::Contributor(_) => participant_info.completed_tasks.clone().into_iter().collect(),
+            Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
                 let mut tasks = participant_info.assigned_tasks.clone();
-                tasks.append(&mut participant_info.pending_tasks.clone());
+                tasks.extend(&mut participant_info.pending_tasks.iter());
                 tasks.into_iter().collect()
             }
         };
 
-        // TODO (howardwu): Rewrite this section to replace the strawman approach. Shift contribution IDs
-        //  and move all affected contribution files by shifting their IDs down by 1.
-
         // Drop the contributor from the current round, and update participant info and coordinator state.
-        match participant {
-            Participant::Contributor(_) => {
-                // All contributors with a contribution ID less than the contribution ID of this
-                // contributor must recompute their contributions.
-                //
-                // The reset starts from index 1 as index 0 is the verified contribution file
-                // corresponding to the final response from the previous round.
-                for candidate_bucket_id in 1..participant_info.bucket_id {
-                    // Iterate through the current contributors to find the correct contributor,
-                    // who must exist in `self.current_contributors` as their progress is bounded
-                    // by the dropped contributor.
-                    for contributor_info in self.current_contributors.values_mut() {
-                        // Check if the current contributor is the correct contributor.
-                        if candidate_bucket_id == contributor_info.bucket_id {
-                            contributor_info.assigned_tasks = initialize_tasks(
-                                candidate_bucket_id,
-                                self.environment.number_of_chunks() as u64,
-                                self.number_of_contributors as u64,
-                            );
-                            contributor_info.pending_tasks = LinkedList::new();
-                            contributor_info.completed_tasks = LinkedList::new();
+        if participant.is_contributor() {
+            // TODO (howardwu): Optimization only.
+            //  -----------------------------------------------------------------------------------
+            //  Update this implementation to minimize recomputation by not re-assigning
+            //  tasks for affected contributors which are not affected by the dropped contributor.
+            //  It sounds like a mess, but is easier than you think, once you've loaded state.
+            //  In short, compute the minimum overlapping chunk ID between affected & dropped contributor,
+            //  and reinitialize from there. If there is no overlap, you can skip reinitializing
+            //  any tasks for the affected contributor.
+            //  -----------------------------------------------------------------------------------
 
-                            break;
-                        }
+            // Set the participant as dropped.
+            let mut dropped_info = participant_info.clone();
+            dropped_info.drop()?;
+
+            // Fetch the number of chunks and number of contributors.
+            let number_of_chunks = self.environment.number_of_chunks() as u64;
+            let number_of_contributors = self.number_of_contributors as u64;
+            let dropped_bucket_id = participant_info.bucket_id;
+
+            // Initialize sets for disposing and disposed tasks.
+            let mut disposing_tasks: HashSet<Task> = participant_info.pending_tasks.iter().cloned().collect();
+            let mut disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
+
+            // All contributors with a bucket ID below the bucket ID of the dropped participant
+            // must recompute their contributions.
+            for contributor_info in self.current_contributors.values_mut() {
+                // Check if the current contributor has a lower bucket ID.
+                if contributor_info.bucket_id < dropped_bucket_id {
+                    warn!("Resetting tasks for contributor {}", contributor_info.id);
+
+                    // Move the pending tasks to the disposing tasks.
+                    contributor_info.disposing_tasks = contributor_info.pending_tasks.clone();
+                    contributor_info.pending_tasks = LinkedList::new();
+
+                    // Add the disposing tasks to the cumulative disposing tasks.
+                    disposing_tasks.extend(contributor_info.disposing_tasks.iter());
+
+                    // Move the completed tasks to the disposed tasks.
+                    contributor_info.disposed_tasks = contributor_info.assigned_tasks.clone();
+                    contributor_info
+                        .disposed_tasks
+                        .extend(contributor_info.completed_tasks.iter());
+                    contributor_info.assigned_tasks = LinkedList::new();
+                    contributor_info.completed_tasks = LinkedList::new();
+
+                    // Add the disposed tasks to the cumulative disposed tasks.
+                    disposed_tasks.extend(contributor_info.disposed_tasks.iter());
+
+                    // Reassign tasks for the affected contributor.
+                    contributor_info.assigned_tasks =
+                        initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors);
+
+                    break;
+                }
+            }
+
+            // All verifiers assigned to affected tasks must dispose their affected pending tasks.
+            for verifier_info in self.current_verifiers.values_mut() {
+                // Filter the current verifier for pending tasks that have been disposed.
+                let mut pending_tasks = LinkedList::new();
+                for pending_task in verifier_info.pending_tasks.iter() {
+                    // Check if the newly disposed tasks contains this pending task.
+                    if disposed_tasks.contains(&pending_task) {
+                        // Move the pending task to the verifier's disposing tasks.
+                        verifier_info.disposing_tasks.push_back(pending_task.clone());
+                    } else {
+                        pending_tasks.push_back(pending_task.clone());
                     }
                 }
-
-                // Set the participant as dropped.
-                participant_info.drop()?;
-
-                // Remove the current verifier from the coordinator state.
-                self.current_contributors.remove(&participant);
-
-                // Add the participant info to the dropped participants.
-                self.dropped.push(participant_info);
+                verifier_info.pending_tasks = pending_tasks;
             }
-            Participant::Verifier(_) => {
-                // Add just the current pending tasks to a pending verifications list.
-                let mut pending_verifications = vec![];
-                for task in &tasks {
-                    pending_verifications.push((task.chunk_id, task.contribution_id));
+
+            // Remove the current verifier from the coordinator state.
+            self.current_contributors.remove(&participant);
+
+            // Add the participant info to the dropped participants.
+            self.dropped.push(dropped_info);
+
+            // Assign the coordinator contributor to the dropped tasks.
+            {
+                let contributor = self
+                    .environment
+                    .coordinator_contributors()
+                    .first()
+                    .ok_or(CoordinatorError::ContributorsMissing)?;
+
+                let round_height = self.current_round_height().clone();
+
+                if !self.current_contributors.contains_key(&contributor) {
+                    let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
+                    participant_info.start(initialize_tasks(
+                        bucket_id,
+                        self.environment.number_of_chunks(),
+                        self.number_of_contributors,
+                    ))?;
+                    trace!("{:?}", participant_info);
+
+                    self.current_contributors.insert(contributor.clone(), participant_info);
                 }
-
-                // Set the participant as dropped.
-                participant_info.drop()?;
-
-                // Remove the current verifier from the coordinator state.
-                self.current_verifiers.remove(&participant);
-
-                // TODO (howardwu): Make this operation atomic.
-                for (chunk_id, contribution_id) in pending_verifications {
-                    // Remove the task from the pending verifications.
-                    self.remove_pending_verification(chunk_id, contribution_id)?;
-
-                    // Reassign all pending verification tasks to new verifiers.
-                    self.add_pending_verification(chunk_id, contribution_id)?;
-                }
-
-                // Add the participant info to the dropped participants.
-                self.dropped.push(participant_info);
             }
+
+            warn!("Dropped {} from the ceremony", participant);
+
+            return Ok(Justification::DropCurrent(
+                participant.clone(),
+                bucket_id,
+                locked_chunks,
+                tasks,
+            ));
         }
 
-        // Assign the coordinator contributor to the dropped tasks.
-        {
-            let contributor = self
-                .environment
-                .coordinator_contributors()
-                .first()
-                .ok_or(CoordinatorError::ContributorsMissing)?;
-
-            let round_height = self.current_round_height().clone();
-
-            if self.current_contributors.contains_key(&contributor) {
-                let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
-                participant_info.start(initialize_tasks(
-                    bucket_id,
-                    self.environment.number_of_chunks(),
-                    self.number_of_contributors,
-                ))?;
-                trace!("{:?}", participant_info);
-
-                self.current_contributors.insert(contributor.clone(), participant_info);
+        // Reassign the pending verification tasks in the coordinator state to a new verifier.
+        if participant.is_verifier() {
+            // Add just the current pending tasks to a pending verifications list.
+            let mut pending_verifications = vec![];
+            for task in &tasks {
+                pending_verifications.push((task.chunk_id, task.contribution_id));
             }
+
+            // Set the participant as dropped.
+            let mut dropped_info = participant_info.clone();
+            dropped_info.drop()?;
+
+            // Remove the current verifier from the coordinator state.
+            self.current_verifiers.remove(&participant);
+
+            // TODO (howardwu): Make this operation atomic.
+            for (chunk_id, contribution_id) in pending_verifications {
+                // Remove the task from the pending verifications.
+                self.remove_pending_verification(chunk_id, contribution_id)?;
+
+                // Reassign the pending verification task to a new verifier.
+                self.add_pending_verification(chunk_id, contribution_id)?;
+            }
+
+            // Add the participant info to the dropped participants.
+            self.dropped.push(dropped_info);
+
+            warn!("Dropped {} from the ceremony", participant);
+
+            return Ok(Justification::DropCurrent(
+                participant.clone(),
+                bucket_id,
+                locked_chunks,
+                tasks,
+            ));
         }
 
-        debug!("{} was dropped from the ceremony", participant);
-
-        Ok(Justification::DropCurrent(
-            participant.clone(),
-            bucket_id,
-            locked_chunks,
-            tasks,
-        ))
+        Err(CoordinatorError::DropParticipantFailed)
     }
 
     ///
@@ -2153,9 +2469,9 @@ pub(crate) enum Justification {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct Task {
-    pub(crate) chunk_id: u64,
-    pub(crate) contribution_id: u64,
+pub struct Task {
+    chunk_id: u64,
+    contribution_id: u64,
 }
 
 impl Task {
@@ -2170,6 +2486,16 @@ impl Task {
     #[inline]
     pub fn contains(&self, chunk_id: u64) -> bool {
         self.chunk_id == chunk_id
+    }
+
+    #[inline]
+    pub fn chunk_id(&self) -> u64 {
+        self.chunk_id
+    }
+
+    #[inline]
+    pub fn contribution_id(&self) -> u64 {
+        self.contribution_id
     }
 }
 
