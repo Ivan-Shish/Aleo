@@ -12,106 +12,106 @@
         {
             "chunkId": "0",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_0/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "1",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_1/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "2",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_2/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "3",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_3/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "4",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_4/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "5",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_5/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "6",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_6/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         },
         {
             "chunkId": "7",
             "lockHolder": null,
-            "contributions": [
-                {
+            "contributions": {
+                "0": {
                     "contributorId": null,
                     "contributedLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_7/contribution_0.verified",
                     "verified": true
                 }
-            ]
+            }
         }
     ]
 }

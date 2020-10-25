@@ -869,7 +869,7 @@ mod tests {
     fn test_get_chunk() {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let expected = test_round_0_json().unwrap().chunks[0].clone();
+        let expected = test_round_0_json().unwrap().chunks.get(0).unwrap().clone();
         let candidate = test_round_0().unwrap().chunk(0).unwrap().clone();
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
@@ -880,7 +880,7 @@ mod tests {
     fn test_get_chunk_mut_basic() {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let expected = test_round_0_json().unwrap().chunks[0].clone();
+        let expected = test_round_0_json().unwrap().chunks.get(0).unwrap().clone();
         let candidate = test_round_0().unwrap().chunk_mut(0).unwrap().clone();
         print_diff(&expected, &candidate);
         assert_eq!(expected, candidate);
