@@ -1,5 +1,5 @@
 use phase1_coordinator::{
-    environment::{Development, Environment, Parameters, Production},
+    environment::{Development, Environment, Parameters},
     Coordinator,
 };
 
@@ -15,8 +15,9 @@ async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     // Set the environment.
-    // let environment: Environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
-    let environment: Environment = Production::from(Parameters::AleoInner).into();
+    let environment: Environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
+    // use phase1_coordinator::environment::Production;
+    // let environment: Environment = Production::from(Parameters::AleoInner).into();
 
     // Instantiate the coordinator.
     let coordinator = coordinator(&environment).await?;

@@ -481,7 +481,7 @@ impl Testing {
             "INFO" => Level::INFO,
             "DEBUG" => Level::DEBUG,
             "TRACE" => Level::TRACE,
-            _ => Level::INFO,
+            _ => Level::TRACE,
         };
         deployment
     }
@@ -593,7 +593,7 @@ impl Development {
             "INFO" => Level::INFO,
             "DEBUG" => Level::DEBUG,
             "TRACE" => Level::TRACE,
-            _ => Level::INFO,
+            _ => Level::DEBUG,
         };
         deployment
     }
@@ -711,7 +711,7 @@ impl Production {
             "INFO" => Level::INFO,
             "DEBUG" => Level::DEBUG,
             "TRACE" => Level::TRACE,
-            _ => Level::INFO,
+            _ => Level::DEBUG,
         };
         deployment
     }
