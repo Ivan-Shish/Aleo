@@ -1,4 +1,9 @@
-use crate::{environment::Environment, objects::Round, CoordinatorError, CoordinatorState};
+use crate::{
+    environment::Environment,
+    objects::{ContributionSignature, Round},
+    CoordinatorError,
+    CoordinatorState,
+};
 use phase1::helpers::CurveKind;
 
 use memmap::MmapMut;
@@ -28,7 +33,7 @@ pub enum Object {
     RoundState(Round),
     RoundFile(Vec<u8>),
     ContributionFile(Vec<u8>),
-    ContributionFileSignature(Vec<u8>),
+    ContributionFileSignature(ContributionSignature),
 }
 
 impl Object {
@@ -41,7 +46,9 @@ impl Object {
             Object::RoundState(round) => serde_json::to_vec_pretty(round).expect("round state to bytes failed"),
             Object::RoundFile(round) => round.to_vec(),
             Object::ContributionFile(contribution) => contribution.to_vec(),
-            Object::ContributionFileSignature(signature) => signature.to_vec(),
+            Object::ContributionFileSignature(signature) => {
+                serde_json::to_vec_pretty(signature).expect("contribution signature to bytes failed")
+            }
         }
     }
 
@@ -53,7 +60,7 @@ impl Object {
             Object::RoundState(_) => self.to_bytes().len() as u64,
             Object::RoundFile(round) => round.len() as u64,
             Object::ContributionFile(contribution) => contribution.len() as u64,
-            Object::ContributionFileSignature(signature) => signature.len() as u64,
+            Object::ContributionFileSignature(_) => self.to_bytes().len() as u64,
         }
     }
 
@@ -83,6 +90,15 @@ impl Object {
             (CurveKind::Bls12_377, false) => unverified_contribution_size!(Bls12_377, settings, chunk_id, compressed),
             (CurveKind::BW6, true) => verified_contribution_size!(BW6_761, settings, chunk_id, compressed),
             (CurveKind::BW6, false) => unverified_contribution_size!(BW6_761, settings, chunk_id, compressed),
+        }
+    }
+
+    /// Returns the expected file size of a contribution signature.
+    pub fn contribution_signature_file_size(verified: bool) -> u64 {
+        // TODO (raychu86): Calculate contribution signature file size instead of using hard coded values.
+        match verified {
+            true => 627,
+            false => 501,
         }
     }
 }
