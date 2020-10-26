@@ -50,7 +50,7 @@ impl ContributionSignature {
         debug!("Starting to create contribution signature");
 
         // Check that the signature is 64 bytes.
-        if hex::decode(&signature).len() != 64 {
+        if hex::decode(&signature)?.len() != 64 {
             return Err(CoordinatorError::ContributionSignatureSizeMismatch);
         }
 

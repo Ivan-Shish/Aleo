@@ -22,6 +22,7 @@ use tracing::{debug, error, info, trace, warn};
 #[derive(Debug)]
 pub enum CoordinatorError {
     AggregateContributionFileSizeMismatch,
+    ChallengeHashSizeInvalid,
     ChunkAlreadyComplete,
     ChunkAlreadyVerified,
     ChunkIdAlreadyAdded,
@@ -52,6 +53,8 @@ pub enum CoordinatorError {
     ContributionMissingVerifiedLocator,
     ContributionMissingVerifier,
     ContributionShouldNotExist,
+    ContributionSignatureFileSizeMismatch,
+    ContributionSignatureSizeMismatch,
     ContributionsComplete,
     ContributorAlreadyContributed,
     ContributorsMissing,
@@ -64,6 +67,7 @@ pub enum CoordinatorError {
     InitializationTranscriptsDiffer,
     Integer(std::num::ParseIntError),
     IOError(std::io::Error),
+    Hex(hex::FromHexError),
     JsonError(serde_json::Error),
     JustificationInvalid,
     LocatorDeserializationFailed,
@@ -74,6 +78,7 @@ pub enum CoordinatorError {
     LocatorFileNotOpen,
     LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
+    NextChallengeHashSizeInvalid,
     NextRoundAlreadyInPrecommit,
     NextRoundShouldBeEmpty,
     NumberOfChunksInvalid,
@@ -119,6 +124,7 @@ pub enum CoordinatorError {
     Phase1Setup(setup_utils::Error),
     QueueIsEmpty,
     QueueWaitTimeIncomplete,
+    ResponseHashSizeInvalid,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundAlreadyAggregated,
@@ -170,6 +176,12 @@ pub enum CoordinatorError {
 impl From<anyhow::Error> for CoordinatorError {
     fn from(error: anyhow::Error) -> Self {
         CoordinatorError::Error(error)
+    }
+}
+
+impl From<hex::FromHexError> for CoordinatorError {
+    fn from(error: hex::FromHexError) -> Self {
+        CoordinatorError::Hex(error)
     }
 }
 
