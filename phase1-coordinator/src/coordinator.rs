@@ -1,6 +1,6 @@
 use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
-    coordinator_state::{CoordinatorState, Justification, ParticipantInfo},
+    coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::Environment,
     objects::{participant::*, Round},
     storage::{Locator, Object, Storage, StorageLock},
@@ -55,6 +55,7 @@ pub enum CoordinatorError {
     ContributionsComplete,
     ContributorAlreadyContributed,
     ContributorsMissing,
+    CoordinatorStateNotInitialized,
     DropParticipantFailed,
     ExpectedContributor,
     ExpectedVerifier,
@@ -117,24 +118,29 @@ pub enum CoordinatorError {
     ParticipantWasDropped,
     Phase1Setup(setup_utils::Error),
     QueueIsEmpty,
+    QueueWaitTimeIncomplete,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
+    RoundAlreadyAggregated,
     RoundCommitFailedOrCorrupted,
     RoundContributorsMissing,
     RoundContributorsNotUnique,
     RoundDirectoryMissing,
     RoundDoesNotExist,
+    RoundFileMissing,
     RoundFileSizeMismatch,
     RoundHeightIsZero,
     RoundHeightMismatch,
     RoundHeightNotSet,
     RoundLocatorAlreadyExists,
     RoundLocatorMissing,
+    RoundNotAggregated,
     RoundNotComplete,
     RoundNotReady,
     RoundNumberOfContributorsUnauthorized,
     RoundNumberOfVerifiersUnauthorized,
     RoundShouldNotExist,
+    RoundStateMissing,
     RoundUpdateCorruptedStateOfContributors,
     RoundUpdateCorruptedStateOfVerifiers,
     RoundVerifiersMissing,
@@ -249,8 +255,7 @@ impl Coordinator {
             _ => return Err(CoordinatorError::StorageFailed),
         };
 
-        // TODO (howardwu): Isolate this and persist it securely on device.
-        // Load or initialize the seed for the contributor of the coordinator.
+        // Initialize the seed for the initial contribution.
         let mut seed: Seed = [0; SEED_LENGTH];
         rand::thread_rng().fill_bytes(&mut seed[..]);
 
@@ -288,13 +293,13 @@ impl Coordinator {
 
             {
                 // Acquire the storage write lock.
-                let mut storage = self.storage.write().unwrap();
+                let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
                 // Acquire the state write lock.
                 let mut state = self.state.write().unwrap();
 
-                // Set the current round height to initialize coordinator state.
-                state.set_current_round_height(current_round_height);
+                // Initialize the coordinator state to the current round height.
+                state.initialize(current_round_height);
 
                 // Add the contributor and verifier of the coordinator to execute round 1.
                 state.add_to_queue(contributor.clone(), 10)?;
@@ -304,7 +309,7 @@ impl Coordinator {
                 state.update_queue()?;
 
                 // Save the coordinator state in storage.
-                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+                state.save(&mut storage)?;
             }
 
             info!("Initializing round 1");
@@ -317,18 +322,6 @@ impl Coordinator {
                 self.verify(&verifier)?;
             }
             info!("Added contributions and verifications for round 1");
-        } else {
-            // Acquire the storage write lock.
-            let mut storage = self.storage.write().unwrap();
-
-            // Acquire the state write lock.
-            let mut state = self.state.write().unwrap();
-
-            // Set the current round height to initialize coordinator state.
-            state.set_current_round_height(current_round_height);
-
-            // Save the coordinator state in storage.
-            storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
         }
 
         info!("{}", serde_json::to_string_pretty(&self.current_round()?)?);
@@ -342,8 +335,8 @@ impl Coordinator {
     ///
     #[inline]
     pub fn update(&self) -> Result<(), CoordinatorError> {
-        // Process updates for the current round and check if the current round is finished.
-        let (is_current_round_finished, is_precommit_next_round_ready) = {
+        // Process ceremony updates for the current round and queue.
+        let (is_current_round_finished, is_current_round_aggregated) = {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -352,39 +345,77 @@ impl Coordinator {
 
             info!("\n{}", state.status_report());
 
+            // Update the metrics for the current round and participants.
+            state.update_round_metrics();
+            state.save(&mut storage)?;
+
             // Update the state of the queue.
             state.update_queue()?;
+            state.save(&mut storage)?;
 
             // Update the state of current round contributors.
             state.update_current_contributors()?;
+            state.save(&mut storage)?;
 
             // Update the state of current round verifiers.
             state.update_current_verifiers()?;
+            state.save(&mut storage)?;
 
             // Drop disconnected participants from the current round.
             for justification in state.update_dropped_participants()? {
                 // Update the round to reflect the coordinator state changes.
                 self.process_coordinator_state_change(&mut storage, &justification)?;
             }
+            state.save(&mut storage)?;
 
             // Ban any participants who meet the coordinator criteria.
             state.update_banned_participants()?;
+            state.save(&mut storage)?;
 
-            // Save the coordinator state in storage.
-            storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
-
-            // Check if the current round is finished and precommit to next round is ready.
-            (state.is_current_round_finished(), state.is_precommit_next_round_ready())
+            // Check if the current round is finished and if the current round is aggregated.
+            (state.is_current_round_finished(), state.is_current_round_aggregated())
         };
 
-        // Check if the current round is finished and the next round is ready.
-        if is_current_round_finished && is_precommit_next_round_ready {
+        // Try aggregating the current round if the current round is finished,
+        // and has not yet been aggregated.
+        let (is_current_round_aggregated, is_precommit_next_round_ready) = {
+            // Check if the coordinator should aggregate, and attempt aggregation.
+            if is_current_round_finished && !is_current_round_aggregated {
+                self.try_aggregate()?;
+                info!("Aggregated the current round");
+
+                // Acquire the storage write lock.
+                let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+                // Acquire the state write lock.
+                let mut state = self.state.write().unwrap();
+
+                // Update the metrics for the current round and participants.
+                state.update_round_metrics();
+                state.save(&mut storage)?;
+            }
+
+            // Acquire the state read lock.
+            let state = self.state.read().unwrap();
+
+            // Check if the current round is aggregated, and if the precommit for
+            // the next round is ready.
+            (
+                state.is_current_round_aggregated(),
+                state.is_precommit_next_round_ready(),
+            )
+        };
+
+        // Try advancing to the next round if the current round is finished,
+        // the current round has been aggregated, and the precommit for
+        // the next round is now ready.
+        if is_current_round_finished && is_current_round_aggregated && is_precommit_next_round_ready {
             // Backup a copy of the current coordinator.
 
             // Attempt to advance to the next round.
             let next_round_height = self.try_advance()?;
 
-            trace!("Advanced ceremony to round {}", next_round_height);
+            info!("Advanced ceremony to round {}", next_round_height);
         }
 
         Ok(())
@@ -399,7 +430,7 @@ impl Coordinator {
             warn!("\n\nATTENTION - Coordinator is shutting down...\n");
 
             // Acquire the storage lock.
-            let mut storage = self.storage.write().unwrap();
+            let mut storage = StorageLock::Write(self.storage.write().unwrap());
             trace!("Coordinator has acquired the storage lock");
 
             // Acquire the coordinator state lock.
@@ -407,8 +438,7 @@ impl Coordinator {
             trace!("Coordinator has acquired the state lock");
 
             // Save the coordinator state to storage.
-            let object = Object::CoordinatorState(state.clone());
-            storage.update(&Locator::CoordinatorState, object).unwrap();
+            state.save(&mut storage).unwrap();
             debug!("Coordinator has safely shutdown storage");
 
             // Print the final coordinator state.
@@ -511,6 +541,17 @@ impl Coordinator {
     }
 
     ///
+    /// Returns the metrics for the current round and current round participants.
+    ///
+    #[inline]
+    pub fn current_round_metrics(&self) -> Option<RoundMetrics> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the current round metrics.
+        state.current_round_metrics()
+    }
+
+    ///
     /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
@@ -525,7 +566,7 @@ impl Coordinator {
         state.add_to_queue(participant, reliability_score)?;
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         Ok(())
     }
@@ -545,7 +586,7 @@ impl Coordinator {
         state.remove_from_queue(participant)?;
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         Ok(())
     }
@@ -568,7 +609,7 @@ impl Coordinator {
         let locators = self.process_coordinator_state_change(&mut storage, &justification)?;
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         Ok(locators)
     }
@@ -591,7 +632,7 @@ impl Coordinator {
         let locators = self.process_coordinator_state_change(&mut storage, &justification)?;
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         Ok(locators)
     }
@@ -611,7 +652,7 @@ impl Coordinator {
         state.unban_participant(participant);
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         Ok(())
     }
@@ -835,7 +876,7 @@ impl Coordinator {
                 state.acquired_lock(participant, chunk_id)?;
 
                 // Save the coordinator state in storage.
-                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+                state.save(&mut storage)?;
 
                 info!("Acquired lock on chunk {} for {}", chunk_id, participant);
                 Ok((
@@ -853,7 +894,7 @@ impl Coordinator {
                 state.rollback_pending_task(participant, chunk_id, contribution_id)?;
 
                 // Save the coordinator state in storage.
-                storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+                state.save(&mut storage)?;
 
                 error!("{}", error);
                 return Err(error);
@@ -925,7 +966,7 @@ impl Coordinator {
                     state.completed_task(participant, chunk_id, contribution_id)?;
 
                     // Save the coordinator state in storage.
-                    storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+                    state.save(&mut storage)?;
 
                     info!("Added contribution from {} for chunk {}", participant, chunk_id);
                     return Ok(locator);
@@ -1015,7 +1056,7 @@ impl Coordinator {
                     state.completed_task(participant, chunk_id, contribution_id)?;
 
                     // Save the coordinator state in storage.
-                    storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+                    state.save(&mut storage)?;
 
                     info!("Added verification from {} for chunk {}", participant, chunk_id);
                     return Ok(());
@@ -1044,6 +1085,75 @@ impl Coordinator {
         }
 
         Err(CoordinatorError::VerificationFailed)
+    }
+
+    ///
+    /// Attempts to aggregate the contributions of the current round of the ceremony.
+    ///
+    #[inline]
+    pub fn try_aggregate(&self) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Check that the current round height matches in storage and state.
+        let current_round_height = {
+            // Fetch the current round height from storage.
+            let current_round_height_in_storage = Self::load_current_round_height(&storage)?;
+            trace!("Current round height in storage is {}", current_round_height_in_storage);
+
+            // Fetch the current round height from coordinator state.
+            let current_round_height = state.current_round_height();
+            trace!("Current round height in coordinator state is {}", current_round_height);
+
+            // Check that the current round height matches in storage and state.
+            match current_round_height_in_storage == current_round_height {
+                true => current_round_height,
+                false => return Err(CoordinatorError::RoundHeightMismatch),
+            }
+        };
+
+        // Check that the current round is finished by contributors and verifiers.
+        if !state.is_current_round_finished() {
+            error!("Coordinator state shows round {} is not finished", current_round_height);
+            return Err(CoordinatorError::RoundNotReady);
+        }
+
+        // Check that the current round has not been aggregated.
+        if state.is_current_round_aggregated() {
+            error!("Coordinator state shows round {} was aggregated", current_round_height);
+            return Err(CoordinatorError::RoundAlreadyAggregated);
+        }
+
+        // Update the coordinator state to set the start of aggregation for the current round.
+        state.aggregating_current_round()?;
+
+        // Attempt to aggregate the current round.
+        trace!("Trying to aggregate the current round");
+        match self.aggregate_contributions(&mut storage) {
+            // Case 1a - Coordinator aggregated the current round.
+            Ok(()) => {
+                info!("Coordinator has aggregated round {}", current_round_height);
+
+                // Set the current round as aggregated in coordinator state.
+                state.aggregated_current_round()?;
+
+                // Check that the current round has now been aggregated.
+                if !state.is_current_round_aggregated() {
+                    error!("Coordinator state says round {} isn't aggregated", current_round_height);
+                    return Err(CoordinatorError::RoundAggregationFailed);
+                }
+
+                Ok(())
+            }
+            // Case 1b - Coordinator failed to aggregate the current round.
+            Err(error) => {
+                error!("Coordinator failed to aggregate the current round\n{}", error);
+                Err(error)
+            }
+        }
     }
 
     ///
@@ -1112,7 +1222,7 @@ impl Coordinator {
         };
 
         // Save the coordinator state in storage.
-        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        state.save(&mut storage)?;
 
         result
     }
@@ -1397,6 +1507,91 @@ impl Coordinator {
     }
 
     ///
+    /// Aggregates the contributions for the current round of the ceremony.
+    ///
+    /// This function loads the current round from storage and checks that
+    /// it is fully verified before proceeding to aggregate the round, and
+    /// initialize the next round, saving it to storage for the coordinator.
+    ///
+    /// On success, the function returns the new round height.
+    /// Otherwise, it returns a `CoordinatorError`.
+    ///
+    #[inline]
+    pub(crate) fn aggregate_contributions(&self, mut storage: &mut StorageLock) -> Result<(), CoordinatorError> {
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        trace!("Current round height from storage is {}", current_round_height);
+
+        // This function executes aggregation of the current round in preparation
+        // for transitioning to the next round. If this is the initial round,
+        // there should be nothing to aggregate and we return a `CoordinatorError`.
+        if current_round_height == 0 {
+            error!("Unauthorized to aggregate round 0");
+            return Err(CoordinatorError::RoundDoesNotExist);
+        }
+
+        // Check that the current round state exists in storage.
+        if !storage.exists(&Locator::RoundState(current_round_height)) {
+            return Err(CoordinatorError::RoundStateMissing);
+        }
+
+        // Check that the next round state does not exist in storage.
+        if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+            return Err(CoordinatorError::RoundShouldNotExist);
+        }
+
+        // Check that the current round file does not exist.
+        let round_file = Locator::RoundFile(current_round_height);
+        if storage.exists(&round_file) {
+            error!("Round file locator already exists ({})", storage.to_path(&round_file)?);
+            return Err(CoordinatorError::RoundLocatorAlreadyExists);
+        }
+
+        // Fetch the current round from storage.
+        let round = Self::load_current_round(&storage)?;
+
+        // Check that the final unverified and verified contribution locators exist.
+        let contribution_id = round.expected_number_of_contributions() - 1;
+        for chunk_id in 0..self.environment.number_of_chunks() {
+            // Check that the final unverified contribution locator exists.
+            let locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+            if !storage.exists(&locator) {
+                error!("Unverified contribution is missing ({})", storage.to_path(&locator)?);
+                return Err(CoordinatorError::ContributionMissing);
+            }
+            // Check that the final verified contribution locator exists.
+            let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+            if !storage.exists(&locator) {
+                error!("Verified contribution is missing ({})", storage.to_path(&locator)?);
+                return Err(CoordinatorError::ContributionMissing);
+            }
+        }
+
+        // Check that all chunks in the current round are verified.
+        if !round.is_complete() {
+            error!("Round {} is not complete", current_round_height);
+            trace!("{:#?}", &round);
+            return Err(CoordinatorError::RoundNotComplete);
+        }
+
+        // Execute round aggregation and aggregate verification for the current round.
+        {
+            debug!("Coordinator is starting aggregation and aggregate verification");
+            Aggregation::run(&self.environment, &mut storage, &round)?;
+            debug!("Coordinator completed aggregation and aggregate verification");
+        }
+
+        // Check that the round file for the current round now exists.
+        if !storage.exists(&round_file) {
+            error!("Round file locator is missing ({})", storage.to_path(&round_file)?);
+            return Err(CoordinatorError::RoundFileMissing);
+        }
+
+        Ok(())
+    }
+
+    ///
     /// Initiates the next round of the ceremony.
     ///
     /// If there are no prior rounds in storage, this initializes a new ceremony
@@ -1405,11 +1600,6 @@ impl Coordinator {
     /// Otherwise, this loads the current round from storage and checks that
     /// it is fully verified before proceeding to aggregate the round, and
     /// initialize the next round, saving it to storage for the coordinator.
-    ///
-    /// In a test environment, this function resets the transcript for the
-    /// coordinator when round height is 0.
-    /// In a development or production environment, this does NOT reset the
-    /// transcript for the coordinator.
     ///
     /// On success, the function returns the new round height.
     /// Otherwise, it returns a `CoordinatorError`.
@@ -1452,7 +1642,7 @@ impl Coordinator {
             }
 
             // Create an instantiation of `Round` for round 0.
-            let round = {
+            let mut round = {
                 // Initialize the contributors as an empty list as this is for initialization.
                 let contributors = vec![];
 
@@ -1517,6 +1707,9 @@ impl Coordinator {
                 }
             }
 
+            // Set the finished time for round 0.
+            round.try_finish(Utc::now());
+
             // Add the new round to storage.
             storage.insert(Locator::RoundState(current_round_height), Object::RoundState(round))?;
 
@@ -1524,74 +1717,16 @@ impl Coordinator {
             debug!("Completed initialization of round {}", current_round_height);
         }
 
-        // Execute aggregation of the current round in preparation for
-        // transitioning to the next round. If this is the initial round,
-        // there should be nothing to aggregate and we may continue.
+        // Ensure the current round has been aggregated if this is not the initial round.
         if current_round_height != 0 {
-            // Check that the current round exists in storage.
-            if !storage.exists(&Locator::RoundState(current_round_height)) {
-                return Err(CoordinatorError::RoundLocatorMissing);
+            // Check that the round file for the current round exists.
+            let round_file = Locator::RoundFile(current_round_height);
+            if !storage.exists(&round_file) {
+                error!("Round file locator is missing ({})", storage.to_path(&round_file)?);
+                warn!("Coordinator may be missing a call to `try_aggregate` for the current round");
+                return Err(CoordinatorError::RoundFileMissing);
             }
-
-            // Check that the next round does not exist in storage.
-            if storage.exists(&Locator::RoundState(current_round_height + 1)) {
-                return Err(CoordinatorError::RoundShouldNotExist);
-            }
-
-            // TODO (howardwu): Check that all locks have been released.
-
-            // Fetch the current round from storage.
-            let round = Self::load_current_round(&storage)?;
-
-            // Check that all chunks in the current round are verified,
-            // so that we may transition to the next round.
-            if !round.is_complete() {
-                error!(
-                    "Round {} is not complete and next round is not starting",
-                    current_round_height
-                );
-                trace!("{:#?}", &round);
-                return Err(CoordinatorError::RoundNotComplete);
-            }
-
-            // Execute round aggregation and aggregate verification on the current round.
-            {
-                let contribution_id = round.expected_number_of_contributions() - 1;
-                for chunk_id in 0..self.environment.number_of_chunks() {
-                    // Check that the final unverified contribution locator exists.
-                    let locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
-                    if !storage.exists(&locator) {
-                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
-                        return Err(CoordinatorError::ContributionMissing);
-                    }
-                    // Check that the final verified contribution locator exists.
-                    let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
-                    if !storage.exists(&locator) {
-                        error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
-                        return Err(CoordinatorError::ContributionMissing);
-                    }
-                }
-
-                // Check that the round locator does not exist.
-                let round_locator = Locator::RoundFile(current_round_height);
-                if storage.exists(&round_locator) {
-                    error!("Round locator already exists ({})", storage.to_path(&round_locator)?);
-                    return Err(CoordinatorError::RoundLocatorAlreadyExists);
-                }
-
-                // TODO (howardwu): Add aggregate verification logic.
-                // Execute aggregation to combine on all chunks to finalize the round
-                // corresponding to the given round height.
-                debug!("Coordinator is starting aggregation");
-                Aggregation::run(&self.environment, &mut storage, &round)?;
-                debug!("Coordinator completed aggregation");
-
-                // Check that the round locator now exists.
-                if !storage.exists(&round_locator) {
-                    error!("Round locator is missing ({})", storage.to_path(&round_locator)?);
-                    return Err(CoordinatorError::RoundLocatorMissing);
-                }
-            }
+            // self.aggregate_contributions(&mut storage)?;
         }
 
         // Create the new round height.
@@ -2081,9 +2216,17 @@ mod tests {
 
         // Check that round 0 matches the round 0 JSON specification.
         {
+            let now = Utc::now();
+
             // Fetch round 0 from coordinator.
-            let expected = test_round_0_json()?;
-            let candidate = coordinator.get_round(0)?;
+            let mut expected = test_round_0_json()?;
+            let mut candidate = coordinator.get_round(0)?;
+
+            // Set the finish time to match.
+            println!("{} {}", expected.is_complete(), candidate.is_complete());
+            expected.try_finish_testing_only_unsafe(now.clone());
+            candidate.try_finish_testing_only_unsafe(now);
+
             print_diff(&expected, &candidate);
             assert_eq!(expected, candidate);
         }
@@ -2257,18 +2400,19 @@ mod tests {
         }
 
         // Add contribution for round 1 chunk 0 contribution 1.
+        let chunk_id = 0;
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(storage.write().unwrap());
 
             // Add round 1 chunk 0 contribution 1.
-            let chunk_id = 0;
             assert!(
                 coordinator
                     .add_contribution(&mut storage, chunk_id, &contributor)
                     .is_ok()
             );
-
+        }
+        {
             // Check chunk 0 lock is released.
             let round = coordinator.current_round()?;
             let chunk = round.chunk(chunk_id)?;
@@ -2631,9 +2775,12 @@ mod tests {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(storage.write().unwrap());
 
-            // Run aggregation and transition from round 1 to round 2.
-            coordinator.next_round(&mut storage, Utc::now(), contributors, vec![verifier.clone()])?;
+            // Run aggregation for round 1.
+            coordinator.aggregate_contributions(&mut storage)?;
         }
+
+        // Check that the round is still round 1, as try_advance has not been called.
+        assert_eq!(1, coordinator.current_round_height()?);
 
         println!(
             "Finished aggregation with this transcript {}",
@@ -2788,11 +2935,17 @@ mod tests {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(storage.write().unwrap());
 
+            // Run aggregation for round 1.
+            coordinator.aggregate_contributions(&mut storage)?;
+
             // Run aggregation and transition from round 1 to round 2.
             coordinator.next_round(&mut storage, Utc::now(), vec![contributor.clone()], vec![
                 verifier.clone(),
             ])?;
         }
+
+        // Check that the ceremony has advanced to round 2.
+        assert_eq!(2, coordinator.current_round_height()?);
 
         info!(
             "Finished aggregation with this transcript {}",
@@ -2803,10 +2956,9 @@ mod tests {
     }
 
     #[test]
-    #[named]
     #[serial]
     fn test_coordinator_initialization_matches_json() {
-        test_report!(coordinator_initialization_matches_json_test);
+        coordinator_initialization_matches_json_test().unwrap();
     }
 
     #[test]

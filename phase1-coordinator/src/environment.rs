@@ -5,6 +5,7 @@ use crate::{
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -167,6 +168,8 @@ pub struct Environment {
     allow_current_contributors_in_queue: bool,
     /// The setting to allow current verifiers to join the queue for the next round.
     allow_current_verifiers_in_queue: bool,
+    /// The minimum number of seconds to wait after aggregation before starting the next round.
+    queue_wait_time: u64,
 
     /// The contributors managed by the coordinator.
     coordinator_contributors: Vec<Participant>,
@@ -312,6 +315,14 @@ impl Environment {
     }
 
     ///
+    /// Returns the minimum number of seconds to wait after aggregation
+    /// before starting the next round.
+    ///
+    pub const fn queue_wait_time(&self) -> u64 {
+        self.queue_wait_time
+    }
+
+    ///
     /// Returns the contributors managed by the coordinator.
     ///
     /// The primary purpose of this is to establish an identity for the coordinator
@@ -424,6 +435,30 @@ impl Testing {
         deployment.environment.maximum_contributors_per_round = maximum;
         deployment
     }
+
+    #[inline]
+    pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
+        // Check that all participants are contributors.
+        if contributors.into_par_iter().filter(|p| !p.is_contributor()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator contributors with non-contributors.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_contributors = contributors.to_vec();
+        deployment
+    }
+
+    #[inline]
+    pub fn coordinator_verifiers(&self, verifiers: &[Participant]) -> Self {
+        // Check that all participants are verifiers.
+        if verifiers.into_par_iter().filter(|p| !p.is_verifier()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator verifiers with non-verifiers.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_verifiers = verifiers.to_vec();
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -462,6 +497,7 @@ impl std::default::Default for Testing {
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
+                queue_wait_time: 0,
 
                 coordinator_contributors: vec![Participant::new_contributor("testing-coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("testing-coordinator-verifier")],
@@ -494,6 +530,30 @@ impl Development {
     pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
         let mut deployment = self.clone();
         deployment.environment.maximum_contributors_per_round = maximum;
+        deployment
+    }
+
+    #[inline]
+    pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
+        // Check that all participants are contributors.
+        if contributors.into_par_iter().filter(|p| !p.is_contributor()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator contributors with non-contributors.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_contributors = contributors.to_vec();
+        deployment
+    }
+
+    #[inline]
+    pub fn coordinator_verifiers(&self, verifiers: &[Participant]) -> Self {
+        // Check that all participants are verifiers.
+        if verifiers.into_par_iter().filter(|p| !p.is_verifier()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator verifiers with non-verifiers.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_verifiers = verifiers.to_vec();
         deployment
     }
 }
@@ -540,6 +600,7 @@ impl std::default::Default for Development {
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
+                queue_wait_time: 0,
 
                 coordinator_contributors: vec![Participant::new_contributor("development-coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("development-coordinator-verifier")],
@@ -572,6 +633,30 @@ impl Production {
     pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
         let mut deployment = self.clone();
         deployment.environment.maximum_contributors_per_round = maximum;
+        deployment
+    }
+
+    #[inline]
+    pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
+        // Check that all participants are contributors.
+        if contributors.into_par_iter().filter(|p| !p.is_contributor()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator contributors with non-contributors.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_contributors = contributors.to_vec();
+        deployment
+    }
+
+    #[inline]
+    pub fn coordinator_verifiers(&self, verifiers: &[Participant]) -> Self {
+        // Check that all participants are verifiers.
+        if verifiers.into_par_iter().filter(|p| !p.is_verifier()).count() > 0 {
+            panic!("Specifying to environment a list of coordinator verifiers with non-verifiers.")
+        }
+
+        let mut deployment = self.clone();
+        deployment.environment.coordinator_verifiers = verifiers.to_vec();
         deployment
     }
 }
@@ -612,6 +697,7 @@ impl std::default::Default for Production {
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
+                queue_wait_time: 30,
 
                 coordinator_contributors: vec![Participant::new_contributor("coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("coordinator-verifier")],

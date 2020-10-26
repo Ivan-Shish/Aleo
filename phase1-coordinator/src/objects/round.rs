@@ -596,11 +596,9 @@ impl Round {
         self.chunk_mut(chunk_id)?
             .verify_contribution(contribution_id, participant, verified_locator)?;
 
-        // If the chunk is complete and the finished at timestamp has not been set yet,
+        // If all chunks are complete and the finished at timestamp has not been set yet,
         // then set it with the current UTC timestamp.
-        if self.is_complete() && self.finished_at.is_none() {
-            self.finished_at = Some(Utc::now());
-        }
+        self.try_finish(Utc::now());
 
         Ok(())
     }
@@ -794,6 +792,28 @@ impl Round {
         }
 
         Ok(())
+    }
+
+    ///
+    /// If all chunks are complete and the finished at timestamp has not been set yet,
+    /// then set it with the current UTC timestamp.
+    ///
+    pub(crate) fn try_finish(&mut self, timestamp: DateTime<Utc>) {
+        if self.is_complete() && self.finished_at.is_none() {
+            self.finished_at = Some(timestamp);
+        }
+    }
+
+    ///
+    /// If all chunks are complete, then set it with the current UTC timestamp.
+    ///
+    #[cfg(test)]
+    pub(crate) fn try_finish_testing_only_unsafe(&mut self, timestamp: DateTime<Utc>) {
+        if self.is_complete() {
+            warn!("Modifying finished_at timestamp for testing only");
+            self.finished_at = Some(timestamp);
+            warn!("Modified finished_at timestamp for testing only");
+        }
     }
 }
 

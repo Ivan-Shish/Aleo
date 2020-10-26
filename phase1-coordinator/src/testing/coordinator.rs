@@ -7,15 +7,19 @@ use crate::{
 };
 
 use chrono::{DateTime, TimeZone, Utc};
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 use serial_test::serial;
 use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tracing::{error, info, warn, Level};
+use tracing::*;
 
+#[cfg(not(feature = "silent"))]
+use once_cell::sync::OnceCell;
+
+#[cfg(not(feature = "silent"))]
 static INSTANCE: OnceCell<()> = OnceCell::new();
 
 lazy_static! {
@@ -99,6 +103,9 @@ pub(crate) fn test_logger() {
         tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     });
 }
+
+#[cfg(feature = "silent")]
+pub(crate) fn test_logger() {}
 
 /// Clears the transcript directory for testing purposes only.
 fn clear_test_storage(environment: &Environment) {

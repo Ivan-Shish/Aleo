@@ -33,13 +33,13 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment)?;
 
-    // Initialize the ceremony to round 1.
+    // Initialize the ceremony and run round 1.
     assert_eq!(0, coordinator.current_round_height()?);
     coordinator.initialize()?;
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
 
-    // Add a contributor and verifier to the queue.
+    // Meanwhile, add a contributor and verifier to the queue.
     let contributor = create_contributor("1");
     let verifier = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
@@ -47,20 +47,20 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     assert_eq!(1, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Update the ceremony to round 2.
+    // Advance the ceremony from round 1 to round 2.
     coordinator.update()?;
     assert_eq!(2, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
-    // Contribute and verify up to the penultimate chunk.
+    // Run contribution and verification for round 2.
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor)?;
         coordinator.verify(&verifier)?;
     }
 
     //
-    // Add a contributor and verifier to the queue.
+    // Meanwhile, add a contributor and verifier to the queue.
     //
     // Note: This logic for adding to the queue works because
     // `Environment::allow_current_contributors_in_queue`
@@ -75,7 +75,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     assert_eq!(1, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Update the ceremony to round 3.
+    // Update the ceremony from round 2 to round 3.
     coordinator.update()?;
     assert_eq!(3, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());

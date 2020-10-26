@@ -1,6 +1,12 @@
-use crate::{environment::Environment, objects::participant::*, CoordinatorError};
+use crate::{
+    environment::Environment,
+    objects::participant::*,
+    storage::{Locator, Object, StorageLock},
+    CoordinatorError,
+};
+use phase1::ProvingSystem;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rayon::prelude::*;
 use serde::{
     de::{self, Deserializer, Error},
@@ -771,6 +777,34 @@ impl ParticipantInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoundMetrics {
+    /// The number of contributors participating in the current round.
+    number_of_contributors: u64,
+    /// The number of verifiers participating in the current round.
+    number_of_verifiers: u64,
+    /// The boolean for denoting if the current round has been aggregated by the coordinator.
+    is_round_aggregated: bool,
+    /// The map of participants to their tasks and corresponding start and end timers.
+    task_timer: HashMap<Participant, HashMap<Task, (i64, Option<i64>)>>,
+    /// The map of participants to their average seconds per task.
+    seconds_per_task: HashMap<Participant, u64>,
+    /// The average seconds per task calculated from all current contributors.
+    contributor_average_per_task: Option<u64>,
+    /// The average seconds per task calculated from all current verifiers.
+    verifier_average_per_task: Option<u64>,
+    /// The timestamp when the coordinator started aggregation of the current round.
+    started_aggregation_at: Option<DateTime<Utc>>,
+    /// The timestamp when the coordinator finished aggregation of the current round.
+    finished_aggregation_at: Option<DateTime<Utc>>,
+    /// The estimated number of seconds remaining for the current round to finish.
+    estimated_finish_time: Option<u64>,
+    /// The estimated number of seconds remaining until the queue is closed for the next round.
+    estimated_wait_time: Option<u64>,
+    /// The timestamp of the earliest start time for the next round.
+    next_round_after: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorState {
     /// The parameters and settings of this coordinator.
     environment: Environment,
@@ -780,7 +814,9 @@ pub struct CoordinatorState {
     queue: HashMap<Participant, (u8, Option<u64>)>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
-    /// The current round height of the ceremony.
+    /// The metrics for the current round of the ceremony.
+    current_metrics: Option<RoundMetrics>,
+    /// The height for the current round of the ceremony.
     current_round_height: Option<u64>,
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
@@ -796,8 +832,6 @@ pub struct CoordinatorState {
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
     banned: Vec<Participant>,
-    /// TODO (howardwu): Remove this and formalize a round metadata struct.
-    number_of_contributors: u64,
 }
 
 impl CoordinatorState {
@@ -811,6 +845,7 @@ impl CoordinatorState {
             status: CoordinatorStatus::Initializing,
             queue: HashMap::default(),
             next: HashMap::default(),
+            current_metrics: None,
             current_round_height: None,
             current_contributors: HashMap::default(),
             current_verifiers: HashMap::default(),
@@ -819,9 +854,50 @@ impl CoordinatorState {
             finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
             banned: Vec::new(),
-            /// TODO (howardwu): Remove this and formalize a round metadata struct.
-            number_of_contributors: 0,
         }
+    }
+
+    ///
+    /// Initializes the coordinator state by setting the round height & metrics, and instantiating
+    /// the finished contributors and verifiers map for the given round in the coordinator state.
+    ///
+    #[inline]
+    pub(super) fn initialize(&mut self, current_round_height: u64) {
+        // Set the current round height to the given round height.
+        if self.current_round_height.is_none() {
+            self.current_round_height = Some(current_round_height);
+        }
+
+        // Initialize the metrics for this round.
+        if self.current_metrics.is_none() {
+            self.current_metrics = Some(RoundMetrics {
+                number_of_contributors: 0,
+                number_of_verifiers: 0,
+                is_round_aggregated: false,
+                task_timer: HashMap::new(),
+                seconds_per_task: HashMap::new(),
+                contributor_average_per_task: None,
+                verifier_average_per_task: None,
+                started_aggregation_at: None,
+                finished_aggregation_at: None,
+                estimated_finish_time: None,
+                estimated_wait_time: None,
+                next_round_after: None,
+            });
+        }
+
+        // Initialize the finished contributors map for the current round, if it does not exist.
+        if !self.finished_contributors.contains_key(&current_round_height) {
+            self.finished_contributors.insert(current_round_height, HashMap::new());
+        }
+
+        // Initialize the finished verifiers map for the current round, if it does not exist.
+        if !self.finished_verifiers.contains_key(&current_round_height) {
+            self.finished_verifiers.insert(current_round_height, HashMap::new());
+        }
+
+        // Set the status to initialized.
+        self.status = CoordinatorStatus::Initialized;
     }
 
     ///
@@ -971,21 +1047,11 @@ impl CoordinatorState {
     }
 
     ///
-    /// Updates the current round height stored in the coordinator state.
+    /// Returns the metrics for the current round and current round participants.
     ///
     #[inline]
-    pub(super) fn set_current_round_height(&mut self, current_round_height: u64) {
-        // Set the current round height to the given round height.
-        self.current_round_height = Some(current_round_height);
-
-        // Initialize the finished contributors map for the current round.
-        self.finished_contributors.insert(current_round_height, HashMap::new());
-
-        // Initialize the finished verifiers map for the current round.
-        self.finished_verifiers.insert(current_round_height, HashMap::new());
-
-        // Set the status to initialized.
-        self.status = CoordinatorStatus::Initialized;
+    pub(super) fn current_round_metrics(&self) -> Option<RoundMetrics> {
+        self.current_metrics.clone()
     }
 
     ///
@@ -999,6 +1065,17 @@ impl CoordinatorState {
             && self.current_contributors.is_empty()
             // Check that all current verifiers are finished.
             && self.current_verifiers.is_empty()
+    }
+
+    ///
+    /// Returns `true` if the current round has been aggregated.
+    ///
+    #[inline]
+    pub(super) fn is_current_round_aggregated(&self) -> bool {
+        match &self.current_metrics {
+            Some(metrics) => metrics.is_round_aggregated,
+            None => false,
+        }
     }
 
     ///
@@ -1027,6 +1104,25 @@ impl CoordinatorState {
         if self.current_round_height.is_none() {
             warn!("Current round height is not set in the coordinator state");
             return false;
+        }
+
+        // Check that the current round has been aggregated.
+        if self.current_round_height() > 0 && !self.is_current_round_aggregated() {
+            trace!("Current round has not been aggregated");
+            return false;
+        }
+
+        // Check that the time to trigger the next round has been reached.
+        if let Some(metrics) = &self.current_metrics {
+            if let Some(next_round_after) = metrics.next_round_after {
+                if Utc::now() < next_round_after {
+                    trace!("Required queue wait time has not been reached yet");
+                    return false;
+                }
+            } else {
+                trace!("Required queue wait time has not been set yet");
+                return false;
+            }
         }
 
         // Fetch the next round height.
@@ -1173,7 +1269,11 @@ impl CoordinatorState {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Check that the participant is holding less than the chunk lock limit.
                 Some(participant_info) => match participant_info.locked_chunks.len() < contributor_limit {
-                    true => Ok(participant_info.pop_task()?),
+                    true => {
+                        let task = participant_info.pop_task()?;
+                        self.start_task_timer(participant, &task);
+                        Ok(task)
+                    }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
                 None => Err(CoordinatorError::ParticipantNotFound),
@@ -1181,7 +1281,11 @@ impl CoordinatorState {
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Check that the participant is holding less than the chunk lock limit.
                 Some(participant_info) => match participant_info.locked_chunks.len() < verifier_limit {
-                    true => Ok(participant_info.pop_task()?),
+                    true => {
+                        let task = participant_info.pop_task()?;
+                        self.start_task_timer(participant, &task);
+                        Ok(task)
+                    }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
                 None => Err(CoordinatorError::ParticipantNotFound),
@@ -1475,8 +1579,9 @@ impl CoordinatorState {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Adds the task to the list of completed tasks for the contributor,
                 // and add the task to the pending verification set.
-                Some(participant) => {
-                    participant.completed_task(chunk_id, contribution_id)?;
+                Some(participant_info) => {
+                    participant_info.completed_task(chunk_id, contribution_id)?;
+                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id));
                     Ok(self.add_pending_verification(chunk_id, contribution_id)?)
                 }
                 None => Err(CoordinatorError::ParticipantNotFound),
@@ -1484,13 +1589,145 @@ impl CoordinatorState {
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Adds the task to the list of completed tasks for the verifier,
                 // and remove the task from the pending verification set.
-                Some(participant) => {
-                    participant.completed_task(chunk_id, contribution_id)?;
+                Some(participant_info) => {
+                    participant_info.completed_task(chunk_id, contribution_id)?;
+                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id));
                     Ok(self.remove_pending_verification(chunk_id, contribution_id)?)
                 }
                 None => Err(CoordinatorError::ParticipantNotFound),
             },
         }
+    }
+
+    ///
+    /// Starts the timer for a given participant and task,
+    /// in order to track the runtime of a given task.
+    ///
+    /// This function is a best effort tracker and should
+    /// not be used for mission-critical logic. It is
+    /// provided only for convenience to produce metrics.
+    ///
+    #[inline]
+    pub(super) fn start_task_timer(&mut self, participant: &Participant, task: &Task) {
+        // Fetch the current metrics for this round.
+        if let Some(metrics) = &mut self.current_metrics {
+            // Fetch the tasks for the given participant.
+            let mut updated_tasks = match metrics.task_timer.get(participant) {
+                Some(tasks) => tasks.clone(),
+                None => HashMap::new(),
+            };
+
+            // Add the given task with a new start timer.
+            updated_tasks.insert(task.clone(), (Utc::now().timestamp(), None));
+
+            // Set the current task timer for the given participant to the updated task timer.
+            metrics.task_timer.insert(participant.clone(), updated_tasks);
+        }
+    }
+
+    ///
+    /// Stops the timer for a given participant and task,
+    /// in order to track the runtime of a given task.
+    ///
+    /// This function is a best effort tracker and should
+    /// not be used for mission-critical logic. It is
+    /// provided only for convenience to produce metrics.
+    ///
+    #[inline]
+    pub(super) fn stop_task_timer(&mut self, participant: &Participant, task: &Task) {
+        // Fetch the current metrics for this round.
+        if let Some(metrics) = &mut self.current_metrics {
+            // Fetch the tasks for the given participant.
+            let mut updated_tasks = match metrics.task_timer.get(participant) {
+                Some(tasks) => tasks.clone(),
+                None => {
+                    warn!("Task timer metrics for {} are missing", participant);
+                    return;
+                }
+            };
+
+            // Set the end timer for the given task.
+            match updated_tasks.get_mut(task) {
+                Some((_, end)) => {
+                    if end.is_none() {
+                        *end = Some(Utc::now().timestamp());
+                    }
+                }
+                None => {
+                    warn!("Task timer metrics for {} on {:?} are missing", participant, task);
+                    return;
+                }
+            };
+
+            // Set the current task timer for the given participant to the updated task timer.
+            metrics.task_timer.insert(participant.clone(), updated_tasks);
+        };
+    }
+
+    ///
+    /// Sets the current round as aggregating in round metrics, indicating that the
+    /// current round is now being aggregated.
+    ///
+    #[inline]
+    pub(super) fn aggregating_current_round(&mut self) -> Result<(), CoordinatorError> {
+        let metrics = match &mut self.current_metrics {
+            Some(metrics) => metrics,
+            None => return Err(CoordinatorError::CoordinatorStateNotInitialized),
+        };
+
+        // Check that the start aggregation timestamp was not yet set.
+        if metrics.started_aggregation_at.is_some() {
+            error!("Round metrics shows starting aggregation timestamp was already set");
+            return Err(CoordinatorError::RoundAggregationFailed);
+        }
+
+        // Check that the round aggregation is not yet set.
+        if metrics.is_round_aggregated || metrics.finished_aggregation_at.is_some() {
+            error!("Round metrics shows current round is already aggregated");
+            return Err(CoordinatorError::RoundAlreadyAggregated);
+        }
+
+        // Set the start aggregation timestamp to now.
+        metrics.started_aggregation_at = Some(Utc::now());
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the current round as aggregated in round metrics, indicating that the
+    /// current round has been aggregated.
+    ///
+    #[inline]
+    pub(super) fn aggregated_current_round(&mut self) -> Result<(), CoordinatorError> {
+        let metrics = match &mut self.current_metrics {
+            Some(metrics) => metrics,
+            None => return Err(CoordinatorError::CoordinatorStateNotInitialized),
+        };
+
+        // Check that the start aggregation timestamp was set.
+        if metrics.started_aggregation_at.is_none() {
+            error!("Round metrics shows starting aggregation timestamp was not set");
+            return Err(CoordinatorError::RoundAggregationFailed);
+        }
+
+        // Check that the round aggregation is not yet set.
+        if metrics.is_round_aggregated || metrics.finished_aggregation_at.is_some() {
+            error!("Round metrics shows current round is already aggregated");
+            return Err(CoordinatorError::RoundAlreadyAggregated);
+        }
+
+        // Set the round aggregation boolean to true.
+        metrics.is_round_aggregated = true;
+
+        // Set the finish aggregation timestamp to now.
+        metrics.finished_aggregation_at = Some(Utc::now());
+
+        // Update the time to trigger the next round.
+        if metrics.next_round_after.is_none() {
+            metrics.next_round_after = Some(Utc::now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+        }
+
+        Ok(())
     }
 
     ///
@@ -1504,6 +1741,11 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn drop_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
+        // Check that the coordinator state is initialized.
+        if self.status == CoordinatorStatus::Initializing {
+            return Err(CoordinatorError::CoordinatorStateNotInitialized);
+        }
+
         warn!("Dropping {} from the ceremony", participant);
 
         // Remove the participant from the queue and precommit, if present.
@@ -1580,7 +1822,11 @@ impl CoordinatorState {
 
             // Fetch the number of chunks and number of contributors.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
-            let number_of_contributors = self.number_of_contributors as u64;
+            let number_of_contributors = self
+                .current_metrics
+                .clone()
+                .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
+                .number_of_contributors;
             let dropped_bucket_id = participant_info.bucket_id;
 
             // Initialize sets for disposing and disposed tasks.
@@ -1657,7 +1903,7 @@ impl CoordinatorState {
                     participant_info.start(initialize_tasks(
                         bucket_id,
                         self.environment.number_of_chunks(),
-                        self.number_of_contributors,
+                        number_of_contributors,
                     ))?;
                     trace!("{:?}", participant_info);
 
@@ -2014,6 +2260,108 @@ impl CoordinatorState {
     }
 
     ///
+    /// Updates the metrics for the current round and current round participants,
+    /// if the current round is not yet finished.
+    ///
+    #[inline]
+    pub(super) fn update_round_metrics(&mut self) {
+        if !self.is_current_round_finished() {
+            // Update the round metrics if the current round is not yet finished.
+            if let Some(metrics) = &mut self.current_metrics {
+                // Update the average time per task for each participant.
+                let contributor_average_per_task = {
+                    let mut cumulative_contributor_averages = 0;
+                    let mut cumulative_verifier_averages = 0;
+                    let mut number_of_contributor_averages = 0;
+                    let mut number_of_verifier_averages = 0;
+
+                    for (participant, tasks) in &metrics.task_timer {
+                        // (task, (start, end))
+                        let timed_tasks: Vec<u64> = tasks
+                            .par_iter()
+                            .filter_map(|(_, (s, e))| match e {
+                                Some(e) => match e > s {
+                                    true => Some((e - s) as u64),
+                                    false => None,
+                                },
+                                _ => None,
+                            })
+                            .collect();
+                        if timed_tasks.len() > 0 {
+                            let average_in_seconds = timed_tasks.par_iter().sum::<u64>() / timed_tasks.len() as u64;
+                            metrics.seconds_per_task.insert(participant.clone(), average_in_seconds);
+
+                            match participant {
+                                Participant::Contributor(_) => {
+                                    cumulative_contributor_averages += average_in_seconds;
+                                    number_of_contributor_averages += 1;
+                                }
+                                Participant::Verifier(_) => {
+                                    cumulative_verifier_averages += average_in_seconds;
+                                    number_of_verifier_averages += 1;
+                                }
+                            };
+                        }
+                    }
+
+                    match number_of_verifier_averages > 0 {
+                        true => {
+                            let verifier_average_per_task = cumulative_verifier_averages / number_of_verifier_averages;
+                            metrics.verifier_average_per_task = Some(verifier_average_per_task);
+                            verifier_average_per_task
+                        }
+                        false => 0,
+                    };
+
+                    match number_of_contributor_averages > 0 {
+                        true => {
+                            let contributor_average_per_task =
+                                cumulative_contributor_averages / number_of_contributor_averages;
+                            metrics.contributor_average_per_task = Some(contributor_average_per_task);
+                            contributor_average_per_task
+                        }
+                        false => 0,
+                    }
+                };
+
+                // Estimate the time remaining for the current round.
+                {
+                    let number_of_contributors_left = self.current_contributors.len() as u64;
+                    if number_of_contributors_left > 0 {
+                        let cumulative_seconds = self
+                            .current_contributors
+                            .par_iter()
+                            .map(|(participant, participant_info)| {
+                                let seconds = match metrics.seconds_per_task.get(participant) {
+                                    Some(seconds) => *seconds,
+                                    None => contributor_average_per_task,
+                                };
+
+                                seconds
+                                    * (participant_info.pending_tasks.len() + participant_info.assigned_tasks.len())
+                                        as u64
+                            })
+                            .sum::<u64>();
+
+                        let estimated_time_remaining = match self.environment.parameters().1 {
+                            ProvingSystem::Groth16 => (cumulative_seconds / number_of_contributors_left) / 2,
+                            ProvingSystem::Marlin => cumulative_seconds / number_of_contributors_left,
+                        };
+
+                        // Note that these are extremely rough estimates. These should be updated
+                        // to be much more granular, if used in mission-critical logic.
+                        metrics.estimated_finish_time = Some(estimated_time_remaining);
+                        metrics.estimated_wait_time = Some(
+                            estimated_time_remaining
+                                + contributor_average_per_task * self.environment.number_of_chunks(),
+                        );
+                    }
+                }
+            };
+        }
+    }
+
+    ///
     /// Prepares transition of the coordinator state from the current round to the next round.
     /// On precommit success, returns the list of contributors and verifiers for the next round.
     ///
@@ -2023,6 +2371,11 @@ impl CoordinatorState {
         next_round_height: u64,
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
         trace!("Attempting to run precommit for round {}", next_round_height);
+
+        // Check that the coordinator state is initialized.
+        if self.status == CoordinatorStatus::Initializing {
+            return Err(CoordinatorError::CoordinatorStateNotInitialized);
+        }
 
         // Check that the coordinator is not already in the precommit stage.
         if self.status == CoordinatorStatus::Precommit {
@@ -2059,6 +2412,20 @@ impl CoordinatorState {
         // Check that the current round is complete.
         if !self.is_current_round_finished() {
             return Err(CoordinatorError::RoundNotComplete);
+        }
+
+        // Check that the current round is aggregated.
+        if self.current_round_height() > 0 && !self.is_current_round_aggregated() {
+            return Err(CoordinatorError::RoundNotAggregated);
+        }
+
+        // Check that the time to trigger the next round has been reached, if it is set.
+        if let Some(metrics) = &self.current_metrics {
+            if let Some(next_round_after) = metrics.next_round_after {
+                if Utc::now() < next_round_after {
+                    return Err(CoordinatorError::QueueWaitTimeIncomplete);
+                }
+            }
         }
 
         // Parse the queued participants for the next round and split into contributors and verifiers.
@@ -2227,9 +2594,6 @@ impl CoordinatorState {
         self.queue = queue;
         self.next = next;
 
-        // TODO (howardwu): Remove this and formalize a round metadata struct.
-        self.number_of_contributors = number_of_contributors as u64;
-
         // Set the coordinator status to precommit.
         self.status = CoordinatorStatus::Precommit;
 
@@ -2267,16 +2631,38 @@ impl CoordinatorState {
         self.status = CoordinatorStatus::Commit;
 
         // Add all participants from next to current.
+        let mut number_of_contributors = 0;
+        let mut number_of_verifiers = 0;
         for (participant, participant_info) in self.next.iter() {
             match participant {
-                Participant::Contributor(_) => self
-                    .current_contributors
-                    .insert(participant.clone(), participant_info.clone()),
-                Participant::Verifier(_) => self
-                    .current_verifiers
-                    .insert(participant.clone(), participant_info.clone()),
+                Participant::Contributor(_) => {
+                    self.current_contributors
+                        .insert(participant.clone(), participant_info.clone());
+                    number_of_contributors += 1;
+                }
+                Participant::Verifier(_) => {
+                    self.current_verifiers
+                        .insert(participant.clone(), participant_info.clone());
+                    number_of_verifiers += 1;
+                }
             };
         }
+
+        // Initialize the metrics for this round.
+        self.current_metrics = Some(RoundMetrics {
+            number_of_contributors,
+            number_of_verifiers,
+            is_round_aggregated: false,
+            task_timer: HashMap::new(),
+            seconds_per_task: HashMap::new(),
+            contributor_average_per_task: None,
+            verifier_average_per_task: None,
+            started_aggregation_at: None,
+            finished_aggregation_at: None,
+            estimated_finish_time: None,
+            estimated_wait_time: None,
+            next_round_after: None,
+        });
 
         // Initialize the finished contributors map for the next round.
         self.finished_contributors.insert(next_round_height, HashMap::new());
@@ -2331,6 +2717,10 @@ impl CoordinatorState {
             true => format!("Round {} is finished", current_round_height),
             false => format!("Round {} is in progress", current_round_height),
         };
+        let current_round_aggregated = match self.is_current_round_aggregated() {
+            true => format!("Round {} is aggregated", current_round_height),
+            false => format!("Round {} is awaiting aggregation", current_round_height),
+        };
         let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
             true => format!("Round {} is ready to begin", next_round_height),
             false => format!("Round {} is awaiting participants", next_round_height),
@@ -2378,6 +2768,7 @@ impl CoordinatorState {
 
     | {}
     | {}
+    | {}
 
     | {} contributors and {} verifiers active in the current round
     | {} contributors and {} verifiers completed the current round
@@ -2391,6 +2782,7 @@ impl CoordinatorState {
 
     "#,
             current_round_finished,
+            current_round_aggregated,
             precommit_next_round_ready,
             number_of_current_contributors,
             number_of_current_verifiers,
@@ -2404,6 +2796,12 @@ impl CoordinatorState {
             number_of_dropped_participants,
             number_of_banned_participants
         )
+    }
+
+    /// Save the coordinator state in storage.
+    #[inline]
+    pub(crate) fn save(&self, storage: &mut StorageLock) -> Result<(), CoordinatorError> {
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(self.clone()))
     }
 }
 
@@ -2598,7 +2996,7 @@ mod tests {
 
         // Set the current round height for coordinator state.
         let current_round_height = 5;
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         assert_eq!(Some(current_round_height), state.current_round_height);
     }
 
@@ -2691,7 +3089,7 @@ mod tests {
 
         // Set the current round height for coordinator state.
         let current_round_height = 5;
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         assert_eq!(0, state.queue.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
 
@@ -2752,7 +3150,7 @@ mod tests {
 
         // Set the current round height for coordinator state.
         let current_round_height = 5;
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         assert_eq!(0, state.queue.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
 
@@ -2923,7 +3321,7 @@ mod tests {
 
         // Set the current round height for coordinator state.
         let current_round_height = 5;
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         assert_eq!(0, state.queue.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
 
@@ -2942,6 +3340,13 @@ mod tests {
 
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
+            // Update the current round to aggregated.
+            state.aggregating_current_round().unwrap();
+            state.aggregated_current_round().unwrap();
+
+            // Update the current round metrics.
+            state.update_round_metrics();
+
             // Update the state of current round contributors.
             state.update_current_contributors().unwrap();
 
@@ -2960,6 +3365,7 @@ mod tests {
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Attempt to advance the round.
@@ -2970,6 +3376,7 @@ mod tests {
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(!state.is_precommit_next_round_ready());
 
         // Advance the coordinator to the next round.
@@ -2985,6 +3392,7 @@ mod tests {
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
         assert!(!state.is_current_round_finished());
+        assert!(!state.is_current_round_aggregated());
         assert!(!state.is_precommit_next_round_ready());
     }
 
@@ -3005,7 +3413,7 @@ mod tests {
 
         // Set the current round height for coordinator state.
         let current_round_height = 5;
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         assert_eq!(0, state.queue.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
 
@@ -3024,6 +3432,13 @@ mod tests {
 
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
+            // Update the current round to aggregated.
+            state.aggregating_current_round().unwrap();
+            state.aggregated_current_round().unwrap();
+
+            // Update the current round metrics.
+            state.update_round_metrics();
+
             // Update the state of current round contributors.
             state.update_current_contributors().unwrap();
 
@@ -3042,6 +3457,7 @@ mod tests {
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Attempt to advance the round.
@@ -3051,6 +3467,7 @@ mod tests {
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(!state.is_precommit_next_round_ready());
 
         // Rollback the coordinator to the current round.
@@ -3066,6 +3483,7 @@ mod tests {
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
     }
 
@@ -3080,11 +3498,14 @@ mod tests {
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         state.add_to_queue(contributor.clone(), 10).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
+        state.aggregating_current_round().unwrap();
+        state.aggregated_current_round().unwrap();
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Advance the coordinator to the next round.
@@ -3138,11 +3559,14 @@ mod tests {
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         state.add_to_queue(contributor.clone(), 10).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
+        state.aggregating_current_round().unwrap();
+        state.aggregated_current_round().unwrap();
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Advance the coordinator to the next round.
@@ -3221,12 +3645,15 @@ mod tests {
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         state.add_to_queue(contributor_1.clone(), 10).unwrap();
         state.add_to_queue(contributor_2.clone(), 9).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
+        state.aggregating_current_round().unwrap();
+        state.aggregated_current_round().unwrap();
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Advance the coordinator to the next round.
@@ -3305,6 +3732,9 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             {
+                // Update the current round metrics.
+                state.update_round_metrics();
+
                 // Update the state of current round contributors.
                 state.update_current_contributors().unwrap();
 
@@ -3344,13 +3774,16 @@ mod tests {
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
-        state.set_current_round_height(current_round_height);
+        state.initialize(current_round_height);
         state.add_to_queue(contributor_1.clone(), 10).unwrap();
         state.add_to_queue(contributor_2.clone(), 9).unwrap();
         state.add_to_queue(verifier_1.clone(), 10).unwrap();
         state.add_to_queue(verifier_2.clone(), 9).unwrap();
         state.update_queue().unwrap();
+        state.aggregating_current_round().unwrap();
+        state.aggregated_current_round().unwrap();
         assert!(state.is_current_round_finished());
+        assert!(state.is_current_round_aggregated());
         assert!(state.is_precommit_next_round_ready());
 
         // Advance the coordinator to the next round.
@@ -3402,6 +3835,9 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             {
+                // Update the current round metrics.
+                state.update_round_metrics();
+
                 // Update the state of current round contributors.
                 state.update_current_contributors().unwrap();
 
@@ -3453,6 +3889,9 @@ mod tests {
             assert!(!state.is_current_round_finished());
 
             {
+                // Update the current round metrics.
+                state.update_round_metrics();
+
                 // Update the state of current round contributors.
                 state.update_current_contributors().unwrap();
 
