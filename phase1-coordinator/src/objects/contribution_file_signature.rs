@@ -30,7 +30,7 @@ pub struct ContributionData {
 /// contributor.
 ///
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
-pub struct ContributionSignature {
+pub struct ContributionFileSignature {
     /// The signature of the contribution hash data.
     signature: String,
 
@@ -38,8 +38,8 @@ pub struct ContributionSignature {
     data: ContributionData,
 }
 
-impl ContributionSignature {
-    /// Creates a new instance of `ContributionSignature`.
+impl ContributionFileSignature {
+    /// Creates a new instance of `ContributionFileSignature`.
     #[inline]
     pub(crate) fn new(
         signature: String,
@@ -137,7 +137,7 @@ mod tests {
         let signature = vec![2u8; 64];
         let signature_string = hex::encode(signature);
 
-        let contribution_signature = ContributionSignature::new(
+        let contribution_signature = ContributionFileSignature::new(
             signature_string.clone(),
             challenge_hash.to_vec(),
             response_hash.to_vec(),
@@ -146,7 +146,7 @@ mod tests {
         .unwrap();
 
         let contribution_signature_2 =
-            ContributionSignature::new(signature_string, challenge_hash.to_vec(), response_hash.to_vec(), None)
+            ContributionFileSignature::new(signature_string, challenge_hash.to_vec(), response_hash.to_vec(), None)
                 .unwrap();
 
         let verifier_contribution_signature = serde_json::to_vec_pretty(&contribution_signature).unwrap();

@@ -6,7 +6,7 @@ use crate::{
     CoordinatorState,
 };
 
-use crate::objects::ContributionSignature;
+use crate::objects::ContributionFileSignature;
 use itertools::Itertools;
 use memmap::{MmapMut, MmapOptions};
 use rayon::prelude::*;
@@ -206,7 +206,7 @@ impl Storage for Disk {
                 Ok(Object::ContributionFile(contribution_file))
             }
             Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, verified) => {
-                let expected = Object::contribution_signature_file_size(*verified);
+                let expected = Object::contribution_file_signature_size(*verified);
                 let found = self.size(&locator)?;
                 debug!(
                     "Round {} chunk {} contribution {} signature filesize is {}",
@@ -220,7 +220,7 @@ impl Storage for Disk {
                     return Err(CoordinatorError::ContributionSignatureFileSizeMismatch.into());
                 }
 
-                let contribution_file_signature: ContributionSignature = serde_json::from_slice(&*reader)?;
+                let contribution_file_signature: ContributionFileSignature = serde_json::from_slice(&*reader)?;
                 Ok(Object::ContributionFileSignature(contribution_file_signature))
             }
         };

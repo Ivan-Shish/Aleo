@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    objects::{ContributionSignature, Round},
+    objects::{ContributionFileSignature, Round},
     CoordinatorError,
     CoordinatorState,
 };
@@ -33,7 +33,7 @@ pub enum Object {
     RoundState(Round),
     RoundFile(Vec<u8>),
     ContributionFile(Vec<u8>),
-    ContributionFileSignature(ContributionSignature),
+    ContributionFileSignature(ContributionFileSignature),
 }
 
 impl Object {
@@ -94,7 +94,7 @@ impl Object {
     }
 
     /// Returns the expected file size of a contribution signature.
-    pub fn contribution_signature_file_size(verified: bool) -> u64 {
+    pub fn contribution_file_signature_size(verified: bool) -> u64 {
         // TODO (raychu86): Calculate contribution signature file size instead of using hard coded values.
         match verified {
             true => 627,
