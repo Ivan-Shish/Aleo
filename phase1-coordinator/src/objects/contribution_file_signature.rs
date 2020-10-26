@@ -119,7 +119,6 @@ mod tests {
     use super::*;
     use crate::testing::prelude::*;
 
-    use itertools::assert_equal;
     use setup_utils::calculate_hash;
 
     #[test]
@@ -163,8 +162,6 @@ mod tests {
             "contributor_contribution_signature len: {:?}",
             contributor_contribution_signature.len()
         );
-
-        assert_eq!(0, 1);
     }
 
     // TODO (raychu86): Implment tests for contribution signature.

@@ -448,8 +448,12 @@ impl Round {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
-        let (previous_contribution_locator, current_contribution_locator, next_contribution_locator) = match participant
-        {
+        let (
+            previous_contribution_locator,
+            current_contribution_locator,
+            next_contribution_locator,
+            contribution_signature_locator,
+        ) = match participant {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
@@ -492,7 +496,16 @@ impl Round {
                 // and has already been verified.
                 let response_locator = self.next_contribution_locator(storage, chunk_id)?;
 
-                (previous_response_locator, challenge_locator, response_locator)
+                // Fetch the contribution signature locator.
+                let contribution_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, chunk_id, current_contribution_id, false);
+
+                (
+                    previous_response_locator,
+                    challenge_locator,
+                    response_locator,
+                    contribution_signature_locator,
+                )
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -527,7 +540,15 @@ impl Round {
                     false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
                 };
 
-                (challenge_locator, response_locator, next_challenge_locator)
+                let contribution_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, chunk_id, current_contribution_id, true);
+
+                (
+                    challenge_locator,
+                    response_locator,
+                    next_challenge_locator,
+                    contribution_signature_locator,
+                )
             }
         };
 
@@ -559,12 +580,24 @@ impl Round {
                     next_contribution_locator.clone(),
                     Object::contribution_file_size(environment, chunk_id, false),
                 )?;
+
+                // Initialize the contribution file signature.
+                storage.initialize(
+                    contribution_signature_locator.clone(),
+                    Object::contribution_file_signature_size(false),
+                )?;
             }
             Participant::Verifier(_) => {
                 // Initialize the next challenge file.
                 storage.initialize(
                     next_contribution_locator.clone(),
                     Object::contribution_file_size(environment, chunk_id, true),
+                )?;
+
+                // Initialize the contribution file signature.
+                storage.initialize(
+                    contribution_signature_locator.clone(),
+                    Object::contribution_file_signature_size(true),
                 )?;
             }
         };
