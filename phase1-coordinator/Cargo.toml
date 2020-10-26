@@ -26,7 +26,7 @@ function_name = { version = "0.2.0", optional = true }
 itertools = { version = "0.9.0" }
 lazy_static = { version = "1.4.0" }
 memmap = { version = "0.7.0" }
-once_cell = { version = "1.4.1", optional = true }
+once_cell = { version = "1.4.1" }
 rand = { version = "0.7.3" }
 rayon = { version = "1.4.1" }
 secrecy = { version = "0.7.0" }
@@ -37,7 +37,8 @@ serde_json = { version = "1.0" }
 serial_test = { version = "0.5", optional = true }
 tokio = { version = "0.3", features = ["full"] }
 toml = { version = "0.5.6" }
-tracing = { version = "0.1.19" }
+tracing = { version = "0.1" }
+tracing-appender = { version = "0.1" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "1.0" }
 
@@ -48,6 +49,8 @@ once_cell = { version = "1.4.1" }
 serial_test = { version = "0.5" }
 
 [features]
-default = ["once_cell"]
-testing = ["function_name", "once_cell", "serial_test"]
+default = ["log_file"]
+testing = ["function_name", "serial_test"]
+log_file = []
 silent = []
+
