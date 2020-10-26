@@ -1335,6 +1335,7 @@ dependencies = [
  "chrono",
  "ctrlc",
  "function_name",
+ "hex",
  "itertools 0.9.0",
  "lazy_static",
  "memmap",
