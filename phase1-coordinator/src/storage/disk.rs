@@ -182,7 +182,7 @@ impl Storage for Disk {
                 let found = self.size(&locator)?;
                 debug!("Round {} filesize is {}", round_height, found);
                 if found == 0 || expected != found {
-                    error!("Contribution file size should be {} but found {}", expected, found);
+                    error!("Round file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::RoundFileSizeMismatch.into());
                 }
 
@@ -956,26 +956,6 @@ impl StorageLocator for DiskResolver {
                                         .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?;
                                     let contribution_id = u64::from_str(id)?;
 
-                                    // Check if it matches a unverified contribution file.
-                                    if extension == "unverified" {
-                                        return Ok(Locator::ContributionFile(
-                                            round_height,
-                                            chunk_id,
-                                            contribution_id,
-                                            false,
-                                        ));
-                                    }
-
-                                    // Check if it matches a unverified contribution file.
-                                    if extension == "verified" {
-                                        return Ok(Locator::ContributionFile(
-                                            round_height,
-                                            chunk_id,
-                                            contribution_id,
-                                            true,
-                                        ));
-                                    }
-
                                     // Check if it matches a contribution file signature for an unverified contribution.
                                     if extension == "unverified.signature" {
                                         return Ok(Locator::ContributionFileSignature(
@@ -989,6 +969,26 @@ impl StorageLocator for DiskResolver {
                                     // Check if it matches a contribution file signature for a verified contribution.
                                     if extension == "verified.signature" {
                                         return Ok(Locator::ContributionFileSignature(
+                                            round_height,
+                                            chunk_id,
+                                            contribution_id,
+                                            true,
+                                        ));
+                                    }
+
+                                    // Check if it matches a unverified contribution file.
+                                    if extension == "unverified" {
+                                        return Ok(Locator::ContributionFile(
+                                            round_height,
+                                            chunk_id,
+                                            contribution_id,
+                                            false,
+                                        ));
+                                    }
+
+                                    // Check if it matches a unverified contribution file.
+                                    if extension == "verified" {
+                                        return Ok(Locator::ContributionFile(
                                             round_height,
                                             chunk_id,
                                             contribution_id,
