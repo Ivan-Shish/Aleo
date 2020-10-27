@@ -1955,7 +1955,10 @@ impl Coordinator {
         let (locked_chunks, tasks) = match justification {
             Justification::BanCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
             Justification::DropCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
+            Justification::Inactive => {
+                warn!("Justification for action is that participant is inactive");
+                return Ok(vec![]);
+            }
         };
 
         // Convert the tasks into contribution file locators.
