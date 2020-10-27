@@ -829,7 +829,7 @@ pub struct CoordinatorState {
     /// The list of information about participants that dropped in current and past rounds.
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
-    banned: Vec<Participant>,
+    banned: HashSet<Participant>,
 }
 
 impl CoordinatorState {
@@ -851,7 +851,7 @@ impl CoordinatorState {
             finished_contributors: HashMap::default(),
             finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
-            banned: Vec::new(),
+            banned: HashSet::new(),
         }
     }
 
@@ -2017,7 +2017,7 @@ impl CoordinatorState {
         match self.drop_participant(participant)? {
             Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks) => {
                 // Add the participant to the banned list.
-                self.banned.push(participant.clone());
+                self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
@@ -2292,7 +2292,7 @@ impl CoordinatorState {
 
             // Check if the participant meets the ban threshold.
             if count > self.environment.participant_ban_threshold() as usize {
-                self.banned.push(participant_info.id.clone());
+                self.banned.insert(participant_info.id.clone());
 
                 debug!("{} is being banned", participant_info.id);
             }
