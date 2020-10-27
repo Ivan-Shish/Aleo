@@ -13,6 +13,7 @@ use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{collections::HashSet, panic};
 
+#[inline]
 fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
     let contributor = Participant::Contributor(format!("test-contributor-{}", id));
     let contributor_signing_key: SigningKey = "secret_key".to_string();
@@ -23,6 +24,7 @@ fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
     (contributor, contributor_signing_key, seed)
 }
 
+#[inline]
 fn create_verifier(id: &str) -> (Participant, SigningKey) {
     let verifier = Participant::Verifier(format!("test-verifier-{}", id));
     let verifier_signing_key: SigningKey = "secret_key".to_string();
