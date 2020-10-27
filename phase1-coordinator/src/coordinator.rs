@@ -1426,15 +1426,15 @@ impl Coordinator {
             let contribution_file_signature: ContributionFileSignature =
                 serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
 
-            // // Check that the contribution file signature is valid.
-            // if !self.signature.verify(
-            //     &participant.to_string(),
-            //     &serde_json::to_string(&contribution_file_signature.get_state())?,
-            //     contribution_file_signature.get_signature(),
-            // ) {
-            //     error!("Contribution file signature failed to verify for {}", participant);
-            //     return Err(CoordinatorError::ContributorSignatureInvalid);
-            // }
+            // Check that the contribution file signature is valid.
+            if !self.signature.verify(
+                &participant.to_string(),
+                &serde_json::to_string(&contribution_file_signature.get_state())?,
+                contribution_file_signature.get_signature(),
+            ) {
+                error!("Contribution file signature failed to verify for {}", participant);
+                return Err(CoordinatorError::ContributorSignatureInvalid);
+            }
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
@@ -1605,15 +1605,15 @@ impl Coordinator {
             let contribution_file_signature: ContributionFileSignature =
                 serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
 
-            // // Check that the contribution file signature is valid.
-            // if !self.signature.verify(
-            //     &participant.to_string(),
-            //     &serde_json::to_string(&contribution_file_signature.get_state())?,
-            //     contribution_file_signature.get_signature(),
-            // ) {
-            //     error!("Contribution file signature failed to verify for {}", participant);
-            //     return Err(CoordinatorError::VerifierSignatureInvalid);
-            // }
+            // Check that the contribution file signature is valid.
+            if !self.signature.verify(
+                &participant.to_string(),
+                &serde_json::to_string(&contribution_file_signature.get_state())?,
+                contribution_file_signature.get_signature(),
+            ) {
+                error!("Contribution file signature failed to verify for {}", participant);
+                return Err(CoordinatorError::VerifierSignatureInvalid);
+            }
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
