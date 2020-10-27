@@ -113,46 +113,133 @@ mod tests {
 
     #[test]
     pub fn test_contribution_signature() {
-        // TODO (raychu86): Use real challenge, response, and next_challenge files.
+        // Construct the dummy challenge, response, and next_challenge files.
+        let dummy_challenge = vec![1; 128];
+        let dummy_response = vec![2; 128];
+        let dummy_next_challenge = vec![3; 128];
 
-        let dummy_challenge = vec![2; 128];
-        let dummy_response = vec![3; 128];
-        let dummy_next_challenge = vec![4; 128];
-
+        // Calculate the contribution hashes.
         let challenge_hash = calculate_hash(&dummy_challenge);
         let response_hash = calculate_hash(&dummy_response);
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
-        let signature = vec![2u8; 64];
+        // Construct a dummy signature.
+        let signature = vec![4u8; 64];
         let signature_string = hex::encode(signature);
 
+        // Construct the contribution file signature.
         let contribution_signature = ContributionFileSignature::new(
             signature_string.clone(),
             challenge_hash.to_vec(),
             response_hash.to_vec(),
             Some(next_challenge_hash.to_vec()),
-        )
-        .unwrap();
-
-        let contribution_signature_2 =
-            ContributionFileSignature::new(signature_string, challenge_hash.to_vec(), response_hash.to_vec(), None)
-                .unwrap();
-
-        let verifier_contribution_signature = serde_json::to_vec_pretty(&contribution_signature).unwrap();
-        let contributor_contribution_signature = serde_json::to_vec_pretty(&contribution_signature_2).unwrap();
-
-        println!("contribution_signature {:#?}", contribution_signature);
-        println!("contribution_signature_2 {:#?}", contribution_signature_2);
-
-        println!(
-            "verifier_contribution_signature len: {:?}",
-            verifier_contribution_signature.len()
         );
-        println!(
-            "contributor_contribution_signature len: {:?}",
-            contributor_contribution_signature.len()
-        );
+
+        assert!(contribution_signature.is_ok())
     }
 
-    // TODO (raychu86): Implement tests for contribution signature.
+    #[test]
+    pub fn test_contribution_signature_invalid_signature_size() {
+        // Construct the dummy challenge, response, and next_challenge files.
+        let dummy_challenge = vec![1; 128];
+        let dummy_response = vec![2; 128];
+        let dummy_next_challenge = vec![3; 128];
+
+        // Calculate the contribution hashes.
+        let challenge_hash = calculate_hash(&dummy_challenge);
+        let response_hash = calculate_hash(&dummy_response);
+        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
+
+        // Construct an invalid signature.
+        let signature = vec![4u8; 48];
+        let signature_string = hex::encode(signature);
+
+        // Construct the contribution file signature.
+        let contribution_signature = ContributionFileSignature::new(
+            signature_string.clone(),
+            challenge_hash.to_vec(),
+            response_hash.to_vec(),
+            Some(next_challenge_hash.to_vec()),
+        );
+
+        assert!(contribution_signature.is_err())
+    }
+
+    #[test]
+    pub fn test_contribution_signature_invalid_challenge_hash_size() {
+        // Construct the dummy response and next_challenge files.
+        let dummy_response = vec![2; 128];
+        let dummy_next_challenge = vec![3; 128];
+
+        // Calculate the contribution hashes.
+        let invalid_challenge_hash = vec![1; 48];
+        let response_hash = calculate_hash(&dummy_response);
+        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
+
+        // Construct a dummy signature.
+        let signature = vec![4u8; 64];
+        let signature_string = hex::encode(signature);
+
+        // Construct the contribution file signature.
+        let contribution_signature = ContributionFileSignature::new(
+            signature_string.clone(),
+            invalid_challenge_hash,
+            response_hash.to_vec(),
+            Some(next_challenge_hash.to_vec()),
+        );
+
+        assert!(contribution_signature.is_err())
+    }
+
+    #[test]
+    pub fn test_contribution_signature_invalid_response_hash_size() {
+        // Construct the dummy challenge and next_challenge files.
+        let dummy_challenge = vec![1; 128];
+        let dummy_next_challenge = vec![3; 128];
+
+        // Calculate the contribution hashes.
+        let challenge_hash = calculate_hash(&dummy_challenge);
+        let invalid_response_hash = vec![2; 48];
+        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
+
+        // Construct a dummy signature.
+        let signature = vec![4u8; 64];
+        let signature_string = hex::encode(signature);
+
+        // Construct the contribution file signature.
+        let contribution_signature = ContributionFileSignature::new(
+            signature_string.clone(),
+            challenge_hash.to_vec(),
+            invalid_response_hash,
+            Some(next_challenge_hash.to_vec()),
+        );
+
+        assert!(contribution_signature.is_err())
+    }
+
+    #[test]
+    pub fn test_contribution_signature_invalid_next_challenge_hash_size() {
+        // Construct the dummy challenge and response files.
+        let dummy_challenge = vec![1; 128];
+        let dummy_response = vec![2; 128];
+
+        // Calculate the contribution hashes.
+        let challenge_hash = calculate_hash(&dummy_challenge);
+        let response_hash = calculate_hash(&dummy_response);
+        let invalid_next_challenge_hash = vec![3; 48];
+
+        // Construct a dummy signature.
+        let signature = vec![4u8; 64];
+        let signature_string = hex::encode(signature);
+
+        // Construct the contribution file signature.
+        let contribution_signature = ContributionFileSignature::new(
+            signature_string.clone(),
+            challenge_hash.to_vec(),
+            response_hash.to_vec(),
+            Some(invalid_next_challenge_hash),
+        );
+
+        assert!(contribution_signature.is_err())
+    }
 }
