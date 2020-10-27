@@ -19,9 +19,9 @@ impl Signature for Dummy {
 
     /// Signs the given message using the given secret key,
     /// and returns the signature as a string.
-    fn sign(&self, _secret_key: &str, message: &str) -> String {
+    fn sign(&self, _secret_key: &str, message: &str) -> anyhow::Result<String> {
         Self::warning();
-        hex::encode(calculate_hash(message.as_bytes()))
+        Ok(hex::encode(calculate_hash(message.as_bytes())))
     }
 
     /// Verifies the given signature for the given message and public key,
@@ -56,9 +56,9 @@ mod tests {
 
         let dummy = Dummy;
 
-        let signature = dummy.sign(secret_key, message);
+        let signature = dummy.sign(secret_key, message).unwrap();
         assert_eq!(64, hex::decode(&signature).unwrap().len());
-        assert_eq!(signature, dummy.sign(secret_key, message));
+        assert_eq!(signature, dummy.sign(secret_key, message).unwrap());
 
         let is_valid = dummy.verify(public_key, message, &signature);
         assert!(is_valid);

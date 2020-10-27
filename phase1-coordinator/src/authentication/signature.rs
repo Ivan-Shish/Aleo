@@ -8,7 +8,7 @@ pub trait Signature: Send + Sync {
 
     /// Signs the given message using the given secret key,
     /// and returns the signature as a string.
-    fn sign(&self, secret_key: &str, message: &str) -> String;
+    fn sign(&self, secret_key: &str, message: &str) -> anyhow::Result<String>;
 
     /// Verifies the given signature for the given message and public key,
     /// and returns `true` if the signature is valid.

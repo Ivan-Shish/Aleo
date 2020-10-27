@@ -2284,7 +2284,7 @@ impl Coordinator {
         let contribution_state = ContributionState::new(challenge_hash, response_hash, next_challenge_hash)?;
 
         // Generate the contribution signature.
-        let contribution_signature = signature.sign(secret_key, &serde_json::to_string(&contribution_state)?);
+        let contribution_signature = signature.sign(secret_key, &serde_json::to_string(&contribution_state)?)?;
 
         // Construct the contribution file signature.
         let contribution_file_signature = ContributionFileSignature::new(contribution_signature, contribution_state)?;
