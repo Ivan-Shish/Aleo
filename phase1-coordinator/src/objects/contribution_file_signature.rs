@@ -5,37 +5,33 @@ use serde_diff::SerdeDiff;
 use tracing::debug;
 
 ///
-/// The contribution data for a given chunkID that is signed by the participant.
+/// The contribution state for a given chunk ID that is signed by the participant.
 ///
-/// This data is comprised of:
+/// This state is comprised of:
 /// 1. The hash of the challenge file.
 /// 2. The hash of the response file.
-/// 3. The hash of the new challenge file if the participant was a verifier.
+/// 3. The hash of the next challenge file if the participant was a verifier.
 ///
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
-pub struct ContributionData {
+pub struct ContributionState {
     /// The hash of the challenge file.
     challenge_hash: String,
-
     /// The hash of the response file.
     response_hash: String,
-
     /// The hash of the next challenge file.
     next_challenge_hash: Option<String>,
 }
 
 ///
-/// The data for a given contribution and the signature to the data created by the
-/// contributor.
+/// The signature and state of the contribution.
 ///
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
 pub struct ContributionFileSignature {
-    /// The signature of the contribution hash data.
+    /// The signature of the contribution state.
     signature: String,
-
-    /// The contribution data that is being signed.
-    data: ContributionData,
+    /// The state of the contribution that is signed.
+    state: ContributionState,
 }
 
 impl ContributionFileSignature {
@@ -64,29 +60,25 @@ impl ContributionFileSignature {
             return Err(CoordinatorError::ResponseHashSizeInvalid);
         }
 
-        // Check that the next challenge hash is 64 bytes.
+        // Check that the next challenge hash is 64 bytes, if it exists.
         if let Some(next_challenge_hash) = &next_challenge_hash {
             if next_challenge_hash.len() != 64 {
                 return Err(CoordinatorError::NextChallengeHashSizeInvalid);
             }
         }
 
-        let challenge_hash = hex::encode(challenge_hash);
-        let response_hash = hex::encode(response_hash);
-        let next_challenge_hash = next_challenge_hash.map(|h| hex::encode(h));
-
-        let data = ContributionData {
-            challenge_hash,
-            response_hash,
-            next_challenge_hash,
+        let state = ContributionState {
+            challenge_hash: hex::encode(challenge_hash),
+            response_hash: hex::encode(response_hash),
+            next_challenge_hash: next_challenge_hash.map(|h| hex::encode(h)),
         };
 
         debug!("Completed creating contribution signature");
 
-        Ok(Self { signature, data })
+        Ok(Self { signature, state })
     }
 
-    /// Returns a reference to the signature.
+    /// Returns a reference to the signature
     #[inline]
     pub fn get_signature(&self) -> &str {
         &self.signature
@@ -95,22 +87,20 @@ impl ContributionFileSignature {
     /// Returns a reference to the challenge hash.
     #[inline]
     pub fn get_challenge_hash(&self) -> &str {
-        &self.data.challenge_hash
+        &self.state.challenge_hash
     }
 
     /// Returns a reference to the response hash.
-    #[allow(dead_code)]
     #[inline]
     pub fn get_response_hash(&self) -> &str {
-        &self.data.response_hash
+        &self.state.response_hash
     }
 
-    /// Returns a reference to the new challenge hash, if it exists.
-    /// Otherwise returns `None`.
-    #[allow(dead_code)]
+    /// Returns a reference to the next challenge hash, if it exists.
+    /// Otherwise, returns `None`.
     #[inline]
-    pub fn get_new_challenge_hash(&self) -> &Option<String> {
-        &self.data.next_challenge_hash
+    pub fn get_next_challenge_hash(&self) -> &Option<String> {
+        &self.state.next_challenge_hash
     }
 }
 
@@ -164,5 +154,5 @@ mod tests {
         );
     }
 
-    // TODO (raychu86): Implment tests for contribution signature.
+    // TODO (raychu86): Implement tests for contribution signature.
 }
