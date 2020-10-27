@@ -2242,18 +2242,18 @@ impl Coordinator {
         contribution_file_signature_locator: &Locator,
     ) -> Result<(), CoordinatorError> {
         // Calculate the challenge hash.
-        let reader = storage.reader(challenge_locator)?;
-        let challenge_hash = calculate_hash(reader.as_ref()).to_vec();
+        let challenge_reader = storage.reader(challenge_locator)?;
+        let challenge_hash = calculate_hash(challenge_reader.as_ref()).to_vec();
 
         // Calculate the response hash.
-        let reader = storage.reader(response_locator)?;
-        let response_hash = calculate_hash(reader.as_ref()).to_vec();
+        let storage_reader = storage.reader(response_locator)?;
+        let response_hash = calculate_hash(storage_reader.as_ref()).to_vec();
 
         // Calculate the next challenge hash.
         let next_challenge_hash = match next_challenge_locator {
-            Some(locator) => {
-                let reader = storage.reader(locator)?;
-                let next_challenge_hash = calculate_hash(reader.as_ref()).to_vec();
+            Some(next_challenge_locator) => {
+                let next_challenge_reader = storage.reader(next_challenge_locator)?;
+                let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref()).to_vec();
 
                 Some(next_challenge_hash)
             }
@@ -2270,15 +2270,17 @@ impl Coordinator {
         let contribution_file_signature_bytes = serde_json::to_vec_pretty(&contribution_file_signature)?;
 
         // Write the contribution file signature.
-        let mut writer = storage.writer(contribution_file_signature_locator)?;
+        let mut contribution_file_signature_writer = storage.writer(contribution_file_signature_locator)?;
         debug!(
             "Writing contribution file signature of size {} to {}",
             contribution_file_signature_bytes.len(),
             &storage.to_path(&contribution_file_signature_locator)?
         );
 
-        writer.as_mut().write_all(&contribution_file_signature_bytes[..])?;
-        writer.flush()?;
+        contribution_file_signature_writer
+            .as_mut()
+            .write_all(&contribution_file_signature_bytes[..])?;
+        contribution_file_signature_writer.flush()?;
 
         Ok(())
     }
