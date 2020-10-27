@@ -13,10 +13,14 @@ pub struct Contribution {
     contributor_id: Option<Participant>,
     #[serde(rename = "contributedLocation")]
     contributed_locator: Option<String>,
+    #[serde(rename = "contributedSignatureLocation")]
+    contributed_signature_locator: Option<String>,
     #[serde(deserialize_with = "deserialize_optional_verifier_from_string")]
     verifier_id: Option<Participant>,
     #[serde(rename = "verifiedLocation")]
     verified_locator: Option<String>,
+    #[serde(rename = "verifiedSignatureLocation")]
+    verified_signature_locator: Option<String>,
     verified: bool,
 }
 
@@ -42,6 +46,13 @@ impl Contribution {
         &self.contributed_locator
     }
 
+    /// Returns a reference to the contributor signature locator, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_contributed_signature_location(&self) -> &Option<String> {
+        &self.contributed_signature_locator
+    }
+
     /// Returns a reference to the verifier, if it exists.
     /// Otherwise returns `None`.
     #[allow(dead_code)]
@@ -52,10 +63,16 @@ impl Contribution {
 
     /// Returns a reference to the verifier locator, if it exists.
     /// Otherwise returns `None`.
-    #[allow(dead_code)]
     #[inline]
     pub fn get_verified_location(&self) -> &Option<String> {
         &self.verified_locator
+    }
+
+    /// Returns a reference to the verifier signature locator, if it exists.
+    /// Otherwise returns `None`.
+    #[inline]
+    pub fn get_verified_signature_location(&self) -> &Option<String> {
+        &self.verified_signature_locator
     }
 
     ///
@@ -70,6 +87,7 @@ impl Contribution {
     pub(crate) fn new_contributor(
         participant: Participant,
         contributed_locator: String,
+        contributed_signature_locator: String,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -79,8 +97,10 @@ impl Contribution {
         Ok(Self {
             contributor_id: Some(participant),
             contributed_locator: Some(contributed_locator),
+            contributed_signature_locator: Some(contributed_signature_locator),
             verifier_id: None,
             verified_locator: None,
+            verified_signature_locator: None,
             verified: false,
         })
     }
@@ -98,6 +118,7 @@ impl Contribution {
         contribution_id: u64,
         participant: Participant,
         verified_locator: String,
+        verified_signature_locator: String,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -116,8 +137,10 @@ impl Contribution {
         let contribution = Self {
             contributor_id: None,
             contributed_locator: None,
+            contributed_signature_locator: None,
             verifier_id: Some(participant),
             verified_locator: Some(verified_locator),
+            verified_signature_locator: Some(verified_signature_locator),
             verified: true,
         };
 

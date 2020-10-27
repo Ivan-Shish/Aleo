@@ -116,6 +116,14 @@ impl Round {
                     storage
                         .to_path(&Locator::ContributionFile(round_height, chunk_id as u64, 0, true))
                         .expect("failed to create locator path"),
+                    storage
+                        .to_path(&Locator::ContributionFileSignature(
+                            round_height,
+                            chunk_id as u64,
+                            0,
+                            true,
+                        ))
+                        .expect("failed to create locator path"),
                 )
                 .expect("failed to create chunk")
             })

@@ -107,7 +107,6 @@ impl ContributionFileSignature {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::prelude::*;
 
     use setup_utils::calculate_hash;
 

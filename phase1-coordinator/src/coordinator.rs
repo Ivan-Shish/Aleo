@@ -1430,6 +1430,7 @@ impl Coordinator {
             contribution_id,
             participant,
             storage.to_path(&response_file_locator)?,
+            storage.to_path(&contribution_file_signature_locator)?,
         )?;
 
         // Add the updated round to storage.

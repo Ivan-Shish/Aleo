@@ -36,16 +36,24 @@ impl Chunk {
     /// contribution ID of `0`.
     ///
     #[inline]
-    pub fn new(chunk_id: u64, participant: Participant, verifier_locator: String) -> Result<Self, CoordinatorError> {
+    pub fn new(
+        chunk_id: u64,
+        participant: Participant,
+        verifier_locator: String,
+        verifier_signature_locator: String,
+    ) -> Result<Self, CoordinatorError> {
         match participant.is_verifier() {
             // Construct the starting contribution template for this chunk.
             true => Ok(Self {
                 chunk_id,
                 lock_holder: None,
-                contributions: [(0, Contribution::new_verifier(0, participant, verifier_locator)?)]
-                    .iter()
-                    .cloned()
-                    .collect(),
+                contributions: [(
+                    0,
+                    Contribution::new_verifier(0, participant, verifier_locator, verifier_signature_locator)?,
+                )]
+                .iter()
+                .cloned()
+                .collect(),
             }),
             false => Err(CoordinatorError::ExpectedVerifier),
         }
@@ -336,6 +344,7 @@ impl Chunk {
         contribution_id: u64,
         participant: &Participant,
         contributed_locator: String,
+        contributed_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -350,7 +359,7 @@ impl Chunk {
         // Add the contribution to this chunk.
         self.contributions.insert(
             contribution_id,
-            Contribution::new_contributor(participant.clone(), contributed_locator)?,
+            Contribution::new_contributor(participant.clone(), contributed_locator, contributed_signature_locator)?,
         );
 
         // Release the lock on this chunk from the contributor.
