@@ -263,6 +263,7 @@ impl Verification {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::Dummy,
         commands::{Computation, Seed, Verification, SEED_LENGTH},
         storage::{Locator, Object, StorageLock},
         testing::prelude::*,
@@ -278,7 +279,7 @@ mod tests {
     fn test_verification_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy)).unwrap();
         let test_storage = coordinator.storage();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
