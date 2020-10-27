@@ -483,6 +483,104 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     Ok(())
 }
 
+fn try_lock_blocked_test() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        7,  /* power */
+        32, /* batch_size */
+        32, /* chunk_size */
+    ));
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment)?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Meanwhile, add 2 contributors and 1 verifier to the queue.
+    let contributor1 = create_contributor("1");
+    let contributor2 = create_contributor("2");
+    let verifier = create_verifier("1");
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+    assert_eq!(2, coordinator.number_of_queue_contributors());
+    assert_eq!(1, coordinator.number_of_queue_verifiers());
+
+    // Advance the ceremony from round 0 to round 1.
+    coordinator.update()?;
+    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+
+    // Fetch the bucket size.
+    fn bucket_size(number_of_chunks: u64, number_of_contributors: u64) -> u64 {
+        let number_of_buckets = number_of_contributors;
+        let bucket_size = number_of_chunks / number_of_buckets;
+        bucket_size
+    }
+
+    /*
+     * |     BUCKET 0     |     BUCKET 1    |
+     * |   0, 1, ...  m   |  m + 1, ... n   | <- Chunk IDs
+     * |  ------------->  |  ------------>  |
+     * |                  |  locked         | <- Contributor 2
+     * |   done ... done  |  try_lock       | <- Contributor 1
+     * |  ------------->  |  ------------>  |
+     */
+
+    // Lock first chunk for contributor 2.
+    let (_, _, _, response) = coordinator.try_lock(&contributor2)?;
+
+    // Run contributions for the first bucket as contributor 1.
+    let bucket_size = bucket_size(number_of_chunks as u64, 2);
+    for _ in 0..bucket_size {
+        coordinator.contribute(&contributor1)?;
+    }
+
+    // Now try to lock the next chunk as contributor 1.
+    //
+    // This operation should be blocked by contributor 2,
+    // who still holds the lock on this chunk.
+    let result = coordinator.try_lock(&contributor1);
+    assert!(result.is_err());
+
+    // Run contribution on the locked chunk as contributor 2.
+    {
+        use rand::RngCore;
+        let mut seed: crate::commands::Seed = [0; crate::commands::SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
+
+        let (round_height, chunk_id, contribution_id, _) = coordinator.parse_contribution_file_locator(&response)?;
+        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor2, &seed)?;
+        coordinator.try_contribute(&contributor2, chunk_id)?;
+    }
+
+    // Now try to lock the next chunk as contributor 1 again.
+    //
+    // This operation should be blocked by the verifier,
+    // who needs to verify this chunk in order for contributor 1 to acquire the lock.
+    let result = coordinator.try_lock(&contributor1);
+    assert!(result.is_err());
+
+    // Clear all pending verifications, so the locked chunk is released as well.
+    while coordinator.verify(&verifier).is_ok() {}
+
+    // Now try to lock the next chunk as contributor 1 again.
+    //
+    // This operation should no longer be blocked by contributor 2 or verifier,
+    // who has released the lock on this chunk.
+    let result = coordinator.try_lock(&contributor1);
+    assert!(result.is_ok());
+
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn test_round_on_groth16_bls12_377() {
@@ -520,4 +618,11 @@ fn test_coordinator_drop_contributor_in_between_two_contributors() {
 #[serial]
 fn test_coordinator_drop_contributor_with_contributors_in_pending_tasks() {
     test_report!(coordinator_drop_contributor_with_contributors_in_pending_tasks_test);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_try_lock_blocked() {
+    test_report!(try_lock_blocked_test);
 }

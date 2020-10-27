@@ -20,7 +20,7 @@ use std::{
     fmt,
     sync::{Arc, RwLock},
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::*;
 
 #[derive(Debug)]
 pub enum CoordinatorError {
@@ -2165,7 +2165,10 @@ impl Coordinator {
     }
 
     #[inline]
-    fn parse_contribution_file_locator(&self, locator_path: &str) -> Result<(u64, u64, u64, bool), CoordinatorError> {
+    pub(super) fn parse_contribution_file_locator(
+        &self,
+        locator_path: &str,
+    ) -> Result<(u64, u64, u64, bool), CoordinatorError> {
         // Acquire the storage read lock.
         let storage = StorageLock::Read(self.storage.read().unwrap());
 
