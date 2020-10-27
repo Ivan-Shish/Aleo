@@ -2220,6 +2220,19 @@ impl Coordinator {
             .collect())
     }
 
+    ///
+    /// Writes the contribution file signature to a given `contribution_file_signature` locator.
+    ///
+    /// This function constructs a contribution file signature with an empty signature and the
+    /// hashes of the following files:
+    /// 1. Challenge file
+    /// 2. Response file
+    /// 3. Next challenge file (for verifiers)
+    ///
+    /// On success, this function writes a contribution file signature to disk.
+    ///
+    /// On failure, this function returns a `CoordinatorError`.
+    ///
     fn write_contribution_file_signature(
         storage: &StorageLock,
         challenge_locator: &Locator,
