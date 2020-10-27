@@ -798,6 +798,8 @@ pub struct RoundMetrics {
     finished_aggregation_at: Option<DateTime<Utc>>,
     /// The estimated number of seconds remaining for the current round to finish.
     estimated_finish_time: Option<u64>,
+    /// The estimated number of seconds remaining for the current round to aggregate.
+    estimated_aggregation_time: Option<u64>,
     /// The estimated number of seconds remaining until the queue is closed for the next round.
     estimated_wait_time: Option<u64>,
     /// The timestamp of the earliest start time for the next round.
@@ -881,6 +883,7 @@ impl CoordinatorState {
                 started_aggregation_at: None,
                 finished_aggregation_at: None,
                 estimated_finish_time: None,
+                estimated_aggregation_time: None,
                 estimated_wait_time: None,
                 next_round_after: None,
             });
@@ -2269,7 +2272,7 @@ impl CoordinatorState {
             // Update the round metrics if the current round is not yet finished.
             if let Some(metrics) = &mut self.current_metrics {
                 // Update the average time per task for each participant.
-                let contributor_average_per_task = {
+                let (contributor_average_per_task, verifier_average_per_task) = {
                     let mut cumulative_contributor_averages = 0;
                     let mut cumulative_verifier_averages = 0;
                     let mut number_of_contributor_averages = 0;
@@ -2304,7 +2307,17 @@ impl CoordinatorState {
                         }
                     }
 
-                    match number_of_verifier_averages > 0 {
+                    let contributor_average_per_task = match number_of_contributor_averages > 0 {
+                        true => {
+                            let contributor_average_per_task =
+                                cumulative_contributor_averages / number_of_contributor_averages;
+                            metrics.contributor_average_per_task = Some(contributor_average_per_task);
+                            contributor_average_per_task
+                        }
+                        false => 0,
+                    };
+
+                    let verifier_average_per_task = match number_of_verifier_averages > 0 {
                         true => {
                             let verifier_average_per_task = cumulative_verifier_averages / number_of_verifier_averages;
                             metrics.verifier_average_per_task = Some(verifier_average_per_task);
@@ -2313,15 +2326,7 @@ impl CoordinatorState {
                         false => 0,
                     };
 
-                    match number_of_contributor_averages > 0 {
-                        true => {
-                            let contributor_average_per_task =
-                                cumulative_contributor_averages / number_of_contributor_averages;
-                            metrics.contributor_average_per_task = Some(contributor_average_per_task);
-                            contributor_average_per_task
-                        }
-                        false => 0,
-                    }
+                    (contributor_average_per_task, verifier_average_per_task)
                 };
 
                 // Estimate the time remaining for the current round.
@@ -2348,13 +2353,17 @@ impl CoordinatorState {
                             ProvingSystem::Marlin => cumulative_seconds / number_of_contributors_left,
                         };
 
+                        let estimated_aggregation_time = (contributor_average_per_task + verifier_average_per_task)
+                            * self.environment.number_of_chunks();
+
+                        let estimated_queue_time = self.environment.queue_wait_time();
+
                         // Note that these are extremely rough estimates. These should be updated
                         // to be much more granular, if used in mission-critical logic.
                         metrics.estimated_finish_time = Some(estimated_time_remaining);
-                        metrics.estimated_wait_time = Some(
-                            estimated_time_remaining
-                                + contributor_average_per_task * self.environment.number_of_chunks(),
-                        );
+                        metrics.estimated_aggregation_time = Some(estimated_aggregation_time);
+                        metrics.estimated_wait_time =
+                            Some(estimated_time_remaining + estimated_aggregation_time + estimated_queue_time);
                     }
                 }
             };
@@ -2660,6 +2669,7 @@ impl CoordinatorState {
             started_aggregation_at: None,
             finished_aggregation_at: None,
             estimated_finish_time: None,
+            estimated_aggregation_time: None,
             estimated_wait_time: None,
             next_round_after: None,
         });

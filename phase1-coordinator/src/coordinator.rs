@@ -7,6 +7,9 @@ use crate::{
 };
 use setup_utils::calculate_hash;
 
+#[cfg(not(test))]
+use crate::logger::initialize_logger;
+
 use crate::commands::{Seed, SEED_LENGTH};
 use chrono::{DateTime, Utc};
 use rand::RngCore;
@@ -287,7 +290,12 @@ impl Coordinator {
     ///
     #[inline]
     pub fn initialize(&self) -> Result<(), CoordinatorError> {
+        #[cfg(not(test))]
+        initialize_logger(&self.environment);
+
         info!("Coordinator is booting up");
+
+        info!("{:#?}", self.environment.parameters());
 
         // Fetch the current round height from storage.
         let current_round_height = self.current_round_height()?;

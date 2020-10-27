@@ -1,5 +1,6 @@
 use crate::{
     objects::Participant,
+    serialize::string,
     storage::{Disk, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
@@ -7,6 +8,7 @@ use setup_utils::{CheckForCorrectness, UseCompression};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use tracing::Level;
 use url::Url;
 
 type BatchSize = usize;
@@ -182,6 +184,9 @@ pub struct Environment {
     deployment: Deployment,
     /// The base directory for disk storage of this coordinator.
     local_base_directory: String,
+    /// The logging verbosity of this coordinator.
+    #[serde(with = "string")]
+    verbosity: Level,
     /// The network address for the coordinator.
     address: String,
     /// The network port for the coordinator.
@@ -362,6 +367,13 @@ impl Environment {
     }
 
     ///
+    /// Returns the logging verbosity of this coordinator.
+    ///
+    pub fn verbosity(&self) -> &tracing::Level {
+        &self.verbosity
+    }
+
+    ///
     /// Returns the network address of the coordinator.
     ///
     pub fn address(&self) -> &str {
@@ -459,6 +471,20 @@ impl Testing {
         deployment.environment.coordinator_verifiers = verifiers.to_vec();
         deployment
     }
+
+    #[inline]
+    pub fn verbosity(&self, verbosity: &str) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.verbosity = match verbosity {
+            "ERROR" => Level::ERROR,
+            "WARN" => Level::WARN,
+            "INFO" => Level::INFO,
+            "DEBUG" => Level::DEBUG,
+            "TRACE" => Level::TRACE,
+            _ => Level::TRACE,
+        };
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -505,6 +531,7 @@ impl std::default::Default for Testing {
                 software_version: 1,
                 deployment: Deployment::Testing,
                 local_base_directory: "./transcript/testing".to_string(),
+                verbosity: Level::TRACE,
                 address: "localhost".to_string(),
                 port: 8080,
             },
@@ -554,6 +581,20 @@ impl Development {
 
         let mut deployment = self.clone();
         deployment.environment.coordinator_verifiers = verifiers.to_vec();
+        deployment
+    }
+
+    #[inline]
+    pub fn verbosity(&self, verbosity: &str) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.verbosity = match verbosity {
+            "ERROR" => Level::ERROR,
+            "WARN" => Level::WARN,
+            "INFO" => Level::INFO,
+            "DEBUG" => Level::DEBUG,
+            "TRACE" => Level::TRACE,
+            _ => Level::DEBUG,
+        };
         deployment
     }
 }
@@ -608,6 +649,7 @@ impl std::default::Default for Development {
                 software_version: 1,
                 deployment: Deployment::Development,
                 local_base_directory: "./transcript/development".to_string(),
+                verbosity: Level::DEBUG,
                 address: "0.0.0.0".to_string(),
                 port: 8080,
             },
@@ -659,6 +701,20 @@ impl Production {
         deployment.environment.coordinator_verifiers = verifiers.to_vec();
         deployment
     }
+
+    #[inline]
+    pub fn verbosity(&self, verbosity: &str) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.verbosity = match verbosity {
+            "ERROR" => Level::ERROR,
+            "WARN" => Level::WARN,
+            "INFO" => Level::INFO,
+            "DEBUG" => Level::DEBUG,
+            "TRACE" => Level::TRACE,
+            _ => Level::DEBUG,
+        };
+        deployment
+    }
 }
 
 impl From<Parameters> for Production {
@@ -705,6 +761,7 @@ impl std::default::Default for Production {
                 software_version: 1,
                 deployment: Deployment::Production,
                 local_base_directory: "./transcript".to_string(),
+                verbosity: Level::DEBUG,
                 address: "0.0.0.0".to_string(),
                 port: 443,
             },

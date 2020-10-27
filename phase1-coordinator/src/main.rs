@@ -7,18 +7,6 @@ use std::time::Duration;
 use tokio::{task, time::sleep};
 use tracing::*;
 
-#[cfg(not(feature = "silent"))]
-#[inline]
-fn init_logger() {
-    use once_cell::sync::OnceCell;
-
-    static INSTANCE: OnceCell<()> = OnceCell::new();
-    INSTANCE.get_or_init(|| {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
-        tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-    });
-}
-
 #[inline]
 async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     Ok(Coordinator::new(environment.clone())?)
@@ -26,13 +14,10 @@ async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
-    #[cfg(not(feature = "silent"))]
-    init_logger();
-
     // Set the environment.
     let environment: Environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
-
-    info!("{:#?}", environment.parameters());
+    // use phase1_coordinator::environment::Production;
+    // let environment: Environment = Production::from(Parameters::AleoInner).into();
 
     // Instantiate the coordinator.
     let coordinator = coordinator(&environment).await?;
