@@ -190,9 +190,8 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     }
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     Ok(())
@@ -275,9 +274,8 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.
@@ -432,9 +430,8 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.

@@ -2424,10 +2424,13 @@ impl Coordinator {
     /// Returns a reference to the instantiation of `CoordinatorState` that this
     /// coordinator is using.
     ///
-    #[cfg(test)]
+    #[cfg(any(test, feature = "operator"))]
     #[inline]
-    pub(super) fn state(&self) -> Arc<RwLock<CoordinatorState>> {
-        self.state.clone()
+    pub fn state(&self) -> CoordinatorState {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Clone the state struct.
+        state.clone()
     }
 }
 

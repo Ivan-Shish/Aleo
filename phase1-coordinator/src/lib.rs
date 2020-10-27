@@ -12,8 +12,13 @@ pub(crate) mod commands;
 pub mod coordinator;
 pub use coordinator::*;
 
+#[cfg(not(feature = "operator"))]
 pub(crate) mod coordinator_state;
-pub(crate) use coordinator_state::CoordinatorState;
+
+#[cfg(feature = "operator")]
+pub mod coordinator_state;
+#[cfg(feature = "operator")]
+pub use coordinator_state::CoordinatorState;
 
 pub mod environment;
 

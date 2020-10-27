@@ -51,6 +51,7 @@ serial_test = { version = "0.5" }
 
 [features]
 default = ["log_file"]
+operator = ["log_file", "testing"]
 testing = ["function_name", "serial_test"]
 log_file = []
 silent = []
