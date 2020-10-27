@@ -21,7 +21,7 @@ pub mod environment;
 pub mod logger;
 
 pub mod objects;
-pub use objects::{Participant, Round};
+pub use objects::{ContributionFileSignature, Participant, Round};
 
 mod serialize;
 
