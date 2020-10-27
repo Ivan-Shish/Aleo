@@ -14,6 +14,8 @@ pub use coordinator::*;
 
 #[cfg(not(feature = "operator"))]
 pub(crate) mod coordinator_state;
+#[cfg(not(feature = "operator"))]
+pub(crate) use coordinator_state::CoordinatorState;
 
 #[cfg(feature = "operator")]
 pub mod coordinator_state;
