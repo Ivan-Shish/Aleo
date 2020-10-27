@@ -2233,6 +2233,7 @@ impl Coordinator {
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
+    #[inline]
     fn write_contribution_file_signature(
         storage: &StorageLock,
         challenge_locator: &Locator,
