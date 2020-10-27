@@ -263,13 +263,13 @@ impl Verification {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Computation, Verification},
+        commands::{Computation, Seed, Verification, SEED_LENGTH},
         storage::{Locator, Object, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
 
-    use crate::commands::{Seed, SEED_LENGTH};
+    use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
 
@@ -281,21 +281,24 @@ mod tests {
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
         let test_storage = coordinator.storage();
 
-        // Ensure the ceremony has not started.
-        assert_eq!(0, coordinator.current_round_height().unwrap());
-
+        let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
             // Run initialization.
+            info!("Initializing ceremony");
+            let round_height = coordinator.run_initialization(&mut storage, Utc::now()).unwrap();
+            info!("Initialized ceremony");
+
+            // Check current round height is now 0.
+            assert_eq!(0, round_height);
+
+            let contributors = vec![contributor.clone()];
+            let verifiers = vec![verifier.clone()];
             coordinator
-                .next_round(
-                    &mut storage,
-                    *TEST_STARTED_AT,
-                    vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()],
-                    vec![Lazy::force(&TEST_VERIFIER_ID).clone()],
-                )
+                .next_round(&mut storage, *TEST_STARTED_AT, contributors, verifiers)
                 .unwrap();
         }
 
@@ -346,28 +349,3 @@ mod tests {
         }
     }
 }
-
-// info!("Sanity checking contribution 0 in round {}", round_height);
-//
-// // Open the transcript file.
-// let transcript = environment.contribution_locator(round_height, chunk_id, contribution_id);
-// let file = OpenOptions::new().read(true).open(&transcript)?;
-// let reader = unsafe { MmapOptions::new().map(&file)? };
-//
-// // Check that the contribution chunk was generated based on the blank hash.
-// let hash = blank_hash();
-// for (expected, candidate) in hash.iter().zip(reader.chunks(64).next().unwrap()) {
-//     if expected != candidate {
-//         return Err(CoordinatorError::ChunkVerificationFailed.into());
-//     }
-// }
-//
-// // Compute the contribution hash to ensure it works.
-// let contribution_hash = calculate_hash(&reader);
-//
-// if round_height == 0 {
-//     Self::copy_initial(environment, round_height, chunk_id, contribution_hash)?;
-// }
-//
-// info!("Completed sanity checking of contribution 0 in round {}", round_height);
-// return Ok(());

@@ -76,11 +76,6 @@ impl Storage for Disk {
             )?;
         }
 
-        // Create the round height locator if it does not exist yet.
-        if !storage.exists(&Locator::RoundHeight) {
-            storage.insert(Locator::RoundHeight, Object::RoundHeight(0))?;
-        }
-
         trace!("Loaded disk storage");
         Ok(storage)
     }

@@ -142,13 +142,13 @@ impl Aggregation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::Aggregation,
+        commands::{Aggregation, Seed, SEED_LENGTH},
         storage::{Locator, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
 
-    use crate::commands::{Seed, SEED_LENGTH};
+    use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
     use tracing::*;
@@ -161,21 +161,24 @@ mod tests {
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
         let test_storage = coordinator.storage();
 
-        // Ensure the ceremony has not started.
-        assert_eq!(0, coordinator.current_round_height().unwrap());
-
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
             // Run initialization.
+            info!("Initializing ceremony");
+            let round_height = coordinator.run_initialization(&mut storage, Utc::now()).unwrap();
+            info!("Initialized ceremony");
+
+            // Check current round height is now 0.
+            assert_eq!(0, round_height);
+
+            let contributors = vec![contributor.clone()];
+            let verifiers = vec![verifier.clone()];
             coordinator
-                .next_round(&mut storage, *TEST_STARTED_AT, vec![contributor.clone()], vec![
-                    verifier.clone(),
-                ])
+                .next_round(&mut storage, *TEST_STARTED_AT, contributors, verifiers)
                 .unwrap();
         }
 
