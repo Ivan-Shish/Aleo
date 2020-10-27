@@ -1,8 +1,8 @@
 use crate::{
     authentication::Signature,
+    commands::SigningKey,
     environment::Environment,
     storage::{Locator, Object, StorageLock},
-    Coordinator,
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -12,7 +12,6 @@ use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
-#[allow(dead_code)]
 pub(crate) struct Verification;
 
 impl Verification {
@@ -26,6 +25,7 @@ impl Verification {
         environment: &Environment,
         storage: &mut StorageLock,
         signature: Arc<Box<dyn Signature>>,
+        signing_key: &SigningKey,
         round_height: u64,
         chunk_id: u64,
         current_contribution_id: u64,
@@ -98,10 +98,10 @@ impl Verification {
         // TODO (raychu86): Propagate secret key up.
         // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
-        Coordinator::write_contribution_file_signature(
+        crate::commands::write_contribution_file_signature(
             storage,
             signature,
-            "secret_key",
+            signing_key,
             &challenge_locator,
             &response_locator,
             Some(&next_challenge_locator),
@@ -335,7 +335,11 @@ mod tests {
         let test_storage = coordinator.storage();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let contributor_signing_key = "secret_key".to_string();
+
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+        let verifier_signing_key = "secret_key".to_string();
+
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(test_storage.write().unwrap());
@@ -393,6 +397,7 @@ mod tests {
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
                 coordinator.signature(),
+                &contributor_signing_key,
                 challenge_locator,
                 response_locator,
                 contribution_file_signature_locator,
@@ -405,6 +410,7 @@ mod tests {
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
                 coordinator.signature(),
+                &verifier_signing_key,
                 round_height,
                 chunk_id,
                 1,

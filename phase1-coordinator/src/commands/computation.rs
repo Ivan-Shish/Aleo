@@ -1,8 +1,8 @@
 use crate::{
     authentication::Signature,
+    commands::SigningKey,
     environment::Environment,
     storage::{Locator, StorageLock},
-    Coordinator,
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -16,7 +16,6 @@ use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 pub const SEED_LENGTH: usize = 32;
 pub type Seed = [u8; SEED_LENGTH];
 
-#[allow(dead_code)]
 pub(crate) struct Computation;
 
 impl Computation {
@@ -28,11 +27,12 @@ impl Computation {
     /// and response file have been initialized, typically as part of a call to
     /// `Coordinator::try_lock` to lock the contribution chunk.
     ///
-    #[allow(dead_code)]
+    #[inline]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
         signature: Arc<Box<dyn Signature>>,
+        contributor_signing_key: &SigningKey,
         challenge_locator: &Locator,
         response_locator: &Locator,
         contribution_file_signature_locator: &Locator,
@@ -89,10 +89,10 @@ impl Computation {
         // TODO (raychu86): Propagate secret key up.
         // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
-        Coordinator::write_contribution_file_signature(
+        crate::commands::write_contribution_file_signature(
             storage,
             signature,
-            "secret_key",
+            contributor_signing_key,
             challenge_locator,
             response_locator,
             None,
@@ -113,7 +113,6 @@ impl Computation {
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn contribute<T: Engine + Sync>(
         environment: &Environment,
         challenge_reader: &[u8],
@@ -232,12 +231,14 @@ mod tests {
             }
 
             // Run computation on chunk.
+            let contributor_signing_key = "secret_key".to_string();
             let mut seed: Seed = [0; SEED_LENGTH];
             rand::thread_rng().fill_bytes(&mut seed[..]);
             Computation::run(
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
                 signature.clone(),
+                &contributor_signing_key,
                 challenge_locator,
                 response_locator,
                 contribution_file_signature_locator,
