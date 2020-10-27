@@ -45,13 +45,13 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     assert_eq!(1, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Advance the ceremony from round 1 to round 2.
+    // Advance the ceremony from round 0 to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
-    // Run contribution and verification for round 2.
+    // Run contribution and verification for round 1.
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor)?;
         coordinator.verify(&verifier)?;
