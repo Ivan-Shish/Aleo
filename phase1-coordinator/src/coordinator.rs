@@ -2,7 +2,7 @@ use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::Environment,
-    objects::{participant::*, Round},
+    objects::{participant::*, ContributionFileSignature, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -15,6 +15,7 @@ use secrecy::{ExposeSecret, SecretVec};
 use std::{
     convert::TryInto,
     fmt,
+    io::Write,
     sync::{Arc, RwLock},
 };
 use tracing::{debug, error, info, trace, warn};
@@ -40,6 +41,7 @@ pub enum CoordinatorError {
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
     ContributionFailed,
+    ContributionFileSignatureLocatorAlreadyExists,
     ContributionFileSizeMismatch,
     ContributionHashMismatch,
     ContributionIdIsNonzero,
@@ -79,6 +81,7 @@ pub enum CoordinatorError {
     LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
     NextChallengeHashSizeInvalid,
+    NextChallengeHashMissing,
     NextRoundAlreadyInPrecommit,
     NextRoundShouldBeEmpty,
     NumberOfChunksInvalid,
@@ -918,8 +921,9 @@ impl Coordinator {
     /// Attempts to add a contribution for the given chunk ID from the given participant.
     ///
     /// This function constructs the expected response locator for the given participant
-    /// and chunk ID, and checks that the participant has uploaded the response file
-    /// prior to adding the unverified contribution to the round state.
+    /// and chunk ID, and checks that the participant has uploaded the response file and
+    /// contribution file signature prior to adding the unverified contribution to the
+    /// round state.
     ///
     /// On success, this function releases the lock from the contributor and returns
     /// the response file locator.
@@ -1003,8 +1007,12 @@ impl Coordinator {
     /// Attempts to add a verification for the given chunk ID from the given participant.
     ///
     /// This function constructs the expected next challenge locator for the given participant
-    /// and chunk ID, and checks that the participant has uploaded the next challenge file
-    /// prior to adding the verified contribution to the round state.
+    /// and chunk ID, and checks that the participant has uploaded the next challenge file and
+    /// contribution file signature prior to adding the verified contribution to the round state.
+    ///
+    /// On success, this function releases the lock from the verifier.
+    ///
+    /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
     pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
@@ -1365,10 +1373,12 @@ impl Coordinator {
             return Err(CoordinatorError::ContributionIdMismatch);
         }
 
-        // Fetch the challenge and response locators.
+        // Fetch the challenge, response, and contribution file signature locators.
         let challenge_file_locator =
             Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
         let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+        let contribution_file_signature_locator =
+            Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, false);
         {
             // Fetch a challenge file reader.
             let challenge_reader = storage.reader(&challenge_file_locator)?;
@@ -1382,6 +1392,10 @@ impl Coordinator {
             let challenge_hash = calculate_hash(challenge_reader.as_ref());
             debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
 
+            // Compute the response hash using the response file.
+            let response_hash = calculate_hash(response_reader.as_ref());
+            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
+
             // Fetch the challenge hash from the response file.
             let challenge_hash_in_response = &response_reader
                 .get(0..64)
@@ -1392,6 +1406,25 @@ impl Coordinator {
             // Check the starting hash in the response file is based on the previous contribution.
             if challenge_hash_in_response != challenge_hash.as_slice() {
                 error!("Challenge hash in response file does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Fetch a contribution file signature reader.
+            let contribution_file_signature_reader = storage.reader(&contribution_file_signature_locator)?;
+
+            // Fetch the stored contribution file signature.
+            let contribution_file_signature: ContributionFileSignature =
+                serde_json::from_slice(&*contribution_file_signature_reader)?;
+
+            // Check that the contribution file signature challenge hash is correct.
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+                error!("Challenge hash in contribution file signature does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature response hash is correct.
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+                error!("Response hash in contribution file signature does not match the expected response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
         }
@@ -1460,32 +1493,57 @@ impl Coordinator {
         // Fetch the current contribution ID.
         let contribution_id = chunk.current_contribution_id();
 
-        // Fetch the next challenge locator.
-        let next_challenge = {
+        // Fetch the challenge, response, next challenge, and contribution file signature locators.
+        let challenge_file_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, contribution_id - 1, true);
+        let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+        let (next_challenge_locator, contribution_file_signature_locator) = {
             // Fetch whether this is the final contribution of the specified chunk.
             let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
             match is_final_contribution {
-                true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
-                false => Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
+                true => (
+                    Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+                    Locator::ContributionFileSignature(current_round_height + 1, chunk_id, 0, true),
+                ),
+                false => (
+                    Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
+                    Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, true),
+                ),
             }
         };
         {
+            // Fetch a challenge file reader.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
+
+            // Fetch a response file reader.
+            let response_reader = storage.reader(&response_file_locator)?;
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
+
+            // Fetch a next challenge file reader.
+            let next_challenge_reader = storage.reader(&next_challenge_locator)?;
+            trace!(
+                "Next challenge is located in {}",
+                storage.to_path(&next_challenge_locator)?
+            );
+
+            // Compute the challenge hash using the challenge file.
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
             // Compute the response hash.
-            let response_hash = calculate_hash(&storage.reader(&Locator::ContributionFile(
-                current_round_height,
-                chunk_id,
-                contribution_id,
-                false,
-            ))?);
+            let response_hash = calculate_hash(response_reader.as_ref());
+            debug!("Response hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
+            // Compute the next challenge hash.
+            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
+            debug!(
+                "Next challenge hash is {}",
+                pretty_hash!(&next_challenge_hash.as_slice())
+            );
 
             // Fetch the saved response hash in the next challenge file.
-            let saved_response_hash = storage
-                .reader(&next_challenge)?
-                .as_ref()
-                .chunks(64)
-                .next()
-                .unwrap()
-                .to_vec();
+            let saved_response_hash = next_challenge_reader.as_ref().chunks(64).next().unwrap().to_vec();
 
             // Check that the response hash matches the next challenge hash.
             info!("The response hash is {}", pretty_hash!(&response_hash));
@@ -1494,6 +1552,38 @@ impl Coordinator {
                 error!("Response hash does not match the saved response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
+
+            // Fetch a contribution file signature reader.
+            let contribution_file_signature_reader = storage.reader(&contribution_file_signature_locator)?;
+
+            // Fetch the stored contribution file signature.
+            let contribution_file_signature: ContributionFileSignature =
+                serde_json::from_slice(&*contribution_file_signature_reader)?;
+
+            // Check that the contribution file signature challenge hash is correct.
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+                error!("Challenge hash in contribution file signature does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature response hash is correct.
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+                error!("Response hash in contribution file signature does not match the expected response hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature next challenge hash is correct.
+            match contribution_file_signature.get_next_challenge_hash() {
+                Some(declared_next_challenge_hash) => {
+                    if hex::decode(declared_next_challenge_hash)? != next_challenge_hash.as_slice() {
+                        error!(
+                            "Next challenge hash in contribution file signature does not match the expected next challenge hash."
+                        );
+                        return Err(CoordinatorError::ContributionHashMismatch);
+                    }
+                }
+                None => return Err(CoordinatorError::NextChallengeHashMissing),
+            }
         }
 
         // Sets the current contribution as verified in the current round.
@@ -1501,7 +1591,7 @@ impl Coordinator {
             chunk_id,
             contribution_id,
             participant.clone(),
-            storage.to_path(&next_challenge)?,
+            storage.to_path(&next_challenge_locator)?,
         )?;
 
         // Add the updated round to storage.
@@ -1867,6 +1957,29 @@ impl Coordinator {
             round_height, chunk_id, contribution_id, participant
         );
 
+        info!(
+            "Writing contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
+        // Fetch the contribution file signature locator.
+        let contribution_file_signature_locator =
+            &Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, false);
+
+        // Write the contribution file signature to the `contribution_file_signature_locator`.
+        Self::write_contribution_file_signature(
+            &mut storage,
+            &challenge_locator,
+            &response_locator,
+            None,
+            &contribution_file_signature_locator,
+        )?;
+
+        info!(
+            "Successfully wrote contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
         Ok(())
     }
 
@@ -1937,10 +2050,16 @@ impl Coordinator {
         // Fetch whether this is the final contribution of the specified chunk.
         let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
-        // Fetch the verified response locator.
-        let verified_locator = match is_final_contribution {
-            true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-            false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
+        // Fetch the verified response locator and the contribution file signature locator.
+        let (verified_locator, contribution_file_signature_locator) = match is_final_contribution {
+            true => (
+                Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
+                Locator::ContributionFileSignature(round_height + 1, chunk_id, 0, true),
+            ),
+            false => (
+                Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
+                Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, true),
+            ),
         };
 
         info!(
@@ -1958,6 +2077,28 @@ impl Coordinator {
         info!(
             "Completed verification on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
+        );
+
+        info!(
+            "Writing contribution file signature for round {} chunk {} verified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
+        // Fetch the challenge locator.
+        let challenge_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
+
+        // Write the contribution file signature to the `contribution_file_signature_locator`.
+        Self::write_contribution_file_signature(
+            &mut storage,
+            &challenge_locator,
+            &response_locator,
+            Some(&verified_locator),
+            &contribution_file_signature_locator,
+        )?;
+
+        info!(
+            "Successfully wrote contribution file signature for round {} chunk {} verified contribution {}",
+            round_height, chunk_id, contribution_id
         );
 
         // Check that the verified contribution locator exists.
@@ -2069,6 +2210,55 @@ impl Coordinator {
             .par_iter()
             .map(|locator| storage.to_path(&locator).unwrap())
             .collect())
+    }
+
+    fn write_contribution_file_signature(
+        storage: &StorageLock,
+        challenge_locator: &Locator,
+        response_locator: &Locator,
+        next_challenge_locator: Option<&Locator>,
+        contribution_file_signature_locator: &Locator,
+    ) -> Result<(), CoordinatorError> {
+        // Calculate the challenge hash.
+        let reader = storage.reader(challenge_locator)?;
+        let challenge_hash = calculate_hash(reader.as_ref()).to_vec();
+
+        // Calculate the response hash.
+        let reader = storage.reader(response_locator)?;
+        let response_hash = calculate_hash(reader.as_ref()).to_vec();
+
+        // Calculate the next challenge hash.
+        let next_challenge_hash = match next_challenge_locator {
+            Some(locator) => {
+                let reader = storage.reader(locator)?;
+                let next_challenge_hash = calculate_hash(reader.as_ref()).to_vec();
+
+                Some(next_challenge_hash)
+            }
+            None => None,
+        };
+
+        // Generate an empty signature.
+        let signature = hex::encode(vec![0u8; 64]);
+
+        // Construct the contribution file signature.
+        let contribution_file_signature =
+            ContributionFileSignature::new(signature, challenge_hash, response_hash, next_challenge_hash)?;
+
+        let contribution_file_signature_bytes = serde_json::to_vec_pretty(&contribution_file_signature)?;
+
+        // Write the contribution file signature.
+        let mut writer = storage.writer(contribution_file_signature_locator)?;
+        debug!(
+            "Writing contribution file signature of size {} to {}",
+            contribution_file_signature_bytes.len(),
+            &storage.to_path(&contribution_file_signature_locator)?
+        );
+
+        writer.as_mut().write_all(&contribution_file_signature_bytes[..])?;
+        writer.flush()?;
+
+        Ok(())
     }
 
     #[inline]
