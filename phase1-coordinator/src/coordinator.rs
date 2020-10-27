@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
-    environment::Environment,
+    environment::{Deployment, Environment},
     objects::{participant::*, ContributionFileSignature, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
@@ -289,8 +289,8 @@ impl Coordinator {
         #[cfg(not(test))]
         initialize_logger(&self.environment);
 
-        #[cfg(not(test))]
-        if !self.signature.is_secure() {
+        // Check if the deployment is in production, that the signature scheme is secure.
+        if *self.environment.deployment() == Deployment::Production && !self.signature.is_secure() {
             return Err(CoordinatorError::SignatureSchemeIsInsecure);
         }
 
@@ -1987,31 +1987,6 @@ impl Coordinator {
 
         // Save the updated round to storage.
         storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
-
-        // // Initialize a supplemental contributor.
-        // let rt = runtime::Builder::new_multi_thread()
-        //     .thread_name("contributor-core")
-        //     .worker_threads(16)
-        //     .enable_io()
-        //     .enable_time()
-        //     .build()
-        //     .unwrap();
-        //
-        // let coordinator = self.clone();
-
-        // rt.spawn(async move {
-        //     for task in tasks {
-        //         // Fetch the contributor of the coordinator.
-        //         let contributor = coordinator
-        //             .environment
-        //             .coordinator_contributors()
-        //             .first()
-        //             .ok_or(CoordinatorError::ContributorsMissing)
-        //             .unwrap();
-        //
-        //         self.contribute(&contributor).unwrap();
-        //     }
-        // });
 
         Ok(locators
             .par_iter()

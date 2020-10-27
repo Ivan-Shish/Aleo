@@ -19,7 +19,7 @@ type Power = usize;
 
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Deployment {
     Testing,
     Development,
