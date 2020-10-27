@@ -1,12 +1,14 @@
 use crate::{
+    authentication::Signature,
     environment::Environment,
     storage::{Locator, Object, StorageLock},
+    Coordinator,
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
 use setup_utils::{calculate_hash, CheckForCorrectness, GenericArray, U64};
 
-use std::{io::Write, time::Instant};
+use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -23,6 +25,7 @@ impl Verification {
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
+        signature: Arc<Box<dyn Signature>>,
         round_height: u64,
         chunk_id: u64,
         current_contribution_id: u64,
@@ -45,21 +48,70 @@ impl Verification {
         }
 
         // Fetch the locators for `Verification`.
-        let challenge = Locator::ContributionFile(round_height, chunk_id, current_contribution_id - 1, true);
-        let response = Locator::ContributionFile(round_height, chunk_id, current_contribution_id, false);
-        let next_challenge = match is_final_contribution {
-            true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-            false => Locator::ContributionFile(round_height, chunk_id, current_contribution_id, true),
+        let challenge_locator = Locator::ContributionFile(round_height, chunk_id, current_contribution_id - 1, true);
+        let response_locator = Locator::ContributionFile(round_height, chunk_id, current_contribution_id, false);
+        let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
+            true => (
+                Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
+                Locator::ContributionFileSignature(round_height + 1, chunk_id, 0, true),
+            ),
+            false => (
+                Locator::ContributionFile(round_height, chunk_id, current_contribution_id, true),
+                Locator::ContributionFileSignature(round_height, chunk_id, current_contribution_id, true),
+            ),
         };
 
-        trace!("Challenge locator is {}", storage.to_path(&challenge)?);
-        trace!("Response locator is {}", storage.to_path(&response)?);
-        trace!("Next challenge locator is {}", storage.to_path(&next_challenge)?);
+        trace!("Challenge locator is {}", storage.to_path(&challenge_locator)?);
+        trace!("Response locator is {}", storage.to_path(&response_locator)?);
+        trace!(
+            "Next challenge locator is {}",
+            storage.to_path(&next_challenge_locator)?
+        );
+        trace!(
+            "Contribution file signature locator is {}",
+            storage.to_path(&contribution_file_signature_locator)?
+        );
 
-        if let Err(error) = Self::verification(environment, storage, chunk_id, challenge, response, next_challenge) {
+        if let Err(error) = Self::verification(
+            environment,
+            storage,
+            chunk_id,
+            challenge_locator.clone(),
+            response_locator.clone(),
+            next_challenge_locator.clone(),
+        ) {
             error!("Verification failed with {}", error);
             return Err(error);
         }
+
+        debug!(
+            "Writing contribution file signature for round {} chunk {} verified contribution {}",
+            round_height, chunk_id, current_contribution_id
+        );
+
+        // Initialize the contribution file signature locator, if it does not exist.
+        if !storage.exists(&contribution_file_signature_locator) {
+            let expected_filesize = Object::contribution_file_signature_size(true);
+            storage.initialize(contribution_file_signature_locator.clone(), expected_filesize)?;
+        }
+
+        // TODO (raychu86): Propagate secret key up.
+        // TODO (raychu86): Move the implementation of this helper function.
+        // Write the contribution file signature to disk.
+        Coordinator::write_contribution_file_signature(
+            storage,
+            signature,
+            "secret_key",
+            &challenge_locator,
+            &response_locator,
+            Some(&next_challenge_locator),
+            &contribution_file_signature_locator,
+        )?;
+
+        debug!(
+            "Successfully wrote contribution file signature for round {} chunk {} verified contribution {}",
+            round_height, chunk_id, current_contribution_id
+        );
 
         let elapsed = Instant::now().duration_since(start);
         info!(
@@ -74,12 +126,12 @@ impl Verification {
         environment: &Environment,
         storage: &mut StorageLock,
         chunk_id: u64,
-        challenge: Locator,
-        response: Locator,
-        next_challenge: Locator,
+        challenge_locator: Locator,
+        response_locator: Locator,
+        next_challenge_locator: Locator,
     ) -> Result<(), CoordinatorError> {
         // Check that the previous and current locators exist in storage.
-        if !storage.exists(&challenge) || !storage.exists(&response) {
+        if !storage.exists(&challenge_locator) || !storage.exists(&response_locator) {
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -89,14 +141,14 @@ impl Verification {
         let result = match curve {
             CurveKind::Bls12_377 => Self::transform_pok_and_correctness(
                 environment,
-                storage.reader(&challenge)?.as_ref(),
-                storage.reader(&response)?.as_ref(),
+                storage.reader(&challenge_locator)?.as_ref(),
+                storage.reader(&response_locator)?.as_ref(),
                 &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
             ),
             CurveKind::BW6 => Self::transform_pok_and_correctness(
                 environment,
-                storage.reader(&challenge)?.as_ref(),
-                storage.reader(&response)?.as_ref(),
+                storage.reader(&challenge_locator)?.as_ref(),
+                storage.reader(&response_locator)?.as_ref(),
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
@@ -118,16 +170,16 @@ impl Verification {
         let next_challenge_hash = if response_is_compressed == next_challenge_is_compressed {
             // TODO (howardwu): Update this.
             trace!("Copying decompressed response file without the public key");
-            storage.copy(&response, &next_challenge)?;
+            storage.copy(&response_locator, &next_challenge_locator)?;
 
-            calculate_hash(&storage.reader(&next_challenge)?)
+            calculate_hash(&storage.reader(&next_challenge_locator)?)
         } else {
             trace!("Starting decompression of the response file for the next challenge file");
 
             // Initialize the next contribution locator, if it does not exist.
-            if !storage.exists(&next_challenge) {
+            if !storage.exists(&next_challenge_locator) {
                 storage.initialize(
-                    next_challenge.clone(),
+                    next_challenge_locator.clone(),
                     Object::contribution_file_size(environment, chunk_id, true),
                 )?;
             }
@@ -135,20 +187,20 @@ impl Verification {
             let (_, _, curve, _, _, _) = settings.clone();
             match curve {
                 CurveKind::Bls12_377 => Self::decompress(
-                    storage.reader(&response)?.as_ref(),
-                    storage.writer(&next_challenge)?.as_mut(),
+                    storage.reader(&response_locator)?.as_ref(),
+                    storage.writer(&next_challenge_locator)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(Bls12_377, settings, chunk_id),
                 )?,
                 CurveKind::BW6 => Self::decompress(
-                    storage.reader(&response)?.as_ref(),
-                    storage.writer(&next_challenge)?.as_mut(),
+                    storage.reader(&response_locator)?.as_ref(),
+                    storage.writer(&next_challenge_locator)?.as_mut(),
                     response_hash.as_ref(),
                     &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
                 )?,
             };
 
-            calculate_hash(storage.reader(&next_challenge)?.as_ref())
+            calculate_hash(storage.reader(&next_challenge_locator)?.as_ref())
         };
 
         debug!("The next challenge hash is {}", pretty_hash!(&next_challenge_hash));
@@ -156,7 +208,7 @@ impl Verification {
         {
             // Fetch the saved response hash in the next challenge file.
             let saved_response_hash = storage
-                .reader(&next_challenge)?
+                .reader(&next_challenge_locator)?
                 .as_ref()
                 .chunks(64)
                 .next()
@@ -319,9 +371,19 @@ mod tests {
             let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
             // Fetch the response locator.
             let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            // Fetch the contribution file signature locator.
+            let contribution_file_signature_locator =
+                &Locator::ContributionFileSignature(round_height, chunk_id, 1, false);
+
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
                 storage.initialize(response_locator.clone(), expected_filesize).unwrap();
+            }
+            if !storage.exists(contribution_file_signature_locator) {
+                let expected_filesize = Object::contribution_file_signature_size(false);
+                storage
+                    .initialize(contribution_file_signature_locator.clone(), expected_filesize)
+                    .unwrap();
             }
 
             // Run computation on chunk.
@@ -330,14 +392,25 @@ mod tests {
             Computation::run(
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
+                coordinator.signature(),
                 challenge_locator,
                 response_locator,
+                contribution_file_signature_locator,
                 &seed,
             )
             .unwrap();
 
             // Run verification on chunk.
-            Verification::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1, is_final).unwrap();
+            Verification::run(
+                &TEST_ENVIRONMENT_3,
+                &mut storage,
+                coordinator.signature(),
+                round_height,
+                chunk_id,
+                1,
+                is_final,
+            )
+            .unwrap();
 
             // Fetch the next contribution locator.
             let next = match is_final {
