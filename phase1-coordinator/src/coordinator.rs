@@ -410,6 +410,18 @@ impl Coordinator {
             )
         };
 
+        // Check if the manual lock for transitioning to the next round is enabled.
+        {
+            // Acquire the state read lock.
+            let state = self.state.read().unwrap();
+
+            // Check if the manual lock is enabled.
+            if state.is_manual_lock_enabled() {
+                info!("Manual lock is enabled");
+                return Ok(());
+            }
+        }
+
         // Try advancing to the next round if the current round is finished,
         // the current round has been aggregated, and the precommit for
         // the next round is now ready.
@@ -657,6 +669,57 @@ impl Coordinator {
 
         // Unban the participant from the ceremony.
         state.unban_participant(participant);
+
+        // Save the coordinator state in storage.
+        state.save(&mut storage)?;
+
+        Ok(())
+    }
+
+    ///
+    /// Returns `true` if the manual lock for transitioning to the next round is enabled.
+    ///
+    #[inline]
+    pub fn is_manual_lock_enabled(&self) -> bool {
+        // Acquire the state read lock.
+        let state = self.state.read().unwrap();
+        // Fetch the state of the manual lock.
+        state.is_manual_lock_enabled()
+    }
+
+    ///
+    /// Sets the manual lock for transitioning to the next round to `true`.
+    ///
+    #[inline]
+    pub fn enable_manual_lock(&mut self) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Sets the manual lock to `true`.
+        state.enable_manual_lock();
+
+        // Save the coordinator state in storage.
+        state.save(&mut storage)?;
+
+        Ok(())
+    }
+
+    ///
+    /// Sets the manual lock for transitioning to the next round to `false`.
+    ///
+    #[inline]
+    pub fn disable_manual_lock(&mut self) -> Result<(), CoordinatorError> {
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
+        // Acquire the state write lock.
+        let mut state = self.state.write().unwrap();
+
+        // Sets the manual lock to `false`.
+        state.disable_manual_lock();
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;

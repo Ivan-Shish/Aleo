@@ -641,7 +641,7 @@ impl std::default::Default for Development {
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
-                queue_wait_time: 0,
+                queue_wait_time: 60,
 
                 coordinator_contributors: vec![Participant::new_contributor("development-coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("development-coordinator-verifier")],
@@ -753,7 +753,7 @@ impl std::default::Default for Production {
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
-                queue_wait_time: 30,
+                queue_wait_time: 120,
 
                 coordinator_contributors: vec![Participant::new_contributor("coordinator-contributor")],
                 coordinator_verifiers: vec![Participant::new_verifier("coordinator-verifier")],

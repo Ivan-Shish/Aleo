@@ -830,6 +830,8 @@ pub struct CoordinatorState {
     dropped: Vec<ParticipantInfo>,
     /// The list of participants that are banned from all current and future rounds.
     banned: HashSet<Participant>,
+    /// The manual lock to hold the coordinator from transitioning to the next round.
+    manual_lock: bool,
 }
 
 impl CoordinatorState {
@@ -852,6 +854,7 @@ impl CoordinatorState {
             finished_verifiers: HashMap::default(),
             dropped: Vec::new(),
             banned: HashSet::new(),
+            manual_lock: false,
         }
     }
 
@@ -2039,6 +2042,30 @@ impl CoordinatorState {
             .into_par_iter()
             .filter(|p| p != participant)
             .collect();
+    }
+
+    ///
+    /// Returns `true` if the manual lock for transitioning to the next round is enabled.
+    ///
+    #[inline]
+    pub(super) fn is_manual_lock_enabled(&self) -> bool {
+        self.manual_lock
+    }
+
+    ///
+    /// Sets the manual lock for transitioning to the next round to `true`.
+    ///
+    #[inline]
+    pub(super) fn enable_manual_lock(&mut self) {
+        self.manual_lock = true;
+    }
+
+    ///
+    /// Sets the manual lock for transitioning to the next round to `false`.
+    ///
+    #[inline]
+    pub(super) fn disable_manual_lock(&mut self) {
+        self.manual_lock = false;
     }
 
     ///
