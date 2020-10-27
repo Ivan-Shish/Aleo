@@ -1,6 +1,7 @@
 use crate::{
     environment::Environment,
     storage::{Locator, StorageLock},
+    Coordinator,
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -20,7 +21,7 @@ pub(crate) struct Computation;
 impl Computation {
     ///
     /// Runs computation for a given environment, storage writer, challenge locator,
-    /// and response locator.
+    /// response locator, and contribution file signature locator.
     ///
     /// This function assumes that the locator for the previous response file, challenge file,
     /// and response file have been initialized, typically as part of a call to
@@ -32,6 +33,7 @@ impl Computation {
         storage: &mut StorageLock,
         challenge_locator: &Locator,
         response_locator: &Locator,
+        contribution_file_signature_locator: &Locator,
         seed: &Seed,
     ) -> anyhow::Result<()> {
         let start = Instant::now();
@@ -42,8 +44,10 @@ impl Computation {
         );
 
         // Fetch the chunk ID from the response locator.
-        let chunk_id = match response_locator {
-            Locator::ContributionFile(_, chunk_id, _, _) => *chunk_id as usize,
+        let (round_height, chunk_id, contribution_id) = match response_locator {
+            Locator::ContributionFile(round_height, chunk_id, contribution_id, _) => {
+                (*round_height, *chunk_id as usize, *contribution_id)
+            }
             _ => return Err(CoordinatorError::ContributionLocatorIncorrect.into()),
         };
 
@@ -74,6 +78,26 @@ impl Computation {
         let reader = storage.reader(response_locator)?;
         let contribution_hash = calculate_hash(reader.as_ref());
         debug!("Response hash is {}", pretty_hash!(&contribution_hash));
+
+        debug!(
+            "Writing contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
+        // TODO (raychu86): Move the implementation of this helper function.
+        // Write the contribution file signature to disk.
+        Coordinator::write_contribution_file_signature(
+            storage,
+            challenge_locator,
+            response_locator,
+            None,
+            contribution_file_signature_locator,
+        )?;
+
+        debug!(
+            "Successfully wrote contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
 
         let elapsed = Instant::now().duration_since(start);
         info!(
@@ -183,9 +207,19 @@ mod tests {
             let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
             // Fetch the response locator.
             let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            // Fetch the contribution file signature locator.
+            let contribution_file_signature_locator =
+                &Locator::ContributionFileSignature(round_height, chunk_id, 1, false);
+
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
                 storage.initialize(response_locator.clone(), expected_filesize).unwrap();
+            }
+            if !storage.exists(contribution_file_signature_locator) {
+                let expected_filesize = Object::contribution_file_signature_size(false);
+                storage
+                    .initialize(contribution_file_signature_locator.clone(), expected_filesize)
+                    .unwrap();
             }
 
             // Run computation on chunk.
@@ -196,6 +230,7 @@ mod tests {
                 &mut storage,
                 challenge_locator,
                 response_locator,
+                contribution_file_signature_locator,
                 &seed,
             )
             .unwrap();

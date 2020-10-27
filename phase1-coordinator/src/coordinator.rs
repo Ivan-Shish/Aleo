@@ -1424,15 +1424,15 @@ impl Coordinator {
             let contribution_file_signature: ContributionFileSignature =
                 serde_json::from_slice(&*contribution_file_signature_reader)?;
 
-            // Check that the contribution file signature is valid.
-            if !self.signature.verify(
-                &participant.to_string(),
-                &serde_json::to_string(&contribution_file_signature.get_state())?,
-                contribution_file_signature.get_signature(),
-            ) {
-                error!("Contribution file signature failed to verify for {}", participant);
-                return Err(CoordinatorError::ContributorSignatureInvalid);
-            }
+            // // Check that the contribution file signature is valid.
+            // if !self.signature.verify(
+            //     &participant.to_string(),
+            //     &serde_json::to_string(&contribution_file_signature.get_state())?,
+            //     contribution_file_signature.get_signature(),
+            // ) {
+            //     error!("Contribution file signature failed to verify for {}", participant);
+            //     return Err(CoordinatorError::ContributorSignatureInvalid);
+            // }
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
@@ -1579,15 +1579,15 @@ impl Coordinator {
             let contribution_file_signature: ContributionFileSignature =
                 serde_json::from_slice(&*contribution_file_signature_reader)?;
 
-            // Check that the contribution file signature is valid.
-            if !self.signature.verify(
-                &participant.to_string(),
-                &serde_json::to_string(&contribution_file_signature.get_state())?,
-                contribution_file_signature.get_signature(),
-            ) {
-                error!("Contribution file signature failed to verify for {}", participant);
-                return Err(CoordinatorError::VerifierSignatureInvalid);
-            }
+            // // Check that the contribution file signature is valid.
+            // if !self.signature.verify(
+            //     &participant.to_string(),
+            //     &serde_json::to_string(&contribution_file_signature.get_state())?,
+            //     contribution_file_signature.get_signature(),
+            // ) {
+            //     error!("Contribution file signature failed to verify for {}", participant);
+            //     return Err(CoordinatorError::VerifierSignatureInvalid);
+            // }
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
@@ -1982,6 +1982,9 @@ impl Coordinator {
         let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
         // Fetch the response locator.
         let response_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        // Fetch the contribution file signature locator.
+        let contribution_file_signature_locator =
+            &Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, false);
 
         info!(
             "Starting computation on round {} chunk {} contribution {} as {}",
@@ -1992,34 +1995,12 @@ impl Coordinator {
             &mut storage,
             challenge_locator,
             response_locator,
+            contribution_file_signature_locator,
             seed,
         )?;
         info!(
             "Completed computation on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
-        );
-
-        info!(
-            "Writing contribution file signature for round {} chunk {} unverified contribution {}",
-            round_height, chunk_id, contribution_id
-        );
-
-        // Fetch the contribution file signature locator.
-        let contribution_file_signature_locator =
-            &Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, false);
-
-        // Write the contribution file signature to the `contribution_file_signature_locator`.
-        Self::write_contribution_file_signature(
-            &mut storage,
-            &challenge_locator,
-            &response_locator,
-            None,
-            &contribution_file_signature_locator,
-        )?;
-
-        info!(
-            "Successfully wrote contribution file signature for round {} chunk {} unverified contribution {}",
-            round_height, chunk_id, contribution_id
         );
 
         Ok(())
@@ -2119,28 +2100,6 @@ impl Coordinator {
         info!(
             "Completed verification on round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
-        );
-
-        info!(
-            "Writing contribution file signature for round {} chunk {} verified contribution {}",
-            round_height, chunk_id, contribution_id
-        );
-
-        // Fetch the challenge locator.
-        let challenge_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
-
-        // Write the contribution file signature to the `contribution_file_signature_locator`.
-        Self::write_contribution_file_signature(
-            &mut storage,
-            &challenge_locator,
-            &response_locator,
-            Some(&verified_locator),
-            &contribution_file_signature_locator,
-        )?;
-
-        info!(
-            "Successfully wrote contribution file signature for round {} chunk {} verified contribution {}",
-            round_height, chunk_id, contribution_id
         );
 
         // Check that the verified contribution locator exists.
@@ -2268,7 +2227,7 @@ impl Coordinator {
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
-    fn write_contribution_file_signature(
+    pub(crate) fn write_contribution_file_signature(
         storage: &StorageLock,
         challenge_locator: &Locator,
         response_locator: &Locator,
