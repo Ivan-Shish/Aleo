@@ -1,4 +1,5 @@
 use crate::{
+    authentication::Signature,
     environment::Environment,
     storage::{Locator, StorageLock},
     Coordinator,
@@ -8,7 +9,7 @@ use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
 use rand::Rng;
-use std::{io::Write, time::Instant};
+use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -31,6 +32,7 @@ impl Computation {
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
+        signature: Arc<Box<dyn Signature>>,
         challenge_locator: &Locator,
         response_locator: &Locator,
         contribution_file_signature_locator: &Locator,
@@ -84,10 +86,13 @@ impl Computation {
             round_height, chunk_id, contribution_id
         );
 
+        // TODO (raychu86): Propagate secret key up.
         // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
         Coordinator::write_contribution_file_signature(
             storage,
+            signature,
+            "secret_key",
             challenge_locator,
             response_locator,
             None,
@@ -167,20 +172,24 @@ impl Computation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Computation, Initialization},
+        authentication::{Dummy, Signature},
+        commands::{Computation, Initialization, Seed, SEED_LENGTH},
         storage::{Locator, Object, StorageLock},
         testing::prelude::*,
     };
     use setup_utils::calculate_hash;
 
-    use crate::commands::{Seed, SEED_LENGTH};
     use rand::RngCore;
+    use std::sync::Arc;
     use tracing::{debug, trace};
 
     #[test]
     #[serial]
     fn test_computation_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
+
+        // Define signature scheme.
+        let signature: Arc<Box<dyn Signature>> = Arc::new(Box::new(Dummy));
 
         // Define test parameters.
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
@@ -228,6 +237,7 @@ mod tests {
             Computation::run(
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
+                signature.clone(),
                 challenge_locator,
                 response_locator,
                 contribution_file_signature_locator,

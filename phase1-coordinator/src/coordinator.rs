@@ -3,7 +3,7 @@ use crate::{
     commands::{Aggregation, Computation, Initialization, Verification},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::Environment,
-    objects::{participant::*, ContributionFileSignature, Round},
+    objects::{participant::*, ContributionFileSignature, ContributionState, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -2022,6 +2022,7 @@ impl Coordinator {
         Computation::run(
             &self.environment,
             &mut storage,
+            self.signature.clone(),
             challenge_locator,
             response_locator,
             contribution_file_signature_locator,
@@ -2103,15 +2104,9 @@ impl Coordinator {
         let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
         // Fetch the verified response locator and the contribution file signature locator.
-        let (verified_locator, contribution_file_signature_locator) = match is_final_contribution {
-            true => (
-                Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-                Locator::ContributionFileSignature(round_height + 1, chunk_id, 0, true),
-            ),
-            false => (
-                Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
-                Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, true),
-            ),
+        let verified_locator = match is_final_contribution {
+            true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
+            false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
         };
 
         info!(
@@ -2121,6 +2116,7 @@ impl Coordinator {
         Verification::run(
             &self.environment,
             &mut storage,
+            self.signature.clone(),
             round_height,
             chunk_id,
             contribution_id,
@@ -2258,6 +2254,8 @@ impl Coordinator {
     #[inline]
     pub(crate) fn write_contribution_file_signature(
         storage: &StorageLock,
+        signature: Arc<Box<dyn Signature>>,
+        secret_key: &str,
         challenge_locator: &Locator,
         response_locator: &Locator,
         next_challenge_locator: Option<&Locator>,
@@ -2282,12 +2280,14 @@ impl Coordinator {
             None => None,
         };
 
-        // Generate an empty signature.
-        let signature = hex::encode(vec![0u8; 64]);
+        // Construct the contribution state.
+        let contribution_state = ContributionState::new(challenge_hash, response_hash, next_challenge_hash)?;
+
+        // Generate the contribution signature.
+        let contribution_signature = signature.sign(secret_key, &serde_json::to_string(&contribution_state)?);
 
         // Construct the contribution file signature.
-        let contribution_file_signature =
-            ContributionFileSignature::new(signature, challenge_hash, response_hash, next_challenge_hash)?;
+        let contribution_file_signature = ContributionFileSignature::new(contribution_signature, contribution_state)?;
 
         let contribution_file_signature_bytes = serde_json::to_vec_pretty(&contribution_file_signature)?;
 
@@ -2387,6 +2387,16 @@ impl Coordinator {
     #[inline]
     pub(super) fn state(&self) -> Arc<RwLock<CoordinatorState>> {
         self.state.clone()
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Signature` that this
+    /// coordinator is using.
+    ///
+    #[cfg(test)]
+    #[inline]
+    pub(super) fn signature(&self) -> Arc<Box<dyn Signature>> {
+        self.signature.clone()
     }
 }
 

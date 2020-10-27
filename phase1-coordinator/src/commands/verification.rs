@@ -1,4 +1,5 @@
 use crate::{
+    authentication::Signature,
     environment::Environment,
     storage::{Locator, Object, StorageLock},
     Coordinator,
@@ -7,7 +8,7 @@ use crate::{
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
 use setup_utils::{calculate_hash, CheckForCorrectness, GenericArray, U64};
 
-use std::{io::Write, time::Instant};
+use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -24,6 +25,7 @@ impl Verification {
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
+        signature: Arc<Box<dyn Signature>>,
         round_height: u64,
         chunk_id: u64,
         current_contribution_id: u64,
@@ -93,9 +95,13 @@ impl Verification {
             storage.initialize(contribution_file_signature_locator.clone(), expected_filesize)?;
         }
 
+        // TODO (raychu86): Propagate secret key up.
+        // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
         Coordinator::write_contribution_file_signature(
             storage,
+            signature,
+            "secret_key",
             &challenge_locator,
             &response_locator,
             Some(&next_challenge_locator),
@@ -386,6 +392,7 @@ mod tests {
             Computation::run(
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
+                coordinator.signature(),
                 challenge_locator,
                 response_locator,
                 contribution_file_signature_locator,
@@ -394,7 +401,16 @@ mod tests {
             .unwrap();
 
             // Run verification on chunk.
-            Verification::run(&TEST_ENVIRONMENT_3, &mut storage, round_height, chunk_id, 1, is_final).unwrap();
+            Verification::run(
+                &TEST_ENVIRONMENT_3,
+                &mut storage,
+                coordinator.signature(),
+                round_height,
+                chunk_id,
+                1,
+                is_final,
+            )
+            .unwrap();
 
             // Fetch the next contribution locator.
             let next = match is_final {
