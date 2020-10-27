@@ -85,6 +85,7 @@ pub enum CoordinatorError {
     LocatorFileNotOpen,
     LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
+    NextChallengeHashAlreadyExists,
     NextChallengeHashSizeInvalid,
     NextChallengeHashMissing,
     NextRoundAlreadyInPrecommit,
@@ -1387,21 +1388,19 @@ impl Coordinator {
         let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
         let contribution_file_signature_locator =
             Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, false);
-        {
-            // Fetch a challenge file reader.
-            let challenge_reader = storage.reader(&challenge_file_locator)?;
-            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
 
-            // Fetch a response file reader.
-            let response_reader = storage.reader(&response_file_locator)?;
-            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
-
+        // Check the challenge-response hash chain.
+        let (challenge_hash, response_hash) = {
             // Compute the challenge hash using the challenge file.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
             let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
             debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
 
-            // Compute the response hash using the response file.
+            // Compute the response hash.
+            let response_reader = storage.reader(&response_file_locator)?;
             let response_hash = calculate_hash(response_reader.as_ref());
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
             debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
 
             // Fetch the challenge hash from the response file.
@@ -1409,20 +1408,23 @@ impl Coordinator {
                 .get(0..64)
                 .ok_or(CoordinatorError::StorageReaderFailed)?[..];
             let pretty_hash = pretty_hash!(&challenge_hash_in_response);
-            debug!("Challenge hash in response file is {}", pretty_hash);
 
-            // Check the starting hash in the response file is based on the previous contribution.
+            // Check the starting hash in the response file is based on the challenge.
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash in response file is {}", pretty_hash);
             if challenge_hash_in_response != challenge_hash.as_slice() {
                 error!("Challenge hash in response file does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
-            // Fetch a contribution file signature reader.
-            let contribution_file_signature_reader = storage.reader(&contribution_file_signature_locator)?;
+            (challenge_hash, response_hash)
+        };
 
+        // Check the challenge-response contribution signature.
+        {
             // Fetch the stored contribution file signature.
             let contribution_file_signature: ContributionFileSignature =
-                serde_json::from_slice(&*contribution_file_signature_reader)?;
+                serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
 
             // Check that the contribution file signature is valid.
             if !self.signature.verify(
@@ -1436,14 +1438,20 @@ impl Coordinator {
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
-                error!("Challenge hash in contribution file signature does not match the expected challenge hash.");
+                error!("The signed challenge hash does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
             // Check that the contribution file signature response hash is correct.
             if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
-                error!("Response hash in contribution file signature does not match the expected response hash.");
+                error!("The signed response hash does not match the expected response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature next challenge hash does not exist.
+            if contribution_file_signature.get_next_challenge_hash().is_some() {
+                error!("The signed next challenge hash should not exist");
+                return Err(CoordinatorError::NextChallengeHashAlreadyExists);
             }
         }
 
@@ -1530,32 +1538,47 @@ impl Coordinator {
                 ),
             }
         };
-        {
-            // Fetch a challenge file reader.
+
+        // Check the challenge-response hash chain.
+        let (challenge_hash, response_hash) = {
+            // Compute the challenge hash using the challenge file.
             let challenge_reader = storage.reader(&challenge_file_locator)?;
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
             trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
 
-            // Fetch a response file reader.
+            // Compute the response hash.
             let response_reader = storage.reader(&response_file_locator)?;
+            let response_hash = calculate_hash(response_reader.as_ref());
             trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
+            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
 
-            // Fetch a next challenge file reader.
+            // Fetch the challenge hash from the response file.
+            let challenge_hash_in_response = &response_reader
+                .get(0..64)
+                .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+            let pretty_hash = pretty_hash!(&challenge_hash_in_response);
+
+            // Check the starting hash in the response file is based on the challenge.
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash in response file is {}", pretty_hash);
+            if challenge_hash_in_response != challenge_hash.as_slice() {
+                error!("Challenge hash in response file does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            (challenge_hash, response_hash)
+        };
+
+        // Check the response-next_challenge hash chain.
+        let next_challenge_hash = {
+            // Compute the next challenge hash.
             let next_challenge_reader = storage.reader(&next_challenge_locator)?;
+            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
             trace!(
                 "Next challenge is located in {}",
                 storage.to_path(&next_challenge_locator)?
             );
-
-            // Compute the challenge hash using the challenge file.
-            let challenge_hash = calculate_hash(challenge_reader.as_ref());
-            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
-
-            // Compute the response hash.
-            let response_hash = calculate_hash(response_reader.as_ref());
-            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
-
-            // Compute the next challenge hash.
-            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
             debug!(
                 "Next challenge hash is {}",
                 pretty_hash!(&next_challenge_hash.as_slice())
@@ -1563,21 +1586,24 @@ impl Coordinator {
 
             // Fetch the saved response hash in the next challenge file.
             let saved_response_hash = next_challenge_reader.as_ref().chunks(64).next().unwrap().to_vec();
+            let pretty_hash = pretty_hash!(&saved_response_hash);
 
             // Check that the response hash matches the next challenge hash.
             info!("The response hash is {}", pretty_hash!(&response_hash));
-            info!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+            info!("The response hash in next challenge file is {}", pretty_hash);
             if response_hash.as_slice() != saved_response_hash {
                 error!("Response hash does not match the saved response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
-            // Fetch a contribution file signature reader.
-            let contribution_file_signature_reader = storage.reader(&contribution_file_signature_locator)?;
+            next_challenge_hash
+        };
 
+        // Check the response-next_challenge contribution signature.
+        {
             // Fetch the stored contribution file signature.
             let contribution_file_signature: ContributionFileSignature =
-                serde_json::from_slice(&*contribution_file_signature_reader)?;
+                serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
 
             // Check that the contribution file signature is valid.
             if !self.signature.verify(
@@ -1591,27 +1617,30 @@ impl Coordinator {
 
             // Check that the contribution file signature challenge hash is correct.
             if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
-                error!("Challenge hash in contribution file signature does not match the expected challenge hash.");
+                error!("The signed challenge hash does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
             // Check that the contribution file signature response hash is correct.
             if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
-                error!("Response hash in contribution file signature does not match the expected response hash.");
+                error!("The signed response hash does not match the expected response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
+            // Check that the contribution file signature next challenge hash exists.
+            if contribution_file_signature.get_next_challenge_hash().is_none() {
+                error!("The signed next challenge hash is missing");
+                return Err(CoordinatorError::NextChallengeHashMissing);
+            }
+
             // Check that the contribution file signature next challenge hash is correct.
-            match contribution_file_signature.get_next_challenge_hash() {
-                Some(declared_next_challenge_hash) => {
-                    if hex::decode(declared_next_challenge_hash)? != next_challenge_hash.as_slice() {
-                        error!(
-                            "Next challenge hash in contribution file signature does not match the expected next challenge hash."
-                        );
-                        return Err(CoordinatorError::ContributionHashMismatch);
-                    }
-                }
-                None => return Err(CoordinatorError::NextChallengeHashMissing),
+            let signed_next_challenge_hash = contribution_file_signature
+                .get_next_challenge_hash()
+                .as_ref()
+                .ok_or(CoordinatorError::NextChallengeHashMissing)?;
+            if hex::decode(signed_next_challenge_hash)? != next_challenge_hash.as_slice() {
+                error!("The signed next challenge hash does not match the expected next challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
             }
         }
 
