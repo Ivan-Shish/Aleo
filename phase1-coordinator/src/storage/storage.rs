@@ -97,8 +97,8 @@ impl Object {
     pub fn contribution_file_signature_size(verified: bool) -> u64 {
         // TODO (raychu86): Calculate contribution signature file size instead of using hard coded values.
         match verified {
-            true => 628,
-            false => 502,
+            true => 628,  // Json object with signature + challenge_hash + response hash + next challenge hash
+            false => 471, // Json object with signature + challenge_hash + response hash
         }
     }
 }

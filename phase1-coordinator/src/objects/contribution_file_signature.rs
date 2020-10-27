@@ -20,6 +20,7 @@ pub struct ContributionState {
     /// The hash of the response file.
     response_hash: String,
     /// The hash of the next challenge file.
+    #[serde(skip_serializing_if = "Option::is_none")]
     next_challenge_hash: Option<String>,
 }
 
@@ -78,10 +79,16 @@ impl ContributionFileSignature {
         Ok(Self { signature, state })
     }
 
-    /// Returns a reference to the signature
+    /// Returns a reference to the signature.
     #[inline]
     pub fn get_signature(&self) -> &str {
         &self.signature
+    }
+
+    /// Returns a reference to the contribution state.
+    #[inline]
+    pub fn get_state(&self) -> &ContributionState {
+        &self.state
     }
 
     /// Returns a reference to the challenge hash.
