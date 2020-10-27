@@ -56,6 +56,12 @@ impl ContributionState {
             next_challenge_hash: next_challenge_hash.map(|h| hex::encode(h)),
         })
     }
+
+    /// Returns the message that should be signed for the `ContributionFileSignature`.
+    #[inline]
+    pub fn signature_message(&self) -> Result<String, CoordinatorError> {
+        Ok(serde_json::to_string(&self)?)
+    }
 }
 
 ///
