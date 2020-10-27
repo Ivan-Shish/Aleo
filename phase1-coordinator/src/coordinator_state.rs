@@ -1071,12 +1071,31 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns `true` if the current round is currently being aggregated.
+    ///
+    #[inline]
+    pub(super) fn is_current_round_aggregating(&self) -> bool {
+        match &self.current_metrics {
+            Some(metrics) => {
+                !metrics.is_round_aggregated
+                    && metrics.started_aggregation_at.is_some()
+                    && metrics.finished_aggregation_at.is_none()
+            }
+            None => false,
+        }
+    }
+
+    ///
     /// Returns `true` if the current round has been aggregated.
     ///
     #[inline]
     pub(super) fn is_current_round_aggregated(&self) -> bool {
         match &self.current_metrics {
-            Some(metrics) => metrics.is_round_aggregated,
+            Some(metrics) => {
+                metrics.is_round_aggregated
+                    && metrics.started_aggregation_at.is_some()
+                    && metrics.finished_aggregation_at.is_some()
+            }
             None => false,
         }
     }
@@ -2929,6 +2948,11 @@ impl Task {
     #[inline]
     pub fn contribution_id(&self) -> u64 {
         self.contribution_id
+    }
+
+    #[inline]
+    pub fn to_tuple(&self) -> (u64, u64) {
+        (self.chunk_id, self.contribution_id)
     }
 }
 

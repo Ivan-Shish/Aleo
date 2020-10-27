@@ -59,6 +59,11 @@ pub enum CoordinatorError {
     ContributorAlreadyContributed,
     ContributorsMissing,
     CoordinatorStateNotInitialized,
+    CurrentRoundAggregating,
+    CurrentRoundAggregated,
+    CurrentRoundFinished,
+    CurrentRoundNotAggregated,
+    CurrentRoundNotFinished,
     DropParticipantFailed,
     ExpectedContributor,
     ExpectedVerifier,
@@ -837,9 +842,6 @@ impl Coordinator {
     ///
     #[inline]
     pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String, String), CoordinatorError> {
-        // Acquire the storage write lock.
-        let mut storage = StorageLock::Write(self.storage.write().unwrap());
-
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
@@ -848,13 +850,29 @@ impl Coordinator {
             return Err(CoordinatorError::ParticipantUnauthorized);
         }
 
+        // Check that the current round is not yet finished.
+        if state.is_current_round_finished() {
+            return Err(CoordinatorError::CurrentRoundFinished);
+        }
+
+        // Check that the current round is not yet aggregating.
+        if state.is_current_round_aggregating() {
+            return Err(CoordinatorError::CurrentRoundAggregating);
+        }
+
+        // Check that the current round is not yet aggregated.
+        if state.is_current_round_aggregated() {
+            return Err(CoordinatorError::CurrentRoundAggregated);
+        }
+
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().unwrap());
+
         // Attempt to fetch the next chunk ID and contribution ID for the given participant.
-        let task = state.fetch_task(participant)?;
-        let (chunk_id, contribution_id) = (task.chunk_id(), task.contribution_id());
-        trace!("Fetched next task {:?} for {}", task, participant);
+        let (chunk_id, contribution_id) = state.fetch_task(participant)?.to_tuple();
+        trace!("Fetched task ({}, {}) for {}", chunk_id, contribution_id, participant);
 
         debug!("Locking chunk {} for {}", chunk_id, participant);
-
         match self.try_lock_chunk(&mut storage, chunk_id, participant) {
             // Case 1 - Participant acquired lock, return the locator.
             Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
@@ -918,6 +936,21 @@ impl Coordinator {
         // Check that the participant is in the current round, and has not been dropped or finished.
         if !state.is_current_contributor(participant) {
             return Err(CoordinatorError::ParticipantUnauthorized);
+        }
+
+        // Check that the current round is not yet finished.
+        if state.is_current_round_finished() {
+            return Err(CoordinatorError::CurrentRoundFinished);
+        }
+
+        // Check that the current round is not yet aggregating.
+        if state.is_current_round_aggregating() {
+            return Err(CoordinatorError::CurrentRoundAggregating);
+        }
+
+        // Check that the current round is not yet aggregated.
+        if state.is_current_round_aggregated() {
+            return Err(CoordinatorError::CurrentRoundAggregated);
         }
 
         // Acquire the storage write lock.
@@ -998,6 +1031,21 @@ impl Coordinator {
         // Check that the participant is in the current round, and has not been dropped or finished.
         if !state.is_current_verifier(participant) {
             return Err(CoordinatorError::ParticipantUnauthorized);
+        }
+
+        // Check that the current round is not yet finished.
+        if state.is_current_round_finished() {
+            return Err(CoordinatorError::CurrentRoundFinished);
+        }
+
+        // Check that the current round is not yet aggregating.
+        if state.is_current_round_aggregating() {
+            return Err(CoordinatorError::CurrentRoundAggregating);
+        }
+
+        // Check that the current round is not yet aggregated.
+        if state.is_current_round_aggregated() {
+            return Err(CoordinatorError::CurrentRoundAggregated);
         }
 
         // Acquire the storage write lock.
@@ -1182,6 +1230,16 @@ impl Coordinator {
                 false => return Err(CoordinatorError::RoundHeightMismatch),
             }
         };
+
+        // Check that the current round is finished.
+        if !state.is_current_round_finished() {
+            return Err(CoordinatorError::CurrentRoundNotFinished);
+        }
+
+        // Check that the current round is aggregated, if this is not round 0.
+        if current_round_height > 0 && !state.is_current_round_aggregated() {
+            return Err(CoordinatorError::CurrentRoundNotAggregated);
+        }
 
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
