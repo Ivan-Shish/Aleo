@@ -762,11 +762,6 @@ impl Coordinator {
     /// Returns the current round height of the ceremony from storage,
     /// irrespective of the stage of its completion.
     ///
-    /// For convention, a round height of `0` indicates that there have
-    /// been no prior rounds of the ceremony. The ceremony is initialized
-    /// on a round height of `0` and the first round of public contribution
-    /// starts on a round height of `1`.
-    ///
     /// When loading the current round height from storage, this function
     /// checks that the corresponding round is in storage. Note that it
     /// only checks for the existence of a round value and does not
@@ -782,16 +777,12 @@ impl Coordinator {
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
 
-        match current_round_height != 0 {
-            // Check that the corresponding round data exists in storage.
-            true => match storage.exists(&Locator::RoundState(current_round_height)) {
-                // Case 1 - This is a typical round of the ceremony.
-                true => Ok(current_round_height),
-                // Case 2 - Storage failed to locate the current round.
-                false => Err(CoordinatorError::StorageFailed),
-            },
-            // Case 3 - There are no prior rounds of the ceremony.
-            false => Ok(0),
+        // Fetch the current round from storage.
+        match storage.exists(&Locator::RoundState(current_round_height)) {
+            // Case 1 - This is a typical round of the ceremony.
+            true => Ok(current_round_height),
+            // Case 2 - Storage failed to locate the current round.
+            false => Err(CoordinatorError::StorageFailed),
         }
     }
 
