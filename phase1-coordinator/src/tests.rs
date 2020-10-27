@@ -1,4 +1,6 @@
 use crate::{
+    authentication::Dummy,
+    commands::{Seed, SigningKey, SEED_LENGTH},
     coordinator_state::Task,
     environment::{Parameters, Testing},
     testing::prelude::*,
@@ -7,15 +9,27 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
+use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{collections::HashSet, panic};
 
-fn create_contributor(id: &str) -> Participant {
-    Participant::Contributor(format!("test-contributor-{}", id))
+#[inline]
+fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
+    let contributor = Participant::Contributor(format!("test-contributor-{}", id));
+    let contributor_signing_key: SigningKey = "secret_key".to_string();
+
+    let mut seed: Seed = [0; SEED_LENGTH];
+    rand::thread_rng().fill_bytes(&mut seed[..]);
+
+    (contributor, contributor_signing_key, seed)
 }
 
-fn create_verifier(id: &str) -> Participant {
-    Participant::Verifier(format!("test-verifier-{}", id))
+#[inline]
+fn create_verifier(id: &str) -> (Participant, SigningKey) {
+    let verifier = Participant::Verifier(format!("test-verifier-{}", id));
+    let verifier_signing_key: SigningKey = "secret_key".to_string();
+
+    (verifier, verifier_signing_key)
 }
 
 fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
@@ -31,15 +45,15 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment)?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
     assert_eq!(0, coordinator.current_round_height()?);
 
     // Meanwhile, add a contributor and verifier to the queue.
-    let contributor = create_contributor("1");
-    let verifier = create_verifier("1");
+    let (contributor, contributor_signing_key, seed) = create_contributor("1");
+    let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
     coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
@@ -53,8 +67,8 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
 
     // Run contribution and verification for round 1.
     for _ in 0..number_of_chunks {
-        coordinator.contribute(&contributor)?;
-        coordinator.verify(&verifier)?;
+        coordinator.contribute(&contributor, &contributor_signing_key, &seed)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
     }
 
     //
@@ -66,8 +80,8 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     // are set to `true`. This section can be removed without
     // changing the outcome of this test, if necessary.
     //
-    let contributor = create_contributor("1");
-    let verifier = create_verifier("1");
+    let (contributor, _, _) = create_contributor("1");
+    let (verifier, _) = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
     coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
@@ -96,16 +110,16 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment)?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
     assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
-    let contributor1 = create_contributor("1");
-    let contributor2 = create_contributor("2");
-    let verifier = create_verifier("1");
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(verifier.clone(), 10)?;
@@ -138,10 +152,10 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
 
     // Contribute and verify up to the penultimate chunk.
     for _ in 0..(number_of_chunks - 1) {
-        coordinator.contribute(&contributor1)?;
-        coordinator.contribute(&contributor2)?;
-        coordinator.verify(&verifier)?;
-        coordinator.verify(&verifier)?;
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
     }
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -189,9 +203,8 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     }
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     Ok(())
@@ -211,17 +224,17 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
     assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
-    let contributor1 = create_contributor("1");
-    let contributor2 = create_contributor("2");
-    let contributor3 = create_contributor("3");
-    let verifier = create_verifier("1");
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
@@ -237,12 +250,12 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
 
     // Contribute and verify up to the penultimate chunk.
     for _ in 0..(number_of_chunks - 1) {
-        coordinator.contribute(&contributor1)?;
-        coordinator.contribute(&contributor2)?;
-        coordinator.contribute(&contributor3)?;
-        coordinator.verify(&verifier)?;
-        coordinator.verify(&verifier)?;
-        coordinator.verify(&verifier)?;
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
     }
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -274,9 +287,8 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.
@@ -339,17 +351,17 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
     assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
-    let contributor1 = create_contributor("1");
-    let contributor2 = create_contributor("2");
-    let contributor3 = create_contributor("3");
-    let verifier = create_verifier("1");
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
@@ -365,12 +377,12 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
 
     // Contribute and verify up to 2 before the final chunk.
     for _ in 0..(number_of_chunks - 2) {
-        coordinator.contribute(&contributor1)?;
-        coordinator.contribute(&contributor2)?;
-        coordinator.contribute(&contributor3)?;
-        coordinator.verify(&verifier)?;
-        coordinator.verify(&verifier)?;
-        coordinator.verify(&verifier)?;
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
     }
 
     // Lock the next task for contributor 1 and 3.
@@ -431,9 +443,8 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
-    let coordinator_state = coordinator.state();
-    let state = coordinator_state.read().unwrap();
-    debug!("{}", serde_json::to_string_pretty(&*state)?);
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.

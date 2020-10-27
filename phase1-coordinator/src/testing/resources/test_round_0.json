@@ -16,8 +16,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_0/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_0/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -29,8 +31,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_1/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_1/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -42,8 +46,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_2/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_2/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -55,8 +61,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_3/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_3/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -68,8 +76,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_4/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_4/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -81,8 +91,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_5/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_5/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -94,8 +106,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_6/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_6/contribution_0.verified.signature",
                     "verified": true
                 }
             }
@@ -107,8 +121,10 @@
                 "0": {
                     "contributorId": null,
                     "contributedLocation": null,
+                    "contributedSignatureLocation": null,
                     "verifierId": "testing-coordinator-verifier",
                     "verifiedLocation": "./transcript/testing/round_0/chunk_7/contribution_0.verified",
+                    "verifiedSignatureLocation": "./transcript/testing/round_0/chunk_7/contribution_0.verified.signature",
                     "verified": true
                 }
             }

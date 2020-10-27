@@ -1,8 +1,9 @@
 use crate::{
-    commands::{Aggregation, Computation, Initialization, Verification},
+    authentication::Signature,
+    commands::{Aggregation, Initialization},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
-    environment::Environment,
-    objects::{participant::*, Round},
+    environment::{Deployment, Environment},
+    objects::{participant::*, ContributionFileSignature, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -10,13 +11,9 @@ use setup_utils::calculate_hash;
 #[cfg(not(test))]
 use crate::logger::initialize_logger;
 
-use crate::commands::{Seed, SEED_LENGTH};
 use chrono::{DateTime, Utc};
-use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use secrecy::{ExposeSecret, SecretVec};
 use std::{
-    convert::TryInto,
     fmt,
     sync::{Arc, RwLock},
 };
@@ -25,6 +22,7 @@ use tracing::*;
 #[derive(Debug)]
 pub enum CoordinatorError {
     AggregateContributionFileSizeMismatch,
+    ChallengeHashSizeInvalid,
     ChunkAlreadyComplete,
     ChunkAlreadyVerified,
     ChunkIdAlreadyAdded,
@@ -42,6 +40,7 @@ pub enum CoordinatorError {
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
     ContributionFailed,
+    ContributionFileSignatureLocatorAlreadyExists,
     ContributionFileSizeMismatch,
     ContributionHashMismatch,
     ContributionIdIsNonzero,
@@ -55,8 +54,11 @@ pub enum CoordinatorError {
     ContributionMissingVerifiedLocator,
     ContributionMissingVerifier,
     ContributionShouldNotExist,
+    ContributionSignatureFileSizeMismatch,
+    ContributionSignatureSizeMismatch,
     ContributionsComplete,
     ContributorAlreadyContributed,
+    ContributorSignatureInvalid,
     ContributorsMissing,
     CoordinatorStateNotInitialized,
     CurrentRoundAggregating,
@@ -72,6 +74,7 @@ pub enum CoordinatorError {
     InitializationTranscriptsDiffer,
     Integer(std::num::ParseIntError),
     IOError(std::io::Error),
+    Hex(hex::FromHexError),
     JsonError(serde_json::Error),
     JustificationInvalid,
     LocatorDeserializationFailed,
@@ -82,6 +85,9 @@ pub enum CoordinatorError {
     LocatorFileNotOpen,
     LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
+    NextChallengeHashAlreadyExists,
+    NextChallengeHashSizeInvalid,
+    NextChallengeHashMissing,
     NextRoundAlreadyInPrecommit,
     NextRoundShouldBeEmpty,
     NumberOfChunksInvalid,
@@ -127,6 +133,7 @@ pub enum CoordinatorError {
     Phase1Setup(setup_utils::Error),
     QueueIsEmpty,
     QueueWaitTimeIncomplete,
+    ResponseHashSizeInvalid,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundAlreadyAggregated,
@@ -153,6 +160,7 @@ pub enum CoordinatorError {
     RoundUpdateCorruptedStateOfVerifiers,
     RoundVerifiersMissing,
     RoundVerifiersNotUnique,
+    SignatureSchemeIsInsecure,
     StorageCopyFailed,
     StorageFailed,
     StorageInitializationFailed,
@@ -172,12 +180,19 @@ pub enum CoordinatorError {
     VerificationFailed,
     VerificationOnContributionIdZero,
     VerifierMissing,
+    VerifierSignatureInvalid,
     VerifiersMissing,
 }
 
 impl From<anyhow::Error> for CoordinatorError {
     fn from(error: anyhow::Error) -> Self {
         CoordinatorError::Error(error)
+    }
+}
+
+impl From<hex::FromHexError> for CoordinatorError {
+    fn from(error: hex::FromHexError) -> Self {
+        CoordinatorError::Hex(error)
     }
 }
 
@@ -236,12 +251,12 @@ impl From<CoordinatorError> for anyhow::Error {
 pub struct Coordinator {
     /// The parameters and settings of this coordinator.
     environment: Environment,
+    /// The signature scheme for contributors & verifiers with this coordinator.
+    signature: Arc<Box<dyn Signature>>,
     /// The storage of contributions and rounds for this coordinator.
     storage: Arc<RwLock<Box<dyn Storage>>>,
     /// The current round and participant state.
     state: Arc<RwLock<CoordinatorState>>,
-    /// The seed for running contributions as the coordinator.
-    seed: Arc<SecretVec<u8>>,
 }
 
 impl Coordinator {
@@ -254,7 +269,7 @@ impl Coordinator {
     /// The coordinator is forbidden from caching state about any round.
     ///
     #[inline]
-    pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
+    pub fn new(environment: Environment, signature: Box<dyn Signature>) -> Result<Self, CoordinatorError> {
         // Load an instance of storage.
         let storage = environment.storage()?;
         // Load an instance of coordinator state.
@@ -263,15 +278,11 @@ impl Coordinator {
             _ => return Err(CoordinatorError::StorageFailed),
         };
 
-        // Initialize the seed for the initial contribution.
-        let mut seed: Seed = [0; SEED_LENGTH];
-        rand::thread_rng().fill_bytes(&mut seed[..]);
-
         Ok(Self {
             environment: environment.clone(),
+            signature: Arc::new(signature),
             storage: Arc::new(RwLock::new(storage)),
             state: Arc::new(RwLock::new(state)),
-            seed: Arc::new(SecretVec::new(seed.to_vec())),
         })
     }
 
@@ -282,6 +293,11 @@ impl Coordinator {
     pub fn initialize(&self) -> Result<(), CoordinatorError> {
         #[cfg(not(test))]
         initialize_logger(&self.environment);
+
+        // Check if the deployment is in production, that the signature scheme is secure.
+        if *self.environment.deployment() == Deployment::Production && !self.signature.is_secure() {
+            return Err(CoordinatorError::SignatureSchemeIsInsecure);
+        }
 
         info!("Coordinator is booting up");
         info!("{:#?}", self.environment.parameters());
@@ -751,11 +767,6 @@ impl Coordinator {
     /// Returns the current round height of the ceremony from storage,
     /// irrespective of the stage of its completion.
     ///
-    /// For convention, a round height of `0` indicates that there have
-    /// been no prior rounds of the ceremony. The ceremony is initialized
-    /// on a round height of `0` and the first round of public contribution
-    /// starts on a round height of `1`.
-    ///
     /// When loading the current round height from storage, this function
     /// checks that the corresponding round is in storage. Note that it
     /// only checks for the existence of a round value and does not
@@ -771,16 +782,12 @@ impl Coordinator {
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&storage)?;
 
-        match current_round_height != 0 {
-            // Check that the corresponding round data exists in storage.
-            true => match storage.exists(&Locator::RoundState(current_round_height)) {
-                // Case 1 - This is a typical round of the ceremony.
-                true => Ok(current_round_height),
-                // Case 2 - Storage failed to locate the current round.
-                false => Err(CoordinatorError::StorageFailed),
-            },
-            // Case 3 - There are no prior rounds of the ceremony.
-            false => Ok(0),
+        // Fetch the current round from storage.
+        match storage.exists(&Locator::RoundState(current_round_height)) {
+            // Case 1 - This is a typical round of the ceremony.
+            true => Ok(current_round_height),
+            // Case 2 - Storage failed to locate the current round.
+            false => Err(CoordinatorError::StorageFailed),
         }
     }
 
@@ -910,8 +917,9 @@ impl Coordinator {
     /// Attempts to add a contribution for the given chunk ID from the given participant.
     ///
     /// This function constructs the expected response locator for the given participant
-    /// and chunk ID, and checks that the participant has uploaded the response file
-    /// prior to adding the unverified contribution to the round state.
+    /// and chunk ID, and checks that the participant has uploaded the response file and
+    /// contribution file signature prior to adding the unverified contribution to the
+    /// round state.
     ///
     /// On success, this function releases the lock from the contributor and returns
     /// the response file locator.
@@ -1010,8 +1018,12 @@ impl Coordinator {
     /// Attempts to add a verification for the given chunk ID from the given participant.
     ///
     /// This function constructs the expected next challenge locator for the given participant
-    /// and chunk ID, and checks that the participant has uploaded the next challenge file
-    /// prior to adding the verified contribution to the round state.
+    /// and chunk ID, and checks that the participant has uploaded the next challenge file and
+    /// contribution file signature prior to adding the verified contribution to the round state.
+    ///
+    /// On success, this function releases the lock from the verifier.
+    ///
+    /// On failure, it returns a `CoordinatorError`.
     ///
     #[inline]
     pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
@@ -1407,34 +1419,76 @@ impl Coordinator {
             return Err(CoordinatorError::ContributionIdMismatch);
         }
 
-        // Fetch the challenge and response locators.
+        // Fetch the challenge, response, and contribution file signature locators.
         let challenge_file_locator =
             Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
         let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
-        {
-            // Fetch a challenge file reader.
-            let challenge_reader = storage.reader(&challenge_file_locator)?;
-            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
+        let contribution_file_signature_locator =
+            Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, false);
 
-            // Fetch a response file reader.
-            let response_reader = storage.reader(&response_file_locator)?;
-            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
-
+        // Check the challenge-response hash chain.
+        let (challenge_hash, response_hash) = {
             // Compute the challenge hash using the challenge file.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
             let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
             debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
+            // Compute the response hash.
+            let response_reader = storage.reader(&response_file_locator)?;
+            let response_hash = calculate_hash(response_reader.as_ref());
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
+            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
 
             // Fetch the challenge hash from the response file.
             let challenge_hash_in_response = &response_reader
                 .get(0..64)
                 .ok_or(CoordinatorError::StorageReaderFailed)?[..];
             let pretty_hash = pretty_hash!(&challenge_hash_in_response);
-            debug!("Challenge hash in response file is {}", pretty_hash);
 
-            // Check the starting hash in the response file is based on the previous contribution.
+            // Check the starting hash in the response file is based on the challenge.
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash in response file is {}", pretty_hash);
             if challenge_hash_in_response != challenge_hash.as_slice() {
                 error!("Challenge hash in response file does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            (challenge_hash, response_hash)
+        };
+
+        // Check the challenge-response contribution signature.
+        {
+            // Fetch the stored contribution file signature.
+            let contribution_file_signature: ContributionFileSignature =
+                serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
+
+            // Check that the contribution file signature is valid.
+            if !self.signature.verify(
+                &participant.to_string(),
+                &serde_json::to_string(&contribution_file_signature.get_state())?,
+                contribution_file_signature.get_signature(),
+            ) {
+                error!("Contribution file signature failed to verify for {}", participant);
+                return Err(CoordinatorError::ContributorSignatureInvalid);
+            }
+
+            // Check that the contribution file signature challenge hash is correct.
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+                error!("The signed challenge hash does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature response hash is correct.
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+                error!("The signed response hash does not match the expected response hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature next challenge hash does not exist.
+            if contribution_file_signature.get_next_challenge_hash().is_some() {
+                error!("The signed next challenge hash should not exist");
+                return Err(CoordinatorError::NextChallengeHashAlreadyExists);
             }
         }
 
@@ -1443,6 +1497,7 @@ impl Coordinator {
             contribution_id,
             participant,
             storage.to_path(&response_file_locator)?,
+            storage.to_path(&contribution_file_signature_locator)?,
         )?;
 
         // Add the updated round to storage.
@@ -1502,38 +1557,126 @@ impl Coordinator {
         // Fetch the current contribution ID.
         let contribution_id = chunk.current_contribution_id();
 
-        // Fetch the next challenge locator.
-        let next_challenge = {
+        // Fetch the challenge, response, next challenge, and contribution file signature locators.
+        let challenge_file_locator =
+            Locator::ContributionFile(current_round_height, chunk_id, contribution_id - 1, true);
+        let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+        let (next_challenge_locator, contribution_file_signature_locator) = {
             // Fetch whether this is the final contribution of the specified chunk.
             let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
             match is_final_contribution {
-                true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
-                false => Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
+                true => (
+                    Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+                    Locator::ContributionFileSignature(current_round_height + 1, chunk_id, 0, true),
+                ),
+                false => (
+                    Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
+                    Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, true),
+                ),
             }
         };
-        {
+
+        // Check the challenge-response hash chain.
+        let (challenge_hash, response_hash) = {
+            // Compute the challenge hash using the challenge file.
+            let challenge_reader = storage.reader(&challenge_file_locator)?;
+            let challenge_hash = calculate_hash(challenge_reader.as_ref());
+            trace!("Challenge is located in {}", storage.to_path(&challenge_file_locator)?);
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+
             // Compute the response hash.
-            let response_hash = calculate_hash(&storage.reader(&Locator::ContributionFile(
-                current_round_height,
-                chunk_id,
-                contribution_id,
-                false,
-            ))?);
+            let response_reader = storage.reader(&response_file_locator)?;
+            let response_hash = calculate_hash(response_reader.as_ref());
+            trace!("Response is located in {}", storage.to_path(&response_file_locator)?);
+            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
+
+            // Fetch the challenge hash from the response file.
+            let challenge_hash_in_response = &response_reader
+                .get(0..64)
+                .ok_or(CoordinatorError::StorageReaderFailed)?[..];
+            let pretty_hash = pretty_hash!(&challenge_hash_in_response);
+
+            // Check the starting hash in the response file is based on the challenge.
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash in response file is {}", pretty_hash);
+            if challenge_hash_in_response != challenge_hash.as_slice() {
+                error!("Challenge hash in response file does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            (challenge_hash, response_hash)
+        };
+
+        // Check the response-next_challenge hash chain.
+        let next_challenge_hash = {
+            // Compute the next challenge hash.
+            let next_challenge_reader = storage.reader(&next_challenge_locator)?;
+            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
+            trace!(
+                "Next challenge is located in {}",
+                storage.to_path(&next_challenge_locator)?
+            );
+            debug!(
+                "Next challenge hash is {}",
+                pretty_hash!(&next_challenge_hash.as_slice())
+            );
 
             // Fetch the saved response hash in the next challenge file.
-            let saved_response_hash = storage
-                .reader(&next_challenge)?
-                .as_ref()
-                .chunks(64)
-                .next()
-                .unwrap()
-                .to_vec();
+            let saved_response_hash = next_challenge_reader.as_ref().chunks(64).next().unwrap().to_vec();
+            let pretty_hash = pretty_hash!(&saved_response_hash);
 
             // Check that the response hash matches the next challenge hash.
             info!("The response hash is {}", pretty_hash!(&response_hash));
-            info!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+            info!("The response hash in next challenge file is {}", pretty_hash);
             if response_hash.as_slice() != saved_response_hash {
                 error!("Response hash does not match the saved response hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            next_challenge_hash
+        };
+
+        // Check the response-next_challenge contribution signature.
+        {
+            // Fetch the stored contribution file signature.
+            let contribution_file_signature: ContributionFileSignature =
+                serde_json::from_slice(&*storage.reader(&contribution_file_signature_locator)?)?;
+
+            // Check that the contribution file signature is valid.
+            if !self.signature.verify(
+                &participant.to_string(),
+                &serde_json::to_string(&contribution_file_signature.get_state())?,
+                contribution_file_signature.get_signature(),
+            ) {
+                error!("Contribution file signature failed to verify for {}", participant);
+                return Err(CoordinatorError::VerifierSignatureInvalid);
+            }
+
+            // Check that the contribution file signature challenge hash is correct.
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+                error!("The signed challenge hash does not match the expected challenge hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature response hash is correct.
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+                error!("The signed response hash does not match the expected response hash.");
+                return Err(CoordinatorError::ContributionHashMismatch);
+            }
+
+            // Check that the contribution file signature next challenge hash exists.
+            if contribution_file_signature.get_next_challenge_hash().is_none() {
+                error!("The signed next challenge hash is missing");
+                return Err(CoordinatorError::NextChallengeHashMissing);
+            }
+
+            // Check that the contribution file signature next challenge hash is correct.
+            let signed_next_challenge_hash = contribution_file_signature
+                .get_next_challenge_hash()
+                .as_ref()
+                .ok_or(CoordinatorError::NextChallengeHashMissing)?;
+            if hex::decode(signed_next_challenge_hash)? != next_challenge_hash.as_slice() {
+                error!("The signed next challenge hash does not match the expected next challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
         }
@@ -1543,7 +1686,8 @@ impl Coordinator {
             chunk_id,
             contribution_id,
             participant.clone(),
-            storage.to_path(&next_challenge)?,
+            storage.to_path(&next_challenge_locator)?,
+            storage.to_path(&contribution_file_signature_locator)?,
         )?;
 
         // Add the updated round to storage.
@@ -1848,6 +1992,162 @@ impl Coordinator {
         Ok(round_height)
     }
 
+    #[inline]
+    fn process_coordinator_state_change(
+        &self,
+        mut storage: &mut StorageLock,
+        justification: &Justification,
+    ) -> Result<Vec<String>, CoordinatorError> {
+        // Fetch the current round from storage.
+        let mut round = match Self::load_current_round(&storage) {
+            // Case 1 - This is a typical round of the ceremony.
+            Ok(round) => round,
+            // Case 2 - The ceremony has not started or storage has failed.
+            _ => return Err(CoordinatorError::RoundDoesNotExist),
+        };
+
+        // Fetch the current round height.
+        let current_round_height = round.round_height();
+
+        // Check the justification and extract the locked chunks and tasks.
+        let (locked_chunks, tasks) = match justification {
+            Justification::BanCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
+            Justification::DropCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
+            Justification::Inactive => {
+                warn!("Justification for action is that participant is inactive");
+                return Ok(vec![]);
+            }
+        };
+
+        // Convert the tasks into contribution file locators.
+        let locators: Vec<Locator> = tasks
+            .par_iter()
+            .map(|task| Locator::ContributionFile(current_round_height, task.chunk_id(), task.contribution_id(), true))
+            .collect();
+
+        warn!("Removing locked chunks and all impacted contributions");
+
+        // Remove the lock from the specified chunks.
+        round.remove_locks_unsafe(&mut storage, &justification)?;
+
+        warn!("Removed locked chunks");
+
+        // Remove the contributions from the specified chunks.
+        round.remove_chunk_contributions_unsafe(&mut storage, &justification)?;
+
+        warn!("Removed impacted contributions");
+
+        // Save the updated round to storage.
+        storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
+
+        Ok(locators
+            .par_iter()
+            .map(|locator| storage.to_path(&locator).unwrap())
+            .collect())
+    }
+
+    #[inline]
+    fn load_current_round_height(storage: &StorageLock) -> Result<u64, CoordinatorError> {
+        // Fetch the current round height from storage.
+        match storage.get(&Locator::RoundHeight)? {
+            // Case 1 - This is a typical round of the ceremony.
+            Object::RoundHeight(current_round_height) => Ok(current_round_height),
+            // Case 2 - Storage failed to fetch the round height.
+            _ => Err(CoordinatorError::StorageFailed),
+        }
+    }
+
+    #[inline]
+    fn load_current_round(storage: &StorageLock) -> Result<Round, CoordinatorError> {
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(storage)?;
+
+        // Fetch the current round from storage.
+        Self::load_round(storage, current_round_height)
+    }
+
+    #[inline]
+    fn load_round(storage: &StorageLock, round_height: u64) -> Result<Round, CoordinatorError> {
+        // Fetch the current round height from storage.
+        let current_round_height = Self::load_current_round_height(&storage)?;
+
+        // Fetch the specified round from storage.
+        match round_height <= current_round_height {
+            // Load the corresponding round data from storage.
+            true => match storage.get(&Locator::RoundState(round_height))? {
+                // Case 1 - The ceremony is running and the round state was fetched.
+                Object::RoundState(round) => Ok(round),
+                // Case 2 - Storage failed to fetch the round height.
+                _ => Err(CoordinatorError::StorageFailed),
+            },
+            // Case 3 - There are no prior rounds of the ceremony.
+            false => Err(CoordinatorError::RoundDoesNotExist),
+        }
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Storage` that this
+    /// coordinator is using.
+    ///
+    #[cfg(test)]
+    #[inline]
+    pub(super) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
+        self.storage.clone()
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Signature` that this
+    /// coordinator is using.
+    ///
+    #[cfg(test)]
+    #[inline]
+    pub(super) fn signature(&self) -> Arc<Box<dyn Signature>> {
+        self.signature.clone()
+    }
+}
+
+#[cfg(any(test, feature = "operator"))]
+use crate::commands::{Computation, Seed, SigningKey, Verification};
+
+#[cfg(any(test, feature = "operator"))]
+impl Coordinator {
+    #[inline]
+    pub fn contribute(
+        &self,
+        contributor: &Participant,
+        contributor_signing_key: &SigningKey,
+        contributor_seed: &Seed,
+    ) -> anyhow::Result<()> {
+        let (_chunk_id, _previous_response, _challenge, response) = self.try_lock(contributor)?;
+        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
+
+        debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
+        self.run_computation(
+            round_height,
+            chunk_id,
+            contribution_id,
+            contributor,
+            contributor_signing_key,
+            contributor_seed,
+        )?;
+        let _response = self.try_contribute(contributor, chunk_id)?;
+        debug!("Computed contributions for round {} chunk {}", round_height, chunk_id);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn verify(&self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
+        let (_chunk_id, _challenge, response, _next_challenge) = self.try_lock(&verifier)?;
+        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
+
+        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
+        let _next_challenge =
+            self.run_verification(round_height, chunk_id, contribution_id, &verifier, verifier_signing_key)?;
+        self.try_verify(&verifier, chunk_id)?;
+        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
+        Ok(())
+    }
+
     ///
     /// Attempts to run computation for a given round height, given chunk ID, and contribution ID.
     ///
@@ -1855,13 +2155,14 @@ impl Coordinator {
     /// of participants who may have dropped off and handed over control of their session.
     ///
     #[inline]
-    pub(super) fn run_computation(
+    pub fn run_computation(
         &self,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
         participant: &Participant,
-        seed: &Seed,
+        participant_signing_key: &SigningKey,
+        participant_seed: &Seed,
     ) -> Result<(), CoordinatorError> {
         info!(
             "Running computation for round {} chunk {} contribution {} as {}",
@@ -1904,6 +2205,9 @@ impl Coordinator {
         let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
         // Fetch the response locator.
         let response_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        // Fetch the contribution file signature locator.
+        let contribution_file_signature_locator =
+            &Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, false);
 
         info!(
             "Starting computation on round {} chunk {} contribution {} as {}",
@@ -1912,9 +2216,12 @@ impl Coordinator {
         Computation::run(
             &self.environment,
             &mut storage,
+            self.signature.clone(),
+            participant_signing_key,
             challenge_locator,
             response_locator,
-            seed,
+            contribution_file_signature_locator,
+            participant_seed,
         )?;
         info!(
             "Completed computation on round {} chunk {} contribution {} as {}",
@@ -1934,12 +2241,13 @@ impl Coordinator {
     /// is complete.
     ///
     #[inline]
-    pub(super) fn run_verification(
+    pub fn run_verification(
         &self,
         round_height: u64,
         chunk_id: u64,
         contribution_id: u64,
         participant: &Participant,
+        participant_signing_key: &SigningKey,
     ) -> Result<String, CoordinatorError> {
         info!(
             "Running verification for round {} chunk {} contribution {} as {}",
@@ -1991,7 +2299,7 @@ impl Coordinator {
         // Fetch whether this is the final contribution of the specified chunk.
         let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
-        // Fetch the verified response locator.
+        // Fetch the verified response locator and the contribution file signature locator.
         let verified_locator = match is_final_contribution {
             true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
             false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
@@ -2004,6 +2312,8 @@ impl Coordinator {
         Verification::run(
             &self.environment,
             &mut storage,
+            self.signature.clone(),
+            participant_signing_key,
             round_height,
             chunk_id,
             contribution_id,
@@ -2024,144 +2334,25 @@ impl Coordinator {
         Ok(storage.to_path(&verified_locator)?)
     }
 
+    ///
+    /// Returns a reference to the instantiation of `CoordinatorState` that this
+    /// coordinator is using.
+    ///
     #[inline]
-    pub(super) fn contribute(&self, contributor: &Participant) -> anyhow::Result<()> {
-        let seed = self.seed.expose_secret()[..].try_into()?;
-        let (_chunk_id, _previous_response, _challenge, response) = self.try_lock(contributor)?;
-        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
-
-        debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
-        self.run_computation(round_height, chunk_id, contribution_id, contributor, seed)?;
-        let _response = self.try_contribute(contributor, chunk_id)?;
-        debug!("Computed contributions for round {} chunk {}", round_height, chunk_id);
-        Ok(())
+    pub fn state(&self) -> CoordinatorState {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Clone the state struct.
+        state.clone()
     }
 
+    ///
+    /// Returns a reference to the instantiation of `Environment` that this
+    /// coordinator is using.
+    ///
     #[inline]
-    pub(super) fn verify(&self, verifier: &Participant) -> anyhow::Result<()> {
-        let (_chunk_id, _challenge, response, _next_challenge) = self.try_lock(&verifier)?;
-        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
-
-        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
-        let _next_challenge = self.run_verification(round_height, chunk_id, contribution_id, &verifier)?;
-        self.try_verify(&verifier, chunk_id)?;
-        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
-        Ok(())
-    }
-
-    #[inline]
-    fn process_coordinator_state_change(
-        &self,
-        mut storage: &mut StorageLock,
-        justification: &Justification,
-    ) -> Result<Vec<String>, CoordinatorError> {
-        // Fetch the current round from storage.
-        let mut round = match Self::load_current_round(&storage) {
-            // Case 1 - This is a typical round of the ceremony.
-            Ok(round) => round,
-            // Case 2 - The ceremony has not started or storage has failed.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
-        };
-
-        // Fetch the current round height.
-        let current_round_height = round.round_height();
-
-        // Check the justification and extract the locked chunks and tasks.
-        let (locked_chunks, tasks) = match justification {
-            Justification::BanCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
-            Justification::DropCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
-        };
-
-        // Convert the tasks into contribution file locators.
-        let locators: Vec<Locator> = tasks
-            .par_iter()
-            .map(|task| Locator::ContributionFile(current_round_height, task.chunk_id(), task.contribution_id(), true))
-            .collect();
-
-        warn!("Removing locked chunks and all impacted contributions");
-
-        // Remove the lock from the specified chunks.
-        round.remove_locks_unsafe(&mut storage, &justification)?;
-
-        warn!("Removed locked chunks");
-
-        // Remove the contributions from the specified chunks.
-        round.remove_chunk_contributions_unsafe(&mut storage, &justification)?;
-
-        warn!("Removed impacted contributions");
-
-        // Save the updated round to storage.
-        storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
-
-        // // Initialize a supplemental contributor.
-        // let rt = runtime::Builder::new_multi_thread()
-        //     .thread_name("contributor-core")
-        //     .worker_threads(16)
-        //     .enable_io()
-        //     .enable_time()
-        //     .build()
-        //     .unwrap();
-        //
-        // let coordinator = self.clone();
-
-        // rt.spawn(async move {
-        //     for task in tasks {
-        //         // Fetch the contributor of the coordinator.
-        //         let contributor = coordinator
-        //             .environment
-        //             .coordinator_contributors()
-        //             .first()
-        //             .ok_or(CoordinatorError::ContributorsMissing)
-        //             .unwrap();
-        //
-        //         self.contribute(&contributor).unwrap();
-        //     }
-        // });
-
-        Ok(locators
-            .par_iter()
-            .map(|locator| storage.to_path(&locator).unwrap())
-            .collect())
-    }
-
-    #[inline]
-    fn load_current_round_height(storage: &StorageLock) -> Result<u64, CoordinatorError> {
-        // Fetch the current round height from storage.
-        match storage.get(&Locator::RoundHeight)? {
-            // Case 1 - This is a typical round of the ceremony.
-            Object::RoundHeight(current_round_height) => Ok(current_round_height),
-            // Case 2 - Storage failed to fetch the round height.
-            _ => Err(CoordinatorError::StorageFailed),
-        }
-    }
-
-    #[inline]
-    fn load_current_round(storage: &StorageLock) -> Result<Round, CoordinatorError> {
-        // Fetch the current round height from storage.
-        let current_round_height = Self::load_current_round_height(storage)?;
-
-        // Fetch the current round from storage.
-        Self::load_round(storage, current_round_height)
-    }
-
-    #[inline]
-    fn load_round(storage: &StorageLock, round_height: u64) -> Result<Round, CoordinatorError> {
-        // Fetch the current round height from storage.
-        let current_round_height = Self::load_current_round_height(&storage)?;
-
-        // Fetch the specified round from storage.
-        match round_height <= current_round_height {
-            // Load the corresponding round data from storage.
-            true => match storage.get(&Locator::RoundState(round_height))? {
-                // Case 1 - The ceremony is running and the round state was fetched.
-                Object::RoundState(round) => Ok(round),
-                // Case 2 - Storage failed to fetch the round height.
-                _ => Err(CoordinatorError::StorageFailed),
-            },
-            // Case 3 - There are no prior rounds of the ceremony.
-            false => Err(CoordinatorError::RoundDoesNotExist),
-        }
+    pub fn environment(&self) -> &Environment {
+        &self.environment
     }
 
     #[inline]
@@ -2179,42 +2370,13 @@ impl Coordinator {
             _ => Err(CoordinatorError::ContributionLocatorIncorrect),
         }
     }
-
-    ///
-    /// Returns a reference to the instantiation of `Environment` that this
-    /// coordinator is using.
-    ///
-    #[cfg(test)]
-    #[inline]
-    pub(super) fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
-    ///
-    /// Returns a reference to the instantiation of `Storage` that this
-    /// coordinator is using.
-    ///
-    #[cfg(test)]
-    #[inline]
-    pub(super) fn storage(&self) -> Arc<RwLock<Box<dyn Storage>>> {
-        self.storage.clone()
-    }
-
-    ///
-    /// Returns a reference to the instantiation of `CoordinatorState` that this
-    /// coordinator is using.
-    ///
-    #[cfg(test)]
-    #[inline]
-    pub(super) fn state(&self) -> Arc<RwLock<CoordinatorState>> {
-        self.state.clone()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Seed, SEED_LENGTH},
+        authentication::Dummy,
+        commands::{Seed, SigningKey, SEED_LENGTH},
         environment::*,
         objects::Participant,
         storage::StorageLock,
@@ -2310,7 +2472,7 @@ mod tests {
     fn coordinator_initialization_matches_json_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
         initialize_coordinator(&coordinator)?;
 
         // Check that round 0 matches the round 0 JSON specification.
@@ -2336,7 +2498,7 @@ mod tests {
     fn coordinator_initialization_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
 
         {
             // Acquire the storage write lock.
@@ -2401,7 +2563,7 @@ mod tests {
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
         let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2465,8 +2627,9 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let contributor_signing_key: SigningKey = "secret_key".to_string();
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2499,7 +2662,14 @@ mod tests {
             rand::thread_rng().fill_bytes(&mut seed[..]);
             assert!(
                 coordinator
-                    .run_computation(round_height, chunk_id, contribution_id, &contributor, &seed)
+                    .run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &contributor,
+                        &contributor_signing_key,
+                        &seed
+                    )
                     .is_ok()
             );
         }
@@ -2532,8 +2702,9 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
+        let contributor_signing_key: SigningKey = "secret_key".to_string();
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2556,7 +2727,14 @@ mod tests {
             rand::thread_rng().fill_bytes(&mut seed[..]);
             assert!(
                 coordinator
-                    .run_computation(round_height, chunk_id, contribution_id, contributor, &seed)
+                    .run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        contributor,
+                        &contributor_signing_key,
+                        &seed
+                    )
                     .is_ok()
             );
 
@@ -2596,9 +2774,16 @@ mod tests {
         // Verify round 1 chunk 0 contribution 1.
         {
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+            let verifier_signing_key: SigningKey = "secret_key".to_string();
 
             // Run verification.
-            let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
+            let verify = coordinator.run_verification(
+                round_height,
+                chunk_id,
+                contribution_id,
+                &verifier,
+                &verifier_signing_key,
+            );
             assert!(verify.is_ok());
 
             // Acquire the storage write lock.
@@ -2625,7 +2810,7 @@ mod tests {
             process::exit(1);
         }));
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator_single_contributor(&coordinator)?;
 
@@ -2634,7 +2819,10 @@ mod tests {
         assert_eq!(1, round_height);
 
         let coordinator = std::sync::Arc::new(coordinator);
+
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let contributor_signing_key: SigningKey = "secret_key".to_string();
+
         let verifier = Lazy::force(&TEST_VERIFIER_ID);
 
         let mut verifier_threads = vec![];
@@ -2663,8 +2851,14 @@ mod tests {
             }
             {
                 // Run computation as contributor.
-                let contribute =
-                    coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
+                let contribute = coordinator.run_computation(
+                    round_height,
+                    chunk_id,
+                    contribution_id,
+                    &contributor,
+                    &contributor_signing_key,
+                    &seed,
+                );
                 if contribute.is_err() {
                     println!(
                         "Failed to run computation for chunk {} as contributor {:?}\n{}",
@@ -2696,6 +2890,8 @@ mod tests {
             let storage_clone = storage.clone();
             let verifier_thread = std::thread::spawn(move || {
                 let verifier = verifier.clone();
+                let verifier_signing_key: SigningKey = "secret_key".to_string();
+
                 {
                     // Acquire the storage write lock.
                     let mut storage = StorageLock::Write(storage_clone.write().unwrap());
@@ -2713,7 +2909,13 @@ mod tests {
                 }
                 {
                     // Run verification as verifier.
-                    let verify = coordinator_clone.run_verification(round_height, chunk_id, contribution_id, &verifier);
+                    let verify = coordinator_clone.run_verification(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &verifier,
+                        &verifier_signing_key,
+                    );
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -2751,7 +2953,7 @@ mod tests {
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2764,7 +2966,9 @@ mod tests {
             Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
             Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
         ];
+
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+        let verifier_signing_key: SigningKey = "secret_key".to_string();
 
         let mut seeds = HashMap::new();
 
@@ -2774,6 +2978,8 @@ mod tests {
             // contribution ID 1 up to the expected number of contributions.
             for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
                 let contributor = &contributors[contribution_id as usize - 1].clone();
+                let contributor_signing_key: SigningKey = "secret_key".to_string();
+
                 trace!("{} is processing contribution {}", contributor, contribution_id);
                 {
                     // Acquire the storage write lock.
@@ -2802,8 +3008,14 @@ mod tests {
                     };
 
                     // Run computation as contributor.
-                    let contribute =
-                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
+                    let contribute = coordinator.run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &contributor,
+                        &contributor_signing_key,
+                        &seed,
+                    );
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
@@ -2844,7 +3056,13 @@ mod tests {
                 }
                 {
                     // Run verification as verifier.
-                    let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
+                    let verify = coordinator.run_verification(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &verifier,
+                        &verifier_signing_key,
+                    );
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -2898,7 +3116,7 @@ mod tests {
     fn coordinator_next_round_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator_single_contributor(&coordinator)?;
 
@@ -2906,7 +3124,10 @@ mod tests {
         assert_eq!(round_height, coordinator.current_round_height()?);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let contributor_signing_key: SigningKey = "secret_key".to_string();
+
         let verifier = Lazy::force(&TEST_VERIFIER_ID);
+        let verifier_signing_key: SigningKey = "secret_key".to_string();
 
         // Run computation and verification on each contribution in each chunk.
         let mut seeds = HashMap::new();
@@ -2949,8 +3170,14 @@ mod tests {
                         seed
                     };
 
-                    let contribute =
-                        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor, &seed);
+                    let contribute = coordinator.run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &contributor,
+                        &contributor_signing_key,
+                        &seed,
+                    );
                     if contribute.is_err() {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
@@ -2991,7 +3218,13 @@ mod tests {
                 }
                 {
                     // Run verification as verifier.
-                    let verify = coordinator.run_verification(round_height, chunk_id, contribution_id, &verifier);
+                    let verify = coordinator.run_verification(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &verifier,
+                        &verifier_signing_key,
+                    );
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -3109,7 +3342,7 @@ mod tests {
         let environment = &*Testing::from(Parameters::TestChunks(4096));
         initialize_test_environment(environment);
 
-        let coordinator = Coordinator::new(environment.clone()).unwrap();
+        let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy)).unwrap();
         initialize_coordinator(&coordinator).unwrap();
 
         assert_eq!(

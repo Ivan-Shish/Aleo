@@ -1,4 +1,6 @@
 use crate::{
+    authentication::Signature,
+    commands::SigningKey,
     environment::Environment,
     storage::{Locator, StorageLock},
     CoordinatorError,
@@ -7,31 +9,33 @@ use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
 use rand::Rng;
-use std::{io::Write, time::Instant};
+use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 pub const SEED_LENGTH: usize = 32;
 pub type Seed = [u8; SEED_LENGTH];
 
-#[allow(dead_code)]
 pub(crate) struct Computation;
 
 impl Computation {
     ///
     /// Runs computation for a given environment, storage writer, challenge locator,
-    /// and response locator.
+    /// response locator, and contribution file signature locator.
     ///
     /// This function assumes that the locator for the previous response file, challenge file,
     /// and response file have been initialized, typically as part of a call to
     /// `Coordinator::try_lock` to lock the contribution chunk.
     ///
-    #[allow(dead_code)]
+    #[inline]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut StorageLock,
+        signature: Arc<Box<dyn Signature>>,
+        contributor_signing_key: &SigningKey,
         challenge_locator: &Locator,
         response_locator: &Locator,
+        contribution_file_signature_locator: &Locator,
         seed: &Seed,
     ) -> anyhow::Result<()> {
         let start = Instant::now();
@@ -42,8 +46,10 @@ impl Computation {
         );
 
         // Fetch the chunk ID from the response locator.
-        let chunk_id = match response_locator {
-            Locator::ContributionFile(_, chunk_id, _, _) => *chunk_id as usize,
+        let (round_height, chunk_id, contribution_id) = match response_locator {
+            Locator::ContributionFile(round_height, chunk_id, contribution_id, _) => {
+                (*round_height, *chunk_id as usize, *contribution_id)
+            }
             _ => return Err(CoordinatorError::ContributionLocatorIncorrect.into()),
         };
 
@@ -75,6 +81,29 @@ impl Computation {
         let contribution_hash = calculate_hash(reader.as_ref());
         debug!("Response hash is {}", pretty_hash!(&contribution_hash));
 
+        debug!(
+            "Writing contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
+        // TODO (raychu86): Propagate secret key up.
+        // TODO (raychu86): Move the implementation of this helper function.
+        // Write the contribution file signature to disk.
+        crate::commands::write_contribution_file_signature(
+            storage,
+            signature,
+            contributor_signing_key,
+            challenge_locator,
+            response_locator,
+            None,
+            contribution_file_signature_locator,
+        )?;
+
+        debug!(
+            "Successfully wrote contribution file signature for round {} chunk {} unverified contribution {}",
+            round_height, chunk_id, contribution_id
+        );
+
         let elapsed = Instant::now().duration_since(start);
         info!(
             "Completed computation on {} in {:?}",
@@ -84,7 +113,6 @@ impl Computation {
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn contribute<T: Engine + Sync>(
         environment: &Environment,
         challenge_reader: &[u8],
@@ -143,20 +171,24 @@ impl Computation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Computation, Initialization},
+        authentication::{Dummy, Signature},
+        commands::{Computation, Initialization, Seed, SEED_LENGTH},
         storage::{Locator, Object, StorageLock},
         testing::prelude::*,
     };
     use setup_utils::calculate_hash;
 
-    use crate::commands::{Seed, SEED_LENGTH};
     use rand::RngCore;
+    use std::sync::Arc;
     use tracing::{debug, trace};
 
     #[test]
     #[serial]
     fn test_computation_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
+
+        // Define signature scheme.
+        let signature: Arc<Box<dyn Signature>> = Arc::new(Box::new(Dummy));
 
         // Define test parameters.
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
@@ -183,19 +215,33 @@ mod tests {
             let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
             // Fetch the response locator.
             let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            // Fetch the contribution file signature locator.
+            let contribution_file_signature_locator =
+                &Locator::ContributionFileSignature(round_height, chunk_id, 1, false);
+
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
                 storage.initialize(response_locator.clone(), expected_filesize).unwrap();
             }
+            if !storage.exists(contribution_file_signature_locator) {
+                let expected_filesize = Object::contribution_file_signature_size(false);
+                storage
+                    .initialize(contribution_file_signature_locator.clone(), expected_filesize)
+                    .unwrap();
+            }
 
             // Run computation on chunk.
+            let contributor_signing_key = "secret_key".to_string();
             let mut seed: Seed = [0; SEED_LENGTH];
             rand::thread_rng().fill_bytes(&mut seed[..]);
             Computation::run(
                 &TEST_ENVIRONMENT_3,
                 &mut storage,
+                signature.clone(),
+                &contributor_signing_key,
                 challenge_locator,
                 response_locator,
+                contribution_file_signature_locator,
                 &seed,
             )
             .unwrap();

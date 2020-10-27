@@ -116,6 +116,14 @@ impl Round {
                     storage
                         .to_path(&Locator::ContributionFile(round_height, chunk_id as u64, 0, true))
                         .expect("failed to create locator path"),
+                    storage
+                        .to_path(&Locator::ContributionFileSignature(
+                            round_height,
+                            chunk_id as u64,
+                            0,
+                            true,
+                        ))
+                        .expect("failed to create locator path"),
                 )
                 .expect("failed to create chunk")
             })
@@ -409,6 +417,55 @@ impl Round {
     }
 
     ///
+    /// Returns the next contribution file signature locator for a given chunk ID.
+    ///
+    /// If the current contribution is NOT contributed yet,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the current contribution is NOT verified yet,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the next contribution locator already exists,
+    /// this function will return a `CoordinatorError`.
+    ///
+    /// If the chunk corresponding to the given chunk ID
+    /// is already completed for the current round,
+    /// this function will return a `CoordinatorError`.
+    ///
+    #[inline]
+    pub(crate) fn next_contribution_file_signature_locator(
+        &self,
+        storage: &StorageLock,
+        chunk_id: u64,
+    ) -> Result<Locator, CoordinatorError> {
+        // Fetch the current round height.
+        let current_round_height = self.round_height();
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = self.chunk(chunk_id)?;
+        // Fetch the expected number of contributions for the current round.
+        let expected_num_contributions = self.expected_number_of_contributions();
+        // Fetch the next contribution ID.
+        let next_contribution_id = chunk.next_contribution_id(expected_num_contributions)?;
+
+        // Check that the current contribution has been verified.
+        if !chunk.current_contribution()?.is_verified() {
+            return Err(CoordinatorError::ContributionMissingVerification);
+        }
+
+        // Fetch the contribution file signature locator.
+        let contribution_file_signature_locator =
+            Locator::ContributionFileSignature(current_round_height, chunk_id, next_contribution_id, false);
+
+        // Check that the contribution file signature locator corresponding to the next contribution ID
+        // does NOT exist for the current round and given chunk ID.
+        if storage.exists(&contribution_file_signature_locator) {
+            return Err(CoordinatorError::ContributionFileSignatureLocatorAlreadyExists);
+        }
+
+        Ok(contribution_file_signature_locator)
+    }
+
+    ///
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
     ///
@@ -448,8 +505,12 @@ impl Round {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
-        let (previous_contribution_locator, current_contribution_locator, next_contribution_locator) = match participant
-        {
+        let (
+            previous_contribution_locator,
+            current_contribution_locator,
+            next_contribution_locator,
+            contribution_file_signature_locator,
+        ) = match participant {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
@@ -492,7 +553,16 @@ impl Round {
                 // and has already been verified.
                 let response_locator = self.next_contribution_locator(storage, chunk_id)?;
 
-                (previous_response_locator, challenge_locator, response_locator)
+                // Fetch the contribution file signature locator.
+                let contribution_file_signature_locator =
+                    self.next_contribution_file_signature_locator(storage, chunk_id)?;
+
+                (
+                    previous_response_locator,
+                    challenge_locator,
+                    response_locator,
+                    contribution_file_signature_locator,
+                )
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -519,15 +589,31 @@ impl Round {
 
                 // Fetch whether this is the final contribution of the specified chunk.
                 let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
-                // Fetch the next contribution locator.
-                let next_challenge_locator = match is_final_contribution {
+                // Fetch the next contribution locator and the contribution file signature locator.
+                let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
                     // This is the final contribution in the chunk.
-                    true => Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+                    true => (
+                        Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
+                        Locator::ContributionFileSignature(current_round_height + 1, chunk_id, 0, true),
+                    ),
                     // This is a typical contribution in the chunk.
-                    false => Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
+                    false => (
+                        Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id, true),
+                        Locator::ContributionFileSignature(
+                            current_round_height,
+                            chunk_id,
+                            current_contribution_id,
+                            true,
+                        ),
+                    ),
                 };
 
-                (challenge_locator, response_locator, next_challenge_locator)
+                (
+                    challenge_locator,
+                    response_locator,
+                    next_challenge_locator,
+                    contribution_file_signature_locator,
+                )
             }
         };
 
@@ -559,12 +645,24 @@ impl Round {
                     next_contribution_locator.clone(),
                     Object::contribution_file_size(environment, chunk_id, false),
                 )?;
+
+                // Initialize the contribution file signature.
+                storage.initialize(
+                    contribution_file_signature_locator.clone(),
+                    Object::contribution_file_signature_size(false),
+                )?;
             }
             Participant::Verifier(_) => {
                 // Initialize the next challenge file.
                 storage.initialize(
                     next_contribution_locator.clone(),
                     Object::contribution_file_size(environment, chunk_id, true),
+                )?;
+
+                // Initialize the contribution file signature.
+                storage.initialize(
+                    contribution_file_signature_locator.clone(),
+                    Object::contribution_file_signature_size(true),
                 )?;
             }
         };
@@ -591,10 +689,15 @@ impl Round {
         contribution_id: u64,
         participant: Participant,
         verified_locator: String,
+        verified_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Set the current contribution as verified for the given chunk ID.
-        self.chunk_mut(chunk_id)?
-            .verify_contribution(contribution_id, participant, verified_locator)?;
+        self.chunk_mut(chunk_id)?.verify_contribution(
+            contribution_id,
+            participant,
+            verified_locator,
+            verified_signature_locator,
+        )?;
 
         // If all chunks are complete and the finished at timestamp has not been set yet,
         // then set it with the current UTC timestamp.

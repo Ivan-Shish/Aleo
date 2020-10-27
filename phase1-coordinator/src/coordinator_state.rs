@@ -907,7 +907,7 @@ impl CoordinatorState {
     /// Returns `true` if the given participant is a contributor in the queue.
     ///
     #[inline]
-    pub(super) fn is_queue_contributor(&self, participant: &Participant) -> bool {
+    pub fn is_queue_contributor(&self, participant: &Participant) -> bool {
         participant.is_contributor() && self.queue.contains_key(participant)
     }
 
@@ -915,7 +915,7 @@ impl CoordinatorState {
     /// Returns `true` if the given participant is a verifier in the queue.
     ///
     #[inline]
-    pub(super) fn is_queue_verifier(&self, participant: &Participant) -> bool {
+    pub fn is_queue_verifier(&self, participant: &Participant) -> bool {
         participant.is_verifier() && self.queue.contains_key(participant)
     }
 
@@ -923,7 +923,7 @@ impl CoordinatorState {
     /// Returns `true` if the given participant is an authorized contributor in the ceremony.
     ///
     #[inline]
-    pub(super) fn is_authorized_contributor(&self, participant: &Participant) -> bool {
+    pub fn is_authorized_contributor(&self, participant: &Participant) -> bool {
         participant.is_contributor() && !self.banned.contains(participant)
     }
 
@@ -931,7 +931,7 @@ impl CoordinatorState {
     /// Returns `true` if the given participant is an authorized verifier in the ceremony.
     ///
     #[inline]
-    pub(super) fn is_authorized_verifier(&self, participant: &Participant) -> bool {
+    pub fn is_authorized_verifier(&self, participant: &Participant) -> bool {
         participant.is_verifier() && !self.banned.contains(participant)
     }
 
@@ -940,7 +940,7 @@ impl CoordinatorState {
     /// in the current round.
     ///
     #[inline]
-    pub(super) fn is_current_contributor(&self, participant: &Participant) -> bool {
+    pub fn is_current_contributor(&self, participant: &Participant) -> bool {
         self.is_authorized_contributor(participant) && self.current_contributors.contains_key(participant)
     }
 
@@ -949,7 +949,7 @@ impl CoordinatorState {
     /// in the current round.
     ///
     #[inline]
-    pub(super) fn is_current_verifier(&self, participant: &Participant) -> bool {
+    pub fn is_current_verifier(&self, participant: &Participant) -> bool {
         self.is_authorized_verifier(participant) && self.current_verifiers.contains_key(participant)
     }
 
@@ -958,7 +958,7 @@ impl CoordinatorState {
     /// in the current round.
     ///
     #[inline]
-    pub(super) fn is_finished_contributor(&self, participant: &Participant) -> bool {
+    pub fn is_finished_contributor(&self, participant: &Participant) -> bool {
         let current_round_height = self.current_round_height.unwrap_or_default();
         participant.is_contributor()
             && self
@@ -973,7 +973,7 @@ impl CoordinatorState {
     /// in the current round.
     ///
     #[inline]
-    pub(super) fn is_finished_verifier(&self, participant: &Participant) -> bool {
+    pub fn is_finished_verifier(&self, participant: &Participant) -> bool {
         let current_round_height = self.current_round_height.unwrap_or_default();
         participant.is_verifier()
             && self
@@ -987,7 +987,7 @@ impl CoordinatorState {
     /// Returns the total number of contributors currently in the queue.
     ///  
     #[inline]
-    pub(super) fn number_of_queue_contributors(&self) -> usize {
+    pub fn number_of_queue_contributors(&self) -> usize {
         self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count()
     }
 
@@ -995,7 +995,7 @@ impl CoordinatorState {
     /// Returns the total number of verifiers currently in the queue.
     ///
     #[inline]
-    pub(super) fn number_of_queue_verifiers(&self) -> usize {
+    pub fn number_of_queue_verifiers(&self) -> usize {
         self.queue.par_iter().filter(|(p, _)| p.is_verifier()).count()
     }
 
@@ -1003,7 +1003,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub(super) fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1015,7 +1015,7 @@ impl CoordinatorState {
     /// Returns a list of the verifiers currently in the queue.
     ///
     #[inline]
-    pub(super) fn queue_verifiers(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+    pub fn queue_verifiers(&self) -> Vec<(Participant, (u8, Option<u64>))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1027,7 +1027,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the round.
     ///
     #[inline]
-    pub(super) fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
+    pub fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
         self.current_contributors.clone().into_iter().collect()
     }
 
@@ -1035,7 +1035,7 @@ impl CoordinatorState {
     /// Returns a list of the verifiers currently in the round.
     ///
     #[inline]
-    pub(super) fn current_verifiers(&self) -> Vec<(Participant, ParticipantInfo)> {
+    pub fn current_verifiers(&self) -> Vec<(Participant, ParticipantInfo)> {
         self.current_verifiers.clone().into_iter().collect()
     }
 
@@ -1045,7 +1045,7 @@ impl CoordinatorState {
     /// This function returns `0` if the current round height has not been set.
     ///
     #[inline]
-    pub(super) fn current_round_height(&self) -> u64 {
+    pub fn current_round_height(&self) -> u64 {
         self.current_round_height.unwrap_or_default()
     }
 

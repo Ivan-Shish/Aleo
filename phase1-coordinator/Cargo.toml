@@ -24,12 +24,12 @@ chrono = { version = "0.4", features = ["serde"] }
 ctrlc = { version = "3.1.7" }
 function_name = { version = "0.2.0", optional = true }
 itertools = { version = "0.9.0" }
+hex = { version = "0.4.2" }
 lazy_static = { version = "1.4.0" }
 memmap = { version = "0.7.0" }
 once_cell = { version = "1.4.1" }
 rand = { version = "0.7.3" }
 rayon = { version = "1.4.1" }
-secrecy = { version = "0.7.0" }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "0.6" }
 serde-diff = { version = "0.3" }
@@ -50,6 +50,7 @@ serial_test = { version = "0.5" }
 
 [features]
 default = ["log_file"]
+operator = ["log_file", "testing"]
 testing = ["function_name", "serial_test"]
 log_file = []
 silent = []

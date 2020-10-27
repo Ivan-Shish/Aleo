@@ -142,7 +142,8 @@ impl Aggregation {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::{Aggregation, Seed, SEED_LENGTH},
+        authentication::Dummy,
+        commands::{Aggregation, Seed, SigningKey, SEED_LENGTH},
         storage::{Locator, StorageLock},
         testing::prelude::*,
         Coordinator,
@@ -158,11 +159,15 @@ mod tests {
     fn test_aggregation_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy)).unwrap();
         let test_storage = coordinator.storage();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
+        let contributor_signing_key: SigningKey = "secret_key".to_string();
+
         let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+        let verifier_signing_key: SigningKey = "secret_key".to_string();
+
         {
             // Acquire the storage write lock.
             let mut storage = StorageLock::Write(test_storage.write().unwrap());
@@ -210,7 +215,14 @@ mod tests {
             }
             {
                 // Run computation as contributor.
-                let contribute = coordinator.run_computation(round_height, chunk_id, 1, &contributor.clone(), &seed);
+                let contribute = coordinator.run_computation(
+                    round_height,
+                    chunk_id,
+                    1,
+                    &contributor.clone(),
+                    &contributor_signing_key,
+                    &seed,
+                );
                 if contribute.is_err() {
                     error!(
                         "Failed to run computation as contributor {:?}\n{}",
@@ -251,7 +263,7 @@ mod tests {
             }
             {
                 // Run verification as verifier.
-                let verify = coordinator.run_verification(round_height, chunk_id, 1, &verifier);
+                let verify = coordinator.run_verification(round_height, chunk_id, 1, &verifier, &verifier_signing_key);
                 if verify.is_err() {
                     error!(
                         "Failed to run verification as verifier {:?}\n{}",

@@ -1361,6 +1361,7 @@ dependencies = [
  "chrono",
  "ctrlc",
  "function_name",
+ "hex",
  "itertools 0.9.0",
  "lazy_static",
  "memmap",
@@ -1369,7 +1370,6 @@ dependencies = [
  "phase1-cli",
  "rand 0.7.3",
  "rayon",
- "secrecy",
  "serde",
  "serde-aux",
  "serde-diff",
@@ -1783,15 +1783,6 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
-name = "secrecy"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0673d6a6449f5e7d12a1caf424fd9363e2af3a4953023ed455e3c4beef4597c0"
-dependencies = [
- "zeroize",
-]
 
 [[package]]
 name = "semver"
@@ -2708,9 +2699,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "zeroize"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f33972566adbd2d3588b0491eb94b98b43695c4ef897903470ede4f3f5a28a"
