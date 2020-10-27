@@ -1,4 +1,5 @@
 use crate::{
+    authentication::Dummy,
     coordinator_state::Task,
     environment::{Parameters, Testing},
     testing::prelude::*,
@@ -31,7 +32,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment)?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -96,7 +97,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment)?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -211,7 +212,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -339,7 +340,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;

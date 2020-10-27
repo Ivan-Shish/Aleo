@@ -1,4 +1,5 @@
 use crate::{
+    authentication::Dummy,
     environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
     storage::{Storage, StorageLock},
@@ -56,7 +57,7 @@ lazy_static! {
 
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
-    let coordinator = Coordinator::new(environment.clone())?;
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
     info!("Coordinator is ready");
     Ok(coordinator)
 }

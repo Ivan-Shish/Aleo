@@ -142,6 +142,7 @@ impl Aggregation {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::Dummy,
         commands::{Aggregation, Seed, SEED_LENGTH},
         storage::{Locator, StorageLock},
         testing::prelude::*,
@@ -158,7 +159,7 @@ mod tests {
     fn test_aggregation_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone()).unwrap();
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy)).unwrap();
         let test_storage = coordinator.storage();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();

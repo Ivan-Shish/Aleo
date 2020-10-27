@@ -1,4 +1,5 @@
 use phase1_coordinator::{
+    authentication::{Dummy, Signature},
     environment::{Development, Environment, Parameters},
     Coordinator,
 };
@@ -8,8 +9,8 @@ use tokio::{task, time::sleep};
 use tracing::*;
 
 #[inline]
-async fn coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
-    Ok(Coordinator::new(environment.clone())?)
+async fn coordinator(environment: &Environment, signature: Box<dyn Signature>) -> anyhow::Result<Coordinator> {
+    Ok(Coordinator::new(environment.clone(), signature)?)
 }
 
 #[tokio::main]
@@ -20,7 +21,7 @@ pub async fn main() -> anyhow::Result<()> {
     // let environment: Environment = Production::from(Parameters::AleoInner).into();
 
     // Instantiate the coordinator.
-    let coordinator = coordinator(&environment).await?;
+    let coordinator = coordinator(&environment, Box::new(Dummy)).await?;
 
     // Initialize the coordinator.
     let operator = coordinator.clone();

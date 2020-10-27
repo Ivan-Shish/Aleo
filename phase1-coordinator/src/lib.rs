@@ -5,6 +5,8 @@ extern crate lazy_static;
 #[macro_use]
 mod macros;
 
+pub mod authentication;
+
 pub(crate) mod commands;
 
 pub mod coordinator;

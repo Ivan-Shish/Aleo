@@ -1,4 +1,5 @@
 use crate::{
+    authentication::Signature,
     commands::{Aggregation, Computation, Initialization, Verification},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::Environment,
@@ -157,6 +158,7 @@ pub enum CoordinatorError {
     RoundUpdateCorruptedStateOfVerifiers,
     RoundVerifiersMissing,
     RoundVerifiersNotUnique,
+    SignatureSchemeIsInsecure,
     StorageCopyFailed,
     StorageFailed,
     StorageInitializationFailed,
@@ -246,6 +248,8 @@ impl From<CoordinatorError> for anyhow::Error {
 pub struct Coordinator {
     /// The parameters and settings of this coordinator.
     environment: Environment,
+    /// The signature scheme for contributors & verifiers with this coordinator.
+    signature: Arc<Box<dyn Signature>>,
     /// The storage of contributions and rounds for this coordinator.
     storage: Arc<RwLock<Box<dyn Storage>>>,
     /// The current round and participant state.
@@ -264,7 +268,7 @@ impl Coordinator {
     /// The coordinator is forbidden from caching state about any round.
     ///
     #[inline]
-    pub fn new(environment: Environment) -> Result<Self, CoordinatorError> {
+    pub fn new(environment: Environment, signature: Box<dyn Signature>) -> Result<Self, CoordinatorError> {
         // Load an instance of storage.
         let storage = environment.storage()?;
         // Load an instance of coordinator state.
@@ -279,6 +283,7 @@ impl Coordinator {
 
         Ok(Self {
             environment: environment.clone(),
+            signature: Arc::new(signature),
             storage: Arc::new(RwLock::new(storage)),
             state: Arc::new(RwLock::new(state)),
             seed: Arc::new(SecretVec::new(seed.to_vec())),
@@ -292,6 +297,11 @@ impl Coordinator {
     pub fn initialize(&self) -> Result<(), CoordinatorError> {
         #[cfg(not(test))]
         initialize_logger(&self.environment);
+
+        #[cfg(not(test))]
+        if !self.signature.is_secure() {
+            return Err(CoordinatorError::SignatureSchemeIsInsecure);
+        }
 
         info!("Coordinator is booting up");
         info!("{:#?}", self.environment.parameters());
@@ -2373,6 +2383,7 @@ impl Coordinator {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::Dummy,
         commands::{Seed, SEED_LENGTH},
         environment::*,
         objects::Participant,
@@ -2469,7 +2480,7 @@ mod tests {
     fn coordinator_initialization_matches_json_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
         initialize_coordinator(&coordinator)?;
 
         // Check that round 0 matches the round 0 JSON specification.
@@ -2495,7 +2506,7 @@ mod tests {
     fn coordinator_initialization_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
 
         {
             // Acquire the storage write lock.
@@ -2560,7 +2571,7 @@ mod tests {
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
         let contributor_2 = Lazy::force(&TEST_CONTRIBUTOR_ID_2);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2625,7 +2636,7 @@ mod tests {
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2692,7 +2703,7 @@ mod tests {
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -2784,7 +2795,7 @@ mod tests {
             process::exit(1);
         }));
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator_single_contributor(&coordinator)?;
 
@@ -2910,7 +2921,7 @@ mod tests {
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator(&coordinator)?;
 
@@ -3057,7 +3068,7 @@ mod tests {
     fn coordinator_next_round_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
+        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();
         initialize_coordinator_single_contributor(&coordinator)?;
 
@@ -3268,7 +3279,7 @@ mod tests {
         let environment = &*Testing::from(Parameters::TestChunks(4096));
         initialize_test_environment(environment);
 
-        let coordinator = Coordinator::new(environment.clone()).unwrap();
+        let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy)).unwrap();
         initialize_coordinator(&coordinator).unwrap();
 
         assert_eq!(
