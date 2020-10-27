@@ -47,7 +47,7 @@ impl Object {
             Object::RoundFile(round) => round.to_vec(),
             Object::ContributionFile(contribution) => contribution.to_vec(),
             Object::ContributionFileSignature(signature) => {
-                serde_json::to_vec_pretty(signature).expect("contribution signature to bytes failed")
+                serde_json::to_vec_pretty(signature).expect("contribution file signature to bytes failed")
             }
         }
     }
@@ -97,8 +97,8 @@ impl Object {
     pub fn contribution_file_signature_size(verified: bool) -> u64 {
         // TODO (raychu86): Calculate contribution signature file size instead of using hard coded values.
         match verified {
-            true => 627,
-            false => 501,
+            true => 628,
+            false => 502,
         }
     }
 }
