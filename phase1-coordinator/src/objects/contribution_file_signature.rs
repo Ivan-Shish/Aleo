@@ -1,8 +1,8 @@
+#[cfg(any(test, feature = "operator"))]
 use crate::coordinator::CoordinatorError;
 
 use serde::{Deserialize, Serialize};
 use serde_diff::SerdeDiff;
-use tracing::debug;
 
 ///
 /// The contribution state for a given chunk ID that is signed by the participant.
@@ -24,10 +24,11 @@ pub struct ContributionState {
     next_challenge_hash: Option<String>,
 }
 
+#[cfg(any(test, feature = "operator"))]
 impl ContributionState {
     /// Creates a new instance of `ContributionFileSignature`.
     #[inline]
-    pub(crate) fn new(
+    pub fn new(
         challenge_hash: Vec<u8>,
         response_hash: Vec<u8>,
         next_challenge_hash: Option<Vec<u8>>,
@@ -70,17 +71,15 @@ pub struct ContributionFileSignature {
 
 impl ContributionFileSignature {
     /// Creates a new instance of `ContributionFileSignature`.
+    #[cfg(any(test, feature = "operator"))]
     #[inline]
-    pub(crate) fn new(signature: String, state: ContributionState) -> Result<Self, CoordinatorError> {
-        debug!("Starting to create contribution signature");
-
+    pub fn new(signature: String, state: ContributionState) -> Result<Self, CoordinatorError> {
+        tracing::debug!("Starting to create contribution signature");
         // Check that the signature is 64 bytes.
         if hex::decode(&signature)?.len() != 64 {
             return Err(CoordinatorError::ContributionSignatureSizeMismatch);
         }
-
-        debug!("Completed creating contribution signature");
-
+        tracing::debug!("Completed creating contribution signature");
         Ok(Self { signature, state })
     }
 

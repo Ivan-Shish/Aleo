@@ -2058,29 +2058,6 @@ impl Coordinator {
         }
     }
 
-    #[inline]
-    fn parse_contribution_file_locator(&self, locator_path: &str) -> Result<(u64, u64, u64, bool), CoordinatorError> {
-        // Acquire the storage read lock.
-        let storage = StorageLock::Read(self.storage.read().unwrap());
-
-        match storage.to_locator(locator_path)? {
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
-                Ok((round_height, chunk_id, contribution_id, verified))
-            }
-            _ => Err(CoordinatorError::ContributionLocatorIncorrect),
-        }
-    }
-
-    ///
-    /// Returns a reference to the instantiation of `Environment` that this
-    /// coordinator is using.
-    ///
-    #[cfg(test)]
-    #[inline]
-    pub(super) fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
     ///
     /// Returns a reference to the instantiation of `Storage` that this
     /// coordinator is using.
@@ -2340,6 +2317,28 @@ impl Coordinator {
         let state = self.state.read().unwrap();
         // Clone the state struct.
         state.clone()
+    }
+
+    ///
+    /// Returns a reference to the instantiation of `Environment` that this
+    /// coordinator is using.
+    ///
+    #[inline]
+    pub fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    #[inline]
+    fn parse_contribution_file_locator(&self, locator_path: &str) -> Result<(u64, u64, u64, bool), CoordinatorError> {
+        // Acquire the storage read lock.
+        let storage = StorageLock::Read(self.storage.read().unwrap());
+
+        match storage.to_locator(locator_path)? {
+            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+                Ok((round_height, chunk_id, contribution_id, verified))
+            }
+            _ => Err(CoordinatorError::ContributionLocatorIncorrect),
+        }
     }
 }
 
