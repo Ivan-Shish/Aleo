@@ -382,6 +382,7 @@ impl Chunk {
         contribution_id: u64,
         participant: Participant,
         verified_locator: String,
+        verified_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -400,7 +401,7 @@ impl Chunk {
         };
 
         // Attempt to assign the verifier to the contribution.
-        contribution.assign_verifier(participant.clone(), verified_locator)?;
+        contribution.assign_verifier(participant.clone(), verified_locator, verified_signature_locator)?;
 
         // Attempt to verify the contribution.
         match contribution.is_verified() {

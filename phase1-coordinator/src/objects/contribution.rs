@@ -163,6 +163,7 @@ impl Contribution {
         &mut self,
         participant: Participant,
         verified_locator: String,
+        verified_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -186,6 +187,7 @@ impl Contribution {
 
         self.verifier_id = Some(participant);
         self.verified_locator = Some(verified_locator);
+        self.verified_signature_locator = Some(verified_signature_locator);
         Ok(())
     }
 

@@ -1589,6 +1589,7 @@ impl Coordinator {
             contribution_id,
             participant.clone(),
             storage.to_path(&next_challenge_locator)?,
+            storage.to_path(&contribution_file_signature_locator)?,
         )?;
 
         // Add the updated round to storage.

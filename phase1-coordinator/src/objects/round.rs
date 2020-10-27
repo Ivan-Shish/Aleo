@@ -689,10 +689,15 @@ impl Round {
         contribution_id: u64,
         participant: Participant,
         verified_locator: String,
+        verified_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Set the current contribution as verified for the given chunk ID.
-        self.chunk_mut(chunk_id)?
-            .verify_contribution(contribution_id, participant, verified_locator)?;
+        self.chunk_mut(chunk_id)?.verify_contribution(
+            contribution_id,
+            participant,
+            verified_locator,
+            verified_signature_locator,
+        )?;
 
         // If all chunks are complete and the finished at timestamp has not been set yet,
         // then set it with the current UTC timestamp.
