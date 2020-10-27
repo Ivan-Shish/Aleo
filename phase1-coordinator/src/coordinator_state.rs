@@ -32,10 +32,6 @@ pub(super) enum CoordinatorStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParticipantInfo {
     /// The ID of the participant.
-    #[serde(
-        serialize_with = "serialize_participant_to_string",
-        deserialize_with = "deserialize_participant_to_string"
-    )]
     id: Participant,
     /// The round height that this participant is contributing to.
     round_height: u64,
@@ -2964,7 +2960,7 @@ impl Serialize for Task {
 
 impl<'de> Deserialize<'de> for Task {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
-        let s = String::deserialize(deserializer)?;
+        let s = String::deserialize(deserializer)?.clone();
 
         let mut task = s.split("/");
         let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;

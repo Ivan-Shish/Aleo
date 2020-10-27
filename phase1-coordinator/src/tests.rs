@@ -507,16 +507,16 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment)?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
     assert_eq!(0, coordinator.current_round_height()?);
 
     // Meanwhile, add 2 contributors and 1 verifier to the queue.
-    let contributor1 = create_contributor("1");
-    let contributor2 = create_contributor("2");
-    let verifier = create_verifier("1");
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 10)?;
     coordinator.add_to_queue(verifier.clone(), 10)?;
@@ -551,7 +551,7 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     // Run contributions for the first bucket as contributor 1.
     let bucket_size = bucket_size(number_of_chunks as u64, 2);
     for _ in 0..bucket_size {
-        coordinator.contribute(&contributor1)?;
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
     }
 
     // Now try to lock the next chunk as contributor 1.
@@ -563,12 +563,15 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
 
     // Run contribution on the locked chunk as contributor 2.
     {
-        use rand::RngCore;
-        let mut seed: crate::commands::Seed = [0; crate::commands::SEED_LENGTH];
-        rand::thread_rng().fill_bytes(&mut seed[..]);
-
         let (round_height, chunk_id, contribution_id, _) = coordinator.parse_contribution_file_locator(&response)?;
-        coordinator.run_computation(round_height, chunk_id, contribution_id, &contributor2, &seed)?;
+        coordinator.run_computation(
+            round_height,
+            chunk_id,
+            contribution_id,
+            &contributor2,
+            &contributor_signing_key2,
+            &seed2,
+        )?;
         coordinator.try_contribute(&contributor2, chunk_id)?;
     }
 
@@ -580,7 +583,7 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     assert!(result.is_err());
 
     // Clear all pending verifications, so the locked chunk is released as well.
-    while coordinator.verify(&verifier).is_ok() {}
+    while coordinator.verify(&verifier, &verifier_signing_key).is_ok() {}
 
     // Now try to lock the next chunk as contributor 1 again.
     //

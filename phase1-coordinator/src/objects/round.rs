@@ -35,9 +35,7 @@ pub struct Round {
     started_at: Option<DateTime<Utc>>,
     #[serde_diff(opaque)]
     finished_at: Option<DateTime<Utc>>,
-    #[serde(deserialize_with = "deserialize_contributors_from_strings")]
     contributor_ids: Vec<Participant>,
-    #[serde(deserialize_with = "deserialize_verifiers_from_strings")]
     verifier_ids: Vec<Participant>,
     chunks: Vec<Chunk>,
 }
@@ -276,6 +274,7 @@ impl Round {
                 // for the current round.
                 if !self.is_contributor(participant) {
                     error!("{} is not an authorized contributor", participant);
+                    trace!("{:?} {:?}", self.contributor_ids, participant);
                     return Err(CoordinatorError::UnauthorizedChunkContributor);
                 }
             }
