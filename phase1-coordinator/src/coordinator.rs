@@ -1530,7 +1530,7 @@ impl Coordinator {
 
             // Compute the response hash.
             let response_hash = calculate_hash(response_reader.as_ref());
-            debug!("Response hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
 
             // Compute the next challenge hash.
             let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
