@@ -24,33 +24,14 @@ pub struct ContributionState {
     next_challenge_hash: Option<String>,
 }
 
-///
-/// The signature and state of the contribution.
-///
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
-pub struct ContributionFileSignature {
-    /// The signature of the contribution state.
-    signature: String,
-    /// The state of the contribution that is signed.
-    state: ContributionState,
-}
-
-impl ContributionFileSignature {
+impl ContributionState {
     /// Creates a new instance of `ContributionFileSignature`.
     #[inline]
     pub(crate) fn new(
-        signature: String,
         challenge_hash: Vec<u8>,
         response_hash: Vec<u8>,
         next_challenge_hash: Option<Vec<u8>>,
     ) -> Result<Self, CoordinatorError> {
-        debug!("Starting to create contribution signature");
-
-        // Check that the signature is 64 bytes.
-        if hex::decode(&signature)?.len() != 64 {
-            return Err(CoordinatorError::ContributionSignatureSizeMismatch);
-        }
-
         // Check that the challenge hash is 64 bytes.
         if challenge_hash.len() != 64 {
             return Err(CoordinatorError::ChallengeHashSizeInvalid);
@@ -68,11 +49,35 @@ impl ContributionFileSignature {
             }
         }
 
-        let state = ContributionState {
+        Ok(ContributionState {
             challenge_hash: hex::encode(challenge_hash),
             response_hash: hex::encode(response_hash),
             next_challenge_hash: next_challenge_hash.map(|h| hex::encode(h)),
-        };
+        })
+    }
+}
+
+///
+/// The signature and state of the contribution.
+///
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
+pub struct ContributionFileSignature {
+    /// The signature of the contribution state.
+    signature: String,
+    /// The state of the contribution that is signed.
+    state: ContributionState,
+}
+
+impl ContributionFileSignature {
+    /// Creates a new instance of `ContributionFileSignature`.
+    #[inline]
+    pub(crate) fn new(signature: String, state: ContributionState) -> Result<Self, CoordinatorError> {
+        debug!("Starting to create contribution signature");
+
+        // Check that the signature is 64 bytes.
+        if hex::decode(&signature)?.len() != 64 {
+            return Err(CoordinatorError::ContributionSignatureSizeMismatch);
+        }
 
         debug!("Completed creating contribution signature");
 
@@ -129,17 +134,20 @@ mod tests {
         let response_hash = calculate_hash(&dummy_response);
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
+        // Construct the contribution state
+        let contribution_state = ContributionState::new(
+            challenge_hash.to_vec(),
+            response_hash.to_vec(),
+            Some(next_challenge_hash.to_vec()),
+        )
+        .unwrap();
+
         // Construct a dummy signature.
         let signature = vec![4u8; 64];
         let signature_string = hex::encode(signature);
 
         // Construct the contribution file signature.
-        let contribution_signature = ContributionFileSignature::new(
-            signature_string.clone(),
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        );
+        let contribution_signature = ContributionFileSignature::new(signature_string.clone(), contribution_state);
 
         assert!(contribution_signature.is_ok())
     }
@@ -156,17 +164,20 @@ mod tests {
         let response_hash = calculate_hash(&dummy_response);
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
+        // Construct the contribution state
+        let contribution_state = ContributionState::new(
+            challenge_hash.to_vec(),
+            response_hash.to_vec(),
+            Some(next_challenge_hash.to_vec()),
+        )
+        .unwrap();
+
         // Construct an invalid signature.
         let signature = vec![4u8; 48];
         let signature_string = hex::encode(signature);
 
         // Construct the contribution file signature.
-        let contribution_signature = ContributionFileSignature::new(
-            signature_string.clone(),
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        );
+        let contribution_signature = ContributionFileSignature::new(signature_string.clone(), contribution_state);
 
         assert!(contribution_signature.is_err())
     }
@@ -182,19 +193,14 @@ mod tests {
         let response_hash = calculate_hash(&dummy_response);
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
-        // Construct a dummy signature.
-        let signature = vec![4u8; 64];
-        let signature_string = hex::encode(signature);
-
-        // Construct the contribution file signature.
-        let contribution_signature = ContributionFileSignature::new(
-            signature_string.clone(),
+        // Construct the contribution state
+        let contribution_state = ContributionState::new(
             invalid_challenge_hash,
             response_hash.to_vec(),
             Some(next_challenge_hash.to_vec()),
         );
 
-        assert!(contribution_signature.is_err())
+        assert!(contribution_state.is_err())
     }
 
     #[test]
@@ -208,19 +214,14 @@ mod tests {
         let invalid_response_hash = vec![2; 48];
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
-        // Construct a dummy signature.
-        let signature = vec![4u8; 64];
-        let signature_string = hex::encode(signature);
-
-        // Construct the contribution file signature.
-        let contribution_signature = ContributionFileSignature::new(
-            signature_string.clone(),
+        // Construct the contribution state
+        let contribution_state = ContributionState::new(
             challenge_hash.to_vec(),
             invalid_response_hash,
             Some(next_challenge_hash.to_vec()),
         );
 
-        assert!(contribution_signature.is_err())
+        assert!(contribution_state.is_err())
     }
 
     #[test]
@@ -234,18 +235,13 @@ mod tests {
         let response_hash = calculate_hash(&dummy_response);
         let invalid_next_challenge_hash = vec![3; 48];
 
-        // Construct a dummy signature.
-        let signature = vec![4u8; 64];
-        let signature_string = hex::encode(signature);
-
-        // Construct the contribution file signature.
-        let contribution_signature = ContributionFileSignature::new(
-            signature_string.clone(),
+        // Construct the contribution state
+        let contribution_state = ContributionState::new(
             challenge_hash.to_vec(),
             response_hash.to_vec(),
             Some(invalid_next_challenge_hash),
         );
 
-        assert!(contribution_signature.is_err())
+        assert!(contribution_state.is_err())
     }
 }
