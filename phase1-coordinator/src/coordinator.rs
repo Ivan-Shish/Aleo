@@ -2248,8 +2248,8 @@ impl Coordinator {
         let challenge_hash = calculate_hash(challenge_reader.as_ref()).to_vec();
 
         // Calculate the response hash.
-        let storage_reader = storage.reader(response_locator)?;
-        let response_hash = calculate_hash(storage_reader.as_ref()).to_vec();
+        let response_reader = storage.reader(response_locator)?;
+        let response_hash = calculate_hash(response_reader.as_ref()).to_vec();
 
         // Calculate the next challenge hash.
         let next_challenge_hash = match next_challenge_locator {
