@@ -33,11 +33,9 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment)?;
 
-    // Initialize the ceremony and run round 1.
-    assert_eq!(0, coordinator.current_round_height()?);
+    // Initialize the ceremony to round 0.
     coordinator.initialize()?;
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.current_round_height()?);
 
     // Meanwhile, add a contributor and verifier to the queue.
     let contributor = create_contributor("1");
@@ -49,7 +47,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
 
     // Advance the ceremony from round 1 to round 2.
     coordinator.update()?;
-    assert_eq!(2, coordinator.current_round_height()?);
+    assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
@@ -75,9 +73,9 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     assert_eq!(1, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Update the ceremony from round 2 to round 3.
+    // Update the ceremony from round 1 to round 2.
     coordinator.update()?;
-    assert_eq!(3, coordinator.current_round_height()?);
+    assert_eq!(2, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
@@ -100,11 +98,9 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment)?;
 
-    // Initialize the ceremony to round 1.
-    assert_eq!(0, coordinator.current_round_height()?);
+    // Initialize the ceremony to round 0.
     coordinator.initialize()?;
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
     let contributor1 = create_contributor("1");
@@ -125,9 +121,9 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_verifier(&verifier));
 
-    // Update the ceremony to round 2.
+    // Update the ceremony to round 1.
     coordinator.update()?;
-    assert_eq!(2, coordinator.current_round_height()?);
+    assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
     assert!(!coordinator.is_queue_contributor(&contributor1));
@@ -196,7 +192,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     let coordinator_state = coordinator.state();
     let state = coordinator_state.read().unwrap();
     debug!("{}", serde_json::to_string_pretty(&*state)?);
-    assert_eq!(2, state.current_round_height());
+    assert_eq!(1, state.current_round_height());
 
     Ok(())
 }
@@ -217,11 +213,9 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment.clone())?;
 
-    // Initialize the ceremony to round 1.
-    assert_eq!(0, coordinator.current_round_height()?);
+    // Initialize the ceremony to round 0.
     coordinator.initialize()?;
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
     let contributor1 = create_contributor("1");
@@ -235,9 +229,9 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     assert_eq!(3, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Update the ceremony to round 2.
+    // Update the ceremony to round 1.
     coordinator.update()?;
-    assert_eq!(2, coordinator.current_round_height()?);
+    assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
@@ -283,7 +277,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     let coordinator_state = coordinator.state();
     let state = coordinator_state.read().unwrap();
     debug!("{}", serde_json::to_string_pretty(&*state)?);
-    assert_eq!(2, state.current_round_height());
+    assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.
     let contributors = coordinator.current_contributors();
@@ -347,11 +341,9 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment.clone())?;
 
-    // Initialize the ceremony to round 1.
-    assert_eq!(0, coordinator.current_round_height()?);
+    // Initialize the ceremony to round 0.
     coordinator.initialize()?;
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.current_round_height()?);
 
     // Add a contributor and verifier to the queue.
     let contributor1 = create_contributor("1");
@@ -365,9 +357,9 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     assert_eq!(3, coordinator.number_of_queue_contributors());
     assert_eq!(1, coordinator.number_of_queue_verifiers());
 
-    // Update the ceremony to round 2.
+    // Update the ceremony to round 1.
     coordinator.update()?;
-    assert_eq!(2, coordinator.current_round_height()?);
+    assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
@@ -442,7 +434,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     let coordinator_state = coordinator.state();
     let state = coordinator_state.read().unwrap();
     debug!("{}", serde_json::to_string_pretty(&*state)?);
-    assert_eq!(2, state.current_round_height());
+    assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.
     let contributors = coordinator.current_contributors();

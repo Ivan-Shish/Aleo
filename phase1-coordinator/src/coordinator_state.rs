@@ -1734,6 +1734,30 @@ impl CoordinatorState {
     }
 
     ///
+    /// Rolls back the current round from aggregating in round metrics.
+    ///
+    #[inline]
+    pub(super) fn rollback_aggregating_current_round(&mut self) -> Result<(), CoordinatorError> {
+        warn!("Rolling back aggregating indicator from coordinator state");
+
+        let metrics = match &mut self.current_metrics {
+            Some(metrics) => metrics,
+            None => return Err(CoordinatorError::CoordinatorStateNotInitialized),
+        };
+
+        // Check that the round aggregation is not yet set.
+        if metrics.is_round_aggregated || metrics.finished_aggregation_at.is_some() {
+            error!("Round metrics shows current round is already aggregated");
+            return Err(CoordinatorError::RoundAlreadyAggregated);
+        }
+
+        // Set the start aggregation timestamp to None.
+        metrics.started_aggregation_at = None;
+
+        Ok(())
+    }
+
+    ///
     /// Drops the given participant from the queue, precommit, and current round.
     ///
     /// The dropped participant information preserves the state of locked chunks,
@@ -2727,9 +2751,10 @@ impl CoordinatorState {
             true => format!("Round {} is finished", current_round_height),
             false => format!("Round {} is in progress", current_round_height),
         };
-        let current_round_aggregated = match self.is_current_round_aggregated() {
-            true => format!("Round {} is aggregated", current_round_height),
-            false => format!("Round {} is awaiting aggregation", current_round_height),
+        let current_round_aggregated = match (self.is_current_round_aggregated(), current_round_height) {
+            (_, 0) => format!("Round {} can skip aggregation", current_round_height),
+            (true, _) => format!("Round {} is aggregated", current_round_height),
+            (false, _) => format!("Round {} is awaiting aggregation", current_round_height),
         };
         let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
             true => format!("Round {} is ready to begin", next_round_height),
