@@ -44,6 +44,7 @@ impl Dummy {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
