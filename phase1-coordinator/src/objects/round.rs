@@ -24,7 +24,7 @@ where
     iter.into_iter().all(move |x| uniq.insert(x))
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, SerdeDiff)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
 pub struct Round {
     #[serde(deserialize_with = "deserialize_number_from_string")]
@@ -52,12 +52,17 @@ impl Round {
         verifier_ids: Vec<Participant>,
     ) -> Result<Self, CoordinatorError> {
         debug!("Starting to create round {}", round_height);
+
+        // Check that the number of chunks is nonzero.
+        if environment.number_of_chunks() == 0 {
+            return Err(CoordinatorError::NumberOfChunksInvalid);
+        }
+
+        // Fetch the initial verifier.
+        let verifier = verifier_ids.first().ok_or(CoordinatorError::VerifierMissing)?;
+
+        // Check that all contributor IDs are valid.
         {
-            // Check that the list of contributor IDs is not empty.
-            // This check is only enforced if the round height is not 0.
-            if contributor_ids.is_empty() && round_height != 0 {
-                return Err(CoordinatorError::RoundContributorsMissing);
-            }
             // Check that each contributor ID is unique.
             if !has_unique_elements(&contributor_ids) {
                 return Err(CoordinatorError::RoundContributorsNotUnique);
@@ -71,12 +76,15 @@ impl Round {
                 error!("{} IDs are not contributors", contributor_ids.len() - num_contributors);
                 return Err(CoordinatorError::ExpectedContributor);
             }
-        }
-        {
-            // Check that the list of verifier IDs is not empty.
-            if verifier_ids.is_empty() {
-                return Err(CoordinatorError::RoundVerifiersMissing);
+            // Check that the list of contributor IDs is not empty.
+            // This check is only enforced if the round height is not 0.
+            if round_height != 0 && num_contributors == 0 {
+                return Err(CoordinatorError::RoundContributorsMissing);
             }
+        }
+
+        // Check that all verifier IDs are valid.
+        {
             // Check that each verifier ID is unique.
             if !has_unique_elements(&verifier_ids) {
                 return Err(CoordinatorError::RoundVerifiersNotUnique);
@@ -90,21 +98,16 @@ impl Round {
                 error!("{} IDs are not verifiers", verifier_ids.len() - num_verifiers);
                 return Err(CoordinatorError::ExpectedVerifier);
             }
-        }
-
-        // Check that the number of chunks is nonzero.
-        if environment.number_of_chunks() == 0 {
-            return Err(CoordinatorError::NumberOfChunksInvalid);
+            // Check that the list of verifier IDs is not empty.
+            if num_verifiers == 0 {
+                return Err(CoordinatorError::RoundVerifiersMissing);
+            }
         }
 
         // Construct the chunks for this round.
         //
         // Initialize the chunk verifiers as a list comprising only
         // the coordinator verifier, as this is for initialization.
-        let verifier = environment
-            .coordinator_verifiers()
-            .first()
-            .ok_or(CoordinatorError::VerifierMissing)?;
         let chunks: Vec<Chunk> = (0..environment.number_of_chunks() as usize)
             .into_par_iter()
             .map(|chunk_id| {
@@ -736,6 +739,7 @@ impl Round {
     /// If the given participant is not the current lock holder of the given chunk IDs,
     /// this function will return a `CoordinatorError`.
     ///
+    #[inline]
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
@@ -743,8 +747,8 @@ impl Round {
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, locked_chunks) = match justification {
-            Justification::BanCurrent(participant, _, locked_chunks, _) => (participant, locked_chunks),
-            Justification::DropCurrent(participant, _, locked_chunks, _) => (participant, locked_chunks),
+            Justification::BanCurrent(participant, _, locked_chunks, _, _) => (participant, locked_chunks),
+            Justification::DropCurrent(participant, _, locked_chunks, _, _) => (participant, locked_chunks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -841,6 +845,7 @@ impl Round {
     /// If the given participant is not the current lock holder of the given chunk IDs,
     /// this function will return a `CoordinatorError`.
     ///
+    #[inline]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
         storage: &mut StorageLock,
@@ -848,8 +853,8 @@ impl Round {
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, tasks) = match justification {
-            Justification::BanCurrent(participant, _, _, tasks) => (participant, tasks),
-            Justification::DropCurrent(participant, _, _, tasks) => (participant, tasks),
+            Justification::BanCurrent(participant, _, _, tasks, _) => (participant, tasks),
+            Justification::DropCurrent(participant, _, _, tasks, _) => (participant, tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -860,15 +865,17 @@ impl Round {
             return Ok(());
         }
 
+        // Check that the participant is in the current contributors ID.
+        if self.contributor_ids.par_iter().filter(|p| **p == *participant).count() != 1 {
+            error!("Missing contributor (to drop) in current contributors of coordinator state");
+            return Err(CoordinatorError::RoundContributorMissing);
+        }
+
         // Remove the given contribution from each chunk in the current round.
         for task in tasks {
             let chunk = self.chunk_mut(task.chunk_id())?;
             if let Ok(contribution) = chunk.get_contribution(task.chunk_id()) {
-                warn!(
-                    "Removing chunk {} contribution {}",
-                    task.chunk_id(),
-                    task.contribution_id()
-                );
+                warn!("Removing task {:?}", task.to_tuple());
 
                 // Remove the unverified contribution file, if it exists.
                 if let Some(locator) = contribution.get_contributed_location() {
@@ -883,15 +890,40 @@ impl Round {
                 }
 
                 chunk.remove_contribution_unsafe(task.contribution_id());
-                warn!(
-                    "Removed chunk {} contribution {}",
-                    task.chunk_id(),
-                    task.contribution_id()
-                );
+                warn!("Removed task {:?}", task.to_tuple());
             } else {
                 warn!("Skipping removal of contribution {}", task.contribution_id());
             }
         }
+
+        // Remove the given participant from the set of contributor IDs.
+        self.contributor_ids = self
+            .contributor_ids
+            .par_iter()
+            .cloned()
+            .filter(|p| p != participant)
+            .collect();
+
+        Ok(())
+    }
+
+    ///
+    /// Adds a replacement contributor from the given environment into the round contributor IDs.
+    ///
+    #[inline]
+    pub(crate) fn add_replacement_contributor_unsafe(
+        &mut self,
+        participant: Participant,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the participant is a contributor.
+        if !participant.is_contributor() {
+            error!("Failed to add {} as a replacement contributor", participant);
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        // Add in a replacement contributor to the set of contributor IDs, if one is available.
+        self.contributor_ids.push(participant.clone());
+        warn!("Added replacement contributor {} to round {}", participant, self.height);
 
         Ok(())
     }
@@ -900,6 +932,7 @@ impl Round {
     /// If all chunks are complete and the finished at timestamp has not been set yet,
     /// then set it with the current UTC timestamp.
     ///
+    #[inline]
     pub(crate) fn try_finish(&mut self, timestamp: DateTime<Utc>) {
         if self.is_complete() && self.finished_at.is_none() {
             self.finished_at = Some(timestamp);
@@ -910,6 +943,7 @@ impl Round {
     /// If all chunks are complete, then set it with the current UTC timestamp.
     ///
     #[cfg(test)]
+    #[inline]
     pub(crate) fn try_finish_testing_only_unsafe(&mut self, timestamp: DateTime<Utc>) {
         if self.is_complete() {
             warn!("Modifying finished_at timestamp for testing only");
@@ -1014,8 +1048,9 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let candidates = test_round_0().unwrap().verifiers().clone();
-        for (index, id) in TEST_VERIFIER_IDS.iter().enumerate() {
-            assert_eq!(*id, candidates[index]);
+        assert_eq!(TEST_VERIFIER_IDS.len(), candidates.len());
+        for id in TEST_VERIFIER_IDS.iter() {
+            assert!(candidates.contains(id));
         }
     }
 

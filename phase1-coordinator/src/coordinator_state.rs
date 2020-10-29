@@ -1933,28 +1933,10 @@ impl CoordinatorState {
             // Add the participant info to the dropped participants.
             self.dropped.push(dropped_info);
 
-            // Assign the coordinator contributor to the dropped tasks.
-            {
-                let contributor = self
-                    .environment
-                    .coordinator_contributors()
-                    .first()
-                    .ok_or(CoordinatorError::ContributorsMissing)?;
-
-                let round_height = self.current_round_height().clone();
-
-                if !self.current_contributors.contains_key(&contributor) {
-                    let mut participant_info = ParticipantInfo::new(contributor.clone(), round_height, 10, bucket_id);
-                    participant_info.start(initialize_tasks(
-                        bucket_id,
-                        self.environment.number_of_chunks(),
-                        number_of_contributors,
-                    ))?;
-                    trace!("{:?}", participant_info);
-
-                    self.current_contributors.insert(contributor.clone(), participant_info);
-                }
-            }
+            // TODO (howardwu): Add a flag guard to this call, and return None, to support
+            //  the 'drop round' feature in the coordinator.
+            // Assign the replacement contributor to the dropped tasks.
+            let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id)?;
 
             warn!("Dropped {} from the ceremony", participant);
 
@@ -1963,6 +1945,7 @@ impl CoordinatorState {
                 bucket_id,
                 locked_chunks,
                 tasks,
+                Some(replacement_contributor),
             ));
         }
 
@@ -2000,6 +1983,7 @@ impl CoordinatorState {
                 bucket_id,
                 locked_chunks,
                 tasks,
+                None,
             ));
         }
 
@@ -2018,13 +2002,19 @@ impl CoordinatorState {
 
         // Drop the participant from the queue, precommit, and current round.
         match self.drop_participant(participant)? {
-            Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks) => {
+            Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks, replacement) => {
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(Justification::BanCurrent(participant, bucket_id, locked_chunks, tasks))
+                Ok(Justification::BanCurrent(
+                    participant,
+                    bucket_id,
+                    locked_chunks,
+                    tasks,
+                    replacement,
+                ))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -2042,6 +2032,41 @@ impl CoordinatorState {
             .into_par_iter()
             .filter(|p| p != participant)
             .collect();
+    }
+
+    ///
+    /// Adds a replacement contributor from the coordinator as a current contributor
+    /// and assigns them tasks from the given starting bucket ID.
+    ///
+    #[inline]
+    pub(crate) fn add_replacement_contributor_unsafe(
+        &mut self,
+        bucket_id: u64,
+    ) -> Result<Participant, CoordinatorError> {
+        // Fetch a coordinator contributor.
+        let mut coordinator_contributor = None;
+        for contributor in self.environment.coordinator_contributors() {
+            if !self.current_contributors.contains_key(contributor) {
+                coordinator_contributor = Some(contributor);
+                break;
+            }
+        }
+
+        // Assign the replacement contributor to the dropped tasks.
+        let contributor = coordinator_contributor.ok_or(CoordinatorError::CoordinatorContributorMissing)?;
+        let number_of_contributors = self
+            .current_metrics
+            .clone()
+            .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
+            .number_of_contributors;
+        let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors);
+        let mut participant_info =
+            ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id);
+        participant_info.start(tasks.clone())?;
+        trace!("{:?}", participant_info);
+        self.current_contributors.insert(contributor.clone(), participant_info);
+
+        Ok(contributor.clone())
     }
 
     ///
@@ -2938,8 +2963,8 @@ fn initialize_tasks(
 }
 
 pub(crate) enum Justification {
-    BanCurrent(Participant, u64, Vec<u64>, Vec<Task>),
-    DropCurrent(Participant, u64, Vec<u64>, Vec<Task>),
+    BanCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
+    DropCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
     Inactive,
 }
 

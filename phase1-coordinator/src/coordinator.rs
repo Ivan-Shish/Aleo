@@ -60,6 +60,7 @@ pub enum CoordinatorError {
     ContributorAlreadyContributed,
     ContributorSignatureInvalid,
     ContributorsMissing,
+    CoordinatorContributorMissing,
     CoordinatorStateNotInitialized,
     CurrentRoundAggregating,
     CurrentRoundAggregated,
@@ -138,6 +139,7 @@ pub enum CoordinatorError {
     RoundAlreadyInitialized,
     RoundAlreadyAggregated,
     RoundCommitFailedOrCorrupted,
+    RoundContributorMissing,
     RoundContributorsMissing,
     RoundContributorsNotUnique,
     RoundDirectoryMissing,
@@ -2069,44 +2071,51 @@ impl Coordinator {
             _ => return Err(CoordinatorError::RoundDoesNotExist),
         };
 
-        // Fetch the current round height.
-        let current_round_height = round.round_height();
-
-        // Check the justification and extract the locked chunks and tasks.
-        let (locked_chunks, tasks) = match justification {
-            Justification::BanCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
-            Justification::DropCurrent(_, _, ref locked_chunks, ref tasks) => (locked_chunks, tasks),
+        // Check the justification and extract the tasks.
+        let (tasks, replacement) = match justification {
+            Justification::BanCurrent(_, _, _, ref tasks, ref replacement) => (tasks, replacement),
+            Justification::DropCurrent(_, _, _, ref tasks, ref replacement) => (tasks, replacement),
             Justification::Inactive => {
                 warn!("Justification for action is that participant is inactive");
                 return Ok(vec![]);
             }
         };
 
-        // Convert the tasks into contribution file locators.
-        let locators: Vec<Locator> = tasks
-            .par_iter()
-            .map(|task| Locator::ContributionFile(current_round_height, task.chunk_id(), task.contribution_id(), true))
-            .collect();
-
         warn!("Removing locked chunks and all impacted contributions");
 
         // Remove the lock from the specified chunks.
         round.remove_locks_unsafe(&mut storage, &justification)?;
-
         warn!("Removed locked chunks");
 
         // Remove the contributions from the specified chunks.
         round.remove_chunk_contributions_unsafe(&mut storage, &justification)?;
-
         warn!("Removed impacted contributions");
 
-        // Save the updated round to storage.
-        storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round))?;
+        // Assign a replacement contributor to the dropped tasks for the current round.
+        if let Some(replacement_contributor) = replacement {
+            round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
+            warn!("Added a replacement contributor {}", replacement_contributor);
+        }
 
-        Ok(locators
+        // Convert the tasks into contribution file locators.
+        let locators = tasks
             .par_iter()
-            .map(|locator| storage.to_path(&locator).unwrap())
-            .collect())
+            .map(|task| {
+                storage
+                    .to_path(&Locator::ContributionFile(
+                        round.round_height(),
+                        task.chunk_id(),
+                        task.contribution_id(),
+                        true,
+                    ))
+                    .unwrap()
+            })
+            .collect();
+
+        // Save the updated round to storage.
+        storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+
+        Ok(locators)
     }
 
     #[inline]
