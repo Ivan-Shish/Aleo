@@ -61,7 +61,7 @@ impl Parameters {
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
             Power::from(20_usize),
-            BatchSize::from(64_usize),
+            BatchSize::from(4096_usize),
             ChunkSize::from(32768_usize),
         )
     }
