@@ -1060,7 +1060,7 @@ impl CoordinatorState {
     /// Returns `true` if all participants in the current round have no more pending chunks.
     ///
     #[inline]
-    pub(super) fn is_current_round_finished(&self) -> bool {
+    pub fn is_current_round_finished(&self) -> bool {
         // Check that all contributions have undergone verification.
         self.pending_verification.is_empty()
             // Check that all current contributors are finished.
@@ -1073,7 +1073,7 @@ impl CoordinatorState {
     /// Returns `true` if the current round is currently being aggregated.
     ///
     #[inline]
-    pub(super) fn is_current_round_aggregating(&self) -> bool {
+    pub fn is_current_round_aggregating(&self) -> bool {
         match &self.current_metrics {
             Some(metrics) => {
                 !metrics.is_round_aggregated
@@ -1088,7 +1088,7 @@ impl CoordinatorState {
     /// Returns `true` if the current round has been aggregated.
     ///
     #[inline]
-    pub(super) fn is_current_round_aggregated(&self) -> bool {
+    pub fn is_current_round_aggregated(&self) -> bool {
         match &self.current_metrics {
             Some(metrics) => {
                 metrics.is_round_aggregated
