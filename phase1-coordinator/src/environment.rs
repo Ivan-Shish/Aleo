@@ -72,8 +72,8 @@ impl Parameters {
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
             Power::from(21_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(8192_usize),
+            BatchSize::from(4096_usize),
+            ChunkSize::from(65536_usize),
         )
     }
 
@@ -83,8 +83,8 @@ impl Parameters {
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
             Power::from(30_usize),
-            BatchSize::from(64_usize),
-            ChunkSize::from(8192_usize),
+            BatchSize::from(4096_usize),
+            ChunkSize::from(262144_usize),
         )
     }
 
