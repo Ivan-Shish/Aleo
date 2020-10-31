@@ -82,9 +82,9 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
-            Power::from(30_usize),
+            Power::from(28_usize),
             BatchSize::from(4096_usize),
-            ChunkSize::from(262144_usize),
+            ChunkSize::from(65536_usize),
         )
     }
 
