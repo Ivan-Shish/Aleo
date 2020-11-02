@@ -2288,9 +2288,8 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn update_dropped_participants(&mut self) -> Result<Vec<Justification>, CoordinatorError> {
-        // Fetch the timeout threshold for contributors and verifiers.
+        // Fetch the timeout threshold for contributors.
         let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
-        let verifier_timeout = self.environment.verifier_timeout_in_minutes() as i64;
 
         // Fetch the current time.
         let now = Utc::now();
@@ -2305,18 +2304,6 @@ impl CoordinatorState {
 
             // Check if the participant is still live.
             if elapsed.num_minutes() > contributor_timeout {
-                // Drop the participant.
-                justifications.push(self.drop_participant(participant)?);
-            }
-        }
-
-        // Process the verifiers.
-        for (participant, participant_info) in &self.current_verifiers.clone() {
-            // Fetch the elapsed time.
-            let elapsed = now - participant_info.last_seen;
-
-            // Check if the participant is still live.
-            if elapsed.num_minutes() > verifier_timeout {
                 // Drop the participant.
                 justifications.push(self.drop_participant(participant)?);
             }
