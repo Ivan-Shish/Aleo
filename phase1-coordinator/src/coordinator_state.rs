@@ -2335,18 +2335,20 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn update_banned_participants(&mut self) -> Result<(), CoordinatorError> {
         for participant_info in self.dropped.clone() {
-            // Fetch the number of times this participant has been dropped.
-            let count = self
-                .dropped
-                .par_iter()
-                .filter(|dropped| dropped.id == participant_info.id)
-                .count();
+            if !self.banned.contains(&participant_info.id) {
+                // Fetch the number of times this participant has been dropped.
+                let count = self
+                    .dropped
+                    .par_iter()
+                    .filter(|dropped| dropped.id == participant_info.id)
+                    .count();
 
-            // Check if the participant meets the ban threshold.
-            if count > self.environment.participant_ban_threshold() as usize {
-                self.banned.insert(participant_info.id.clone());
+                // Check if the participant meets the ban threshold.
+                if count > self.environment.participant_ban_threshold() as usize {
+                    self.banned.insert(participant_info.id.clone());
 
-                debug!("{} is being banned", participant_info.id);
+                    debug!("{} is being banned", participant_info.id);
+                }
             }
         }
 
@@ -2847,7 +2849,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
         let number_of_assigned_verifiers = self
             .queue
