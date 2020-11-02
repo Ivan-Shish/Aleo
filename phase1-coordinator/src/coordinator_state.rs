@@ -2288,9 +2288,8 @@ impl CoordinatorState {
     ///
     #[inline]
     pub(super) fn update_dropped_participants(&mut self) -> Result<Vec<Justification>, CoordinatorError> {
-        // Fetch the timeout threshold for contributors and verifiers.
+        // Fetch the timeout threshold for contributors.
         let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
-        let verifier_timeout = self.environment.verifier_timeout_in_minutes() as i64;
 
         // Fetch the current time.
         let now = Utc::now();
@@ -2310,18 +2309,6 @@ impl CoordinatorState {
             }
         }
 
-        // Process the verifiers.
-        for (participant, participant_info) in &self.current_verifiers.clone() {
-            // Fetch the elapsed time.
-            let elapsed = now - participant_info.last_seen;
-
-            // Check if the participant is still live.
-            if elapsed.num_minutes() > verifier_timeout {
-                // Drop the participant.
-                justifications.push(self.drop_participant(participant)?);
-            }
-        }
-
         Ok(justifications)
     }
 
@@ -2335,18 +2322,20 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn update_banned_participants(&mut self) -> Result<(), CoordinatorError> {
         for participant_info in self.dropped.clone() {
-            // Fetch the number of times this participant has been dropped.
-            let count = self
-                .dropped
-                .par_iter()
-                .filter(|dropped| dropped.id == participant_info.id)
-                .count();
+            if !self.banned.contains(&participant_info.id) {
+                // Fetch the number of times this participant has been dropped.
+                let count = self
+                    .dropped
+                    .par_iter()
+                    .filter(|dropped| dropped.id == participant_info.id)
+                    .count();
 
-            // Check if the participant meets the ban threshold.
-            if count > self.environment.participant_ban_threshold() as usize {
-                self.banned.insert(participant_info.id.clone());
+                // Check if the participant meets the ban threshold.
+                if count > self.environment.participant_ban_threshold() as usize {
+                    self.banned.insert(participant_info.id.clone());
 
-                debug!("{} is being banned", participant_info.id);
+                    debug!("{} is being banned", participant_info.id);
+                }
             }
         }
 
@@ -2847,7 +2836,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_verifier() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
         let number_of_assigned_verifiers = self
             .queue
