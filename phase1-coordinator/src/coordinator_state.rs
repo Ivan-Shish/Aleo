@@ -2320,8 +2320,8 @@ impl CoordinatorState {
             // Fetch the elapsed time.
             let elapsed = now - participant_info.last_seen;
 
-            // Check if the participant is still live.
-            if elapsed.num_minutes() > contributor_timeout {
+            // Check if the participant is still live and not a coordinator contributor.
+            if elapsed.num_minutes() > contributor_timeout && !self.is_coordinator_contributor(&participant) {
                 // Drop the participant.
                 justifications.push(self.drop_participant(participant)?);
             }
