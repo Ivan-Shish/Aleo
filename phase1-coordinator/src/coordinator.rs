@@ -790,7 +790,7 @@ impl Coordinator {
 
         // Acquire a state read lock.
         let state = self.state.read().unwrap();
-        // Check that the participant is a current contributor.
+        // Check that the participant is a current verifier.
         state.is_current_verifier(participant)
     }
 
@@ -824,8 +824,32 @@ impl Coordinator {
 
         // Acquire a state read lock.
         let state = self.state.read().unwrap();
-        // Fetch the state of the current contributor.
+        // Fetch the state of the current verifier.
         state.is_finished_verifier(&participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a contributor managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_contributor(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Check that the participant is a coordinator contributor.
+        state.is_coordinator_contributor(&participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_verifier(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Check that the participant is a coordinator verifier.
+        state.is_coordinator_verifier(&participant)
     }
 
     ///
@@ -2604,6 +2628,10 @@ mod tests {
 
             // Check current round height is now 1.
             assert_eq!(1, coordinator.current_round_height()?);
+
+            // Check that the coordinator participants are established correctly.
+            assert!(coordinator.is_coordinator_contributor(&TEST_CONTRIBUTOR_ID));
+            assert!(coordinator.is_coordinator_verifier(&TEST_VERIFIER_ID));
 
             // Check the current round has a matching height.
             let current_round = coordinator.current_round()?;

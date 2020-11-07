@@ -983,6 +983,24 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns `true` if the given participant is a contributor managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_contributor(&self, participant: &Participant) -> bool {
+        participant.is_contributor() && self.environment.coordinator_contributors().contains(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_verifier(&self, participant: &Participant) -> bool {
+        participant.is_verifier() && self.environment.coordinator_verifiers().contains(participant)
+    }
+
+    ///
     /// Returns the total number of contributors currently in the queue.
     ///  
     #[inline]
