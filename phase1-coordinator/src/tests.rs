@@ -494,7 +494,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     Ok(())
 }
 
-/// Drops a contributor with other contributors in pending tasks.
+/// Drops a contributor with locked chunks and other contributors in pending tasks.
 fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
     let parameters = Parameters::Custom((
         ContributionMode::Chunked,
