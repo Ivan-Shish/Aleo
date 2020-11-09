@@ -772,7 +772,7 @@ impl Round {
             // Fetch the chunk corresponding to the given chunk ID.
             let chunk = self.chunk(*chunk_id)?;
             // Fetch the current contribution ID.
-            let current_contribution_id = chunk.current_contribution_id() - 1;
+            let current_contribution_id = chunk.current_contribution_id();
             // Fetch the expected number of contributions for the current round.
             let expected_number_of_contributions = self.expected_number_of_contributions();
 
