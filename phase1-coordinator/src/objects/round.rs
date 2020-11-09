@@ -752,12 +752,14 @@ impl Round {
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
+        trace!("Removing locks for chunks {:?} from {}", locked_chunks, participant);
+
         // Check that the participant is the lock holder for each chunk.
         if locked_chunks
             .par_iter()
             .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
             .count()
-            != 0
+            != locked_chunks.len()
         {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
