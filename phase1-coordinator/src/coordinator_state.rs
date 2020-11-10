@@ -2061,6 +2061,8 @@ impl CoordinatorState {
         &mut self,
         bucket_id: u64,
     ) -> Result<Participant, CoordinatorError> {
+        // TODO (raychu86): Find coordinator contributor with the least load
+
         // Fetch a coordinator contributor.
         let mut coordinator_contributor = None;
         for contributor in self.environment.coordinator_contributors() {
@@ -2077,6 +2079,9 @@ impl CoordinatorState {
             .clone()
             .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
             .number_of_contributors;
+
+        // TODO (raychu86): Add tasks to the replacement contributor if it already has pending tasks.
+
         let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors);
         let mut participant_info =
             ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id);
