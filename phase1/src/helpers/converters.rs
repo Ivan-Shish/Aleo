@@ -1,6 +1,7 @@
 use crate::{ContributionMode, ProvingSystem};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum CurveKind {
     Bls12_377,
     BW6,

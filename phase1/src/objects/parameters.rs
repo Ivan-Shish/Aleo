@@ -2,15 +2,16 @@ use setup_utils::UseCompression;
 
 use zexe_algebra::{ConstantSerializedSize, PairingEngine};
 
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-#[derive(Clone, PartialEq, Eq, Debug, Copy)]
+#[derive(Clone, PartialEq, Eq, Debug, Copy, Serialize, Deserialize)]
 pub enum ContributionMode {
     Full,
     Chunked,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ProvingSystem {
     Groth16,
     Marlin,
@@ -147,10 +148,6 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     (other_chunk_size * (curve.g2_size + (curve.g1_size * 2))) +
                     // Beta in G2
                     curve.g2_size +
-                    // Tau Single G1
-                    (2 * curve.g1_size) +
-                    // Tau Single G2
-                    (2 * curve.g2_size) +
                     // Hash of the previous contribution
                     hash_size
             }
@@ -172,9 +169,9 @@ impl<E: PairingEngine> Phase1Parameters<E> {
 
         let public_key_size =
            // tau, alpha, beta in g2
-           3 * curve.g2_size +
+           3 * curve.g2_compressed_size +
            // (s1, s1*tau), (s2, s2*alpha), (s3, s3*beta) in g1
-           6 * curve.g1_size;
+           6 * curve.g1_compressed_size;
 
         let contribution_size = match proving_system {
             ProvingSystem::Groth16 => {
@@ -184,10 +181,6 @@ impl<E: PairingEngine> Phase1Parameters<E> {
                     (other_chunk_size * (curve.g2_compressed_size + (curve.g1_compressed_size * 2))) +
                     // Beta in G2
                     curve.g2_compressed_size +
-                    // Tau Single G1
-                    (2 * curve.g1_compressed_size) +
-                    // Tau Single G2
-                    (2 * curve.g2_compressed_size) +
                     // Hash of the previous contribution
                     hash_size +
                     // The public key of the previous contributor

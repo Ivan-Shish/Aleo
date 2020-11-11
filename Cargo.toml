@@ -4,6 +4,7 @@ members = [
     "aleo-setup2",
     "phase1",
     "phase1-cli",
+    "phase1-coordinator",
     "phase1-wasm",
     "phase2",
     "setup-utils",
@@ -26,6 +27,7 @@ debug-assertions = false
 opt-level = 0
 
 [profile.test]
-opt-level = 0
+opt-level = 1
+incremental = true
 debug-assertions = true
 debug = true

@@ -8,7 +8,7 @@ use phase1_cli::{
     Command,
     Phase1Opts,
 };
-use setup_utils::{beacon_randomness, derive_rng_from_seed, from_slice};
+use setup_utils::{beacon_randomness, derive_rng_from_seed, from_slice, CheckForCorrectness, UseCompression};
 
 use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
@@ -18,6 +18,10 @@ use tracing_subscriber::{
     filter::EnvFilter,
     fmt::{time::ChronoUtc, Subscriber},
 };
+
+const CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
+const CONTRIBUTION_IS_COMPRESSED: UseCompression = UseCompression::Yes;
+const CHECK_CONTRIBUTION_INPUT_FOR_CORRECTNESS: CheckForCorrectness = CheckForCorrectness::No;
 
 fn execute_cmd<E: Engine>(opts: Phase1Opts) {
     let curve = CurveParameters::<E>::new();
@@ -40,27 +44,46 @@ fn execute_cmd<E: Engine>(opts: Phase1Opts) {
     let now = Instant::now();
     match command {
         Command::New(opt) => {
-            new_challenge(&opt.challenge_fname, &parameters);
+            new_challenge(CHALLENGE_IS_COMPRESSED, &opt.challenge_fname, &parameters);
         }
         Command::Contribute(opt) => {
             // contribute to the randomness
             let seed = hex::decode(&read_to_string(&opts.seed).expect("should have read seed").trim())
                 .expect("seed should be a hex string");
             let rng = derive_rng_from_seed(&seed);
-            contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
+            contribute(
+                CHALLENGE_IS_COMPRESSED,
+                &opt.challenge_fname,
+                CONTRIBUTION_IS_COMPRESSED,
+                &opt.response_fname,
+                CHECK_CONTRIBUTION_INPUT_FOR_CORRECTNESS,
+                &parameters,
+                rng,
+            );
         }
         Command::Beacon(opt) => {
             // use the beacon's randomness
             // Place block hash here (block number #564321)
             let beacon_hash = hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
             let rng = derive_rng_from_seed(&beacon_randomness(from_slice(&beacon_hash)));
-            contribute(&opt.challenge_fname, &opt.response_fname, &parameters, rng);
+            contribute(
+                CHALLENGE_IS_COMPRESSED,
+                &opt.challenge_fname,
+                CONTRIBUTION_IS_COMPRESSED,
+                &opt.response_fname,
+                CHECK_CONTRIBUTION_INPUT_FOR_CORRECTNESS,
+                &parameters,
+                rng,
+            );
         }
         Command::VerifyAndTransformPokAndCorrectness(opt) => {
             // we receive a previous participation, verify it, and generate a new challenge from it
             transform_pok_and_correctness(
+                CHALLENGE_IS_COMPRESSED,
                 &opt.challenge_fname,
+                CONTRIBUTION_IS_COMPRESSED,
                 &opt.response_fname,
+                CHALLENGE_IS_COMPRESSED,
                 &opt.new_challenge_fname,
                 &parameters,
             );
