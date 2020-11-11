@@ -6,9 +6,11 @@ use zexe_algebra::PairingEngine as Engine;
 use memmap::*;
 use std::{fs::OpenOptions, io::Write};
 
-const COMPRESS_NEW_CHALLENGE: UseCompression = UseCompression::No;
-
-pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Phase1Parameters<T>) {
+pub fn new_challenge<T: Engine + Sync>(
+    compress_new_challenge: UseCompression,
+    challenge_filename: &str,
+    parameters: &Phase1Parameters<T>,
+) {
     println!(
         "Will generate an empty accumulator for 2^{} powers of tau",
         parameters.total_size_in_log2
@@ -22,7 +24,7 @@ pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Ph
         .open(challenge_filename)
         .expect("unable to create challenge file");
 
-    let expected_challenge_length = match COMPRESS_NEW_CHALLENGE {
+    let expected_challenge_length = match compress_new_challenge {
         UseCompression::Yes => parameters.contribution_size - parameters.public_key_size,
         UseCompression::No => parameters.accumulator_size,
     };
@@ -48,7 +50,7 @@ pub fn new_challenge<T: Engine + Sync>(challenge_filename: &str, parameters: &Ph
     println!("Blank hash for an empty challenge:");
     print_hash(&hash);
 
-    Phase1::initialization(&mut writable_map, COMPRESS_NEW_CHALLENGE, &parameters)
+    Phase1::initialization(&mut writable_map, compress_new_challenge, &parameters)
         .expect("generation of initial accumulator is successful");
     writable_map.flush().expect("unable to flush memmap to disk");
 

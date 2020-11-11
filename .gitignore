@@ -9,3 +9,7 @@ tmp_*
 
 .vscode
 **.idea/
+
+**/*.DS_Store
+
+**/*.env
