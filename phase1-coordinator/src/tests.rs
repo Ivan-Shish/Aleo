@@ -111,21 +111,22 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     4. Drop contributor with a locked chunk - `test_coordinator_drop_contributor_with_locked_chunk`
         Test that dropping a contributor releases the locks held by the dropped contributor.
 
-    5. Dropping a contributor removes all existing contributions - FAILING `test_coordinator_drop_contributor_removes_contributions`
+    5. Dropping a contributor removes all existing contributions - `test_coordinator_drop_contributor_removes_contributions`
         Currently skipping contribution removals: (e.x.) "Skipping removal of chunk 3 contribution 1".
 
-    6. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - FAILING `test_coordinator_drop_multiple_contributors`
-        Pick contributor with least load in `add_replacement_contributor_unsafe`.
-        May need some interleaving logic
-
-    7. Dropping a participant clears lock for subsequent contributors/verifiers - UNTESTED
+    6. Dropping a participant clears lock for subsequent contributors/verifiers - `test_coordinator_drop_contributor_clear_locks`
         If a contributor/verifier is currently working on a chunk that has a dropped participant, the lock should
         be released after the task has been disposed. The disposed task should also be reassigned correctly.
 
+    7. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - FAILING `test_coordinator_drop_multiple_contributors`
+        Pick contributor with least load in `add_replacement_contributor_unsafe`.
+        May need some interleaving logic
 
     8. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
        and tasks need to be redone - UNTESTED
         The tasks declared in the state file should be updated correctly when a participant is dropped.
+
+    9. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
 */
 
 /// Drops a contributor who does not affect other contributors or verifiers.
@@ -685,6 +686,9 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
         }
     }
 
+    // Print the current round of the ceremony.
+    debug!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
+
     Ok(())
 }
 
@@ -810,7 +814,203 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
+    // Print the current round of the ceremony.
     debug!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
+
+    Ok(())
+}
+
+/// Drops a contributor and clears locks for contributors/verifiers working on disposed tasks.
+fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Add a contributor and verifier to the queue.
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(contributor3.clone(), 8)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+    assert_eq!(3, coordinator.number_of_queue_contributors());
+    assert_eq!(1, coordinator.number_of_queue_verifiers());
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+    assert_eq!(1, coordinator.current_round_height()?);
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+
+    // Contribute and verify up to 2 before the final chunk.
+    for _ in 0..(number_of_chunks - 2) {
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+    }
+
+    // Contribute up to the final chunk.
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+    coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+    coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
+
+    // Lock the next task for the verifier and contributor 1 and 3.
+    let (contributor1_locked_chunk_id, _, _, _) = coordinator.try_lock(&contributor1)?;
+    let (verifier_locked_chunk_id, _, _, _) = coordinator.try_lock(&verifier)?;
+
+    // Print the coordinator state.
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
+    assert_eq!(1, state.current_round_height());
+
+    // Check that coordinator state includes a pending task for contributor 1 and 3.
+    let contributors = coordinator.current_contributors();
+    assert_eq!(3, contributors.len());
+    assert_eq!(1, contributors.par_iter().filter(|(p, _)| *p == contributor2).count());
+    let mut tasks: HashSet<Task> = HashSet::new();
+    for (contributor, contributor_info) in contributors {
+        if contributor == contributor1 {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.pending_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
+            assert_eq!(1, contributor_info.locked_chunks().len());
+            assert_eq!(0, contributor_info.assigned_tasks().len());
+            assert_eq!(1, contributor_info.pending_tasks().len());
+            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(0, contributor_info.disposed_tasks().len());
+        } else if contributor == contributor3 {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.pending_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(0, contributor_info.disposed_tasks().len());
+        } else {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(0, contributor_info.disposed_tasks().len());
+        }
+    }
+
+    // Check that all tasks are present.
+    assert_eq!(24, tasks.len());
+    for chunk_id in 0..environment.number_of_chunks() {
+        for contribution_id in 1..4 {
+            debug!("Checking {:?}", Task::new(chunk_id, contribution_id));
+            assert!(tasks.contains(&Task::new(chunk_id, contribution_id)));
+        }
+    }
+
+    // Lock the next task for contributor 2.
+    coordinator.try_lock(&contributor2)?;
+
+    // Drop the contributor from the current round.
+    let locators = coordinator.drop_participant(&contributor2)?;
+    assert_eq!(&number_of_chunks - 1, locators.len());
+    assert!(!coordinator.is_queue_contributor(&contributor1));
+    assert!(!coordinator.is_queue_contributor(&contributor2));
+    assert!(!coordinator.is_queue_contributor(&contributor3));
+    assert!(!coordinator.is_queue_verifier(&verifier));
+    assert!(coordinator.is_current_contributor(&contributor1));
+    assert!(!coordinator.is_current_contributor(&contributor2));
+    assert!(coordinator.is_current_contributor(&contributor3));
+    assert!(coordinator.is_current_verifier(&verifier));
+    assert!(!coordinator.is_finished_contributor(&contributor1));
+    assert!(!coordinator.is_finished_contributor(&contributor2));
+    assert!(!coordinator.is_finished_contributor(&contributor3));
+    assert!(!coordinator.is_finished_verifier(&verifier));
+
+    // Run `try_contribute` and `try_verify` to remove disposed tasks.
+    coordinator.try_contribute(&contributor1, contributor1_locked_chunk_id)?;
+    coordinator.try_verify(&verifier, verifier_locked_chunk_id)?;
+
+    // Print the coordinator state.
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
+    assert_eq!(1, state.current_round_height());
+
+    // Check that contributor 2 was dropped and coordinator state was updated.
+    let contributors = coordinator.current_contributors();
+    assert_eq!(3, contributors.len());
+    assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor2).count());
+    let mut tasks: HashSet<Task> = HashSet::new();
+    for (contributor, contributor_info) in contributors {
+        if contributor == contributor1 {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(8, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(0, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(8, contributor_info.disposed_tasks().len());
+        } else if contributor == contributor3 {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.pending_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(0, contributor_info.disposed_tasks().len());
+        } else {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(8, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(0, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(0, contributor_info.disposed_tasks().len());
+        }
+    }
+
+    // Check that all tasks are present.
+    assert_eq!(24, tasks.len());
+    for chunk_id in 0..environment.number_of_chunks() {
+        for contribution_id in 1..4 {
+            debug!("Checking {:?}", Task::new(chunk_id, contribution_id));
+            assert!(tasks.contains(&Task::new(chunk_id, contribution_id)));
+        }
+    }
+
+    let verifiers = coordinator.current_verifiers();
+    assert_eq!(1, verifiers.len());
+    for (_, verifier_info) in verifiers {
+        assert_eq!(0, verifier_info.locked_chunks().len());
+        assert_eq!(2, verifier_info.assigned_tasks().len());
+        assert_eq!(0, verifier_info.pending_tasks().len());
+        assert_eq!(18, verifier_info.completed_tasks().len());
+        assert_eq!(0, verifier_info.disposing_tasks().len());
+        assert_eq!(1, verifier_info.disposed_tasks().len());
+    }
 
     Ok(())
 }
@@ -1119,6 +1319,13 @@ fn test_coordinator_drop_contributor_with_locked_chunk() {
 #[serial]
 fn test_coordinator_drop_contributor_removes_contributions() {
     test_report!(coordinator_drop_contributor_removes_contributions);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_coordinator_drop_contributor_clear_locks() {
+    test_report!(coordinator_drop_contributor_clear_locks_test);
 }
 
 #[test]

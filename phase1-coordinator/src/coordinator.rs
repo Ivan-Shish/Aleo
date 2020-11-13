@@ -1068,6 +1068,24 @@ impl Coordinator {
             let response = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
             storage.remove(&response)?;
 
+            // Save the coordinator state in storage.
+            state.save(&mut storage)?;
+
+            debug!(
+                "Removing lock for contributor {} disposed task {} {}",
+                participant, chunk_id, contribution_id
+            );
+
+            // Fetch the current round from storage.
+            let mut round = Self::load_current_round(&storage)?;
+
+            // TODO (raychu86): Move this unsafe call to the `drop_participant` call.
+            // Release the lock on this chunk from the contributor.
+            round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
+
+            // Save the updated round to storage.
+            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+
             return Ok(storage.to_path(&response)?);
         }
 
@@ -1159,8 +1177,20 @@ impl Coordinator {
             // Move the task to the disposed tasks of the verifier.
             state.disposed_task(participant, chunk_id, contribution_id)?;
 
+            // Save the coordinator state in storage.
+            state.save(&mut storage)?;
+
+            debug!(
+                "Removing lock for verifier {} disposed task {} {}",
+                participant, chunk_id, contribution_id
+            );
+
             // Fetch the current round from storage.
-            let round = Self::load_current_round(&storage)?;
+            let mut round = Self::load_current_round(&storage)?;
+
+            // TODO (raychu86): Move this unsafe call to the `drop_participant` call.
+            // Release the lock on this chunk from the contributor.
+            round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
 
             // Fetch the next challenge locator.
             let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
@@ -1168,6 +1198,9 @@ impl Coordinator {
                 true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
                 false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
             };
+
+            // Save the updated round to storage.
+            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
 
             // Remove the next challenge file from storage.
             storage.remove(&next_challenge)?;
