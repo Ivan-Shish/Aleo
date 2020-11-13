@@ -869,7 +869,7 @@ impl Round {
         // Remove the given contribution from each chunk in the current round.
         for task in tasks {
             let chunk = self.chunk_mut(task.chunk_id())?;
-            if let Ok(contribution) = chunk.get_contribution(task.chunk_id()) {
+            if let Ok(contribution) = chunk.get_contribution(task.contribution_id()) {
                 warn!("Removing task {:?}", task.to_tuple());
 
                 // Remove the unverified contribution file, if it exists.
