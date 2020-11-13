@@ -645,10 +645,12 @@ impl ParticipantInfo {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
+        // TODO (raychu86): Reevaluate this check. When a participant is dropped, all tasks
+        //  are reassigned so the tasks will always be present.
         // Check that the participant does not have a assigned task remaining for this.
-        if self.assigned_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
-        }
+        // if self.assigned_tasks.contains(&task) {
+        //     return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
+        // }
 
         // Check that the participant has a disposing task for this.
         if !self.disposing_tasks.contains(&task) {
