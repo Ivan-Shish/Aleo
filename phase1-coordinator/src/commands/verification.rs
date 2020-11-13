@@ -95,7 +95,6 @@ impl Verification {
             storage.initialize(contribution_file_signature_locator.clone(), expected_filesize)?;
         }
 
-        // TODO (raychu86): Propagate secret key up.
         // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
         crate::commands::write_contribution_file_signature(
