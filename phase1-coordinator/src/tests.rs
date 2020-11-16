@@ -106,27 +106,32 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         Given contributors 1, 2, and 3, drop contributor 2 and ensure that the tasks are present.
 
     3. Drop contributor with pending tasks - `test_coordinator_drop_contributor_with_contributors_in_pending_tasks`
-       Drops a contributor with other contributors in pending tasks.
+        Drops a contributor with other contributors in pending tasks.
 
     4. Drop contributor with a locked chunk - `test_coordinator_drop_contributor_with_locked_chunk`
         Test that dropping a contributor releases the locks held by the dropped contributor.
 
-    5. Dropping a contributor removes all existing contributions - `test_coordinator_drop_contributor_removes_contributions`
-        Currently skipping contribution removals: (e.x.) "Skipping removal of chunk 3 contribution 1".
+    5. Dropping a contributor removes provided contributions - `test_coordinator_drop_contributor_removes_contributions`
+        Test that dropping a contributor will remove all the contributions that the dropped contributor has provided.
 
     6. Dropping a participant clears lock for subsequent contributors/verifiers - `test_coordinator_drop_contributor_clear_locks`
-        If a contributor/verifier is currently working on a chunk that has a dropped participant, the lock should
-        be released after the task has been disposed. The disposed task should also be reassigned correctly.
+        If a contribution is dropped from a chunk, while a  contributor/verifier is performing their contribution, the lock should
+        be released after the task has been disposed. The disposed task should also be reassigned correctly. Currently,
+        the lock is release and the task is disposed after the contributor/verifier calls `try_contribute` or `try_verify`.
 
-    7. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - FAILING `test_coordinator_drop_multiple_contributors`
+    7. Dropping a contributor removes all subsequent contributions  - UNTESTED
+        If a contributor is dropped, all contributions built on top of the dropped contributions must also
+        be dropped.
+
+    8. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - FAILING `test_coordinator_drop_multiple_contributors`
         Pick contributor with least load in `add_replacement_contributor_unsafe`.
         May need some interleaving logic
 
-    8. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
+    9. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
        and tasks need to be redone - UNTESTED
         The tasks declared in the state file should be updated correctly when a participant is dropped.
 
-    9. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
+    10. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
 */
 
 /// Drops a contributor who does not affect other contributors or verifiers.
@@ -805,7 +810,6 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
             .filter(|(_, contribution)| contribution.get_contributor() == &Some(contributor1.clone()))
             .count();
 
-        debug!("Chunk ID {}", chunk.chunk_id());
         assert_eq!(num_contributor1_chunk_contributions, 0);
     }
 
@@ -816,6 +820,13 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
 
     // Print the current round of the ceremony.
     debug!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
+
+    Ok(())
+}
+
+/// Drops a contributor and removes all subsequent contributions.
+fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
+    // TODO (raychu86): Implement this test.
 
     Ok(())
 }
@@ -1319,6 +1330,13 @@ fn test_coordinator_drop_contributor_with_locked_chunk() {
 #[serial]
 fn test_coordinator_drop_contributor_removes_contributions() {
     test_report!(coordinator_drop_contributor_removes_contributions);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_coordinator_drop_contributor_removes_subsequent_contributions() {
+    test_report!(coordinator_drop_contributor_removes_subsequent_contributions);
 }
 
 #[test]
