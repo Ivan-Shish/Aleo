@@ -115,9 +115,9 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         Test that dropping a contributor will remove all the contributions that the dropped contributor has provided.
 
     6. Dropping a participant clears lock for subsequent contributors/verifiers - `test_coordinator_drop_contributor_clear_locks`
-        If a contribution is dropped from a chunk, while a  contributor/verifier is performing their contribution, the lock should
-        be released after the task has been disposed. The disposed task should also be reassigned correctly. Currently,
-        the lock is release and the task is disposed after the contributor/verifier calls `try_contribute` or `try_verify`.
+        Test that if a contribution is dropped from a chunk, while a  contributor/verifier is performing their contribution,
+        the lock should be released after the task has been disposed. The disposed task should also be reassigned correctly.
+        Currently, the lock is release and the task is disposed after the contributor/verifier calls `try_contribute` or `try_verify`.
 
     7. Dropping a contributor removes all subsequent contributions  - UNTESTED
         If a contributor is dropped, all contributions built on top of the dropped contributions must also
@@ -128,7 +128,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         May need some interleaving logic
 
     9. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
-       and tasks need to be redone - UNTESTED
+       and tasks need to be recomputed - UNTESTED
         The tasks declared in the state file should be updated correctly when a participant is dropped.
 
     10. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
