@@ -884,8 +884,10 @@ impl Round {
                     storage.remove(&path)?;
                 }
 
-                chunk.remove_contribution_unsafe(task.contribution_id());
-                warn!("Removed task {:?}", task.to_tuple());
+                // Remove the given contribution and all subsequent contributions.
+                for contribution_id in task.contribution_id()..(chunk.get_contributions().len() as u64) {
+                    chunk.remove_contribution_unsafe(contribution_id);
+                }
             } else {
                 warn!(
                     "Skipping removal of chunk {} contribution {}",
