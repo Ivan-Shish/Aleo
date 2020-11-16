@@ -1079,7 +1079,7 @@ impl Coordinator {
             // Fetch the current round from storage.
             let mut round = Self::load_current_round(&storage)?;
 
-            // TODO (raychu86): Move this unsafe call to the `drop_participant` call.
+            // TODO (raychu86): Move this unsafe call out of `try_contribute`.
             // Release the lock on this chunk from the contributor.
             round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
 
@@ -1188,7 +1188,7 @@ impl Coordinator {
             // Fetch the current round from storage.
             let mut round = Self::load_current_round(&storage)?;
 
-            // TODO (raychu86): Move this unsafe call to the `drop_participant` call.
+            // TODO (raychu86): Move this unsafe call out of `try_verify`.
             // Release the lock on this chunk from the contributor.
             round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
 
