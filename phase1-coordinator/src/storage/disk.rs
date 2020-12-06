@@ -334,10 +334,10 @@ impl Storage for Disk {
     fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
         trace!("Removing {}", self.to_path(locator)?);
 
-        // Check that the locator does not exist in storage.
+        // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            error!("Locator in call to remove() already exists in storage.");
-            return Err(CoordinatorError::StorageLocatorAlreadyExists);
+            error!("Locator in call to remove() doesn't exist in storage.");
+            return Err(CoordinatorError::StorageLocatorMissing);
         }
 
         // Acquire the manifest file write lock.

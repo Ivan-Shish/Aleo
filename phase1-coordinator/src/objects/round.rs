@@ -795,25 +795,29 @@ impl Round {
                 let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
                 let response_locator =
                     Locator::ContributionFile(current_round_height, *chunk_id, next_contribution_id, false);
-                storage.remove(&response_locator)?;
+                if storage.exists(&response_locator) {
+                    storage.remove(&response_locator)?;
+                }
 
                 // Remove the next challenge locator if the current response has been verified.
                 if chunk.current_contribution()?.is_verified() {
                     // Fetch whether this is the final contribution of the specified chunk.
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
                     // Remove the next challenge locator.
-                    match is_final_contribution {
+                    let contribution_file = if is_final_contribution {
                         // This is the final contribution in the chunk.
-                        true => {
-                            storage.remove(&Locator::ContributionFile(current_round_height + 1, *chunk_id, 0, true))?
-                        }
+                        Locator::ContributionFile(current_round_height + 1, *chunk_id, 0, true)
+                    } else {
                         // This is a typical contribution in the chunk.
-                        false => storage.remove(&Locator::ContributionFile(
+                        Locator::ContributionFile(
                             current_round_height,
                             *chunk_id,
                             chunk.current_contribution_id(),
                             true,
-                        ))?,
+                        )
+                    };
+                    if storage.exists(&contribution_file) {
+                        storage.remove(&contribution_file)?;
                     }
                 }
             }
@@ -875,13 +879,17 @@ impl Round {
                 // Remove the unverified contribution file, if it exists.
                 if let Some(locator) = contribution.get_contributed_location() {
                     let path = storage.to_locator(&locator)?;
-                    storage.remove(&path)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
                 }
 
                 // Remove the verified contribution file, if it exists.
                 if let Some(locator) = contribution.get_verified_location() {
                     let path = storage.to_locator(&locator)?;
-                    storage.remove(&path)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
                 }
 
                 // Remove the given contribution and all subsequent contributions.
