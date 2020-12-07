@@ -1074,10 +1074,9 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
         coordinator.verify(&verifier, &verifier_signing_key)?;
     }
 
-    // Check that coordinator state includes a pending task for contributor 1 and 3.
+    // Aggregate all of the tasks for each of the contributors into a HashSet.
     let contributors = coordinator.current_contributors();
     assert_eq!(3, contributors.len());
-    assert_eq!(1, contributors.par_iter().filter(|(p, _)| *p == contributor2).count());
     let mut tasks: HashSet<Task> = HashSet::new();
     for (_, contributor_info) in contributors {
         tasks.extend(contributor_info.assigned_tasks().iter());
@@ -1157,15 +1156,29 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
     debug!("{}", serde_json::to_string_pretty(&state)?);
     assert_eq!(1, state.current_round_height());
 
-    // TODO (raychu86): Check all 3 contributors were dropped, coordinator state was updated,
-    //  and the coordinator contributor inherited all the tasks correctly.
-
     let contributors = coordinator.current_contributors();
     assert_eq!(1, contributors.len());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor1).count());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor2).count());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor3).count());
 
+    // TODO (raychu86): Check all 3 contributors were dropped, coordinator state was updated,
+    //  and the coordinator contributor inherited all the tasks correctly.
+
+    // // Aggregate all of the tasks for each of the contributors into a HashSet.
+    // let contributors = coordinator.current_contributors();
+    // let mut tasks: HashSet<Task> = HashSet::new();
+    // for (_, contributor_info) in contributors {
+    //     tasks.extend(contributor_info.assigned_tasks().iter());
+    //     tasks.extend(contributor_info.completed_tasks().iter());
+    //     assert_eq!(0, contributor_info.locked_chunks().len());
+    //     assert_eq!(24, contributor_info.assigned_tasks().len());
+    //     assert_eq!(0, contributor_info.pending_tasks().len());
+    //     assert_eq!(0, contributor_info.completed_tasks().len());
+    //     assert_eq!(0, contributor_info.disposing_tasks().len());
+    //     assert_eq!(0, contributor_info.disposed_tasks().len());
+    // }
+    //
     // // Check that all tasks are present.
     // assert_eq!(24, tasks.len());
     // for chunk_id in 0..environment.number_of_chunks() {
