@@ -132,6 +132,10 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         The tasks declared in the state file should be updated correctly when a participant is dropped.
 
     10. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
+
+    11. Drop one contributor and check that completed tasks are reassigned properly, - `drop_contributor_and_reassign_tasks_test`
+        as well as a replacement contributor has the right amount of tasks assigned
+
 */
 
 /// Drops a contributor who does not affect other contributors or verifiers.
@@ -1292,6 +1296,81 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Add a contributor and verifier to the queue.
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    for _ in 0..(number_of_chunks) {
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+    }
+
+    for (_participant, contributor_info) in coordinator.current_contributors() {
+        assert_eq!(contributor_info.completed_tasks().len(), 8);
+        assert_eq!(contributor_info.assigned_tasks().len(), 0);
+        assert_eq!(contributor_info.disposing_tasks().len(), 0);
+        assert_eq!(contributor_info.disposed_tasks().len(), 0);
+    }
+
+    // Drop the contributor from the current round.
+    let locators = coordinator.drop_participant(&contributor1)?;
+    assert_eq!(number_of_chunks, locators.len());
+    assert_eq!(false, coordinator.is_queue_contributor(&contributor1));
+    assert_eq!(false, coordinator.is_queue_contributor(&contributor2));
+    assert_eq!(false, coordinator.is_queue_verifier(&verifier));
+    assert_eq!(false, coordinator.is_current_contributor(&contributor1));
+    assert_eq!(true, coordinator.is_current_contributor(&contributor2));
+    assert_eq!(true, coordinator.is_current_verifier(&verifier));
+    assert_eq!(false, coordinator.is_finished_contributor(&contributor1));
+    assert_eq!(false, coordinator.is_finished_contributor(&contributor2));
+    assert_eq!(false, coordinator.is_finished_verifier(&verifier));
+
+    for (participant, contributor_info) in coordinator.current_contributors() {
+        if participant == contributor2 {
+            assert_eq!(contributor_info.completed_tasks().len(), 4);
+            assert_eq!(contributor_info.assigned_tasks().len(), 4);
+            assert_eq!(contributor_info.disposing_tasks().len(), 0);
+            assert_eq!(contributor_info.disposed_tasks().len(), 4);
+        } else {
+            // Replacement contributor
+            assert_eq!(contributor_info.completed_tasks().len(), 0);
+            assert_eq!(contributor_info.assigned_tasks().len(), 8);
+            assert_eq!(contributor_info.disposing_tasks().len(), 0);
+            assert_eq!(contributor_info.disposed_tasks().len(), 0);
+        }
+    }
+
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn test_round_on_groth16_bls12_377() {
@@ -1371,4 +1450,11 @@ fn test_coordinator_drop_multiple_contributors() {
 #[serial]
 fn test_try_lock_blocked() {
     test_report!(try_lock_blocked_test);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_drop_contributor_and_reassign_tasks() {
+    test_report!(drop_contributor_and_reassign_tasks_test);
 }

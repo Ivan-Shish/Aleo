@@ -16,6 +16,7 @@ use serde::{
 };
 use std::{
     collections::{HashMap, HashSet, LinkedList},
+    iter::FromIterator,
     str::FromStr,
 };
 use tracing::*;
@@ -1892,43 +1893,65 @@ impl CoordinatorState {
                 .clone()
                 .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
                 .number_of_contributors;
-            let dropped_bucket_id = participant_info.bucket_id;
 
-            // Initialize sets for disposing and disposed tasks.
-            let mut disposing_tasks: HashSet<Task> = participant_info.pending_tasks.iter().cloned().collect();
-            let mut disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
+            // Initialize sets for disposed tasks.
+            let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
 
-            // All contributors with a bucket ID below the bucket ID of the dropped participant
-            // must recompute their contributions.
+            // A hashmap where the key is chunk id and the value is the the contribution id
+            let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
+
+            // For every contributor we check if there are affected tasks. If the task
+            // is affected, it will be dropped and reassigned
             for contributor_info in self.current_contributors.values_mut() {
-                // Check if the current contributor has a lower bucket ID.
-                if contributor_info.bucket_id < dropped_bucket_id {
-                    warn!("Resetting tasks for contributor {}", contributor_info.id);
+                // If the pending task is in the same chunk with the dropped task
+                // then it should be recomputed
+                let (disposing_tasks, pending_tasks) = contributor_info
+                    .pending_tasks
+                    .iter()
+                    .cloned()
+                    .partition(|task| tasks_by_chunk.get(&task.chunk_id).is_some());
 
-                    // Move the pending tasks to the disposing tasks.
-                    contributor_info.disposing_tasks = contributor_info.pending_tasks.clone();
-                    contributor_info.pending_tasks = LinkedList::new();
+                contributor_info.disposing_tasks = disposing_tasks;
+                contributor_info.pending_tasks = pending_tasks;
 
-                    // Add the disposing tasks to the cumulative disposing tasks.
-                    disposing_tasks.extend(contributor_info.disposing_tasks.iter());
+                // If assigned task is based on the dropped task, it should also be dropped
+                let (disposed_tasks, assigned_tasks) =
+                    contributor_info.assigned_tasks.iter().cloned().partition(|task| {
+                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
+                            *contribution_id < task.contribution_id
+                        } else {
+                            false
+                        }
+                    });
+                contributor_info.assigned_tasks = assigned_tasks;
+                contributor_info.disposed_tasks = disposed_tasks;
 
-                    // Move the completed tasks to the disposed tasks.
-                    contributor_info.disposed_tasks = contributor_info.assigned_tasks.clone();
-                    contributor_info
-                        .disposed_tasks
-                        .extend(contributor_info.completed_tasks.iter());
-                    contributor_info.assigned_tasks = LinkedList::new();
-                    contributor_info.completed_tasks = LinkedList::new();
+                // If completed task is based on the dropped task, it should also be dropped
+                let (disposed_tasks, completed_tasks) =
+                    contributor_info.completed_tasks.iter().cloned().partition(|task| {
+                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
+                            *contribution_id < task.contribution_id
+                        } else {
+                            false
+                        }
+                    });
+                contributor_info.completed_tasks = completed_tasks;
+                contributor_info.disposed_tasks.extend(disposed_tasks);
 
-                    // Add the disposed tasks to the cumulative disposed tasks.
-                    disposed_tasks.extend(contributor_info.disposed_tasks.iter());
+                all_disposed_tasks.extend(contributor_info.disposed_tasks.iter());
 
-                    // Reassign tasks for the affected contributor.
-                    contributor_info.assigned_tasks =
-                        initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors);
+                let mut tasks_to_exclude: HashSet<u64> =
+                    HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id));
+                tasks_to_exclude.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
 
-                    break;
-                }
+                let new_assigned_tasks =
+                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors);
+
+                // Reassign tasks for the affected contributor.
+                contributor_info.assigned_tasks = new_assigned_tasks
+                    .into_iter()
+                    .filter(|task| !tasks_to_exclude.contains(&task.chunk_id))
+                    .collect();
             }
 
             // All verifiers assigned to affected tasks must dispose their affected pending tasks.
@@ -1937,7 +1960,7 @@ impl CoordinatorState {
                 let mut pending_tasks = LinkedList::new();
                 for pending_task in verifier_info.pending_tasks.iter() {
                     // Check if the newly disposed tasks contains this pending task.
-                    if disposed_tasks.contains(&pending_task) {
+                    if all_disposed_tasks.contains(&pending_task) {
                         // Move the pending task to the verifier's disposing tasks.
                         verifier_info.disposing_tasks.push_back(pending_task.clone());
                     } else {
