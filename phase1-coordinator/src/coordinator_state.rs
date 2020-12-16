@@ -1914,18 +1914,6 @@ impl CoordinatorState {
                 contributor_info.disposing_tasks = disposing_tasks;
                 contributor_info.pending_tasks = pending_tasks;
 
-                // If assigned task is based on the dropped task, it should also be dropped
-                let (disposed_tasks, assigned_tasks) =
-                    contributor_info.assigned_tasks.iter().cloned().partition(|task| {
-                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
-                            *contribution_id < task.contribution_id
-                        } else {
-                            false
-                        }
-                    });
-                contributor_info.assigned_tasks = assigned_tasks;
-                contributor_info.disposed_tasks = disposed_tasks;
-
                 // If completed task is based on the dropped task, it should also be dropped
                 let (disposed_tasks, completed_tasks) =
                     contributor_info.completed_tasks.iter().cloned().partition(|task| {

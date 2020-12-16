@@ -229,11 +229,11 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     for (contributor, contributor_info) in contributors {
         if contributor == contributor2 {
             assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(4, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(4, contributor_info.completed_tasks().len());
             assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(0, contributor_info.disposed_tasks().len());
+            assert_eq!(3, contributor_info.disposed_tasks().len());
         } else {
             assert_eq!(0, contributor_info.locked_chunks().len());
             assert_eq!(8, contributor_info.assigned_tasks().len());
@@ -343,21 +343,22 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     for (contributor, contributor_info) in contributors {
         if contributor == contributor1 {
             tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(8, contributor_info.assigned_tasks().len());
+            assert_eq!(6, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(0, contributor_info.completed_tasks().len());
+            assert_eq!(2, contributor_info.completed_tasks().len());
             assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(8, contributor_info.disposed_tasks().len());
+            assert_eq!(5, contributor_info.disposed_tasks().len());
         } else if contributor == contributor3 {
             tasks.extend(contributor_info.assigned_tasks().iter());
             tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(2, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(6, contributor_info.completed_tasks().len());
             assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(0, contributor_info.disposed_tasks().len());
+            assert_eq!(1, contributor_info.disposed_tasks().len());
         } else {
             tasks.extend(contributor_info.assigned_tasks().iter());
             assert_eq!(0, contributor_info.locked_chunks().len());
@@ -499,21 +500,22 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     for (contributor, contributor_info) in contributors {
         if contributor == contributor1 {
             tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(1, contributor_info.locked_chunks().len());
-            assert_eq!(8, contributor_info.assigned_tasks().len());
+            assert_eq!(6, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(0, contributor_info.completed_tasks().len());
+            assert_eq!(2, contributor_info.completed_tasks().len());
             assert_eq!(1, contributor_info.disposing_tasks().len());
-            assert_eq!(7, contributor_info.disposed_tasks().len());
+            assert_eq!(4, contributor_info.disposed_tasks().len());
         } else if contributor == contributor3 {
             tasks.extend(contributor_info.assigned_tasks().iter());
             tasks.extend(contributor_info.pending_tasks().iter());
             tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(1, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
-            assert_eq!(1, contributor_info.pending_tasks().len());
+            assert_eq!(2, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
             assert_eq!(6, contributor_info.completed_tasks().len());
-            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(1, contributor_info.disposing_tasks().len());
             assert_eq!(0, contributor_info.disposed_tasks().len());
         } else {
             tasks.extend(contributor_info.assigned_tasks().iter());
@@ -659,21 +661,22 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
     for (contributor, contributor_info) in contributors {
         if contributor == contributor1 {
             tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(1, contributor_info.locked_chunks().len());
-            assert_eq!(8, contributor_info.assigned_tasks().len());
+            assert_eq!(6, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(0, contributor_info.completed_tasks().len());
+            assert_eq!(2, contributor_info.completed_tasks().len());
             assert_eq!(1, contributor_info.disposing_tasks().len());
-            assert_eq!(7, contributor_info.disposed_tasks().len());
+            assert_eq!(4, contributor_info.disposed_tasks().len());
         } else if contributor == contributor3 {
             tasks.extend(contributor_info.assigned_tasks().iter());
             tasks.extend(contributor_info.pending_tasks().iter());
             tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(1, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
-            assert_eq!(1, contributor_info.pending_tasks().len());
+            assert_eq!(2, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
             assert_eq!(6, contributor_info.completed_tasks().len());
-            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(1, contributor_info.disposing_tasks().len());
             assert_eq!(0, contributor_info.disposed_tasks().len());
         } else {
             tasks.extend(contributor_info.assigned_tasks().iter());
@@ -792,11 +795,11 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     for (contributor, contributor_info) in contributors {
         if contributor == contributor2 {
             assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(4, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(4, contributor_info.completed_tasks().len());
             assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(0, contributor_info.disposed_tasks().len());
+            assert_eq!(3, contributor_info.disposed_tasks().len());
         } else {
             assert_eq!(0, contributor_info.locked_chunks().len());
             assert_eq!(8, contributor_info.assigned_tasks().len());
@@ -980,22 +983,22 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
     for (contributor, contributor_info) in contributors {
         if contributor == contributor1 {
             tasks.extend(contributor_info.assigned_tasks().iter());
-            assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(8, contributor_info.assigned_tasks().len());
-            assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(0, contributor_info.completed_tasks().len());
-            assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(8, contributor_info.disposed_tasks().len());
-        } else if contributor == contributor3 {
-            tasks.extend(contributor_info.assigned_tasks().iter());
-            tasks.extend(contributor_info.pending_tasks().iter());
             tasks.extend(contributor_info.completed_tasks().iter());
             assert_eq!(0, contributor_info.locked_chunks().len());
-            assert_eq!(1, contributor_info.assigned_tasks().len());
+            assert_eq!(6, contributor_info.assigned_tasks().len());
             assert_eq!(0, contributor_info.pending_tasks().len());
-            assert_eq!(7, contributor_info.completed_tasks().len());
+            assert_eq!(2, contributor_info.completed_tasks().len());
             assert_eq!(0, contributor_info.disposing_tasks().len());
-            assert_eq!(0, contributor_info.disposed_tasks().len());
+            assert_eq!(6, contributor_info.disposed_tasks().len());
+        } else if contributor == contributor3 {
+            tasks.extend(contributor_info.assigned_tasks().iter());
+            tasks.extend(contributor_info.completed_tasks().iter());
+            assert_eq!(0, contributor_info.locked_chunks().len());
+            assert_eq!(2, contributor_info.assigned_tasks().len());
+            assert_eq!(0, contributor_info.pending_tasks().len());
+            assert_eq!(6, contributor_info.completed_tasks().len());
+            assert_eq!(0, contributor_info.disposing_tasks().len());
+            assert_eq!(1, contributor_info.disposed_tasks().len());
         } else {
             tasks.extend(contributor_info.assigned_tasks().iter());
             assert_eq!(0, contributor_info.locked_chunks().len());
@@ -1141,7 +1144,7 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
 
     // Drop the contributor 3 from the current round.
     let locators = coordinator.drop_participant(&contributor3)?;
-    assert_eq!(&number_of_chunks - 2, locators.len());
+    assert_eq!(&number_of_chunks - 4, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
