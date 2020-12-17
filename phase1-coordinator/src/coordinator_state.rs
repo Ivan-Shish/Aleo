@@ -1928,18 +1928,17 @@ impl CoordinatorState {
 
                 all_disposed_tasks.extend(contributor_info.disposed_tasks.iter());
 
-                let mut tasks_to_exclude: HashSet<u64> =
+                // Determine the excluded tasks, which are filtered out from the list of newly assigned tasks.
+                let mut excluded_tasks: HashSet<u64> =
                     HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id));
-                tasks_to_exclude.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
-
-                let new_assigned_tasks =
-                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors);
+                excluded_tasks.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
 
                 // Reassign tasks for the affected contributor.
-                contributor_info.assigned_tasks = new_assigned_tasks
-                    .into_iter()
-                    .filter(|task| !tasks_to_exclude.contains(&task.chunk_id))
-                    .collect();
+                contributor_info.assigned_tasks =
+                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)
+                        .into_iter()
+                        .filter(|task| !excluded_tasks.contains(&task.chunk_id))
+                        .collect();
             }
 
             // All verifiers assigned to affected tasks must dispose their affected pending tasks.
