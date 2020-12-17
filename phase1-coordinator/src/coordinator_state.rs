@@ -1897,7 +1897,7 @@ impl CoordinatorState {
             // Initialize sets for disposed tasks.
             let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
 
-            // A hashmap where the key is chunk id and the value is the the contribution id
+            // A HashMap of tasks represented as (chunk ID, contribution ID) pairs.
             let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
 
             // For every contributor we check if there are affected tasks. If the task
