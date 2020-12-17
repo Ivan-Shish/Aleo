@@ -1043,7 +1043,13 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let testing = Testing::from(parameters).coordinator_contributors(&[
+        Participant::new_contributor("testing-coordinator-contributor-1"),
+        Participant::new_contributor("testing-coordinator-contributor-2"),
+        Participant::new_contributor("testing-coordinator-contributor-3"),
+    ]);
+    let environment = initialize_test_environment_with_debug(&testing.into());
+
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1164,36 +1170,31 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
     assert_eq!(1, state.current_round_height());
 
     let contributors = coordinator.current_contributors();
-    assert_eq!(1, contributors.len());
+    assert_eq!(3, contributors.len());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor1).count());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor2).count());
     assert_eq!(0, contributors.par_iter().filter(|(p, _)| *p == contributor3).count());
 
-    // TODO (raychu86): Check all 3 contributors were dropped, coordinator state was updated,
-    //  and the coordinator contributor inherited all the tasks correctly.
+    // Aggregate all of the tasks for each of the contributors into a HashSet.
+    let mut tasks: HashSet<Task> = HashSet::new();
+    for (_, contributor_info) in contributors {
+        tasks.extend(contributor_info.assigned_tasks().iter());
+        assert_eq!(0, contributor_info.locked_chunks().len());
+        assert_eq!(8, contributor_info.assigned_tasks().len());
+        assert_eq!(0, contributor_info.pending_tasks().len());
+        assert_eq!(0, contributor_info.completed_tasks().len());
+        assert_eq!(0, contributor_info.disposing_tasks().len());
+        assert_eq!(0, contributor_info.disposed_tasks().len());
+    }
 
-    // // Aggregate all of the tasks for each of the contributors into a HashSet.
-    // let contributors = coordinator.current_contributors();
-    // let mut tasks: HashSet<Task> = HashSet::new();
-    // for (_, contributor_info) in contributors {
-    //     tasks.extend(contributor_info.assigned_tasks().iter());
-    //     tasks.extend(contributor_info.completed_tasks().iter());
-    //     assert_eq!(0, contributor_info.locked_chunks().len());
-    //     assert_eq!(24, contributor_info.assigned_tasks().len());
-    //     assert_eq!(0, contributor_info.pending_tasks().len());
-    //     assert_eq!(0, contributor_info.completed_tasks().len());
-    //     assert_eq!(0, contributor_info.disposing_tasks().len());
-    //     assert_eq!(0, contributor_info.disposed_tasks().len());
-    // }
-    //
-    // // Check that all tasks are present.
-    // assert_eq!(24, tasks.len());
-    // for chunk_id in 0..environment.number_of_chunks() {
-    //     for contribution_id in 1..4 {
-    //         debug!("Checking {:?}", Task::new(chunk_id, contribution_id));
-    //         assert!(tasks.contains(&Task::new(chunk_id, contribution_id)));
-    //     }
-    // }
+    // Check that all tasks are present.
+    assert_eq!(24, tasks.len());
+    for chunk_id in 0..environment.number_of_chunks() {
+        for contribution_id in 1..4 {
+            debug!("Checking {:?}", Task::new(chunk_id, contribution_id));
+            assert!(tasks.contains(&Task::new(chunk_id, contribution_id)));
+        }
+    }
 
     Ok(())
 }
