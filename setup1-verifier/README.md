@@ -1,4 +1,4 @@
-# phase1-verifier
+# setup1-verifier
 
 ## Build Guide
 
