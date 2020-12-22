@@ -94,7 +94,7 @@ dependencies = [
  "anyhow",
  "cfg-if 0.1.10",
  "groth16",
- "gumdrop 0.8.0",
+ "gumdrop",
  "hex",
  "hex-literal",
  "memmap",
@@ -103,7 +103,7 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -703,7 +703,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "csv",
- "itertools 0.9.0",
+ "itertools",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -725,21 +725,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022feadec601fba1649cfa83586381a4ad31c6bf3a9ab7d408118b05dd9889d"
 dependencies = [
  "cast",
- "itertools 0.9.0",
-]
-
-[[package]]
-name = "crossbeam"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69323bff1fb41c635347b8ead484a5ca6c3f11914d784170b158d8449ab07f8e"
-dependencies = [
- "cfg-if 0.1.10",
- "crossbeam-channel 0.4.4",
- "crossbeam-deque 0.7.3",
- "crossbeam-epoch 0.8.2",
- "crossbeam-queue 0.2.3",
- "crossbeam-utils 0.7.2",
+ "itertools",
 ]
 
 [[package]]
@@ -752,7 +738,7 @@ dependencies = [
  "crossbeam-channel 0.5.0",
  "crossbeam-deque 0.8.0",
  "crossbeam-epoch 0.9.0",
- "crossbeam-queue 0.3.0",
+ "crossbeam-queue",
  "crossbeam-utils 0.8.0",
 ]
 
@@ -825,17 +811,6 @@ dependencies = [
  "lazy_static",
  "memoffset",
  "scopeguard",
-]
-
-[[package]]
-name = "crossbeam-queue"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "774ba60a54c213d409d5353bda12d49cd68d14e45036a285234c8d6f91f92570"
-dependencies = [
- "cfg-if 0.1.10",
- "crossbeam-utils 0.7.2",
- "maybe-uninit",
 ]
 
 [[package]]
@@ -1462,31 +1437,11 @@ dependencies = [
 
 [[package]]
 name = "gumdrop"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee50908bc1beeac1f2902e0b4e0cd0d844e716f5ebdc6f0cfc1163fe5e10bcde"
-dependencies = [
- "gumdrop_derive 0.7.0",
-]
-
-[[package]]
-name = "gumdrop"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46571f5d540478cf70d2a42dd0d6d8e9f4b9cc7531544b93311e657b86568a0b"
 dependencies = [
- "gumdrop_derive 0.8.0",
-]
-
-[[package]]
-name = "gumdrop_derive"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90454ce4de40b7ca6a8968b5ef367bdab48413962588d0d2b1638d60090c35d7"
-dependencies = [
- "proc-macro2 1.0.24",
- "quote 1.0.7",
- "syn 1.0.45",
+ "gumdrop_derive",
 ]
 
 [[package]]
@@ -1830,15 +1785,6 @@ name = "ipnet"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47be2f14c678be2fdcab04ab1171db51b2762ce6f0a8ee87c8dd4a04ed216135"
-
-[[package]]
-name = "itertools"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
-dependencies = [
- "either",
-]
 
 [[package]]
 name = "itertools"
@@ -2425,14 +2371,14 @@ dependencies = [
  "criterion",
  "derivative",
  "ff-fft",
- "itertools 0.9.0",
+ "itertools",
  "num-traits",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
  "serde",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -2448,61 +2394,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "phase1"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "algebra-core",
- "cfg-if 0.1.10",
- "derivative",
- "ff-fft",
- "itertools 0.8.2",
- "rand 0.7.3",
- "rayon",
- "serde",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS)",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
  "algebra",
- "gumdrop 0.8.0",
+ "gumdrop",
  "hex",
  "memmap",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rand_xorshift",
  "rustc_version",
- "setup-utils 0.3.0",
+ "setup-utils",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
 ]
 
 [[package]]
-name = "phase1-cli"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "gumdrop 0.7.0",
- "hex",
- "memmap",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "rand 0.7.3",
- "rustc_version",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "phase1-coordinator"
 version = "0.3.0"
 dependencies = [
@@ -2512,11 +2421,11 @@ dependencies = [
  "ctrlc",
  "function_name",
  "hex",
- "itertools 0.9.0",
+ "itertools",
  "lazy_static",
  "memmap",
  "once_cell",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rayon",
  "serde",
@@ -2524,41 +2433,8 @@ dependencies = [
  "serde-diff",
  "serde_json",
  "serial_test",
- "setup-utils 0.3.0",
+ "setup-utils",
  "tokio 0.3.1",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url 1.7.2",
-]
-
-[[package]]
-name = "phase1-coordinator"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "anyhow",
- "chrono",
- "ctrlc",
- "function_name",
- "hex",
- "itertools 0.9.0",
- "lazy_static",
- "memmap",
- "once_cell",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-cli 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "rand 0.7.3",
- "rayon",
- "serde",
- "serde-aux",
- "serde-diff",
- "serde_json",
- "serial_test",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "tokio 0.3.1",
- "toml",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -2571,13 +2447,13 @@ version = "0.3.0"
 dependencies = [
  "algebra",
  "console_error_panic_hook",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rand_xorshift",
  "rustc_version",
  "serde",
  "serde_derive",
- "setup-utils 0.3.0",
+ "setup-utils",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-test",
@@ -2591,18 +2467,18 @@ dependencies = [
  "byteorder",
  "cfg-if 0.1.10",
  "console_error_panic_hook",
- "crossbeam 0.8.0",
+ "crossbeam",
  "groth16",
- "itertools 0.9.0",
+ "itertools",
  "num_cpus",
- "phase1 0.3.0",
+ "phase1",
  "phase2",
  "r1cs-core",
  "r1cs-std",
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -3462,39 +3338,16 @@ dependencies = [
  "blake2s_simd",
  "cfg-if 0.1.10",
  "criterion",
- "crossbeam 0.8.0",
+ "crossbeam",
  "ff-fft",
  "num_cpus",
- "phase1 0.3.0",
+ "phase1",
  "r1cs-core",
  "rand 0.7.3",
  "rand_chacha",
  "rayon",
  "rust-crypto",
  "rusty-hook",
- "serde",
- "thiserror",
- "tracing",
- "typenum",
-]
-
-[[package]]
-name = "setup-utils"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "blake2",
- "blake2s_simd",
- "cfg-if 0.1.10",
- "crossbeam 0.7.3",
- "ff-fft",
- "num_cpus",
- "r1cs-core",
- "rand 0.7.3",
- "rand_chacha",
- "rayon",
- "rust-crypto",
  "serde",
  "thiserror",
  "tracing",
@@ -3519,9 +3372,9 @@ dependencies = [
  "indicatif",
  "lazy_static",
  "panic-control",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-cli 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-coordinator 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
+ "phase1",
+ "phase1-cli",
+ "phase1-coordinator",
  "rand 0.7.3",
  "reqwest",
  "secrecy",
@@ -3529,7 +3382,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serial_test",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
+ "setup-utils",
  "snarkos-toolkit",
  "thiserror",
  "tokio 0.2.24",
@@ -3551,9 +3404,9 @@ dependencies = [
  "futures-util",
  "hex",
  "lazy_static",
- "phase1 0.3.0",
- "phase1-cli 0.3.0",
- "phase1-coordinator 0.3.0",
+ "phase1",
+ "phase1-cli",
+ "phase1-coordinator",
  "rand 0.7.3",
  "rand_xorshift",
  "reqwest",
@@ -3561,7 +3414,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serial_test",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-toolkit",
  "thiserror",
  "tokio 0.2.24",
@@ -3637,7 +3490,7 @@ dependencies = [
  "blake2",
  "derivative",
  "digest 0.8.1",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "rand_chacha",
  "rayon",
@@ -3657,7 +3510,7 @@ dependencies = [
  "blake2",
  "derivative",
  "digest 0.8.1",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "rand_chacha",
  "rayon",
@@ -3727,7 +3580,7 @@ dependencies = [
  "blake2",
  "derivative",
  "hex",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
@@ -3748,7 +3601,7 @@ dependencies = [
  "blake2",
  "derivative",
  "hex",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -3798,7 +3651,7 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f81
 dependencies = [
  "derivative",
  "digest 0.8.1",
- "itertools 0.9.0",
+ "itertools",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
@@ -3813,7 +3666,7 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b417
 dependencies = [
  "derivative",
  "digest 0.8.1",
- "itertools 0.9.0",
+ "itertools",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -3848,7 +3701,7 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f81
 dependencies = [
  "bincode",
  "derivative",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "rand_xorshift",
  "serde",
@@ -3864,7 +3717,7 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b417
 dependencies = [
  "bincode",
  "derivative",
- "itertools 0.9.0",
+ "itertools",
  "rand 0.7.3",
  "rand_xorshift",
  "serde",
@@ -3988,11 +3841,6 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b417
 dependencies = [
  "colored",
 ]
-
-[[package]]
-name = "snarkos-profiler"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS#e4a58781a94ba2ffc5aac1ca487e1fb28414bfc9"
 
 [[package]]
 name = "snarkos-toolkit"

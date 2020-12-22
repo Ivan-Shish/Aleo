@@ -12,10 +12,10 @@ name = "aleo-setup-contributor"
 path = "src/main.rs"
 
 [dependencies]
-phase1 = { git = "https://github.com/AleoHQ/aleo-setup", package = "phase1", rev = "b8e0c46" }
-phase1-cli = { git = "https://github.com/AleoHQ/aleo-setup", package = "phase1-cli", rev = "b8e0c46" }
-phase1-coordinator = { git = "https://github.com/AleoHQ/aleo-setup", package = "phase1-coordinator", rev = "b8e0c46", features = ["operator"]}
-setup-utils = { git = "https://github.com/AleoHQ/aleo-setup", package = "setup-utils", rev = "b8e0c46" }
+phase1 = { path = "../phase1" }
+phase1-cli = { path = "../phase1-cli" }
+phase1-coordinator = { path = "../phase1-coordinator", features = ["operator"]}
+setup-utils = { path = "../setup-utils" }
 
 snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
 zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
