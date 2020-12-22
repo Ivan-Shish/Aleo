@@ -2544,7 +2544,6 @@ dependencies = [
  "rand 0.7.3",
  "rand_xorshift",
  "reqwest",
- "rusty-hook",
  "serde",
  "serde_derive",
  "serde_json",
