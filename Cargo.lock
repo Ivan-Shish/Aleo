@@ -1782,7 +1782,7 @@ dependencies = [
  "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-polycommit",
  "snarkos-posw",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS)",
+ "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "tracing",
  "tracing-subscriber",
@@ -2961,11 +2961,6 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f81
 name = "snarkos-profiler"
 version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-
-[[package]]
-name = "snarkos-profiler"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS#c9e5f823b8493f8c3a6c43e6f4dfd16173b99957"
 dependencies = [
  "colored",
 ]
