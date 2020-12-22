@@ -1892,7 +1892,6 @@ dependencies = [
  "serde_derive",
  "setup-utils",
  "tracing",
- "tracing-subscriber",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
