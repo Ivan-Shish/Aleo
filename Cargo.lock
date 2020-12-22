@@ -1785,7 +1785,6 @@ dependencies = [
  "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
