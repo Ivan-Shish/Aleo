@@ -25,37 +25,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aleo-setup-verifier"
-version = "0.3.0"
-dependencies = [
- "algebra",
- "anyhow",
- "chrono",
- "ctrlc",
- "failure",
- "futures-util",
- "hex",
- "lazy_static",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-cli 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-coordinator 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "rand 0.7.3",
- "rand_xorshift",
- "reqwest",
- "rusty-hook",
- "serde",
- "serde_derive",
- "serde_json",
- "serial_test",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "snarkos-toolkit",
- "thiserror",
- "tokio 0.2.24",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "aleo-setup2"
 version = "0.3.0"
 dependencies = [
@@ -72,7 +41,7 @@ dependencies = [
  "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -1798,12 +1767,12 @@ dependencies = [
  "ff-fft",
  "itertools 0.8.2",
  "num-traits",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
  "serde",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -1820,26 +1789,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phase1"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "algebra-core",
- "cfg-if 0.1.10",
- "derivative",
- "ff-fft",
- "itertools 0.8.2",
- "rand 0.7.3",
- "rayon",
- "serde",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS)",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
@@ -1847,34 +1796,17 @@ dependencies = [
  "gumdrop",
  "hex",
  "memmap",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rand_xorshift",
  "rustc_version",
- "setup-utils 0.3.0",
+ "setup-utils",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
 ]
 
 [[package]]
-name = "phase1-cli"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "gumdrop",
- "hex",
- "memmap",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "rand 0.7.3",
- "rustc_version",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "phase1-coordinator"
 version = "0.3.0"
 dependencies = [
@@ -1888,8 +1820,8 @@ dependencies = [
  "lazy_static",
  "memmap",
  "once_cell",
- "phase1 0.3.0",
- "phase1-cli 0.3.0",
+ "phase1",
+ "phase1-cli",
  "rand 0.7.3",
  "rayon",
  "serde",
@@ -1897,40 +1829,7 @@ dependencies = [
  "serde-diff",
  "serde_json",
  "serial_test",
- "setup-utils 0.3.0",
- "tokio 0.3.1",
- "toml",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url 1.7.2",
-]
-
-[[package]]
-name = "phase1-coordinator"
-version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
-dependencies = [
- "algebra",
- "anyhow",
- "chrono",
- "ctrlc",
- "function_name",
- "hex",
- "itertools 0.9.0",
- "lazy_static",
- "memmap",
- "once_cell",
- "phase1 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "phase1-cli 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
- "rand 0.7.3",
- "rayon",
- "serde",
- "serde-aux",
- "serde-diff",
- "serde_json",
- "serial_test",
- "setup-utils 0.3.0 (git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46)",
+ "setup-utils",
  "tokio 0.3.1",
  "toml",
  "tracing",
@@ -1945,13 +1844,13 @@ version = "0.3.0"
 dependencies = [
  "algebra",
  "console_error_panic_hook",
- "phase1 0.3.0",
+ "phase1",
  "rand 0.7.3",
  "rand_xorshift",
  "rustc_version",
  "serde",
  "serde_derive",
- "setup-utils 0.3.0",
+ "setup-utils",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -1970,14 +1869,14 @@ dependencies = [
  "groth16",
  "itertools 0.9.0",
  "num_cpus",
- "phase1 0.3.0",
+ "phase1",
  "phase2",
  "r1cs-core",
  "r1cs-std",
  "rand 0.7.3",
  "rayon",
  "rusty-hook",
- "setup-utils 0.3.0",
+ "setup-utils",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -2614,7 +2513,7 @@ dependencies = [
  "crossbeam",
  "ff-fft",
  "num_cpus",
- "phase1 0.3.0",
+ "phase1",
  "r1cs-core",
  "rand 0.7.3",
  "rand_chacha",
@@ -2628,26 +2527,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "setup-utils"
+name = "setup1-verifier"
 version = "0.3.0"
-source = "git+https://github.com/AleoHQ/aleo-setup?rev=b8e0c46#b8e0c464562ea92b45731f605f638a1f31a222ca"
 dependencies = [
  "algebra",
- "blake2",
- "blake2s_simd",
- "cfg-if 0.1.10",
- "crossbeam",
- "ff-fft",
- "num_cpus",
- "r1cs-core",
+ "anyhow",
+ "chrono",
+ "ctrlc",
+ "failure",
+ "futures-util",
+ "hex",
+ "lazy_static",
+ "phase1",
+ "phase1-cli",
+ "phase1-coordinator",
  "rand 0.7.3",
- "rand_chacha",
- "rayon",
- "rust-crypto",
+ "rand_xorshift",
+ "reqwest",
+ "rusty-hook",
  "serde",
+ "serde_derive",
+ "serde_json",
+ "serial_test",
+ "setup-utils",
+ "snarkos-toolkit",
  "thiserror",
+ "tokio 0.2.24",
  "tracing",
- "typenum",
+ "tracing-subscriber",
 ]
 
 [[package]]
