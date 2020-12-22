@@ -1821,7 +1821,6 @@ dependencies = [
  "memmap",
  "once_cell",
  "phase1",
- "phase1-cli",
  "rand 0.7.3",
  "rayon",
  "serde",

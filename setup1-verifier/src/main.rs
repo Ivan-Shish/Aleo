@@ -1,4 +1,4 @@
-use aleo_setup_verifier::{utils::init_logger, verifier::Verifier};
+use setup1_verifier::{utils::init_logger, verifier::Verifier};
 
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use snarkos_toolkit::account::{Address, ViewKey};
