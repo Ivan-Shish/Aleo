@@ -35,7 +35,7 @@ rand_xorshift = { version = "0.2" }
 wasm-bindgen-test = { version = "0.3.18" }
 
 [build-dependencies]
-rustc_version = { version = "0.2" }
+rustc_version = { version = "0.3" }
 
 [features]
 default = []
