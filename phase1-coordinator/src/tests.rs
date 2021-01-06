@@ -11,7 +11,10 @@ use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{collections::HashSet, panic};
+use std::{
+    collections::{HashSet, LinkedList},
+    iter::FromIterator,
+};
 
 #[inline]
 fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
@@ -30,6 +33,13 @@ fn create_verifier(id: &str) -> (Participant, SigningKey) {
     let verifier_signing_key: SigningKey = "secret_key".to_string();
 
     (verifier, verifier_signing_key)
+}
+
+fn make_tasks(items: &[(u64, u64)]) -> LinkedList<Task> {
+    let iterator = items
+        .iter()
+        .map(|&(chunk_id, contribution_id)| Task::new(chunk_id, contribution_id));
+    LinkedList::from_iter(iterator)
 }
 
 fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
@@ -119,13 +129,12 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         the lock should be released after the task has been disposed. The disposed task should also be reassigned correctly.
         Currently, the lock is release and the task is disposed after the contributor/verifier calls `try_contribute` or `try_verify`.
 
-    7. Dropping a contributor removes all subsequent contributions  - UNTESTED
+    7. Dropping a contributor removes all subsequent contributions  - `coordinator_drop_contributor_removes_subsequent_contributions`
         If a contributor is dropped, all contributions built on top of the dropped contributions must also
         be dropped.
 
-    8. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - FAILING `test_coordinator_drop_multiple_contributors`
+    8. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - `test_coordinator_drop_multiple_contributors`
         Pick contributor with least load in `add_replacement_contributor_unsafe`.
-        May need some interleaving logic
 
     9. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
        and tasks need to be recomputed - UNTESTED
@@ -831,13 +840,6 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Drops a contributor and removes all subsequent contributions.
-fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
-    // TODO (raychu86): Implement this test.
-
-    Ok(())
-}
-
 /// Drops a contributor and clears locks for contributors/verifiers working on disposed tasks.
 fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
     let parameters = Parameters::Custom((
@@ -1028,6 +1030,72 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         assert_eq!(18, verifier_info.completed_tasks().len());
         assert_eq!(0, verifier_info.disposing_tasks().len());
         assert_eq!(1, verifier_info.disposed_tasks().len());
+    }
+
+    Ok(())
+}
+
+/// Drops a contributor and removes all subsequent contributions.
+#[test]
+#[serial]
+fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        1, /* power */
+        2, /* batch_size */
+        2, /* chunk_size */
+    ));
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Add a contributor and verifier to the queue.
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    for _ in 0..number_of_chunks {
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+    }
+
+    for (contributor, contributor_info) in coordinator.current_contributors() {
+        let expected_tasks = if contributor == contributor1 {
+            make_tasks(&[(0, 1), (1, 2)])
+        } else {
+            make_tasks(&[(1, 1), (0, 2)])
+        };
+        assert_eq!(contributor_info.assigned_tasks().len(), 0);
+        assert_eq!(contributor_info.completed_tasks(), &expected_tasks);
+    }
+
+    let locators = coordinator.drop_participant(&contributor1)?;
+    assert_eq!(2, locators.len());
+
+    for (contributor, contributor_info) in coordinator.current_contributors() {
+        if contributor == contributor2 {
+            assert_eq!(contributor_info.completed_tasks(), &make_tasks(&[(1, 1)]));
+            assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 2)]));
+        } else {
+            assert_eq!(contributor_info.completed_tasks().len(), 0);
+            assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 1), (1, 2)]));
+        };
     }
 
     Ok(())
@@ -1426,13 +1494,6 @@ fn test_coordinator_drop_contributor_with_locked_chunk() {
 #[serial]
 fn test_coordinator_drop_contributor_removes_contributions() {
     test_report!(coordinator_drop_contributor_removes_contributions);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_removes_subsequent_contributions() {
-    test_report!(coordinator_drop_contributor_removes_subsequent_contributions);
 }
 
 #[test]
