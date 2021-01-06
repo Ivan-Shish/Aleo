@@ -650,7 +650,7 @@ impl Round {
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator.clone(),
+                    contribution_file_signature_locator,
                     Object::contribution_file_signature_size(false),
                 )?;
             }
@@ -663,7 +663,7 @@ impl Round {
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator.clone(),
+                    contribution_file_signature_locator,
                     Object::contribution_file_signature_size(true),
                 )?;
             }
