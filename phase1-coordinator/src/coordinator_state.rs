@@ -1871,153 +1871,151 @@ impl CoordinatorState {
         };
 
         // Drop the contributor from the current round, and update participant info and coordinator state.
-        if participant.is_contributor() {
-            // TODO (howardwu): Optimization only.
-            //  -----------------------------------------------------------------------------------
-            //  Update this implementation to minimize recomputation by not re-assigning
-            //  tasks for affected contributors which are not affected by the dropped contributor.
-            //  It sounds like a mess, but is easier than you think, once you've loaded state.
-            //  In short, compute the minimum overlapping chunk ID between affected & dropped contributor,
-            //  and reinitialize from there. If there is no overlap, you can skip reinitializing
-            //  any tasks for the affected contributor.
-            //  -----------------------------------------------------------------------------------
+        match participant {
+            Participant::Contributor(_id) => {
+                // TODO (howardwu): Optimization only.
+                //  -----------------------------------------------------------------------------------
+                //  Update this implementation to minimize recomputation by not re-assigning
+                //  tasks for affected contributors which are not affected by the dropped contributor.
+                //  It sounds like a mess, but is easier than you think, once you've loaded state.
+                //  In short, compute the minimum overlapping chunk ID between affected & dropped contributor,
+                //  and reinitialize from there. If there is no overlap, you can skip reinitializing
+                //  any tasks for the affected contributor.
+                //  -----------------------------------------------------------------------------------
 
-            // Set the participant as dropped.
-            let mut dropped_info = participant_info.clone();
-            dropped_info.drop()?;
+                // Set the participant as dropped.
+                let mut dropped_info = participant_info.clone();
+                dropped_info.drop()?;
 
-            // Fetch the number of chunks and number of contributors.
-            let number_of_chunks = self.environment.number_of_chunks() as u64;
-            let number_of_contributors = self
-                .current_metrics
-                .clone()
-                .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
-                .number_of_contributors;
+                // Fetch the number of chunks and number of contributors.
+                let number_of_chunks = self.environment.number_of_chunks() as u64;
+                let number_of_contributors = self
+                    .current_metrics
+                    .clone()
+                    .ok_or(CoordinatorError::CoordinatorStateNotInitialized)?
+                    .number_of_contributors;
 
-            // Initialize sets for disposed tasks.
-            let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
+                // Initialize sets for disposed tasks.
+                let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
 
-            // A HashMap of tasks represented as (chunk ID, contribution ID) pairs.
-            let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
+                // A HashMap of tasks represented as (chunk ID, contribution ID) pairs.
+                let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
 
-            // For every contributor we check if there are affected tasks. If the task
-            // is affected, it will be dropped and reassigned
-            for contributor_info in self.current_contributors.values_mut() {
-                // If the pending task is in the same chunk with the dropped task
-                // then it should be recomputed
-                let (disposing_tasks, pending_tasks) = contributor_info
-                    .pending_tasks
-                    .iter()
-                    .cloned()
-                    .partition(|task| tasks_by_chunk.get(&task.chunk_id).is_some());
+                // For every contributor we check if there are affected tasks. If the task
+                // is affected, it will be dropped and reassigned
+                for contributor_info in self.current_contributors.values_mut() {
+                    // If the pending task is in the same chunk with the dropped task
+                    // then it should be recomputed
+                    let (disposing_tasks, pending_tasks) = contributor_info
+                        .pending_tasks
+                        .iter()
+                        .cloned()
+                        .partition(|task| tasks_by_chunk.get(&task.chunk_id).is_some());
 
-                contributor_info.disposing_tasks = disposing_tasks;
-                contributor_info.pending_tasks = pending_tasks;
+                    contributor_info.disposing_tasks = disposing_tasks;
+                    contributor_info.pending_tasks = pending_tasks;
 
-                // If completed task is based on the dropped task, it should also be dropped
-                let (disposed_tasks, completed_tasks) =
-                    contributor_info.completed_tasks.iter().cloned().partition(|task| {
-                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
-                            *contribution_id < task.contribution_id
-                        } else {
-                            false
-                        }
-                    });
-                contributor_info.completed_tasks = completed_tasks;
-                contributor_info.disposed_tasks.extend(disposed_tasks);
+                    // If completed task is based on the dropped task, it should also be dropped
+                    let (disposed_tasks, completed_tasks) =
+                        contributor_info.completed_tasks.iter().cloned().partition(|task| {
+                            if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
+                                *contribution_id < task.contribution_id
+                            } else {
+                                false
+                            }
+                        });
+                    contributor_info.completed_tasks = completed_tasks;
+                    contributor_info.disposed_tasks.extend(disposed_tasks);
 
-                all_disposed_tasks.extend(contributor_info.disposed_tasks.iter());
+                    all_disposed_tasks.extend(contributor_info.disposed_tasks.iter());
 
-                // Determine the excluded tasks, which are filtered out from the list of newly assigned tasks.
-                let mut excluded_tasks: HashSet<u64> =
-                    HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id));
-                excluded_tasks.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
+                    // Determine the excluded tasks, which are filtered out from the list of newly assigned tasks.
+                    let mut excluded_tasks: HashSet<u64> =
+                        HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id));
+                    excluded_tasks.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
 
-                // Reassign tasks for the affected contributor.
-                contributor_info.assigned_tasks =
-                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)
-                        .into_iter()
-                        .filter(|task| !excluded_tasks.contains(&task.chunk_id))
-                        .collect();
-            }
-
-            // All verifiers assigned to affected tasks must dispose their affected pending tasks.
-            for verifier_info in self.current_verifiers.values_mut() {
-                // Filter the current verifier for pending tasks that have been disposed.
-                let mut pending_tasks = LinkedList::new();
-                for pending_task in verifier_info.pending_tasks.iter() {
-                    // Check if the newly disposed tasks contains this pending task.
-                    if all_disposed_tasks.contains(&pending_task) {
-                        // Move the pending task to the verifier's disposing tasks.
-                        verifier_info.disposing_tasks.push_back(pending_task.clone());
-                    } else {
-                        pending_tasks.push_back(pending_task.clone());
-                    }
+                    // Reassign tasks for the affected contributor.
+                    contributor_info.assigned_tasks =
+                        initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)
+                            .into_iter()
+                            .filter(|task| !excluded_tasks.contains(&task.chunk_id))
+                            .collect();
                 }
-                verifier_info.pending_tasks = pending_tasks;
+
+                // All verifiers assigned to affected tasks must dispose their affected pending tasks.
+                for verifier_info in self.current_verifiers.values_mut() {
+                    // Filter the current verifier for pending tasks that have been disposed.
+                    let mut pending_tasks = LinkedList::new();
+                    for pending_task in verifier_info.pending_tasks.iter() {
+                        // Check if the newly disposed tasks contains this pending task.
+                        if all_disposed_tasks.contains(&pending_task) {
+                            // Move the pending task to the verifier's disposing tasks.
+                            verifier_info.disposing_tasks.push_back(pending_task.clone());
+                        } else {
+                            pending_tasks.push_back(pending_task.clone());
+                        }
+                    }
+                    verifier_info.pending_tasks = pending_tasks;
+                }
+
+                // Remove the current verifier from the coordinator state.
+                self.current_contributors.remove(&participant);
+
+                // Add the participant info to the dropped participants.
+                self.dropped.push(dropped_info);
+
+                // TODO (howardwu): Add a flag guard to this call, and return None, to support
+                //  the 'drop round' feature in the coordinator.
+                // Assign the replacement contributor to the dropped tasks.
+                let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id)?;
+
+                warn!("Dropped {} from the ceremony", participant);
+
+                Ok(Justification::DropCurrent(
+                    participant.clone(),
+                    bucket_id,
+                    locked_chunks,
+                    tasks,
+                    Some(replacement_contributor),
+                ))
             }
+            Participant::Verifier(_id) => {
+                // Add just the current pending tasks to a pending verifications list.
+                let mut pending_verifications = vec![];
+                for task in &tasks {
+                    pending_verifications.push((task.chunk_id, task.contribution_id));
+                }
 
-            // Remove the current verifier from the coordinator state.
-            self.current_contributors.remove(&participant);
+                // Set the participant as dropped.
+                let mut dropped_info = participant_info.clone();
+                dropped_info.drop()?;
 
-            // Add the participant info to the dropped participants.
-            self.dropped.push(dropped_info);
+                // Remove the current verifier from the coordinator state.
+                self.current_verifiers.remove(&participant);
 
-            // TODO (howardwu): Add a flag guard to this call, and return None, to support
-            //  the 'drop round' feature in the coordinator.
-            // Assign the replacement contributor to the dropped tasks.
-            let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id)?;
+                // TODO (howardwu): Make this operation atomic.
+                for (chunk_id, contribution_id) in pending_verifications {
+                    // Remove the task from the pending verifications.
+                    self.remove_pending_verification(chunk_id, contribution_id)?;
 
-            warn!("Dropped {} from the ceremony", participant);
+                    // Reassign the pending verification task to a new verifier.
+                    self.add_pending_verification(chunk_id, contribution_id)?;
+                }
 
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
-                bucket_id,
-                locked_chunks,
-                tasks,
-                Some(replacement_contributor),
-            ));
+                // Add the participant info to the dropped participants.
+                self.dropped.push(dropped_info);
+
+                warn!("Dropped {} from the ceremony", participant);
+
+                Ok(Justification::DropCurrent(
+                    participant.clone(),
+                    bucket_id,
+                    locked_chunks,
+                    tasks,
+                    None,
+                ))
+            }
         }
-
-        // Reassign the pending verification tasks in the coordinator state to a new verifier.
-        if participant.is_verifier() {
-            // Add just the current pending tasks to a pending verifications list.
-            let mut pending_verifications = vec![];
-            for task in &tasks {
-                pending_verifications.push((task.chunk_id, task.contribution_id));
-            }
-
-            // Set the participant as dropped.
-            let mut dropped_info = participant_info.clone();
-            dropped_info.drop()?;
-
-            // Remove the current verifier from the coordinator state.
-            self.current_verifiers.remove(&participant);
-
-            // TODO (howardwu): Make this operation atomic.
-            for (chunk_id, contribution_id) in pending_verifications {
-                // Remove the task from the pending verifications.
-                self.remove_pending_verification(chunk_id, contribution_id)?;
-
-                // Reassign the pending verification task to a new verifier.
-                self.add_pending_verification(chunk_id, contribution_id)?;
-            }
-
-            // Add the participant info to the dropped participants.
-            self.dropped.push(dropped_info);
-
-            warn!("Dropped {} from the ceremony", participant);
-
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
-                bucket_id,
-                locked_chunks,
-                tasks,
-                None,
-            ));
-        }
-
-        Err(CoordinatorError::DropParticipantFailed)
     }
 
     ///
