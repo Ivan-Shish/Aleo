@@ -2516,7 +2516,7 @@ mod tests {
     use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
-    use std::{collections::HashMap, panic, process};
+    use std::{collections::HashMap, panic};
 
     fn initialize_to_round_1(
         coordinator: &Coordinator,
