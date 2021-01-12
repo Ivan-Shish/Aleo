@@ -1068,6 +1068,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     // Update the ceremony to round 1.
     coordinator.update()?;
 
+    // Make all contributions
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
@@ -1075,26 +1076,36 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
         coordinator.verify(&verifier, &verifier_signing_key)?;
     }
 
+    // Check that all contributors completed expected tasks
     for (contributor, contributor_info) in coordinator.current_contributors() {
         let expected_tasks = if contributor == contributor1 {
             make_tasks(&[(0, 1), (1, 2)])
-        } else {
+        } else if contributor == contributor2 {
             make_tasks(&[(1, 1), (0, 2)])
+        } else {
+            panic!("Unexpected contributor: {:?}", contributor);
         };
         assert_eq!(contributor_info.assigned_tasks().len(), 0);
         assert_eq!(contributor_info.completed_tasks(), &expected_tasks);
     }
 
+    // Drop one contributor
     let locators = coordinator.drop_participant(&contributor1)?;
     assert_eq!(2, locators.len());
 
+    // Check that the tasks were reassigned properly
     for (contributor, contributor_info) in coordinator.current_contributors() {
         if contributor == contributor2 {
             assert_eq!(contributor_info.completed_tasks(), &make_tasks(&[(1, 1)]));
             assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 2)]));
+            assert_eq!(contributor_info.disposed_tasks(), &make_tasks(&[(0, 2)]));
         } else {
+            // todo: (ibaryshnikov) check that this is a coordinator contributor
+            //  and add panic in case of unexpected contributor
+            //  need some code from another PR to avoid duplication
             assert_eq!(contributor_info.completed_tasks().len(), 0);
             assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 1), (1, 2)]));
+            assert!(contributor_info.disposed_tasks().is_empty());
         };
     }
 
