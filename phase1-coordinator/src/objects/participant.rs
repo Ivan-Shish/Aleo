@@ -73,7 +73,7 @@ impl Serialize for Participant {
 
 impl<'de> Deserialize<'de> for Participant {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Participant, D::Error> {
-        let s = String::deserialize(deserializer)?.clone();
+        let s = String::deserialize(deserializer)?;
 
         let (id, participant_type) = s
             .splitn(2, ".")

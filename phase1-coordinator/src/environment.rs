@@ -45,7 +45,7 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::Custom(settings) => settings.clone(),
+            Parameters::Custom(settings) => *settings,
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
             Parameters::TestChunks(number_of_chunks) => Self::test_chunks(number_of_chunks),
