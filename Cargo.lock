@@ -89,33 +89,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aleo-setup2"
-version = "0.3.0"
-dependencies = [
- "algebra",
- "anyhow",
- "cfg-if 0.1.10",
- "groth16",
- "gumdrop",
- "hex",
- "hex-literal",
- "memmap",
- "phase2",
- "r1cs-core",
- "r1cs-std",
- "rand 0.7.3",
- "rand_xorshift",
- "setup-utils",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "thiserror",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "algebra"
 version = "0.1.0"
 source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
@@ -3458,6 +3431,33 @@ dependencies = [
  "thiserror",
  "tokio 0.2.24",
  "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "setup2"
+version = "0.3.0"
+dependencies = [
+ "algebra",
+ "anyhow",
+ "cfg-if 0.1.10",
+ "groth16",
+ "gumdrop",
+ "hex",
+ "hex-literal",
+ "memmap",
+ "phase2",
+ "r1cs-core",
+ "r1cs-std",
+ "rand 0.7.3",
+ "rand_xorshift",
+ "setup-utils",
+ "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "thiserror",
  "tracing-subscriber",
 ]
 
