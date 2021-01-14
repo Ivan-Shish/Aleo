@@ -29,14 +29,10 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Move into setup1-contributor
-        run: cd setup1-contributor
-
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --examples --all --benches --no-fail-fast
+      - name: Test setup1-contributor
+        run: |
+          cd setup1-contributor
+          cargo test --examples --all --benches --no-fail-fast
 
   test-azure:
     name: Test
@@ -57,11 +53,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Move into setup1-contributor
-        run: cd setup1-contributor
-
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features azure --examples --all --benches --no-fail-fast
+      - name: Test setup1-contributor
+        run: |
+          cd setup1-contributor
+          cargo test --features azure --examples --all --benches --no-fail-fast
