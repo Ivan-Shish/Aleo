@@ -1368,7 +1368,7 @@ dependencies = [
  "cc",
  "libc",
  "log",
- "rustc_version",
+ "rustc_version 0.2.3",
  "winapi 0.3.9",
 ]
 
@@ -2362,6 +2362,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
+name = "pest"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10f4872ae94d7b90ae48754df22fd42ad52ce740b8f370b03da4835417403e53"
+dependencies = [
+ "ucd-trie",
+]
+
+[[package]]
 name = "phase1"
 version = "0.3.0"
 dependencies = [
@@ -2457,6 +2466,7 @@ dependencies = [
  "serde_derive",
  "setup-utils",
  "tracing",
+ "tracing-subscriber",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -3559,7 +3569,7 @@ dependencies = [
  "derivative",
  "rand 0.7.3",
  "rand_xorshift",
- "rustc_version",
+ "rustc_version 0.2.3",
  "serde",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
@@ -3955,7 +3965,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d022496b16281348b52d0e30ae99e01a73d737b2f45d38fed4edf79f9325a1d5"
 dependencies = [
  "discard",
- "rustc_version",
+ "rustc_version 0.2.3",
  "stdweb-derive",
  "stdweb-internal-macros",
  "stdweb-internal-runtime",
@@ -4439,6 +4449,12 @@ name = "typenum"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
+
+[[package]]
+name = "ucd-trie"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56dee185309b50d1f11bfedef0fe6d036842e3fb77413abef29f8f8d1c5d4c1c"
 
 [[package]]
 name = "unic-langid"

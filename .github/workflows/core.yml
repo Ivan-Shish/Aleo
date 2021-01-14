@@ -39,7 +39,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - stable
+          - 1.48.0
 #          - nightly
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
         with:
           command: check
           args: --examples --all-features --all
-        if: matrix.rust == 'stable'
+        if: matrix.rust == '1.48.0'
 
       - name: Test
         uses: actions-rs/cargo@v1
@@ -85,7 +85,7 @@ jobs:
         with:
           profile: minimal
           toolchain:
-            - stable
+            - 1.48.0
 #          - nightly
           override: true
           components: rustfmt
