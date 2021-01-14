@@ -36,7 +36,7 @@ num_cpus = { version = "1" }
 rand = { version = "0.7.3" }
 rayon = { version = "1.4.1", optional = true }
 tracing = { version = "0.1.21" }
-wasm-bindgen = { version = "0.2.67", features=["serde-serialize"] }
+wasm-bindgen = { version = "0.2.69", features=["serde-serialize"] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
