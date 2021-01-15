@@ -790,7 +790,7 @@ impl Coordinator {
 
         // Acquire a state read lock.
         let state = self.state.read().unwrap();
-        // Check that the participant is a current contributor.
+        // Check that the participant is a current verifier.
         state.is_current_verifier(participant)
     }
 
@@ -824,8 +824,32 @@ impl Coordinator {
 
         // Acquire a state read lock.
         let state = self.state.read().unwrap();
-        // Fetch the state of the current contributor.
+        // Fetch the state of the current verifier.
         state.is_finished_verifier(&participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a contributor managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_contributor(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Check that the participant is a coordinator contributor.
+        state.is_coordinator_contributor(&participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is a verifier managed
+    /// by the coordinator.
+    ///
+    #[inline]
+    pub fn is_coordinator_verifier(&self, participant: &Participant) -> bool {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        // Check that the participant is a coordinator verifier.
+        state.is_coordinator_verifier(&participant)
     }
 
     ///
@@ -1044,6 +1068,24 @@ impl Coordinator {
             let response = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
             storage.remove(&response)?;
 
+            // Save the coordinator state in storage.
+            state.save(&mut storage)?;
+
+            debug!(
+                "Removing lock for contributor {} disposed task {} {}",
+                participant, chunk_id, contribution_id
+            );
+
+            // Fetch the current round from storage.
+            let mut round = Self::load_current_round(&storage)?;
+
+            // TODO (raychu86): Move this unsafe call out of `try_contribute`.
+            // Release the lock on this chunk from the contributor.
+            round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
+
+            // Save the updated round to storage.
+            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+
             return Ok(storage.to_path(&response)?);
         }
 
@@ -1135,8 +1177,20 @@ impl Coordinator {
             // Move the task to the disposed tasks of the verifier.
             state.disposed_task(participant, chunk_id, contribution_id)?;
 
+            // Save the coordinator state in storage.
+            state.save(&mut storage)?;
+
+            debug!(
+                "Removing lock for verifier {} disposed task {} {}",
+                participant, chunk_id, contribution_id
+            );
+
             // Fetch the current round from storage.
-            let round = Self::load_current_round(&storage)?;
+            let mut round = Self::load_current_round(&storage)?;
+
+            // TODO (raychu86): Move this unsafe call out of `try_verify`.
+            // Release the lock on this chunk from the contributor.
+            round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
 
             // Fetch the next challenge locator.
             let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
@@ -1144,6 +1198,9 @@ impl Coordinator {
                 true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
                 false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
             };
+
+            // Save the updated round to storage.
+            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
 
             // Remove the next challenge file from storage.
             storage.remove(&next_challenge)?;
@@ -2605,6 +2662,10 @@ mod tests {
             // Check current round height is now 1.
             assert_eq!(1, coordinator.current_round_height()?);
 
+            // Check that the coordinator participants are established correctly.
+            assert!(coordinator.is_coordinator_contributor(&TEST_CONTRIBUTOR_ID));
+            assert!(coordinator.is_coordinator_verifier(&TEST_VERIFIER_ID));
+
             // Check the current round has a matching height.
             let current_round = coordinator.current_round()?;
             assert_eq!(coordinator.current_round_height()?, current_round.round_height());
@@ -2873,14 +2934,6 @@ mod tests {
     // verification and contribution happen concurrently.
     fn coordinator_concurrent_contribution_verification_test() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
-
-        // take_hook() returns the default hook in case when a custom one is not set
-        let orig_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            // invoke the default handler and exit the process
-            orig_hook(panic_info);
-            process::exit(1);
-        }));
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
         let storage = coordinator.storage();

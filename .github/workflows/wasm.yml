@@ -28,6 +28,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
+      # pinned --toolchain 1.48.0 should be changed later to stable
       - name: Install WASM
         run: |
           rustup target add wasm32-unknown-unknown --toolchain 1.48.0

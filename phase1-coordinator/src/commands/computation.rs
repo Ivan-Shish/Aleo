@@ -86,7 +86,6 @@ impl Computation {
             round_height, chunk_id, contribution_id
         );
 
-        // TODO (raychu86): Propagate secret key up.
         // TODO (raychu86): Move the implementation of this helper function.
         // Write the contribution file signature to disk.
         crate::commands::write_contribution_file_signature(

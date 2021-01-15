@@ -426,7 +426,7 @@ impl Chunk {
 
     /// Sets the lock holder for this chunk as the given lock holder.
     #[inline]
-    pub(super) fn set_lock_holder_unsafe(&mut self, lock_holder: Option<Participant>) {
+    pub(crate) fn set_lock_holder_unsafe(&mut self, lock_holder: Option<Participant>) {
         warn!("Resetting the lock for chunk {} to {:?}", self.chunk_id, lock_holder);
         self.set_lock_holder(lock_holder);
     }

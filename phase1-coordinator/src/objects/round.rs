@@ -650,7 +650,7 @@ impl Round {
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator.clone(),
+                    contribution_file_signature_locator,
                     Object::contribution_file_signature_size(false),
                 )?;
             }
@@ -663,7 +663,7 @@ impl Round {
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator.clone(),
+                    contribution_file_signature_locator,
                     Object::contribution_file_signature_size(true),
                 )?;
             }
@@ -752,31 +752,22 @@ impl Round {
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
-        // Check that the participant is the lock holder for each chunk.
-        if locked_chunks
+        // Sanity check that the participant holds the lock for each specified chunk.
+        let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
             .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
-            .count()
-            != 0
-        {
-            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
-        }
+            .collect();
+
+        trace!("Removing locks for chunks {:?} from {}", locked_chunks, participant);
+
+        // Fetch the current round height.
+        let current_round_height = self.round_height();
+        // Fetch the expected number of contributions for the current round.
+        let expected_number_of_contributions = self.expected_number_of_contributions();
 
         // Remove the response locator for a contributor, and remove the next challenge locator
         // for both a contributor and verifier.
-        for chunk_id in locked_chunks {
-            // Fetch the current round height.
-            let current_round_height = self.round_height();
-            // Fetch the chunk corresponding to the given chunk ID.
-            let chunk = self.chunk(*chunk_id)?;
-            // Fetch the current contribution ID.
-            let current_contribution_id = chunk.current_contribution_id() - 1;
-            // Fetch the expected number of contributions for the current round.
-            let expected_number_of_contributions = self.expected_number_of_contributions();
-
-            // Check that the participant is authorized to acquire the lock
-            // associated with the given chunk ID for the current round,
-            // and fetch the appropriate contribution locator.
+        for chunk_id in locked_chunks.into_iter() {
             match participant {
                 Participant::Contributor(_) => {
                     // Check that the participant is an *authorized* contributor
@@ -785,17 +776,6 @@ impl Round {
                         error!("{} is not an authorized contributor", participant);
                         return Err(CoordinatorError::UnauthorizedChunkContributor);
                     }
-
-                    // Check that the current contribution has been verified.
-                    if !chunk.current_contribution()?.is_verified() {
-                        return Err(CoordinatorError::ContributionMissingVerification);
-                    }
-
-                    // Fetch the next contribution ID and remove the response locator.
-                    let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
-                    let response_locator =
-                        Locator::ContributionFile(current_round_height, *chunk_id, next_contribution_id, false);
-                    storage.remove(&response_locator)?;
                 }
                 Participant::Verifier(_) => {
                     // Check that the participant is an *authorized* verifier
@@ -807,26 +787,45 @@ impl Round {
                 }
             };
 
-            // Fetch whether this is the final contribution of the specified chunk.
-            let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
-            // Remove the next challenge locator.
-            match is_final_contribution {
-                // This is the final contribution in the chunk.
-                true => storage.remove(&Locator::ContributionFile(current_round_height + 1, *chunk_id, 0, true))?,
-                // This is a typical contribution in the chunk.
-                false => storage.remove(&Locator::ContributionFile(
-                    current_round_height,
-                    *chunk_id,
-                    current_contribution_id,
-                    true,
-                ))?,
-            }
-        }
+            // Fetch the chunk corresponding to the given chunk ID.
+            let chunk = self.chunk_mut(*chunk_id)?;
 
-        // Remove the lock for each given chunk ID.
-        for chunk_id in locked_chunks {
+            if participant.is_contributor() {
+                // Fetch the next contribution ID and remove the response locator.
+                let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
+                let response_locator =
+                    Locator::ContributionFile(current_round_height, *chunk_id, next_contribution_id, false);
+                if storage.exists(&response_locator) {
+                    storage.remove(&response_locator)?;
+                }
+
+                // Remove the next challenge locator if the current response has been verified.
+                if chunk.current_contribution()?.is_verified() {
+                    // Fetch whether this is the final contribution of the specified chunk.
+                    let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
+                    // Remove the next challenge locator.
+                    let contribution_file = if is_final_contribution {
+                        // This is the final contribution in the chunk.
+                        Locator::ContributionFile(current_round_height + 1, *chunk_id, 0, true)
+                    } else {
+                        // This is a typical contribution in the chunk.
+                        Locator::ContributionFile(
+                            current_round_height,
+                            *chunk_id,
+                            chunk.current_contribution_id(),
+                            true,
+                        )
+                    };
+                    if storage.exists(&contribution_file) {
+                        storage.remove(&contribution_file)?;
+                    }
+                }
+            }
+
             warn!("Removing the lock for chunk {} from {}", chunk_id, participant);
-            self.chunk_mut(*chunk_id)?.set_lock_holder_unsafe(None);
+
+            // Remove the lock for each given chunk ID.
+            chunk.set_lock_holder_unsafe(None);
         }
 
         Ok(())
@@ -874,25 +873,35 @@ impl Round {
         // Remove the given contribution from each chunk in the current round.
         for task in tasks {
             let chunk = self.chunk_mut(task.chunk_id())?;
-            if let Ok(contribution) = chunk.get_contribution(task.chunk_id()) {
+            if let Ok(contribution) = chunk.get_contribution(task.contribution_id()) {
                 warn!("Removing task {:?}", task.to_tuple());
 
                 // Remove the unverified contribution file, if it exists.
                 if let Some(locator) = contribution.get_contributed_location() {
                     let path = storage.to_locator(&locator)?;
-                    storage.remove(&path)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
                 }
 
                 // Remove the verified contribution file, if it exists.
                 if let Some(locator) = contribution.get_verified_location() {
                     let path = storage.to_locator(&locator)?;
-                    storage.remove(&path)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
                 }
 
-                chunk.remove_contribution_unsafe(task.contribution_id());
-                warn!("Removed task {:?}", task.to_tuple());
+                // Remove the given contribution and all subsequent contributions.
+                for contribution_id in task.contribution_id()..(chunk.get_contributions().len() as u64) {
+                    chunk.remove_contribution_unsafe(contribution_id);
+                }
             } else {
-                warn!("Skipping removal of contribution {}", task.contribution_id());
+                warn!(
+                    "Skipping removal of chunk {} contribution {}",
+                    task.chunk_id(),
+                    task.contribution_id()
+                );
             }
         }
 
