@@ -8,7 +8,7 @@ CURVE="bw6"
 
 phase1="cargo run --bin phase1 --release -- --curve-kind $CURVE --batch-size $BATCH --power $POWER"
 phase2="cargo run --release --bin prepare_phase2 -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
-snark="cargo run --release --bin aleo-setup2 --"
+snark="cargo run --release --bin setup2 --"
 
 ####### Phase 1
 

@@ -308,6 +308,42 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
 
                             trace!("tau_g1 verification was successful");
                         });
+
+                        if start == 0 {
+                            t.spawn(|_| {
+                                let _ = span.enter();
+
+                                let mut g1 = vec![E::G1Affine::zero(); parameters.batch_size];
+
+                                let num_alpha_powers = 3;
+
+                                let start_chunk = 0;
+                                let end_chunk = num_alpha_powers + 3 * parameters.total_size_in_log2;
+
+                                check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G1Affine>(
+                                    (alpha_g1, compressed_output),
+                                    (start_chunk, end_chunk),
+                                    &mut g1,
+                                )
+                                .expect("could not check ratios for tau_g1 elements");
+
+                                trace!("alpha_g1 verification was successful");
+
+                                let start_chunk = 0;
+                                let end_chunk = parameters.total_size_in_log2 + 2;
+
+                                let mut g2 = vec![E::G2Affine::zero(); parameters.batch_size];
+
+                                check_elements_are_nonzero_and_in_prime_order_subgroup::<E::G2Affine>(
+                                    (tau_g2, compressed_output),
+                                    (start_chunk, end_chunk),
+                                    &mut g2,
+                                )
+                                .expect("could not check element are non zero and in prime order subgroup");
+
+                                trace!("tau_g2 verification was successful");
+                            });
+                        }
                     });
                 }
             }
