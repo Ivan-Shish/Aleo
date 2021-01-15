@@ -1617,7 +1617,7 @@ dependencies = [
  "i18n-embed-impl",
  "lazy_static",
  "log",
- "parking_lot 0.11.0",
+ "parking_lot",
  "rust-embed",
  "thiserror",
  "unic-langid",
@@ -2256,7 +2256,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c361aa727dd08437f2f1447be8b59a33b0edd15e0fcee698f935613d9efbca9b"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "cloudabi",
  "instant",
  "libc",
@@ -3475,6 +3475,29 @@ name = "smallvec"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "snarkos-algorithms"
+version = "1.1.4"
+source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
+dependencies = [
+ "blake2",
+ "derivative",
+ "digest 0.8.1",
+ "itertools",
+ "rand 0.7.3",
+ "rand_chacha",
+ "rayon",
+ "sha2",
+ "smallvec",
+ "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+]
 
 [[package]]
 name = "snarkos-algorithms"
@@ -4187,7 +4210,7 @@ dependencies = [
  "mio 0.7.4",
  "num_cpus",
  "parking_lot",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "signal-hook-registry",
  "slab",
  "tokio-macros 0.3.0",
