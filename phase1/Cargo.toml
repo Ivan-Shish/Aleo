@@ -26,9 +26,8 @@ itertools = { version = "0.9.0" }
 rand = { version = "0.7" }
 rayon = { version = "1.4.1", optional = true }
 tracing = { version = "0.1.21" }
-tracing-subscriber = { version = "0.2.3" }
 derivative = { version = "2", features = [ "use_core" ] }
-snarkos-profiler = { git = "https://github.com/AleoHQ/snarkOS", package = "snarkos-profiler" }
+snarkos-profiler = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-profiler" }
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
