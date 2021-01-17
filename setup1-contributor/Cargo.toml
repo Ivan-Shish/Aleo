@@ -1,0 +1,55 @@
+[package]
+name = "setup1-contributor"
+version = "0.3.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "Aleo Setup Contributor"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+edition = "2018"
+
+[[bin]]
+name = "aleo-setup-contributor"
+path = "src/main.rs"
+
+[dependencies]
+phase1 = { path = "../phase1" }
+phase1-cli = { path = "../phase1-cli" }
+phase1-coordinator = { path = "../phase1-coordinator", features = ["operator"]}
+setup-utils = { path = "../setup-utils" }
+
+snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
+zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+
+age = { version = "0.5.0", features = [ "cli-common", "armor" ] }
+azure_sdk_core = { version = "0.43.7", optional = true }
+azure_sdk_storage_core = { version = "0.44.4", optional = true }
+azure_sdk_storage_blob = { version = "0.45.3", optional = true }
+anyhow = { version = "1.0.33" }
+byteorder = { version = "1.3.4", optional = true }
+clap = { version = "2.33.3" }
+chrono = { version = "0.4", features = [ "serde" ] }
+futures = { version = "0.3" }
+hex = { version = "0.4" }
+indicatif = { version = "0.15.0" }
+lazy_static = { version = "1.4.0" }
+panic-control = {version = "0.1.4" }
+rand = { version = "0.7" }
+reqwest = { version = "0.10", features = [ "blocking", "stream", "json" ] }
+secrecy = { version = "0.7" }
+serde = { version = "1.0", features = [ "derive" ] }
+serde_derive = { version = "1.0" }
+serde_json = { version = "1.0" }
+thiserror = { version = "1.0" }
+tokio = { version = "0.2", features = [ "full" ] }
+tracing = { version = "0.1" }
+tracing-appender = { version = "0.1.1" }
+tracing-subscriber = { version = "0.2" }
+url = { version = "2.1.1" }
+
+[dev-dependencies]
+lazy_static = { version = "1.4.0" }
+serial_test = { version = "0.5" }
+
+[features]
+default = []
+azure = [ "azure_sdk_core", "azure_sdk_storage_core", "azure_sdk_storage_blob", "byteorder" ]

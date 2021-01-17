@@ -394,7 +394,7 @@ impl ParticipantInfo {
         match self.assigned_tasks.pop_front() {
             Some(task) => {
                 // Add the task to the front of the pending tasks.
-                self.pending_tasks.push_back(task.clone());
+                self.pending_tasks.push_back(task);
 
                 Ok(task)
             }
@@ -1660,7 +1660,7 @@ impl CoordinatorState {
             };
 
             // Add the given task with a new start timer.
-            updated_tasks.insert(task.clone(), (Utc::now().timestamp(), None));
+            updated_tasks.insert(*task, (Utc::now().timestamp(), None));
 
             // Set the current task timer for the given participant to the updated task timer.
             metrics.task_timer.insert(participant.clone(), updated_tasks);
@@ -1950,9 +1950,9 @@ impl CoordinatorState {
                         // Check if the newly disposed tasks contains this pending task.
                         if all_disposed_tasks.contains(&pending_task) {
                             // Move the pending task to the verifier's disposing tasks.
-                            verifier_info.disposing_tasks.push_back(pending_task.clone());
+                            verifier_info.disposing_tasks.push_back(*pending_task);
                         } else {
-                            pending_tasks.push_back(pending_task.clone());
+                            pending_tasks.push_back(*pending_task);
                         }
                     }
                     verifier_info.pending_tasks = pending_tasks;
@@ -2097,7 +2097,7 @@ impl CoordinatorState {
         let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors);
         let mut participant_info =
             ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id);
-        participant_info.start(tasks.clone())?;
+        participant_info.start(tasks)?;
         trace!("{:?}", participant_info);
         self.current_contributors.insert(contributor.clone(), participant_info);
 
@@ -2228,7 +2228,7 @@ impl CoordinatorState {
                 }
 
                 // Add the contributor to the set of finished contributors.
-                newly_finished.insert(contributor.clone(), finished_info.clone());
+                newly_finished.insert(contributor.clone(), finished_info);
 
                 debug!("{} has finished", contributor);
                 false
@@ -2292,7 +2292,7 @@ impl CoordinatorState {
                     }
 
                     // Add the verifier to the set of finished verifier.
-                    newly_finished.insert(verifier.clone(), finished_info.clone());
+                    newly_finished.insert(verifier.clone(), finished_info);
 
                     debug!("{} has finished", verifier);
                     false
@@ -3036,7 +3036,7 @@ impl Serialize for Task {
 
 impl<'de> Deserialize<'de> for Task {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
-        let s = String::deserialize(deserializer)?.clone();
+        let s = String::deserialize(deserializer)?;
 
         let mut task = s.split("/");
         let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;

@@ -45,7 +45,7 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::Custom(settings) => settings.clone(),
+            Parameters::Custom(settings) => *settings,
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
             Parameters::TestChunks(number_of_chunks) => Self::test_chunks(number_of_chunks),
@@ -743,7 +743,7 @@ impl std::default::Default for Production {
                 check_input_for_correctness: CheckForCorrectness::No,
 
                 minimum_contributors_per_round: 1,
-                maximum_contributors_per_round: 5,
+                maximum_contributors_per_round: 2,
                 minimum_verifiers_per_round: 1,
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
@@ -751,7 +751,7 @@ impl std::default::Default for Production {
                 contributor_timeout_in_minutes: 5,
                 verifier_timeout_in_minutes: 15,
                 participant_ban_threshold: 5,
-                allow_current_contributors_in_queue: true,
+                allow_current_contributors_in_queue: false,
                 allow_current_verifiers_in_queue: true,
                 queue_wait_time: 120,
 
