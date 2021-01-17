@@ -10,7 +10,10 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
-use proptest::prelude::any;
+use proptest::{
+    prelude::{any, ProptestConfig},
+    strategy::Strategy,
+};
 use proptest_derive::Arbitrary;
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -103,9 +106,12 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     Ok(())
 }
 
-#[derive(Debug, Arbitrary)]
+#[derive(Debug, Arbitrary, Clone)]
 struct ParticipantProptestParams {
     reliability_score: u8,
+    /// Which round of the ceremony this participant will join in.
+    #[proptest(strategy = "0..3u64")]
+    join_round: u64,
 }
 
 struct ContributorProptestInfo {
@@ -136,8 +142,86 @@ proptest::prop_compose! {
     }
 }
 
+/// Returns true if the list of participant `params` contains a
+/// participant who will enter the ceremony in round 0.
+fn contains_round0_participant(params: &[ParticipantProptestParams]) -> bool {
+    params.iter().find(|param| param.join_round == 0).is_some()
+}
+
+/// Returns `true` if the list of participant `params` contains a
+/// participant who will enter the ceremony after the specified
+/// `round`.
+fn contains_participant_above_round(params: &[ParticipantProptestParams], round: u64) -> bool {
+    params.iter().find(|param| param.join_round > round).is_some()
+}
+
+fn contributors_strategy() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
+    proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10).prop_filter(
+        "Must contain at least one contributor joining in round 0",
+        |contributors| contains_round0_participant(contributors),
+    )
+}
+
+fn verifiers_stragety() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
+    proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10).prop_filter(
+        "Must contain at least one verifier joining in round 0",
+        |contributors| contains_round0_participant(contributors),
+    )
+}
+
+proptest::proptest! {
+    #![proptest_config(ProptestConfig::with_cases(5))]
+
+    /// This test has a low number of cases because it takes so long
+    /// to run, so it may fail intermittently if there is a bug.
+    /// **Please do not ignore spurious failures in CI or your
+    /// personal testing**. If there is a failure [it should produce a
+    /// persistence file](https://altsysrq.github.io/proptest-book/proptest/failure-persistence.html)
+    /// that you should consider checking into source control.
+    #[test]
+    fn coordinator_proptest(
+        parameters in parameters_custom_strategy(),
+        rounds in 1..3u64,
+        contributor_params in contributors_strategy(),
+        verifier_params in verifiers_stragety(),
+    ) {
+        proptest::prop_assume!(!contains_participant_above_round(&contributor_params, rounds));
+        proptest::prop_assume!(!contains_participant_above_round(&verifier_params, rounds));
+        coordinator_proptest_impl(
+            parameters,
+            rounds,
+            contributor_params,
+            verifier_params).unwrap();
+    }
+}
+
+fn proptest_add_contributor(
+    coordinator: &Coordinator,
+    contributor: Participant,
+    proptest_info: &ContributorProptestInfo,
+) -> anyhow::Result<()> {
+    coordinator.add_to_queue(contributor.clone(), proptest_info.params.reliability_score)?;
+    assert!(coordinator.is_queue_contributor(&contributor));
+    assert!(!coordinator.is_current_contributor(&contributor));
+    assert!(!coordinator.is_finished_contributor(&contributor));
+    Ok(())
+}
+
+fn proptest_add_verifier(
+    coordinator: &Coordinator,
+    verifier: Participant,
+    proptest_info: &VerifierProptestInfo,
+) -> anyhow::Result<()> {
+    coordinator.add_to_queue(verifier.clone(), proptest_info.params.reliability_score)?;
+    assert!(coordinator.is_queue_verifier(&verifier));
+    assert!(!coordinator.is_current_verifier(&verifier));
+    assert!(!coordinator.is_finished_verifier(&verifier));
+    Ok(())
+}
+
 fn coordinator_proptest_impl(
     parameters: Parameters,
+    rounds: u64,
     contributor_params: Vec<ParticipantProptestParams>,
     verifier_params: Vec<ParticipantProptestParams>,
 ) -> anyhow::Result<()> {
@@ -149,15 +233,17 @@ fn coordinator_proptest_impl(
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
 
     let contributors: HashMap<Participant, ContributorProptestInfo> = contributor_params
-        .into_iter()
+        .iter()
+        .filter(|params| params.join_round == 0)
         .enumerate()
         .map(|(i, params)| {
             let (contributor, signing_key, seed) = create_contributor(&i.to_string());
 
             let info = ContributorProptestInfo {
-                params,
+                params: params.clone(),
                 signing_key,
                 seed,
             };
@@ -167,37 +253,48 @@ fn coordinator_proptest_impl(
         .collect();
 
     let verifiers: HashMap<Participant, VerifierProptestInfo> = verifier_params
-        .into_iter()
+        .iter()
+        .filter(|params| params.join_round == 0)
         .enumerate()
         .map(|(i, params)| {
             let (verifier, signing_key) = create_verifier(&i.to_string());
 
-            let info = VerifierProptestInfo { params, signing_key };
+            let info = VerifierProptestInfo {
+                params: params.clone(),
+                signing_key,
+            };
 
             (verifier, info)
         })
         .collect();
 
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+
     for (contributor, proptest_info) in &contributors {
-        coordinator.add_to_queue(contributor.clone(), proptest_info.params.reliability_score)?;
+        proptest_add_contributor(&coordinator, contributor.clone(), proptest_info)?;
     }
+
+    assert_eq!(contributors.len(), coordinator.number_of_queue_contributors());
+    assert!(contributors.len() > 0);
 
     for (verifier, proptest_info) in &verifiers {
-        coordinator.add_to_queue(verifier.clone(), proptest_info.params.reliability_score)?;
+        proptest_add_verifier(&coordinator, verifier.clone(), proptest_info)?;
     }
+
+    assert_eq!(verifiers.len(), coordinator.number_of_queue_verifiers());
+    assert!(verifiers.len() > 0);
+
+    dbg!(coordinator.state());
+
+    // for round in 1..=rounds {
+    //     debug!("Updating ceremony to round {}", round);
+    //     coordinator.update()?;
+    //     assert_eq!(round, coordinator.current_round_height()?);
+
+    // }
 
     Ok(())
-}
-
-proptest::proptest! {
-    #[test]
-    fn coordinator_proptest(
-        parameters in parameters_custom_strategy(),
-        contributor_params in proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10),
-        verifier_params in proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10),
-    ) {
-        coordinator_proptest_impl(parameters, contributor_params, verifier_params).unwrap();
-    }
 }
 
 /*
