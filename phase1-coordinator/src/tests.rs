@@ -10,9 +10,15 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
+use proptest::prelude::any;
+use proptest_derive::Arbitrary;
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{collections::HashSet, panic};
+
+use std::{
+    collections::{HashMap, HashSet},
+    panic,
+};
 
 #[inline]
 fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
@@ -95,6 +101,103 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     Ok(())
+}
+
+#[derive(Debug, Arbitrary)]
+struct ParticipantProptestParams {
+    reliability_score: u8,
+}
+
+struct ContributorProptestInfo {
+    params: ParticipantProptestParams,
+    signing_key: String,
+    seed: Seed,
+}
+
+struct VerifierProptestInfo {
+    params: ParticipantProptestParams,
+    signing_key: String,
+}
+
+proptest::prop_compose! {
+    /// Generate [Parameters::Custom] to use in a [proptest].
+    fn parameters_custom_strategy()(
+        batch_size in 1..16usize,
+        chunk_size in 1..16usize
+    ) -> Parameters {
+        Parameters::Custom((
+            ContributionMode::Chunked,
+            ProvingSystem::Groth16,
+            CurveKind::Bls12_377,
+            6,  /* power */
+            batch_size,
+            chunk_size,
+        ))
+    }
+}
+
+fn coordinator_proptest_impl(
+    parameters: Parameters,
+    contributor_params: Vec<ParticipantProptestParams>,
+    verifier_params: Vec<ParticipantProptestParams>,
+) -> anyhow::Result<()> {
+    // Create a new test environment.
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let contributors: HashMap<Participant, ContributorProptestInfo> = contributor_params
+        .into_iter()
+        .enumerate()
+        .map(|(i, params)| {
+            let (contributor, signing_key, seed) = create_contributor(&i.to_string());
+
+            let info = ContributorProptestInfo {
+                params,
+                signing_key,
+                seed,
+            };
+
+            (contributor, info)
+        })
+        .collect();
+
+    let verifiers: HashMap<Participant, VerifierProptestInfo> = verifier_params
+        .into_iter()
+        .enumerate()
+        .map(|(i, params)| {
+            let (verifier, signing_key) = create_verifier(&i.to_string());
+
+            let info = VerifierProptestInfo { params, signing_key };
+
+            (verifier, info)
+        })
+        .collect();
+
+    for (contributor, proptest_info) in &contributors {
+        coordinator.add_to_queue(contributor.clone(), proptest_info.params.reliability_score)?;
+    }
+
+    for (verifier, proptest_info) in &verifiers {
+        coordinator.add_to_queue(verifier.clone(), proptest_info.params.reliability_score)?;
+    }
+
+    Ok(())
+}
+
+proptest::proptest! {
+    #[test]
+    fn coordinator_proptest(
+        parameters in parameters_custom_strategy(),
+        contributor_params in proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10),
+        verifier_params in proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10),
+    ) {
+        coordinator_proptest_impl(parameters, contributor_params, verifier_params).unwrap();
+    }
 }
 
 /*
