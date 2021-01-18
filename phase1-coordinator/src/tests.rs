@@ -1047,7 +1047,9 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
         2, /* batch_size */
         2, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let (replacement_contributor, ..) = create_contributor("replacement-1");
+    let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.clone()]);
+    let environment = initialize_test_environment_with_debug(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1085,7 +1087,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
         } else {
             panic!("Unexpected contributor: {:?}", contributor);
         };
-        assert_eq!(contributor_info.assigned_tasks().len(), 0);
+        assert!(contributor_info.assigned_tasks().is_empty());
         assert_eq!(contributor_info.completed_tasks(), &expected_tasks);
     }
 
@@ -1099,14 +1101,13 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
             assert_eq!(contributor_info.completed_tasks(), &make_tasks(&[(1, 1)]));
             assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 2)]));
             assert_eq!(contributor_info.disposed_tasks(), &make_tasks(&[(0, 2)]));
-        } else {
-            // todo: (ibaryshnikov) check that this is a coordinator contributor
-            //  and add panic in case of unexpected contributor
-            //  need some code from another PR to avoid duplication
-            assert_eq!(contributor_info.completed_tasks().len(), 0);
+        } else if contributor == replacement_contributor {
+            assert!(contributor_info.completed_tasks().is_empty());
             assert_eq!(contributor_info.assigned_tasks(), &make_tasks(&[(0, 1), (1, 2)]));
             assert!(contributor_info.disposed_tasks().is_empty());
-        };
+        } else {
+            panic!("Unexpected contributor: {:?}", contributor);
+        }
     }
 
     Ok(())
