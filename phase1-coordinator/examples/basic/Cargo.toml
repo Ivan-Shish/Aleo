@@ -1,0 +1,15 @@
+[package]
+name = "basic-example"
+version = "0.1.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "Simple example how to start the coordinator"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "MIT/Apache-2.0"
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0.38"
+phase1-coordinator = { path = "../.." }
+tokio = { version = "1.0", features = ["full"] }
+tracing = { version = "0.1" }
