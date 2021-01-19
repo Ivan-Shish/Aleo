@@ -10,6 +10,7 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
+use anyhow::Context;
 use proptest::{
     prelude::{any, ProptestConfig},
     strategy::Strategy,
@@ -134,7 +135,8 @@ struct VerifierProptestInfo {
 proptest::prop_compose! {
     /// Generate [Parameters::Custom] to use in a [proptest].
     fn parameters_custom_strategy()(
-        batch_size in 1..16usize,
+        // batch sizes <= 1 are not supported
+        batch_size in 2..16usize,
         chunk_size in 1..16usize
     ) -> Parameters {
         Parameters::Custom((
@@ -211,7 +213,9 @@ proptest::proptest! {
             parameters,
             rounds,
             contributor_params,
-            verifier_params).unwrap();
+            verifier_params)
+            .context("Error during proptest")
+            .unwrap();
     }
 }
 
@@ -220,7 +224,10 @@ fn proptest_add_contributor(
     contributor: Participant,
     proptest_info: &ContributorProptestInfo,
 ) -> anyhow::Result<()> {
-    coordinator.add_to_queue(contributor.clone(), proptest_info.params.reliability_score)?;
+    coordinator
+        .add_to_queue(contributor.clone(), proptest_info.params.reliability_score)
+        .map_err(anyhow::Error::from)
+        .context("error while adding contributor to coordinator")?;
     assert!(coordinator.is_queue_contributor(&contributor));
     assert!(!coordinator.is_current_contributor(&contributor));
     assert!(!coordinator.is_finished_contributor(&contributor));
@@ -232,7 +239,10 @@ fn proptest_add_verifier(
     verifier: Participant,
     proptest_info: &VerifierProptestInfo,
 ) -> anyhow::Result<()> {
-    coordinator.add_to_queue(verifier.clone(), proptest_info.params.reliability_score)?;
+    coordinator
+        .add_to_queue(verifier.clone(), proptest_info.params.reliability_score)
+        .map_err(anyhow::Error::from)
+        .context("error while adding verifier to coordinator")?;
     assert!(coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_verifier(&verifier));
@@ -249,11 +259,23 @@ fn coordinator_proptest_impl(
     let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))
+        .map_err(anyhow::Error::from)
+        .context("error while creating coordinator")?;
 
     // Initialize the ceremony to round 0.
-    coordinator.initialize()?;
-    assert_eq!(0, coordinator.current_round_height()?);
+    coordinator
+        .initialize()
+        .map_err(anyhow::Error::from)
+        .context("error initializing coordinator")?;
+
+    assert_eq!(
+        0,
+        coordinator
+            .current_round_height()
+            .map_err(anyhow::Error::from)
+            .context("error obtaining current round height")?
+    );
 
     let contributors: HashMap<Participant, ContributorProptestInfo> = contributor_params
         .iter()
@@ -309,12 +331,34 @@ fn coordinator_proptest_impl(
 
     for round in 1..=rounds {
         debug!("Updating ceremony to round {}", round);
-        coordinator.update()?;
-        assert_eq!(round, coordinator.current_round_height()?);
+        coordinator
+            .update()
+            .map_err(anyhow::Error::from)
+            .with_context(|| format!("error while updating coordinator during round {}", round))?;
+
+        assert_eq!(
+            round,
+            coordinator
+                .current_round_height()
+                .map_err(anyhow::Error::from)
+                .context("error obtaining current round height")?
+        );
 
         for (contributor, proptest_info) in &contributors {
+            tracing::error_span!("{} contribution", %contributor);
+            tracing::debug!("making contribution");
+
             let (start_n_assigned_tasks, start_n_completed_tasks) = {
-                let contributor_info = coordinator.current_contributor_info(contributor)?.unwrap();
+                let contributor_info = coordinator
+                    .current_contributor_info(contributor)
+                    .map_err(anyhow::Error::from)
+                    .with_context(|| {
+                        format!(
+                            "error obtaining current contributor info for contributor {}",
+                            contributor
+                        )
+                    })?
+                    .unwrap_or_else(|| panic!("no current contributor info for contributor {}", contributor));
                 (
                     contributor_info.assigned_tasks().len(),
                     contributor_info.completed_tasks().len(),
@@ -322,15 +366,64 @@ fn coordinator_proptest_impl(
             };
 
             for _ in 0..start_n_assigned_tasks {
-                coordinator.contribute(&contributor, &proptest_info.signing_key, &proptest_info.seed)?;
+                coordinator
+                    .contribute(&contributor, &proptest_info.signing_key, &proptest_info.seed)
+                    .map_err(anyhow::Error::from)
+                    .with_context(|| format!("error while contributor {} was making contribution", contributor))?;
             }
 
+            assert!(coordinator.is_finished_contributor(contributor));
+
             {
-                let contributor_info = coordinator.current_contributor_info(contributor)?.unwrap();
+                let contributor_info = coordinator
+                    .current_contributor_info(contributor)
+                    .map_err(anyhow::Error::from)
+                    .with_context(|| {
+                        format!(
+                            "error obtaining current contributor info for contributor {}",
+                            contributor
+                        )
+                    })?
+                    .unwrap_or_else(|| panic!("no current contributor info for contributor {}", contributor));
                 assert!(contributor_info.assigned_tasks().is_empty());
                 assert_eq!(
                     start_n_completed_tasks + start_n_assigned_tasks,
                     contributor_info.completed_tasks().len()
+                );
+            }
+        }
+
+        for (verifier, proptest_info) in &verifiers {
+            tracing::error_span!("{} verification", %verifier);
+            tracing::debug!("performing verification");
+
+            let (start_n_assigned_tasks, start_n_completed_tasks) = {
+                let verifier_info = coordinator
+                    .current_verifier_info(verifier)
+                    .map_err(anyhow::Error::from)
+                    .with_context(|| format!("error obtaining current verifier info for verifier {}", verifier))?
+                    .unwrap_or_else(|| panic!("no current verifier info for verifier {}", verifier));
+                (
+                    verifier_info.assigned_tasks().len(),
+                    verifier_info.completed_tasks().len(),
+                )
+            };
+
+            for _ in 0..start_n_assigned_tasks {
+                coordinator
+                    .verify(&verifier, &proptest_info.signing_key)
+                    .map_err(anyhow::Error::from)
+                    .with_context(|| format!("error while verifier {} was performing verification", verifier))?;
+            }
+
+            assert!(coordinator.is_finished_verifier(verifier));
+
+            {
+                let verifier_info = coordinator.current_verifier_info(verifier)?.unwrap();
+                assert!(verifier_info.assigned_tasks().is_empty());
+                assert_eq!(
+                    start_n_completed_tasks + start_n_assigned_tasks,
+                    verifier_info.completed_tasks().len()
                 );
             }
         }
