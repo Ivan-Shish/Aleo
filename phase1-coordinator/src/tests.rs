@@ -106,6 +106,8 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     Ok(())
 }
 
+/// Info about a [Particpant] (verifier or contributor) to be created
+/// and used in a proptest.
 #[derive(Debug, Arbitrary, Clone)]
 struct ParticipantProptestParams {
     reliability_score: u8,
@@ -114,13 +116,17 @@ struct ParticipantProptestParams {
     join_round: u64,
 }
 
+/// Info about a contributor being used in a proptest.
 struct ContributorProptestInfo {
+    /// Parameters used to create this contributor.
     params: ParticipantProptestParams,
     signing_key: String,
     seed: Seed,
 }
 
+/// Info about a verifier being used in a proptest.
 struct VerifierProptestInfo {
+    /// Parameters used to create this verifier.
     params: ParticipantProptestParams,
     signing_key: String,
 }
@@ -155,16 +161,20 @@ fn contains_participant_above_round(params: &[ParticipantProptestParams], round:
     params.iter().find(|param| param.join_round > round).is_some()
 }
 
+/// [Strategy] for generating vector of contributor [Participant]s for
+/// use in a proptest. Generates between 1 and 10 contributors.
 fn contributors_strategy() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
-    proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10).prop_filter(
-        "Must contain at least one contributor joining in round 0",
+    proptest::collection::vec(any::<ParticipantProptestParams>(), 1..=10).prop_filter(
+        "`contributors` must contain at least one contributor joining the ceremony in round 0",
         |contributors| contains_round0_participant(contributors),
     )
 }
 
+/// [Strategy] for generating vector of verifier [Participant]s for
+/// use in a proptest. Generates between 1 and 10 verifiers.
 fn verifiers_stragety() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
-    proptest::collection::vec(any::<ParticipantProptestParams>(), 0..10).prop_filter(
-        "Must contain at least one verifier joining in round 0",
+    proptest::collection::vec(any::<ParticipantProptestParams>(), 1..=10).prop_filter(
+        "`verifiers` must contain at least one verifier joining the ceremony in round 0",
         |contributors| contains_round0_participant(contributors),
     )
 }
@@ -185,8 +195,18 @@ proptest::proptest! {
         contributor_params in contributors_strategy(),
         verifier_params in verifiers_stragety(),
     ) {
-        proptest::prop_assume!(!contains_participant_above_round(&contributor_params, rounds));
-        proptest::prop_assume!(!contains_participant_above_round(&verifier_params, rounds));
+        proptest::prop_assume!(
+            !contains_participant_above_round(&contributor_params, rounds),
+            "`contributors` must not contain any contributor joining the \
+            ceremony after the specified number of rounds ({})",
+            rounds
+        );
+        proptest::prop_assume!(
+            !contains_participant_above_round(&verifier_params, rounds),
+            "`verifiers` must not contain any contributor joining the \
+            ceremony after the specified number of rounds ({})",
+            rounds
+        );
         coordinator_proptest_impl(
             parameters,
             rounds,
@@ -287,12 +307,34 @@ fn coordinator_proptest_impl(
 
     dbg!(coordinator.state());
 
-    // for round in 1..=rounds {
-    //     debug!("Updating ceremony to round {}", round);
-    //     coordinator.update()?;
-    //     assert_eq!(round, coordinator.current_round_height()?);
+    for round in 1..=rounds {
+        debug!("Updating ceremony to round {}", round);
+        coordinator.update()?;
+        assert_eq!(round, coordinator.current_round_height()?);
 
-    // }
+        for (contributor, proptest_info) in &contributors {
+            let (start_n_assigned_tasks, start_n_completed_tasks) = {
+                let contributor_info = coordinator.current_contributor_info(contributor)?.unwrap();
+                (
+                    contributor_info.assigned_tasks().len(),
+                    contributor_info.completed_tasks().len(),
+                )
+            };
+
+            for _ in 0..start_n_assigned_tasks {
+                coordinator.contribute(&contributor, &proptest_info.signing_key, &proptest_info.seed)?;
+            }
+
+            {
+                let contributor_info = coordinator.current_contributor_info(contributor)?.unwrap();
+                assert!(contributor_info.assigned_tasks().is_empty());
+                assert_eq!(
+                    start_n_completed_tasks + start_n_assigned_tasks,
+                    contributor_info.completed_tasks().len()
+                );
+            }
+        }
+    }
 
     Ok(())
 }
