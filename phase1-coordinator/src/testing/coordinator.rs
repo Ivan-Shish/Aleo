@@ -10,6 +10,7 @@ use crate::{
 use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
+#[cfg(test)]
 use serial_test::serial;
 use std::{
     path::Path,
@@ -23,37 +24,39 @@ use once_cell::sync::OnceCell;
 #[cfg(not(feature = "silent"))]
 static INSTANCE: OnceCell<()> = OnceCell::new();
 
-lazy_static! {
-    /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT: Environment = Testing::from(Parameters::Test8Chunks).into();
+/// Environment for testing purposes only.
+pub static TEST_ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Testing::from(Parameters::Test8Chunks).into());
 
-    /// Environment for testing purposes only.
-    pub static ref TEST_ENVIRONMENT_3: Environment = Testing::from(Parameters::Test3Chunks).into();
+/// Environment for testing purposes only.
+pub static TEST_ENVIRONMENT_3: Lazy<Environment> = Lazy::new(|| Testing::from(Parameters::Test3Chunks).into());
 
-    /// Round start datetime for testing purposes only.
-    pub static ref TEST_STARTED_AT: DateTime<Utc> = Utc.ymd(1970, 1, 1).and_hms(0, 1, 1);
+/// Round start datetime for testing purposes only.
+pub static TEST_STARTED_AT: Lazy<DateTime<Utc>> = Lazy::new(|| Utc.ymd(1970, 1, 1).and_hms(0, 1, 1));
 
-    /// Contributor ID for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_contributor(&TEST_ENVIRONMENT).unwrap());
+/// Contributor ID for testing purposes only.
+pub static TEST_CONTRIBUTOR_ID: Lazy<Participant> =
+    Lazy::new(|| test_coordinator_contributor(&TEST_ENVIRONMENT).unwrap());
 
-    /// Contributor ID 2 for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_ID_2: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-2")));
+/// Contributor ID 2 for testing purposes only.
+pub static TEST_CONTRIBUTOR_ID_2: Lazy<Participant> =
+    Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-2")));
 
-    /// Contributor ID 3 for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_ID_3: Lazy<Participant> = Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-3")));
+/// Contributor ID 3 for testing purposes only.
+pub static TEST_CONTRIBUTOR_ID_3: Lazy<Participant> =
+    Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-3")));
 
-    /// Verifier ID for testing purposes only.
-    pub static ref TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_verifier(&TEST_ENVIRONMENT).unwrap());
+/// Verifier ID for testing purposes only.
+pub static TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_verifier(&TEST_ENVIRONMENT).unwrap());
 
-    /// Verifier ID 2 for testing purposes only.
-    pub static ref TEST_VERIFIER_ID_2: Lazy<Participant> = Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-2")));
+/// Verifier ID 2 for testing purposes only.
+pub static TEST_VERIFIER_ID_2: Lazy<Participant> =
+    Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-2")));
 
-    /// Contributor IDs for testing purposes only.
-    pub static ref TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
+/// Contributor IDs for testing purposes only.
+pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
 
-    /// Verifier IDs for testing purposes only.
-    pub static ref TEST_VERIFIER_IDS: Lazy<Vec<Participant>> =  Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
-}
+/// Verifier IDs for testing purposes only.
+pub static TEST_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 
 pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
