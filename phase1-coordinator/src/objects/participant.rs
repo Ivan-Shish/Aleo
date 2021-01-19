@@ -11,9 +11,15 @@ use std::fmt::{self};
 pub type ContributorId = String;
 pub type VerifierId = String;
 
+/// A participant/actor in the setup ceremony that receives tasks from
+/// the contributor and performs them.
 #[derive(Clone, Eq, PartialEq, Hash, SerdeDiff)]
 pub enum Participant {
+    /// A contributor is a ceremony participant that makes active
+    /// contributions during the setup ceremony.
     Contributor(ContributorId),
+    /// A verifier is a ceremony participant that verifies the
+    /// contributions made by [Participant::Contributor]s.
     Verifier(VerifierId),
 }
 
