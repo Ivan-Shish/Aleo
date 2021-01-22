@@ -249,6 +249,8 @@ fn proptest_add_verifier(
     Ok(())
 }
 
+// Implementation is in a seperate function so VSCode gives proper
+// syntax highlighting/metadata.
 fn coordinator_proptest_impl(
     parameters: Parameters,
     rounds: u64,
@@ -327,8 +329,6 @@ fn coordinator_proptest_impl(
     assert_eq!(verifiers.len(), coordinator.number_of_queue_verifiers());
     assert!(verifiers.len() > 0);
 
-    dbg!(coordinator.state());
-
     for round in 1..=rounds {
         debug!("Updating ceremony to round {}", round);
         coordinator
@@ -348,6 +348,8 @@ fn coordinator_proptest_impl(
             tracing::error_span!("{} contribution", %contributor);
             tracing::debug!("making contribution");
 
+            // Calculate how many contributions this contributor needs
+            // to make this round.
             let (start_n_assigned_tasks, start_n_completed_tasks) = {
                 let contributor_info = coordinator
                     .current_contributor_info(contributor)
@@ -365,6 +367,7 @@ fn coordinator_proptest_impl(
                 )
             };
 
+            // Perform the contributions.
             for _ in 0..start_n_assigned_tasks {
                 coordinator
                     .contribute(&contributor, &proptest_info.signing_key, &proptest_info.seed)
@@ -374,6 +377,7 @@ fn coordinator_proptest_impl(
 
             assert!(coordinator.is_finished_contributor(contributor));
 
+            // Check that the contributor has finished all their contributions for this round.
             {
                 let contributor_info = coordinator
                     .current_contributor_info(contributor)
@@ -397,6 +401,7 @@ fn coordinator_proptest_impl(
             tracing::error_span!("{} verification", %verifier);
             tracing::debug!("performing verification");
 
+            // Calculate how many verifications need to occur this round.
             let (start_n_assigned_tasks, start_n_completed_tasks) = {
                 let verifier_info = coordinator
                     .current_verifier_info(verifier)
@@ -409,6 +414,7 @@ fn coordinator_proptest_impl(
                 )
             };
 
+            // Perform the verifications for this round.
             for _ in 0..start_n_assigned_tasks {
                 coordinator
                     .verify(&verifier, &proptest_info.signing_key)
@@ -418,6 +424,7 @@ fn coordinator_proptest_impl(
 
             assert!(coordinator.is_finished_verifier(verifier));
 
+            // Check that the verifier has finished all their verification tasks for this round.
             {
                 let verifier_info = coordinator.current_verifier_info(verifier)?.unwrap();
                 assert!(verifier_info.assigned_tasks().is_empty());
