@@ -13,11 +13,45 @@ use url::Url;
 
 type BatchSize = usize;
 type ChunkSize = usize;
-type Curve = CurveKind;
 type NumberOfChunks = usize;
 type Power = usize;
 
-pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    contribution_mode: ContributionMode,
+    proving_system: ProvingSystem,
+    curve: CurveKind,
+    power: Power,
+    batch_size: BatchSize,
+    chunk_size: ChunkSize,
+}
+
+impl Settings {
+    /// Creates a new `Settings`
+    /// 
+    /// + `batch_size` - will panic if this is set to `0`.
+    pub fn new(
+        contribution_mode: ContributionMode,
+        proving_system: ProvingSystem,
+        curve: CurveKind,
+        power: Power,
+        batch_size: BatchSize,
+        chunk_size: ChunkSize,
+    ) -> Self {
+        if batch_size == 0 {
+            panic!("batch_size cannot be equal to zero");
+        }
+
+        Self {
+            contribution_mode,
+            proving_system,
+            curve,
+            power,
+            batch_size,
+            chunk_size,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Deployment {
@@ -34,8 +68,14 @@ pub enum Parameters {
     Custom(Settings),
     Test3Chunks,
     Test8Chunks,
-    TestChunks(NumberOfChunks),
-    TestCustom(NumberOfChunks, Power, BatchSize),
+    TestChunks {
+        number_of_chunks: usize,
+    },
+    TestCustom {
+        number_of_chunks: usize, 
+        power: usize,
+        batch_size: usize,
+    },
 }
 
 impl Parameters {
@@ -48,15 +88,15 @@ impl Parameters {
             Parameters::Custom(settings) => *settings,
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
-            Parameters::TestChunks(number_of_chunks) => Self::test_chunks(number_of_chunks),
-            Parameters::TestCustom(number_of_chunks, power, batch_size) => {
+            Parameters::TestChunks { number_of_chunks } => Self::test_chunks(number_of_chunks),
+            Parameters::TestCustom { number_of_chunks, power, batch_size } => {
                 Self::test_custom(number_of_chunks, power, batch_size)
             }
         }
     }
 
     fn aleo_inner() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -67,7 +107,7 @@ impl Parameters {
     }
 
     fn aleo_outer() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::BW6,
@@ -78,7 +118,7 @@ impl Parameters {
     }
 
     fn aleo_universal() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
@@ -89,7 +129,7 @@ impl Parameters {
     }
 
     fn test_3_chunks() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -100,7 +140,7 @@ impl Parameters {
     }
 
     fn test_8_chunks() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -114,7 +154,7 @@ impl Parameters {
         let proving_system = ProvingSystem::Groth16;
         let power = 14_usize;
         let batch_size = 128_usize;
-        (
+        Settings::new(
             ContributionMode::Chunked,
             proving_system,
             CurveKind::Bls12_377,
@@ -126,7 +166,7 @@ impl Parameters {
 
     fn test_custom(number_of_chunks: &NumberOfChunks, power: &Power, batch_size: &BatchSize) -> Settings {
         let proving_system = ProvingSystem::Groth16;
-        (
+        Settings::new(
             ContributionMode::Chunked,
             proving_system,
             CurveKind::Bls12_377,
