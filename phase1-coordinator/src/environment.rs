@@ -28,7 +28,7 @@ pub struct Settings {
 
 impl Settings {
     /// Creates a new `Settings`
-    /// 
+    ///
     /// + `batch_size` - will panic if this is set to `0`.
     pub fn new(
         contribution_mode: ContributionMode,
@@ -72,7 +72,7 @@ pub enum Parameters {
         number_of_chunks: usize,
     },
     TestCustom {
-        number_of_chunks: usize, 
+        number_of_chunks: usize,
         power: usize,
         batch_size: usize,
     },
@@ -89,9 +89,11 @@ impl Parameters {
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
             Parameters::TestChunks { number_of_chunks } => Self::test_chunks(number_of_chunks),
-            Parameters::TestCustom { number_of_chunks, power, batch_size } => {
-                Self::test_custom(number_of_chunks, power, batch_size)
-            }
+            Parameters::TestCustom {
+                number_of_chunks,
+                power,
+                batch_size,
+            } => Self::test_custom(number_of_chunks, power, batch_size),
         }
     }
 
