@@ -336,8 +336,13 @@ impl Coordinator {
     }
 
     ///
-    /// Runs a set of operations to update the coordinator state to reflect
-    /// newly finished, dropped, or banned participants.
+    /// Runs a set of operations to update the coordinator state to
+    /// reflect newly finished, dropped, or banned participants.
+    ///
+    /// Progresses to the next round only if there are new
+    /// contributors, and also new verifiers?.
+    ///
+    /// TODO: get feedback from @howardwu about this comment.
     ///
     #[inline]
     pub fn update(&self) -> Result<(), CoordinatorError> {
