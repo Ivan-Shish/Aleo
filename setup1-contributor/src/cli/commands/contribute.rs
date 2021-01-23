@@ -7,7 +7,11 @@ use phase1_coordinator::environment::{Development, Environment, Parameters, Prod
 
 #[inline]
 fn development() -> Environment {
-    let environment = Development::from(Parameters::TestCustom(64, 16, 512));
+    let environment = Development::from(Parameters::TestCustom {
+        number_of_chunks: 64,
+        power: 16,
+        batch_size: 512,
+    });
     environment.into()
 }
 

@@ -121,14 +121,15 @@ pub fn create_parameters_for_chunk<E: PairingEngine>(
     environment: &Environment,
     chunk_id: usize,
 ) -> Result<Phase1Parameters<E>> {
-    let (_, proving_system, _, power, batch_size, chunk_size) = environment.parameters();
+    let settings = environment.parameters();
+
     let parameters = Phase1Parameters::<E>::new_chunk(
         ContributionMode::Chunked,
         chunk_id,
-        chunk_size,
-        proving_system,
-        power,
-        batch_size,
+        settings.chunk_size(),
+        settings.proving_system(),
+        settings.power(),
+        settings.batch_size(),
     );
     Ok(parameters)
 }

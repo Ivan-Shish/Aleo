@@ -2465,7 +2465,7 @@ impl CoordinatorState {
                             })
                             .sum::<u64>();
 
-                        let estimated_time_remaining = match self.environment.parameters().1 {
+                        let estimated_time_remaining = match self.environment.parameters().proving_system() {
                             ProvingSystem::Groth16 => (cumulative_seconds / number_of_contributors_left) / 2,
                             ProvingSystem::Marlin => cumulative_seconds / number_of_contributors_left,
                         };

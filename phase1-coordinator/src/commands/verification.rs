@@ -136,8 +136,7 @@ impl Verification {
 
         // Execute ceremony verification on chunk.
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings.clone();
-        let result = match curve {
+        let result = match settings.curve() {
             CurveKind::Bls12_377 => Self::transform_pok_and_correctness(
                 environment,
                 storage.reader(&challenge_locator)?.as_ref(),
@@ -183,8 +182,7 @@ impl Verification {
                 )?;
             }
 
-            let (_, _, curve, _, _, _) = settings.clone();
-            match curve {
+            match settings.curve() {
                 CurveKind::Bls12_377 => Self::decompress(
                     storage.reader(&response_locator)?.as_ref(),
                     storage.writer(&next_challenge_locator)?.as_mut(),

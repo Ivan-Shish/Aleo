@@ -51,6 +51,30 @@ impl Settings {
             chunk_size,
         }
     }
+
+    pub fn contribution_mode(&self) -> ContributionMode {
+        self.contribution_mode
+    }
+
+    pub fn proving_system(&self) -> ProvingSystem {
+        self.proving_system
+    }
+
+    pub fn curve(&self) -> CurveKind {
+        self.curve
+    }
+
+    pub fn power(&self) -> Power {
+        self.power
+    }
+
+    pub fn batch_size(&self) -> BatchSize {
+        self.batch_size
+    }
+
+    pub fn chunk_size(&self) -> ChunkSize {
+        self.chunk_size
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -85,7 +109,7 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::Custom(settings) => *settings,
+            Parameters::Custom(settings) => settings.clone(),
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
             Parameters::TestChunks { number_of_chunks } => Self::test_chunks(number_of_chunks),
@@ -240,7 +264,7 @@ impl Environment {
     /// Returns the parameter settings of the coordinator.
     ///
     pub fn parameters(&self) -> Settings {
-        self.parameters
+        self.parameters.clone()
     }
 
     ///
@@ -441,7 +465,9 @@ impl Environment {
     /// to run given a proof system, power and chunk size.
     ///
     pub fn number_of_chunks(&self) -> u64 {
-        let (_, proving_system, _, power, _, chunk_size) = self.parameters;
+        let proving_system = &self.parameters.proving_system;
+        let power = self.parameters.power;
+        let chunk_size = self.parameters.chunk_size;
         (total_size_in_g1!(proving_system, power) + chunk_size as u64 - 1) / chunk_size as u64
     }
 
@@ -818,7 +844,7 @@ mod tests {
     #[test]
     fn test_aleo_test_3_chunks() {
         let parameters = Parameters::Test3Chunks;
-        let (_, _, _, power, _, _) = parameters.to_settings();
+        let power = parameters.to_settings().power;
         assert_eq!(Power::from(8_usize), power);
         assert_eq!(3, Testing::from(parameters).number_of_chunks());
     }
@@ -826,7 +852,7 @@ mod tests {
     #[test]
     fn test_aleo_test_8_chunks() {
         let parameters = Parameters::Test8Chunks;
-        let (_, _, _, power, _, _) = parameters.to_settings();
+        let power = parameters.to_settings().power;
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(8, Testing::from(parameters).number_of_chunks());
     }
@@ -835,8 +861,11 @@ mod tests {
     fn test_custom_chunk_3() {
         let number_of_chunks = 3;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(10923_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
@@ -846,8 +875,11 @@ mod tests {
     fn test_custom_chunk_8() {
         let number_of_chunks = 8;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(4096_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
@@ -857,8 +889,11 @@ mod tests {
     fn test_custom_chunk_20() {
         let number_of_chunks = 20;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(1639_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());

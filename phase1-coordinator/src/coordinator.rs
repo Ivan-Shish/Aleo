@@ -3464,7 +3464,7 @@ mod tests {
     #[serial]
     #[ignore]
     fn test_coordinator_number_of_chunks() {
-        let environment = &*Testing::from(Parameters::TestChunks(4096));
+        let environment = &*Testing::from(Parameters::TestChunks { number_of_chunks: 4096 });
         initialize_test_environment(environment);
 
         let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy)).unwrap();

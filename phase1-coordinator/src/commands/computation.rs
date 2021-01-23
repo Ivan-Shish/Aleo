@@ -55,7 +55,7 @@ impl Computation {
 
         // Run computation on chunk.
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
+        let curve = settings.curve();
         if let Err(error) = match curve {
             CurveKind::Bls12_377 => Self::contribute(
                 environment,

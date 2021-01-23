@@ -39,8 +39,8 @@ impl Initialization {
 
         // Run ceremony initialization on chunk.
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
-        if let Err(error) = match curve {
+
+        if let Err(error) = match settings.curve() {
             CurveKind::Bls12_377 => Self::initialization(
                 storage.writer(&contribution_locator)?.as_mut(),
                 environment.compressed_inputs(),

@@ -874,7 +874,7 @@ pub async fn start_contributor(
 
     *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
 
-    let (_, _, curve_kind, _, _, _) = environment.parameters();
+    let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
     let contribute =
