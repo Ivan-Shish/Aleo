@@ -14,7 +14,7 @@ use proptest::{
     strategy::Strategy,
 };
 use proptest_derive::Arbitrary;
-use tracing::debug;
+use tracing::info;
 
 use std::{collections::HashMap, panic};
 
@@ -25,9 +25,6 @@ use super::{create_contributor, create_verifier};
 #[derive(Debug, Arbitrary, Clone)]
 struct ParticipantProptestParams {
     reliability_score: u8,
-    /// Which round of the ceremony this participant will join in.
-    #[proptest(strategy = "0..3u64")]
-    join_round: u64,
 }
 
 /// Info about a contributor being used in a proptest.
@@ -47,7 +44,7 @@ struct VerifierProptestInfo {
 
 proptest::prop_compose! {
     /// Generate [Parameters::Custom] to use in a [proptest].
-    fn parameters_custom_strategy()(
+    fn env_parameters_custom_strategy()(
         // batch sizes <= 1 are not supported
         batch_size in 2..16usize,
         chunk_size in 1..16usize
@@ -63,35 +60,46 @@ proptest::prop_compose! {
     }
 }
 
-/// Returns true if the list of participant `params` contains a
-/// participant who will enter the ceremony in round 0.
-fn contains_round0_participant(params: &[ParticipantProptestParams]) -> bool {
-    params.iter().find(|param| param.join_round == 0).is_some()
+#[derive(Clone, Debug)]
+struct RoundProptestParams {
+    rounds: usize,
+    contributors: Vec<Vec<ParticipantProptestParams>>,
+    verifiers: Vec<Vec<ParticipantProptestParams>>,
 }
 
-/// Returns `true` if the list of participant `params` contains a
-/// participant who will enter the ceremony after the specified
-/// `round`.
-fn contains_participant_above_round(params: &[ParticipantProptestParams], round: u64) -> bool {
-    params.iter().find(|param| param.join_round > round).is_some()
-}
+fn rounds_strategy(
+    max_rounds: usize,
+    max_contributors_per_round: usize,
+    max_verifiers_per_round: usize,
+) -> impl Strategy<Value = RoundProptestParams> {
+    let rounds_strategy = 1..max_rounds;
+    rounds_strategy
+        .prop_ind_flat_map2(move |rounds| {
+            let contributors_strategy = proptest::collection::vec(
+                proptest::collection::vec(any::<ParticipantProptestParams>(), 1..max_contributors_per_round),
+                rounds,
+            );
 
-/// [Strategy] for generating vector of contributor [Participant]s for
-/// use in a proptest. Generates between 1 and 10 contributors.
-fn contributors_strategy() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
-    proptest::collection::vec(any::<ParticipantProptestParams>(), 1..=10).prop_filter(
-        "`contributors` must contain at least one contributor joining the ceremony in round 0",
-        |contributors| contains_round0_participant(contributors),
-    )
-}
+            let verifiers_strategy = proptest::collection::vec(
+                proptest::collection::vec(any::<ParticipantProptestParams>(), 1..max_verifiers_per_round),
+                rounds,
+            );
 
-/// [Strategy] for generating vector of verifier [Participant]s for
-/// use in a proptest. Generates between 1 and 10 verifiers.
-fn verifiers_stragety() -> impl Strategy<Value = Vec<ParticipantProptestParams>> {
-    proptest::collection::vec(any::<ParticipantProptestParams>(), 1..=10).prop_filter(
-        "`verifiers` must contain at least one verifier joining the ceremony in round 0",
-        |contributors| contains_round0_participant(contributors),
-    )
+            (contributors_strategy, verifiers_strategy)
+        })
+        .prop_filter(
+            "contributors length must match number of rounds",
+            |(rounds, (contributors, _verifiers))| contributors.len() == *rounds,
+        )
+        .prop_filter(
+            "verifiers length must match number of rounds",
+            |(rounds, (_contributors, verifiers))| verifiers.len() == *rounds,
+        )
+        .prop_map(|(rounds, (contributors, verifiers))| RoundProptestParams {
+            rounds,
+            contributors,
+            verifiers,
+        })
 }
 
 proptest::proptest! {
@@ -105,28 +113,16 @@ proptest::proptest! {
     /// that you should consider checking into source control.
     #[test]
     fn coordinator_proptest(
-        parameters in parameters_custom_strategy(),
-        rounds in 1..3u64,
-        contributor_params in contributors_strategy(),
-        verifier_params in verifiers_stragety(),
+        env_params in env_parameters_custom_strategy(),
+        rounds_params in rounds_strategy(
+            3, // max rounds
+            5, // max contributors per round
+            5  // max verifiers per round
+        ),
     ) {
-        proptest::prop_assume!(
-            !contains_participant_above_round(&contributor_params, rounds),
-            "`contributors` must not contain any contributor joining the \
-            ceremony after the specified number of rounds ({})",
-            rounds
-        );
-        proptest::prop_assume!(
-            !contains_participant_above_round(&verifier_params, rounds),
-            "`verifiers` must not contain any contributor joining the \
-            ceremony after the specified number of rounds ({})",
-            rounds
-        );
         coordinator_proptest_impl(
-            parameters,
-            rounds,
-            contributor_params,
-            verifier_params)
+            env_params,
+            rounds_params)
             .context("Error during proptest")
             .unwrap();
     }
@@ -164,14 +160,9 @@ fn proptest_add_verifier(
 
 // Implementation is in a seperate function so VSCode gives proper
 // syntax highlighting/metadata.
-fn coordinator_proptest_impl(
-    parameters: Parameters,
-    rounds: u64,
-    contributor_params: Vec<ParticipantProptestParams>,
-    verifier_params: Vec<ParticipantProptestParams>,
-) -> anyhow::Result<()> {
+fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptestParams) -> anyhow::Result<()> {
     // Create a new test environment.
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment_with_debug(&Testing::from(env_params).into());
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment, Box::new(Dummy))
@@ -192,65 +183,83 @@ fn coordinator_proptest_impl(
             .context("error obtaining current round height")?
     );
 
-    let contributors: HashMap<Participant, ContributorProptestInfo> = contributor_params
-        .iter()
-        .filter(|params| params.join_round == 0)
-        .enumerate()
-        .map(|(i, params)| {
-            let (contributor, signing_key, seed) = create_contributor(&i.to_string());
+    for round in 1..=rounds_params.rounds {
+        let span = tracing::error_span!("proptest_round", round = round);
+        let _guard = span.enter();
 
-            let info = ContributorProptestInfo {
-                params: params.clone(),
-                signing_key,
-                seed,
-            };
+        info!("Adding contributors new round");
 
-            (contributor, info)
-        })
-        .collect();
+        let contributors: HashMap<Participant, ContributorProptestInfo> = rounds_params
+            .contributors
+            .get(round)
+            .expect("contributors should be available for every round")
+            .iter()
+            .enumerate()
+            .map(|(i, params)| {
+                let id = format!("r{}i{}", round, i);
+                let (contributor, signing_key, seed) = create_contributor(&id);
 
-    let verifiers: HashMap<Participant, VerifierProptestInfo> = verifier_params
-        .iter()
-        .filter(|params| params.join_round == 0)
-        .enumerate()
-        .map(|(i, params)| {
-            let (verifier, signing_key) = create_verifier(&i.to_string());
+                let info = ContributorProptestInfo {
+                    params: params.clone(),
+                    signing_key,
+                    seed,
+                };
 
-            let info = VerifierProptestInfo {
-                params: params.clone(),
-                signing_key,
-            };
+                (contributor, info)
+            })
+            .collect();
 
-            (verifier, info)
-        })
-        .collect();
+        for (contributor, proptest_info) in &contributors {
+            proptest_add_contributor(&coordinator, contributor.clone(), proptest_info)?;
+        }
 
-    assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
+        assert_eq!(contributors.len(), coordinator.number_of_queue_contributors());
+        assert!(contributors.len() > 0);
 
-    for (contributor, proptest_info) in &contributors {
-        proptest_add_contributor(&coordinator, contributor.clone(), proptest_info)?;
-    }
+        info!("Adding verifiers new round");
 
-    assert_eq!(contributors.len(), coordinator.number_of_queue_contributors());
-    assert!(contributors.len() > 0);
+        let verifiers: HashMap<Participant, VerifierProptestInfo> = rounds_params
+            .verifiers
+            .get(round)
+            .expect("verifiers should be available for every round")
+            .iter()
+            .enumerate()
+            .map(|(i, params)| {
+                let id = format!("r{}i{}", round, i);
+                let (verifier, signing_key) = create_verifier(&id);
 
-    for (verifier, proptest_info) in &verifiers {
-        proptest_add_verifier(&coordinator, verifier.clone(), proptest_info)?;
-    }
+                let info = VerifierProptestInfo {
+                    params: params.clone(),
+                    signing_key,
+                };
 
-    assert_eq!(verifiers.len(), coordinator.number_of_queue_verifiers());
-    assert!(verifiers.len() > 0);
+                (verifier, info)
+            })
+            .collect();
 
-    for round in 1..=rounds {
-        debug!("Updating ceremony to round {}", round);
+        for (verifier, proptest_info) in &verifiers {
+            proptest_add_verifier(&coordinator, verifier.clone(), proptest_info)?;
+        }
+
+        assert_eq!(verifiers.len(), coordinator.number_of_queue_verifiers());
+        assert!(verifiers.len() > 0);
+
+        assert_eq!(
+            (round as u64) - 1,
+            coordinator
+                .current_round_height()
+                .map_err(anyhow::Error::from)
+                .context("error obtaining current round height")?
+        );
+
+        info!("Updating ceremony");
         coordinator
             .update()
             .map_err(anyhow::Error::from)
             .with_context(|| format!("error while updating coordinator during round {}", round))?;
 
         assert_eq!(
-            round,
+            round as u64,
             coordinator
                 .current_round_height()
                 .map_err(anyhow::Error::from)
@@ -285,7 +294,7 @@ fn coordinator_proptest_impl(
                 coordinator
                     .contribute(&contributor, &proptest_info.signing_key, &proptest_info.seed)
                     .map_err(anyhow::Error::from)
-                    .with_context(|| format!("error while contributor {} was making contribution", contributor))?;
+                    .with_context(|| format!("Error while contributor {} was making contribution", contributor))?;
             }
 
             assert!(coordinator.is_finished_contributor(contributor));
@@ -297,11 +306,11 @@ fn coordinator_proptest_impl(
                     .map_err(anyhow::Error::from)
                     .with_context(|| {
                         format!(
-                            "error obtaining current contributor info for contributor {}",
+                            "Error obtaining current contributor info for contributor {}",
                             contributor
                         )
                     })?
-                    .unwrap_or_else(|| panic!("no current contributor info for contributor {}", contributor));
+                    .unwrap_or_else(|| panic!("No current contributor info for contributor {}", contributor));
                 assert!(contributor_info.assigned_tasks().is_empty());
                 assert_eq!(
                     start_n_completed_tasks + start_n_assigned_tasks,
@@ -319,8 +328,8 @@ fn coordinator_proptest_impl(
                 let verifier_info = coordinator
                     .current_verifier_info(verifier)
                     .map_err(anyhow::Error::from)
-                    .with_context(|| format!("error obtaining current verifier info for verifier {}", verifier))?
-                    .unwrap_or_else(|| panic!("no current verifier info for verifier {}", verifier));
+                    .with_context(|| format!("Error obtaining current verifier info for verifier {}", verifier))?
+                    .unwrap_or_else(|| panic!("No current verifier info for verifier {}", verifier));
                 (
                     verifier_info.assigned_tasks().len(),
                     verifier_info.completed_tasks().len(),
@@ -332,7 +341,7 @@ fn coordinator_proptest_impl(
                 coordinator
                     .verify(&verifier, &proptest_info.signing_key)
                     .map_err(anyhow::Error::from)
-                    .with_context(|| format!("error while verifier {} was performing verification", verifier))?;
+                    .with_context(|| format!("Error while verifier {} was performing verification", verifier))?;
             }
 
             assert!(coordinator.is_finished_verifier(verifier));
