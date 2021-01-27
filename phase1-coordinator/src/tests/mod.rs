@@ -87,9 +87,9 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
     let (contributor, _, _) = create_contributor("1");
     let (verifier, _) = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
-    // coordinator.add_to_queue(verifier.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
-    // assert_eq!(1, coordinator.number_of_queue_verifiers());
+    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony from round 1 to round 2.
     coordinator.update()?;
