@@ -1,6 +1,7 @@
 use crate::{
     authentication::Dummy,
     commands::Seed,
+    coordinator_state::ParticipantInfo,
     environment::{Parameters, Testing},
     testing::initialize_test_environment_with_debug,
     Coordinator,
@@ -158,6 +159,21 @@ fn proptest_add_verifier(
     Ok(())
 }
 
+fn get_current_participant_info(
+    coordinator: &Coordinator,
+    participant: &Participant,
+) -> anyhow::Result<ParticipantInfo> {
+    let result = match participant {
+        Participant::Contributor(_) => coordinator.current_contributor_info(participant),
+        Participant::Verifier(_) => coordinator.current_verifier_info(participant),
+    };
+
+    result
+        .map_err(anyhow::Error::from)
+        .with_context(|| format!("error obtaining current info for participant {}", participant))?
+        .ok_or_else(|| anyhow::anyhow!("no current info for participant {}", participant))
+}
+
 // Implementation is in a seperate function so VSCode gives proper
 // syntax highlighting/metadata.
 fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptestParams) -> anyhow::Result<()> {
@@ -191,7 +207,7 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
 
         let contributors: HashMap<Participant, ContributorProptestInfo> = rounds_params
             .contributors
-            .get(round)
+            .get(round - 1)
             .expect("contributors should be available for every round")
             .iter()
             .enumerate()
@@ -220,7 +236,7 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
 
         let verifiers: HashMap<Participant, VerifierProptestInfo> = rounds_params
             .verifiers
-            .get(round)
+            .get(round - 1)
             .expect("verifiers should be available for every round")
             .iter()
             .enumerate()
@@ -273,16 +289,7 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
             // Calculate how many contributions this contributor needs
             // to make this round.
             let (start_n_assigned_tasks, start_n_completed_tasks) = {
-                let contributor_info = coordinator
-                    .current_contributor_info(contributor)
-                    .map_err(anyhow::Error::from)
-                    .with_context(|| {
-                        format!(
-                            "error obtaining current contributor info for contributor {}",
-                            contributor
-                        )
-                    })?
-                    .unwrap_or_else(|| panic!("no current contributor info for contributor {}", contributor));
+                let contributor_info = get_current_participant_info(&coordinator, &contributor)?;
                 (
                     contributor_info.assigned_tasks().len(),
                     contributor_info.completed_tasks().len(),
@@ -297,26 +304,19 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
                     .with_context(|| format!("Error while contributor {} was making contribution", contributor))?;
             }
 
-            assert!(coordinator.is_finished_contributor(contributor));
-
             // Check that the contributor has finished all their contributions for this round.
             {
-                let contributor_info = coordinator
-                    .current_contributor_info(contributor)
-                    .map_err(anyhow::Error::from)
-                    .with_context(|| {
-                        format!(
-                            "Error obtaining current contributor info for contributor {}",
-                            contributor
-                        )
-                    })?
-                    .unwrap_or_else(|| panic!("No current contributor info for contributor {}", contributor));
+                let contributor_info = get_current_participant_info(&coordinator, &contributor)?;
+
                 assert!(contributor_info.assigned_tasks().is_empty());
                 assert_eq!(
                     start_n_completed_tasks + start_n_assigned_tasks,
                     contributor_info.completed_tasks().len()
                 );
             }
+
+            assert!(coordinator.is_current_contributor(contributor));
+            assert!(coordinator.is_finished_contributor(contributor));
         }
 
         for (verifier, proptest_info) in &verifiers {
@@ -325,11 +325,7 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
 
             // Calculate how many verifications need to occur this round.
             let (start_n_assigned_tasks, start_n_completed_tasks) = {
-                let verifier_info = coordinator
-                    .current_verifier_info(verifier)
-                    .map_err(anyhow::Error::from)
-                    .with_context(|| format!("Error obtaining current verifier info for verifier {}", verifier))?
-                    .unwrap_or_else(|| panic!("No current verifier info for verifier {}", verifier));
+                let verifier_info = get_current_participant_info(&coordinator, &verifier)?;
                 (
                     verifier_info.assigned_tasks().len(),
                     verifier_info.completed_tasks().len(),
@@ -344,17 +340,18 @@ fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptes
                     .with_context(|| format!("Error while verifier {} was performing verification", verifier))?;
             }
 
-            assert!(coordinator.is_finished_verifier(verifier));
-
             // Check that the verifier has finished all their verification tasks for this round.
             {
-                let verifier_info = coordinator.current_verifier_info(verifier)?.unwrap();
+                let verifier_info = get_current_participant_info(&coordinator, &verifier)?;
                 assert!(verifier_info.assigned_tasks().is_empty());
                 assert_eq!(
                     start_n_completed_tasks + start_n_assigned_tasks,
                     verifier_info.completed_tasks().len()
                 );
             }
+
+            assert!(coordinator.is_current_verifier(verifier));
+            assert!(coordinator.is_finished_verifier(verifier));
         }
     }
 
