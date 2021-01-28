@@ -340,10 +340,12 @@ impl Coordinator {
     /// Runs a set of operations to update the coordinator state to
     /// reflect newly finished, dropped, or banned participants.
     ///
-    /// Progresses to the next round only if there are new
-    /// contributors, and also new verifiers?.
-    ///
-    /// TODO: get feedback from @howardwu about this comment.
+    /// Every round the queue of participants is cleared, and in order
+    /// to progress onto the next round, new contributors and
+    /// verifiers need to be added to the queue again (via
+    /// [Coordinator::add_to_queue()]). The same participants are
+    /// allowed to participate in multiple rounds, but this is not
+    /// considered beneficial for the process.
     ///
     #[inline]
     pub fn update(&self) -> Result<(), CoordinatorError> {
@@ -2304,7 +2306,14 @@ impl Coordinator {
         let (_chunk_id, _previous_response, _challenge, response) = self.try_lock(contributor)?;
         let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
 
-        debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
+        println!(
+            "Computing contributions for round {} chunk {} contribution {}, contributor {}",
+            round_height, chunk_id, contribution_id, contributor
+        );
+        debug!(
+            "Computing contributions for round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
+        );
         self.run_computation(
             round_height,
             chunk_id,
@@ -2316,22 +2325,30 @@ impl Coordinator {
         .map_err(anyhow::Error::from)
         .with_context(|| {
             format!(
-                "Error while computing contributions for round {} chunk {}",
-                round_height, chunk_id
+                "Error while computing contributor {} contributions for round {} chunk {} contribution {}",
+                contributor, round_height, chunk_id, contribution_id
             )
         })?;
+
+        println!(
+            "Trying to add contributions for round {} chunk {} contribution {}, contributor {}",
+            round_height, chunk_id, contribution_id, contributor
+        );
 
         let _response = self
             .try_contribute(contributor, chunk_id)
             .map_err(anyhow::Error::from)
             .with_context(|| {
                 format!(
-                    "Error while trying to add contributor {} contribution for round {} chunk {}",
-                    contributor, round_height, chunk_id
+                    "Error while trying to add contributor {} contribution for round {} chunk {} contribution {}",
+                    contributor, round_height, chunk_id, contribution_id
                 )
             })?;
 
-        debug!("Computed contributions for round {} chunk {}", round_height, chunk_id);
+        debug!(
+            "Computed contributions for round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
+        );
         Ok(())
     }
 

@@ -177,6 +177,9 @@ fn get_current_participant_info(
 // Implementation is in a seperate function so VSCode gives proper
 // syntax highlighting/metadata.
 fn coordinator_proptest_impl(env_params: Parameters, rounds_params: RoundProptestParams) -> anyhow::Result<()> {
+    dbg!(&env_params);
+    dbg!(&rounds_params);
+
     // Create a new test environment.
     let environment = initialize_test_environment_with_debug(&Testing::from(env_params).into());
 
