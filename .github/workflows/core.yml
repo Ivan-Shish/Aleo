@@ -73,6 +73,7 @@ jobs:
           command: test
           args: --release --all --no-fail-fast
 
+# Code coverage action currently disabled due to #180
   # codecov:
   #   name: Code Coverage
   #   runs-on: ubuntu-latest
