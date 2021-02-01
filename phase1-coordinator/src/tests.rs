@@ -42,6 +42,27 @@ fn make_tasks(items: &[(u64, u64)]) -> LinkedList<Task> {
     LinkedList::from_iter(iterator)
 }
 
+struct ContributorTestDetails {
+    participant: Participant,
+    signing_key: SigningKey,
+    seed: Seed,
+}
+
+impl ContributorTestDetails {
+    fn contribute_to(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+        coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
+    }
+}
+
+fn create_contributor_test_details(id: &str) -> ContributorTestDetails {
+    let (participant, signing_key, seed) = create_contributor(id);
+    ContributorTestDetails {
+        participant,
+        signing_key,
+        seed,
+    }
+}
+
 fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
     let parameters = Parameters::Custom((
         ContributionMode::Chunked,
@@ -140,7 +161,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
        and tasks need to be recomputed - UNTESTED
         The tasks declared in the state file should be updated correctly when a participant is dropped.
 
-    10. The coordinator contributor should replace all dropped participants and complete the round correctly. - UNTESTED
+    10. The coordinator contributor should replace all dropped participants and complete the round correctly. - `drop_all_contributors_and_complete_round`
 
     11. Drop one contributor and check that completed tasks are reassigned properly, - `drop_contributor_and_reassign_tasks_test`
         as well as a replacement contributor has the right amount of tasks assigned
@@ -1380,6 +1401,98 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+#[serial]
+fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    // Create replacement contributors
+    let replacement_contributor_1 = create_contributor_test_details("replacement-1");
+    let replacement_contributor_2 = create_contributor_test_details("replacement-2");
+
+    let testing = Testing::from(parameters).coordinator_contributors(&[
+        replacement_contributor_1.participant.clone(),
+        replacement_contributor_2.participant.clone(),
+    ]);
+    let environment = initialize_test_environment_with_debug(&testing.into());
+
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Add a contributor and verifier to the queue.
+    let test_contributor_1 = create_contributor_test_details("1");
+    let test_contributor_2 = create_contributor_test_details("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+    coordinator.add_to_queue(test_contributor_1.participant.clone(), 10)?;
+    coordinator.add_to_queue(test_contributor_2.participant.clone(), 9)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+    assert_eq!(1, coordinator.current_round_height()?);
+
+    let locators = coordinator.drop_participant(&test_contributor_1.participant)?;
+    assert_eq!(0, locators.len());
+    let locators = coordinator.drop_participant(&test_contributor_2.participant)?;
+    assert_eq!(0, locators.len());
+
+    assert_eq!(false, coordinator.is_queue_contributor(&test_contributor_1.participant));
+    assert_eq!(false, coordinator.is_queue_contributor(&test_contributor_2.participant));
+    assert_eq!(
+        false,
+        coordinator.is_current_contributor(&test_contributor_1.participant),
+    );
+    assert_eq!(
+        false,
+        coordinator.is_current_contributor(&test_contributor_2.participant),
+    );
+    assert_eq!(
+        true,
+        coordinator.is_current_contributor(&replacement_contributor_1.participant),
+    );
+    assert_eq!(
+        true,
+        coordinator.is_current_contributor(&replacement_contributor_2.participant),
+    );
+
+    // Contribute to the round 1
+    for _ in 0..number_of_chunks {
+        replacement_contributor_1.contribute_to(&coordinator)?;
+        replacement_contributor_2.contribute_to(&coordinator)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let (verifier, _verifier_signing_key) = create_verifier("2");
+    coordinator.add_to_queue(test_contributor_3.participant.clone(), 10)?;
+    coordinator.add_to_queue(test_contributor_4.participant.clone(), 10)?;
+    coordinator.add_to_queue(verifier, 10)?;
+
+    // Update the ceremony to round 2.
+    coordinator.update()?;
+    assert_eq!(2, coordinator.current_round_height()?, "Should proceed to the round 2");
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+
+    Ok(())
+}
+
 fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
     let parameters = Parameters::Custom((
         ContributionMode::Chunked,
@@ -1410,7 +1523,7 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
     // Update the ceremony to round 1.
     coordinator.update()?;
 
-    for _ in 0..(number_of_chunks) {
+    for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
         coordinator.verify(&verifier, &verifier_signing_key)?;
