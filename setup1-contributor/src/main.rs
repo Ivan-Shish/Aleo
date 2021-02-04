@@ -5,6 +5,7 @@ use clap::{App, AppSettings};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Setup localization of the `age` dependency.
     let age_localizer = age::localizer();
     let language_requester = DesktopLanguageRequester::new();
     age_localizer.select(&language_requester.requested_languages())?;
