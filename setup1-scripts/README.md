@@ -24,7 +24,7 @@ cp aleo-setup/setup1-scripts/*.sh .
 ## Log files
 
 As the setup will run several processes in background,
-the stdin & stdout of these processes will be written to log files
+the stdout & stderr of these processes will be written to the log files
 in the working directory. Use `tail -f file_name.txt` in order to read
 the logs continuously.
 

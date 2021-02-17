@@ -1,8 +1,8 @@
 #!/bin/bash
 
-./run-coordinator.sh &
-./run-verifier.sh &
-./run-contributor.sh &
+./run_coordinator.sh &
+./run_verifier.sh &
+./run_contributor.sh &
 
 wait
 echo "Setup completed"
