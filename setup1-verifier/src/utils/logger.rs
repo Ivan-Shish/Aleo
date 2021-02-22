@@ -1,4 +1,4 @@
-use tracing_subscriber::{FmtSubscriber, EnvFilter};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 /// Initialize logger from RUST_LOG environment variable
 pub fn init_logger() {
