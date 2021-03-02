@@ -24,7 +24,6 @@ zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", pac
 anyhow = { version = "1.0.32" }
 chrono = { version = "0.4", features = ["serde"] }
 ctrlc = { version = "3.1.7" }
-failure = { version = "0.1.7" }
 futures-util = { version = "0.3.5" }
 hex = { version = "0.4.2" }
 rand = { version = "0.7.3" }
