@@ -29,7 +29,7 @@ rand = { version = "0.7.3" }
 rayon = { version = "1.4.1" }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "0.6" }
-serde-diff = { version = "0.3" }
+serde-diff = { version = "0.4" }
 serde_json = { version = "1.0" }
 tokio = { version = "0.3", features = ["full"] }
 tracing = { version = "0.1" }
