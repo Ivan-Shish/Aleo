@@ -37,9 +37,7 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
             reader.read_to_end(&mut output)?;
             Ok(output)
         }
-        Decryptor::Recipients(_) => {
-            Err(anyhow!("Wrong age Decryptor, should be Passphrase, but got Recipients"))
-        }
+        Decryptor::Recipients(_) => Err(anyhow!("Wrong age Decryptor, should be Passphrase, but got Recipients")),
     }
 }
 
@@ -49,8 +47,7 @@ fn read_private_key(keys_path: &str) -> Result<PrivateKey> {
     let passphrase = age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
         .map_err(|e| anyhow!("Error reading passphrase: {}", e))?;
     let decrypted = SecretVec::new(decrypt(&passphrase, &keys.encrypted_private_key)?);
-    PrivateKey::from_str(std::str::from_utf8(decrypted.expose_secret())?)
-        .map_err(Into::into)
+    PrivateKey::from_str(std::str::from_utf8(decrypted.expose_secret())?).map_err(Into::into)
 }
 
 fn main() {
