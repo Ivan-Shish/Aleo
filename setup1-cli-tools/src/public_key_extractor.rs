@@ -25,7 +25,7 @@ pub struct AleoSetupKeys {
     pub address: String,
 }
 
-fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
+fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<SecretVec<u8>> {
     let decoded = SecretVec::new(hex::decode(encrypted)?);
     let decryptor = Decryptor::new(decoded.expose_secret().as_slice())?;
     let default_language: LanguageIdentifier = "en-US".parse()?;
@@ -35,7 +35,7 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
             let mut output = vec![];
             let mut reader = decryptor.decrypt(passphrase, None)?;
             reader.read_to_end(&mut output)?;
-            Ok(output)
+            Ok(SecretVec::new(output))
         }
         Decryptor::Recipients(_) => Err(anyhow!("Wrong age Decryptor, should be Passphrase, but got Recipients")),
     }
@@ -46,7 +46,7 @@ fn read_private_key(keys_path: &str) -> Result<PrivateKey> {
     let keys: AleoSetupKeys = serde_json::from_slice(&file_contents)?;
     let passphrase = age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
         .map_err(|e| anyhow!("Error reading passphrase: {}", e))?;
-    let decrypted = SecretVec::new(decrypt(&passphrase, &keys.encrypted_private_key)?);
+    let decrypted = decrypt(&passphrase, &keys.encrypted_private_key)?;
     PrivateKey::from_str(std::str::from_utf8(decrypted.expose_secret())?).map_err(Into::into)
 }
 
