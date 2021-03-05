@@ -1,6 +1,6 @@
 # setup1-verifier
 
-## Building
+## Build Guide
 
 The following command will build the binaries
 ```bash
