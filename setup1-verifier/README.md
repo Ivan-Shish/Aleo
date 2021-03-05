@@ -39,7 +39,7 @@ cat view_key.txt | xargs ./setup1-verifier MODE COORDINATOR_API_URL
 ## Log levels
 
 The `setup1-verifier` binary is set up to read the `RUST_LOG` environment
-variable to control the logs. Here are some examples
+variable to control the logs. Here are some examples:
 ```bash
 # INFO, WARN and ERROR messages will be logged
 RUST_LOG=info ./setup1-verifier MODE COORDINATOR_API_URL VIEW_KEY
