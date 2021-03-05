@@ -23,7 +23,7 @@ Next, generate and print out a view key:
 ./view-key > view_key.txt
 ```
 
-Then run the verifier
+Lastly, run the verifier:
 ```bash
 ./setup1-verifier MODE COORDINATOR_API_URL VIEW_KEY
 ```
