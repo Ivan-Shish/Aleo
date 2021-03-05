@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     let opts = Options::from_args();
 
     match opts.subcommand {
-        Command::Generate(generate_opts) => generate_keys(generate_opts.keys_path),
+        Command::Generate(generate_opts) => generate_keys(generate_opts),
         Command::Contribute(contribute_opts) => {
             start_contributor(contribute_opts).await;
         }

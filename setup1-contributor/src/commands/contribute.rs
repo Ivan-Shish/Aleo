@@ -16,6 +16,7 @@ use crate::{
 #[cfg(feature = "azure")]
 use crate::utils::upload_file_to_azure_async;
 
+use age::DecryptError;
 use phase1::helpers::converters::CurveKind;
 use phase1_cli::contribute;
 use phase1_coordinator::{
@@ -26,7 +27,7 @@ use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
@@ -40,7 +41,7 @@ use std::{
     fs::File,
     io::{Read, Write},
     ops::Deref,
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -822,7 +823,15 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
     let decryptor = age::Decryptor::new(decoded.expose_secret().as_slice())?;
     let mut output = vec![];
     if let age::Decryptor::Passphrase(decryptor) = decryptor {
-        let mut reader = decryptor.decrypt(passphrase, None)?;
+        let mut reader = decryptor
+            .decrypt(passphrase, None)
+            .map_err(|decrypt_error: DecryptError| match decrypt_error {
+                DecryptError::ExcessiveWork { .. } => anyhow::Error::from(decrypt_error)
+                    .context("Perhaps you have forgotten to compile in release mode, or your hardware is too slow?"),
+                _ => anyhow::Error::from(decrypt_error),
+            })
+            .context("Unable to create decrypt reader")?;
+
         reader.read_to_end(&mut output)?;
     } else {
         return Err(ContributeError::UnsupportedDecryptorError.into());
@@ -831,12 +840,20 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
     Ok(output)
 }
 
-fn read_keys<P: AsRef<Path>>(keys_path: P) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
+/// Decrypts and reads the private key from the specified `keys_path`,
+/// decrypting using the specified `passphrase`. If `passphrase` is
+/// `None`, will request passphrase via pinentry or tty.
+fn read_keys<P: AsRef<Path>>(keys_path: P, passphrase: Option<SecretString>) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
     let mut contents = String::new();
     std::fs::File::open(keys_path)?.read_to_string(&mut contents)?;
     let keys: AleoSetupKeys = serde_json::from_str(&contents)?;
-    let passphrase = age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
-        .map_err(|_| ContributeError::CouldNotReadPassphraseError)?;
+    let passphrase = if let Some(passphrase) = passphrase {
+        passphrase
+    } else {
+        age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
+            .map_err(|_| ContributeError::CouldNotReadPassphraseError)?
+    };
+
     let aleo_seed = SecretVec::new(decrypt(&passphrase, &keys.encrypted_seed)?);
     let aleo_private_key = SecretVec::new(decrypt(&passphrase, &keys.encrypted_private_key)?);
 
@@ -850,7 +867,8 @@ pub async fn start_contributor(opts: ContributeOptions) {
     tracing_subscriber::fmt().with_writer(non_blocking).init();
 
     // Read the stored contribution seed and Aleo private key.
-    let (seed, private_key) = read_keys(&opts.keys_path).expect("Unable to load Aleo setup keys");
+    let (seed, private_key) =
+        read_keys(&opts.keys_path, opts.passphrase.clone()).expect("Unable to load Aleo setup keys");
 
     *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
 
