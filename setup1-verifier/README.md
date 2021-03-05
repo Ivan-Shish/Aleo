@@ -9,7 +9,7 @@ cargo build --release
 
 ## Usage
 
-To run verifier first you'll need to copy the binaries to the working directory
+To run the verifier, start by copying the binaries to your working directory:
 ```bash
 cp ../target/release/setup1-verifier ../target/release/view-key /path/to/working/directory
 ```
