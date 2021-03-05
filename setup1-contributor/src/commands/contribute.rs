@@ -1,4 +1,5 @@
 use crate::{
+    cli::commands::contribute::ContributeOptions,
     errors::ContributeError,
     objects::{AleoSetupKeys, LockResponse},
     tasks::Tasks,
@@ -8,7 +9,6 @@ use crate::{
         read_from_file,
         remove_file_if_exists,
         sign_contribution_state,
-        upload_mode_from_str,
         UploadMode,
     },
 };
@@ -40,6 +40,7 @@ use std::{
     fs::File,
     io::{Read, Write},
     ops::Deref,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -67,14 +68,6 @@ lazy_static! {
     static ref SEED: RwLock<Option<Arc<SecretVec<u8>>>> = RwLock::new(None);
     static ref TASKS: RwLock<Tasks> = RwLock::new(Tasks::default());
 }
-
-#[derive(Debug, Clone)]
-pub struct ContributeOpts {
-    pub coordinator_url: String,
-    pub keys_path: String,
-    pub upload_mode: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PipelineLane {
     Download,
@@ -110,18 +103,17 @@ pub struct Contribute {
 }
 
 impl Contribute {
-    pub fn new(opts: &ContributeOpts, private_key: &[u8], environment: Environment) -> Result<Self> {
+    pub fn new(opts: &ContributeOptions, private_key: &[u8]) -> Result<Self> {
         let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
-        let upload_mode = upload_mode_from_str(&opts.upload_mode)?;
         let contribute = Self {
-            server_url: Url::parse(&opts.coordinator_url)?,
+            server_url: opts.coordinator_api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
-            upload_mode,
-            environment,
+            upload_mode: opts.upload_mode.clone(),
+            environment: opts.environment.clone(),
 
             challenge_filename: CHALLENGE_FILENAME.to_string(),
             challenge_hash_filename: CHALLENGE_HASH_FILENAME.to_string(),
@@ -839,9 +831,9 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
     Ok(output)
 }
 
-fn read_keys(keys_path: &str) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
+fn read_keys<P: AsRef<Path>>(keys_path: P) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
     let mut contents = String::new();
-    std::fs::File::open(&keys_path)?.read_to_string(&mut contents)?;
+    std::fs::File::open(keys_path)?.read_to_string(&mut contents)?;
     let keys: AleoSetupKeys = serde_json::from_str(&contents)?;
     let passphrase = age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
         .map_err(|_| ContributeError::CouldNotReadPassphraseError)?;
@@ -851,34 +843,21 @@ fn read_keys(keys_path: &str) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
     Ok((aleo_seed, aleo_private_key))
 }
 
-pub async fn start_contributor(
-    environment: Environment,
-    coordinator_api_url: String,
-    keys_path: String,
-    upload_mode: String,
-) {
+pub async fn start_contributor(opts: ContributeOptions) {
     // Initialize tracing logger. Stored to `aleo-setup.log`.
     let appender = tracing_appender::rolling::never(".", "aleo-setup.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
     tracing_subscriber::fmt().with_writer(non_blocking).init();
-
-    // Construct contribution options.
-    let opts = ContributeOpts {
-        coordinator_url: coordinator_api_url,
-        keys_path,
-        upload_mode,
-    };
 
     // Read the stored contribution seed and Aleo private key.
     let (seed, private_key) = read_keys(&opts.keys_path).expect("Unable to load Aleo setup keys");
 
     *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
 
-    let (_, _, curve_kind, _, _, _) = environment.parameters();
+    let (_, _, curve_kind, _, _, _) = opts.environment.parameters();
 
     // Initialize the contributor.
-    let contribute =
-        Contribute::new(&opts, private_key.expose_secret(), environment).expect("Unable to initialize a contributor");
+    let contribute = Contribute::new(&opts, private_key.expose_secret()).expect("Unable to initialize a contributor");
 
     // Run the contributor.
     let contribution = match curve_kind {

@@ -1,7 +1,10 @@
-use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
-use setup1_contributor::{cli::*, commands::*};
+use setup1_contributor::{
+    cli::{Command, Options},
+    commands::{generate_keys, start_contributor},
+};
 
-use clap::{App, AppSettings};
+use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
+use structopt::StructOpt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -10,33 +13,13 @@ async fn main() -> anyhow::Result<()> {
     let language_requester = DesktopLanguageRequester::new();
     age_localizer.select(&language_requester.requested_languages())?;
 
-    let app = App::new("Aleo Setup Contributor")
-        .version("0.3.0")
-        .author("The Aleo Team <hello@aleo.org>")
-        // .about("")
-        .settings(&[
-            AppSettings::ColoredHelp,
-            AppSettings::DisableHelpSubcommand,
-            AppSettings::DisableVersion,
-            AppSettings::SubcommandRequiredElseHelp,
-        ])
-        .subcommands(vec![
-            GenerateCommand::new().display_order(0),
-            ContributeCommand::new().display_order(1),
-        ])
-        .set_term_width(0)
-        .get_matches();
+    let opts = Options::from_args();
 
-    match app.subcommand() {
-        ("generate", Some(arguments)) => {
-            let file_path = GenerateCommand::process(arguments)?;
-            generate_keys(&file_path);
+    match opts.subcommand {
+        Command::Generate(generate_opts) => generate_keys(generate_opts.keys_path),
+        Command::Contribute(contribute_opts) => {
+            start_contributor(contribute_opts).await;
         }
-        ("contribute", Some(arguments)) => {
-            let (environment, coordinator_api_url, keys_path, upload_mode) = ContributeCommand::process(arguments)?;
-            start_contributor(environment, coordinator_api_url, keys_path, upload_mode).await;
-        }
-        _ => {}
     }
 
     Ok(())
