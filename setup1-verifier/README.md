@@ -2,7 +2,7 @@
 
 ## Build Guide
 
-The following command will build the binaries
+To build the verifier and its accompanying binaries, run:
 ```bash
 cargo build --release
 ```
