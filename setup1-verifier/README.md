@@ -14,7 +14,7 @@ To run the verifier, start by copying the binaries to your working directory:
 cp ../target/release/setup1-verifier ../target/release/view-key /path/to/working/directory
 ```
 
-Then generate the view key
+Next, generate and print out a view key:
 ```bash
 # To print the view key to stdout
 ./view-key
