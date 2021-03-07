@@ -20,8 +20,7 @@ use std::path::PathBuf;
 pub struct ContributeOptions {
     /// Specify how the responses are uploaded.
     #[structopt(
-        name("upload_mode"),
-        long = "upload_mode",
+        long,
         possible_values = &UploadMode::variants(),
         default_value = "auto",
     )]

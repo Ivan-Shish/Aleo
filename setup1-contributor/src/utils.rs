@@ -217,7 +217,12 @@ pub enum UploadMode {
 
 impl UploadMode {
     pub fn variants() -> &'static [&'static str] {
-        &["auto", "direct"]
+        &[
+            "auto",
+            #[cfg(feature = "azure")]
+            "azure",
+            "direct",
+        ]
     }
 }
 
