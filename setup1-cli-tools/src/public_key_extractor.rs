@@ -51,9 +51,9 @@ fn read_private_key(keys_path: &str) -> Result<PrivateKey> {
 fn main() {
     let options = Options::from_args();
 
-    let default_language: LanguageIdentifier = "en-US".parse()
-        .expect("Should parse a language indentifier");
-    age::localizer().select(&[default_language])
+    let default_language: LanguageIdentifier = "en-US".parse().expect("Should parse a language indentifier");
+    age::localizer()
+        .select(&[default_language])
         .expect("Should select the default language");
 
     let private_key = read_private_key(&options.path).expect("Should read a private key");
