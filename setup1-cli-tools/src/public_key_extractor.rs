@@ -28,8 +28,6 @@ pub struct AleoSetupKeys {
 fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<SecretVec<u8>> {
     let decoded = SecretVec::new(hex::decode(encrypted)?);
     let decryptor = Decryptor::new(decoded.expose_secret().as_slice())?;
-    let default_language: LanguageIdentifier = "en-US".parse()?;
-    age::localizer().select(&[default_language])?;
     match decryptor {
         Decryptor::Passphrase(decryptor) => {
             let mut output = vec![];
@@ -52,6 +50,12 @@ fn read_private_key(keys_path: &str) -> Result<PrivateKey> {
 
 fn main() {
     let options = Options::from_args();
+
+    let default_language: LanguageIdentifier = "en-US".parse()
+        .expect("Should parse a language indentifier");
+    age::localizer().select(&[default_language])
+        .expect("Should select the default language");
+
     let private_key = read_private_key(&options.path).expect("Should read a private key");
 
     let address = Address::from(&private_key)
