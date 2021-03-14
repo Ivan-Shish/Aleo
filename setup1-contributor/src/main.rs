@@ -1,9 +1,15 @@
+use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
 use setup1_contributor::{cli::*, commands::*};
 
 use clap::{App, AppSettings};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Setup localization of the `age` dependency.
+    let age_localizer = age::localizer();
+    let language_requester = DesktopLanguageRequester::new();
+    age_localizer.select(&language_requester.requested_languages())?;
+
     let app = App::new("Aleo Setup Contributor")
         .version("0.3.0")
         .author("The Aleo Team <hello@aleo.org>")
