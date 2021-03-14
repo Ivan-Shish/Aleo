@@ -1,4 +1,4 @@
-use crate::objects::AleoSetupKeys;
+use crate::{cli::commands::generate::GenerateOptions, objects::AleoSetupKeys};
 
 use snarkos_toolkit::account::{Address, PrivateKey};
 
@@ -26,21 +26,28 @@ fn encrypt(encryptor: Encryptor, secret: &[u8]) -> Result<String> {
     Ok(encrypted_secret)
 }
 
-pub fn generate_keys(file_path: &str) {
-    let mut file = std::fs::File::create(&file_path).expect("Should have created keys file");
-    let (aleo_encryptor, private_key_encryptor) = match cli_common::read_or_generate_passphrase() {
-        Ok(Passphrase::Typed(passphrase)) => (
+pub fn generate_keys(opts: GenerateOptions) {
+    let mut file = std::fs::File::create(&opts.keys_path).expect("Should have created keys file");
+    let (aleo_encryptor, private_key_encryptor) = if let Some(passphrase) = &opts.passphrase {
+        (
             Encryptor::with_user_passphrase(passphrase.clone()),
-            Encryptor::with_user_passphrase(passphrase),
-        ),
-        Ok(Passphrase::Generated(new_passphrase)) => {
-            println!("\n\nGenerated new passphrase: {}", new_passphrase.expose_secret());
-            (
-                Encryptor::with_user_passphrase(new_passphrase.clone()),
-                Encryptor::with_user_passphrase(new_passphrase),
-            )
+            Encryptor::with_user_passphrase(passphrase.clone()),
+        )
+    } else {
+        match cli_common::read_or_generate_passphrase() {
+            Ok(Passphrase::Typed(passphrase)) => (
+                Encryptor::with_user_passphrase(passphrase.clone()),
+                Encryptor::with_user_passphrase(passphrase),
+            ),
+            Ok(Passphrase::Generated(new_passphrase)) => {
+                println!("\n\nGenerated new passphrase: {}", new_passphrase.expose_secret());
+                (
+                    Encryptor::with_user_passphrase(new_passphrase.clone()),
+                    Encryptor::with_user_passphrase(new_passphrase),
+                )
+            }
+            Err(_) => panic!("Should have read or generated passphrase"),
         }
-        Err(_) => panic!("Should have read or generated passphrase"),
     };
 
     println!("\nDO NOT FORGET YOUR PASSPHRASE!\n\nYou will need your passphrase to access your keys.\n\n");
@@ -65,5 +72,5 @@ pub fn generate_keys(file_path: &str) {
     };
     file.write_all(&serde_json::to_vec(&aleo_setup_keys).expect("Should have converted setup keys to vector"))
         .expect("Should have written setup keys successfully to file");
-    println!("Done! Your keys are ready in {}.", &file_path);
+    println!("Done! Your keys are ready in {:?}.", &opts.keys_path);
 }
