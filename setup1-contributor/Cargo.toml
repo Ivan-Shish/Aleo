@@ -30,6 +30,7 @@ clap = { version = "2.33.3" }
 chrono = { version = "0.4", features = [ "serde" ] }
 futures = { version = "0.3" }
 hex = { version = "0.4" }
+i18n-embed = { version = "0.9", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
 lazy_static = { version = "1.4.0" }
 panic-control = {version = "0.1.4" }

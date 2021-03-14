@@ -56,10 +56,7 @@ async fn main() {
     let view_key = ViewKey::from_str(&args[3]).expect("invalid view key");
     let _address = Address::from_view_key(&view_key).expect("address not derived correctly");
 
-    match args.len() == 5 {
-        true => init_logger(&args[4]),
-        false => init_logger("TRACE"),
-    }
+    init_logger();
 
     // Initialize the verifier
     info!("Initializing verifier...");
