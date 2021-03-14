@@ -18,12 +18,12 @@ type Power = usize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    contribution_mode: ContributionMode,
-    proving_system: ProvingSystem,
-    curve: CurveKind,
-    power: Power,
-    batch_size: BatchSize,
-    chunk_size: ChunkSize,
+    pub contribution_mode: ContributionMode,
+    pub proving_system: ProvingSystem,
+    pub curve: CurveKind,
+    pub power: Power,
+    pub batch_size: BatchSize,
+    pub chunk_size: ChunkSize,
 }
 
 impl Settings {

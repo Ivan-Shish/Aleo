@@ -4,7 +4,7 @@ use crate::blobstore::upload_sas;
 use crate::errors::UtilsError;
 use phase1::{ContributionMode, Phase1Parameters, ProvingSystem};
 use phase1_coordinator::{
-    environment::Environment,
+    environment::{Development, Environment, Parameters, Production},
     objects::{ContributionFileSignature, ContributionState},
 };
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
@@ -171,7 +171,48 @@ pub fn sign_contribution_state<R: Rng + CryptoRng>(
     Ok(contribution_file_signature)
 }
 
-#[derive(Clone, Debug)]
+#[inline]
+fn development_environment() -> Environment {
+    let environment = Development::from(Parameters::TestCustom {
+        number_of_chunks: 64,
+        power: 16,
+        batch_size: 512,
+    });
+    environment.into()
+}
+
+#[inline]
+fn inner_environment() -> Environment {
+    Production::from(Parameters::AleoInner).into()
+}
+
+#[inline]
+fn outer_environment() -> Environment {
+    Production::from(Parameters::AleoOuter).into()
+}
+
+#[inline]
+fn universal_environment() -> Environment {
+    Production::from(Parameters::AleoUniversal).into()
+}
+
+/// Available environment command line argument variants.
+pub fn environment_variants() -> &'static [&'static str] {
+    &["development", "inner", "outer", "universal"]
+}
+
+/// Parse [Environment] from command line argument string.
+pub fn parse_environment(s: &str) -> Result<Environment, String> {
+    match s {
+        "development" => Ok(development_environment()),
+        "inner" => Ok(inner_environment()),
+        "outer" => Ok(outer_environment()),
+        "universal" => Ok(universal_environment()),
+        unexpected => Err(format!("Could not parse {:?} as EnvirnomentArg", unexpected)),
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum UploadMode {
     Auto,
     #[cfg(feature = "azure")]
@@ -179,12 +220,27 @@ pub enum UploadMode {
     Direct,
 }
 
-pub fn upload_mode_from_str(upload_mode: &str) -> Result<UploadMode> {
-    match upload_mode {
-        "auto" => Ok(UploadMode::Auto),
-        #[cfg(feature = "azure")]
-        "azure" => Ok(UploadMode::Azure),
-        "direct" => Ok(UploadMode::Direct),
-        _ => Err(UtilsError::UnknownUploadModeError(upload_mode.to_string()).into()),
+impl UploadMode {
+    pub fn variants() -> &'static [&'static str] {
+        &[
+            "auto",
+            #[cfg(feature = "azure")]
+            "azure",
+            "direct",
+        ]
+    }
+}
+
+impl FromStr for UploadMode {
+    type Err = UtilsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            #[cfg(feature = "azure")]
+            "azure" => Ok(Self::Azure),
+            "direct" => Ok(Self::Direct),
+            unexpected => Err(UtilsError::UnknownUploadModeError(unexpected.to_string())),
+        }
     }
 }

@@ -1060,14 +1060,14 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        1, /* power */
-        2, /* batch_size */
-        2, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
     let (replacement_contributor, ..) = create_contributor("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.clone()]);
     let environment = initialize_test_environment_with_debug(&testing.into());
@@ -1404,14 +1404,14 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        6,  /* power */
-        16, /* batch_size */
-        16, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 6,
+        batch_size: 16,
+        chunk_size: 16,
+    });
 
     // Create replacement contributors
     let replacement_contributor_1 = create_contributor_test_details("replacement-1");
