@@ -5,10 +5,13 @@ Some handy utilities for testing purposes
 ## Build Guide
 
 ```bash
+# Requires specific nightly to work
+rustup default nightly-2020-08-15
+# After choosing the nightly you can build with:
 cargo build --release
 ```
 
-Works on stable and nightly! (tested on 1.50 stable and 1.52 nightly)
+~~Works on stable and nightly! (tested on 1.50 stable and 1.52 nightly)~~
 
 ## Usage
 
