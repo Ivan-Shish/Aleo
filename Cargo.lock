@@ -2346,7 +2346,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.60",
+ "syn 1.0.45",
 ]
 
 [[package]]
@@ -3466,6 +3466,7 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "snarkos-toolkit",
+ "structopt",
  "thiserror",
  "tokio 0.2.24",
  "tracing",
@@ -4115,6 +4116,7 @@ dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
  "syn 1.0.60",
+ "syn 1.0.45",
 ]
 
 [[package]]
