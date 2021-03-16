@@ -43,6 +43,7 @@ pub struct ContributionResponse {
 #[wasm_bindgen]
 pub fn init_hooks() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
 }
 
 #[wasm_bindgen]
@@ -58,6 +59,7 @@ impl Phase1WASM {
         power: usize,
         challenge: &[u8],
     ) -> Result<JsValue, JsValue> {
+        log::info!("contribute_full");
         let rng = get_rng(&user_system_randomness());
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
         let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
@@ -86,6 +88,7 @@ impl Phase1WASM {
         seed: &[u8],
         challenge: &[u8],
     ) -> Result<JsValue, JsValue> {
+        log::info!("contribute_chunked");
         let rng = derive_rng_from_seed(seed);
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
         let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
