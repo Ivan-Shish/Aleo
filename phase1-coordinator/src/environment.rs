@@ -743,7 +743,7 @@ impl std::default::Default for Production {
                 check_input_for_correctness: CheckForCorrectness::No,
 
                 minimum_contributors_per_round: 1,
-                maximum_contributors_per_round: 2,
+                maximum_contributors_per_round: 5,
                 minimum_verifiers_per_round: 1,
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
