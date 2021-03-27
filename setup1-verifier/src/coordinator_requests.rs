@@ -101,16 +101,18 @@ impl Verifier {
     }
 
     ///
-    /// Attempts to run verification in the current round for a given `chunk_id`
+    /// Attempts to run verification  on the coordinator in the
+    /// current round for a given `chunk_id`.
     ///
-    /// This assumes that a valid challenge file has already been uploaded to the
-    /// coordinator at the given `verified_locator`.
+    /// This assumes that a valid challenge file has already been
+    /// uploaded to the coordinator at the given `verified_locator`.
     ///
-    /// On success, the coordinator returns an { "status": "ok" } response.
+    /// On success, the coordinator returns an { "status": "ok" }
+    /// response.
     ///
     /// On failure, this function returns a `VerifierError`.
     ///
-    pub(crate) async fn verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
+    pub(crate) async fn coordinator_verify_contribution(&self, chunk_id: u64) -> Result<String, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
         let method = "post";
         let path = format!("/v1/verifier/try_verify/{}", chunk_id);

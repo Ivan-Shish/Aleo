@@ -18,8 +18,15 @@ use snarkos_toolkit::account::{Address, ViewKey};
 use zexe_algebra::{Bls12_377, BW6_761};
 
 use chrono::Utc;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
-use tokio::{signal, sync::Mutex};
+use tokio::{
+    signal,
+    sync::{
+        mpsc::{Receiver, Sender},
+        Mutex,
+    },
+};
 use tracing::{debug, error, info, trace, warn};
 
 /// Returns a pretty print of the given hash bytes for logging.
@@ -164,7 +171,7 @@ impl Verifier {
     /// Downloads the challenge file from the coordinator and stores it to the verifier filesystem.
     /// Returns the hash of the downloaded response file. Otherwise, returns a `VerifierError`
     ///
-    pub async fn process_challenge_file(&self, challenge_locator: &str) -> Result<Vec<u8>, VerifierError> {
+    async fn process_challenge_file(&self, challenge_locator: &str) -> Result<Vec<u8>, VerifierError> {
         // Download the challenge file from the coordinator.
         let challenge_file = self.download_challenge_file(&challenge_locator).await?;
 
@@ -178,7 +185,7 @@ impl Verifier {
         );
 
         // Write the challenge file to disk.
-        write_to_file(&challenge_locator, challenge_file);
+        tokio::task::spawn_blocking(|| write_to_file(&challenge_locator, challenge_file));
 
         debug!("The challenge hash is {}", pretty_hash!(&challenge_hash));
 
@@ -214,10 +221,7 @@ impl Verifier {
     /// Returns the next challenge file and the hash of the next challenge file at the given locator.
     /// Otherwise, returns a `VerifierError`
     ///
-    pub async fn read_next_challenge_file(
-        &self,
-        next_challenge_locator: &str,
-    ) -> Result<(Vec<u8>, Vec<u8>), VerifierError> {
+    pub fn read_next_challenge_file(&self, next_challenge_locator: &str) -> Result<(Vec<u8>, Vec<u8>), VerifierError> {
         info!("Reading the next challenge locator at {}", &next_challenge_locator);
 
         let next_challenge_file = fs::read(&next_challenge_locator)?;
@@ -386,17 +390,50 @@ impl Verifier {
             let _ = verifier.shutdown_listener().await;
         });
 
-        // Initialize the verifier loop.
-        loop {
-            // Run the verification operations.
-            if let Err(error) = self.try_verify().await {
-                error!("{}", error);
-            }
+        // Allow at most 2 tasks/locks to be held at any given time.
+        let (task_tx, task_rx) = tokio::sync::mpsc::channel::<LockResponse>(2);
 
-            // Sleep for 5 seconds in between iterations.
-            sleep(Duration::from_secs(5));
+        // Start the task obtainer actor.
+        tokio::task::spawn(async move { task_obtainer_actor(task_tx).await });
+
+        self.verifier_task().await
+    }
+
+    /// An actor for obtaining tasks.
+    #[tracing::instrument(skip(task_tx))]
+    async fn task_obtainer_actor(&self, task_tx: Sender<LockResponse>) {
+        loop {
+            let task = self.obtain_task().await;
+            if let Err(error) = task_tx.send(task).await {
+                error!("Error sending task to verifier actor: {}", error);
+            }
         }
     }
+
+    /// Keep trying until a task is obtained. Wait 5 seconds between
+    /// failures.
+    async fn obtain_task(&self) -> LockResponse {
+        loop {
+            // Attempt to fetch a task from the queue or lock a chunk from the coordinator.
+            match self.get_task().await {
+                Ok(lock_response) => return lock_response,
+                Err(err) => {
+                    error!("Error getting task: {}", err);
+
+                    // If there are no tasks, attempt to join the queue for the next round.
+                    if let Err(err) = self.join_queue().await {
+                        error!("Error joining queue: {}", err);
+                    }
+
+                    // Sleep for 5 seconds in between iterations that caused an error
+                    tokio::time::delay_for(Duration::from_secs(5));
+                    continue;
+                }
+            }
+        }
+    }
+
+    async fn task_verifier_actor(&self, task_rx: Receiver<LockResponse>) {}
 
     ///
     ///  Runs a set of operations to perform verification on a chunk.
@@ -412,21 +449,9 @@ impl Verifier {
     /// 9. Attempts to apply the verification in the ceremony
     ///     - Request to the coordinator to run `try_verify`
     ///
-    pub async fn try_verify(&self) -> Result<(), VerifierError> {
-        // Attempt to fetch a task from the queue or lock a chunk from the coordinator.
-        let lock_response = match self.get_task().await {
-            Ok(lock_response) => lock_response,
-            Err(err) => {
-                // If there are no tasks, attempt to join the queue for the next round.
-                self.join_queue().await?;
-
-                return Err(err);
-            }
-        };
-
+    async fn verify_task(&self, lock_response: LockResponse) {
         info!("Attempting to verify chunk {}", lock_response.chunk_id);
 
-        // Deserialize the lock response.
         let LockResponse {
             chunk_id,
             locked: _,
@@ -437,29 +462,29 @@ impl Verifier {
         } = &lock_response;
 
         // Download and process the challenge file.
-        let challenge_hash = self.process_challenge_file(&challenge_locator).await?;
+        let challenge_hash = self.process_challenge_file(&lock_response.challenge_locator).await?;
 
         // Download and process the response file.
-        let response_hash = self.process_response_file(&response_locator).await?;
+        let response_hash = self.process_response_file(&lock_response.response_locator).await?;
 
         // Run verification on a chunk with the given locators.
         let _duration = self.run_verification(
-            *chunk_id,
-            &challenge_locator,
-            &response_locator,
-            &next_challenge_locator,
+            lock_response.chunk_id,
+            &lock_response.challenge_locator,
+            &lock_response.response_locator,
+            &lock_response.next_challenge_locator,
         );
 
         // Fetch the next challenge file from the filesystem.
-        let (next_challenge_file, next_challenge_hash) = self.read_next_challenge_file(&next_challenge_locator).await?;
+        let (next_challenge_file, next_challenge_hash) = self.read_next_challenge_file(&next_challenge_locator)?;
 
         // Verify that the next challenge file stores the correct response hash.
-        self.verify_response_hash(&next_challenge_file, &response_hash)?;
+        self.verify_response_hash(&next_challenge_file, &lock_response.response_hash)?;
 
         // Construct a signature and serialize the contribution.
         let signature_and_next_challenge_bytes = self.serialize_contribution_and_signature(
             challenge_hash,
-            response_hash,
+            lock_response.response_hash,
             next_challenge_hash,
             next_challenge_file,
         )?;
@@ -468,7 +493,7 @@ impl Verifier {
         self.upload_next_challenge_locator_file(&next_challenge_locator, signature_and_next_challenge_bytes)
             .await?;
         // Attempt to perform the verification with the uploaded challenge file at `next_challenge_locator`.
-        self.verify_contribution(*chunk_id).await?;
+        self.coordinator_verify_contribution(lock_response.chunk_id).await?;
 
         // Clear the task from the cache.
         self.clear_task(&lock_response).await?;
