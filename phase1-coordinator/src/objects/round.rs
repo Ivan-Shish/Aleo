@@ -798,6 +798,11 @@ impl Round {
                 if storage.exists(&response_locator) {
                     storage.remove(&response_locator)?;
                 }
+                let response_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, *chunk_id, next_contribution_id, false);
+                if storage.exists(&response_signature_locator) {
+                    storage.remove(&response_signature_locator)?;
+                }
 
                 // Remove the next challenge locator if the current response has been verified.
                 if chunk.current_contribution()?.is_verified() {
@@ -816,7 +821,8 @@ impl Round {
                             true,
                         )
                     };
-                    if storage.exists(&contribution_file) {
+                    // Don't remove initial challenge
+                    if storage.exists(&contribution_file) && chunk.current_contribution()?.get_contributor().is_some() {
                         storage.remove(&contribution_file)?;
                     }
                 }
@@ -878,6 +884,14 @@ impl Round {
 
                 // Remove the unverified contribution file, if it exists.
                 if let Some(locator) = contribution.get_contributed_location() {
+                    let path = storage.to_locator(&locator)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
+                }
+
+                // Remove the contribution signature file, if it exists.
+                if let Some(locator) = contribution.get_contributed_signature_location() {
                     let path = storage.to_locator(&locator)?;
                     if storage.exists(&path) {
                         storage.remove(&path)?;

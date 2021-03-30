@@ -2988,6 +2988,7 @@ fn initialize_tasks(
     tasks
 }
 
+#[derive(Debug)]
 pub(crate) enum Justification {
     BanCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
     DropCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
