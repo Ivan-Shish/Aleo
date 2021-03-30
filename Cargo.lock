@@ -1342,19 +1342,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 
 [[package]]
-name = "generator"
-version = "0.6.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061d3be1afec479d56fa3bd182bf966c7999ec175fcfdb87ac14d417241366c6"
-dependencies = [
- "cc",
- "libc",
- "log",
- "rustversion",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1944,19 +1931,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
  "cfg-if 0.1.10",
-]
-
-[[package]]
-name = "loom"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0e8460f2f2121162705187214720353c517b97bdfb3494c0b1e33d83ebe4bed"
-dependencies = [
- "cfg-if 0.1.10",
- "generator",
- "scoped-tls",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3105,12 +3079,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustversion"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb5d2a036dc6d2d8fd16fde3498b04306e29bd193bf306a57427019b823d5acd"
-
-[[package]]
 name = "rusty-hook"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3558,12 +3526,11 @@ dependencies = [
 
 [[package]]
 name = "sharded-slab"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4921be914e16899a80adefb821f8ddb7974e3f1250223575a44ed994882127"
+checksum = "79c719719ee05df97490f80a45acfc99e5a30ce98a1e4fb67aee422745ae14e3"
 dependencies = [
  "lazy_static",
- "loom",
 ]
 
 [[package]]
