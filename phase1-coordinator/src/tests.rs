@@ -72,7 +72,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -178,7 +178,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -294,7 +294,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -422,7 +422,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -580,7 +580,7 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -744,7 +744,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -871,7 +871,7 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1070,7 +1070,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     ));
     let (replacement_contributor, ..) = create_contributor("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.clone()]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1149,7 +1149,7 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
         Participant::new_contributor("testing-coordinator-contributor-2"),
         Participant::new_contributor("testing-coordinator-contributor-3"),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1309,7 +1309,7 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1421,7 +1421,7 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
         replacement_contributor_1.participant.clone(),
         replacement_contributor_2.participant.clone(),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1502,7 +1502,7 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
