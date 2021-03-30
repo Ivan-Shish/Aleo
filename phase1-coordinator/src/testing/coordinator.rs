@@ -20,7 +20,6 @@ use tracing::*;
 
 use once_cell::sync::OnceCell;
 
-
 static INSTANCE: OnceCell<()> = OnceCell::new();
 
 /// Environment for testing purposes only.
