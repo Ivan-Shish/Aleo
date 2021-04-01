@@ -43,9 +43,15 @@ cargo test
 
 ### Logging
 
-Logging is enabled by default during tests. To silence all logs, run:
+Logging is enabled by default during tests. Use `RUST_LOG` env variable to configure
+the log levels:
+```bash
+RUST_LOG=debug cargo test
 ```
-cargo test --features silent
+
+Default log level is `error`. To completely hide the logs use:
+```bash
+RUST_LOG=none cargo test
 ```
 
 ### Serial Test Execution
