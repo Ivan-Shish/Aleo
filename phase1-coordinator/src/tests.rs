@@ -1067,9 +1067,9 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         assert_eq!(0, verifier_info.locked_chunks().len());
         assert_eq!(2, verifier_info.assigned_tasks().len());
         assert_eq!(0, verifier_info.pending_tasks().len());
-        assert_eq!(18, verifier_info.completed_tasks().len());
+        assert_eq!(8, verifier_info.completed_tasks().len());
         assert_eq!(0, verifier_info.disposing_tasks().len());
-        assert_eq!(1, verifier_info.disposed_tasks().len());
+        assert_eq!(11, verifier_info.disposed_tasks().len());
     }
 
     Ok(())
@@ -1153,13 +1153,6 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     Ok(())
 }
 
-fn inspect_verifiers(coordinator: &Coordinator) {
-    for (verifier, verifier_info) in coordinator.current_verifiers() {
-        println!("Inspecting verifier {:?}", verifier);
-        println!("verifier info is {:?}", verifier_info);
-    }
-}
-
 /// Drops a contributor and release the locks
 ///
 /// The key part of this test is that we lock a chunk
@@ -1181,7 +1174,7 @@ fn coordinator_drop_contributor_and_release_locks() {
     ));
     let replacement_contributor = create_contributor_test_details("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1236,7 +1229,7 @@ fn coordinator_drop_contributor_and_release_locks() {
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
-/// Drops a contributor and update verifier tasks
+/// Drops a contributor and updates verifier tasks
 ///
 /// Make one contribution and verify it, then drop the
 /// contributor. The tasks of a verifier should be updated
@@ -1257,7 +1250,7 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     ));
     let replacement_contributor = create_contributor_test_details("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1278,41 +1271,19 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
 
-    println!("Manifest before we contribute");
-    // coordinator.inspect_storage();
-    inspect_verifiers(&coordinator);
-
     contributor_1.contribute_to(&coordinator).unwrap();
-
-    println!("Manifest after we contribute");
-    // coordinator.inspect_storage();
-    inspect_verifiers(&coordinator);
 
     verifier_1.verify(&coordinator).unwrap();
 
-    println!("Manifest after we verify");
-    // coordinator.inspect_storage();
-    inspect_verifiers(&coordinator);
-
-    // Drop one contributor
     let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
     assert_eq!(1, locators.len());
 
-    println!("Manifest after we drop participant");
-    inspect_verifiers(&coordinator);
-    // coordinator.inspect_storage();
-
     // Contribute to the round 1
-    for i in 0..number_of_chunks {
-        println!("\n\n\n");
+    for _ in 0..number_of_chunks {
         replacement_contributor.contribute_to(&coordinator).unwrap();
-        println!("before contributor 2 contributes, i is {}", i);
         contributor_2.contribute_to(&coordinator).unwrap();
-        println!("after contributor 2 contributes, i is {}", i);
         verifier_1.verify(&coordinator).unwrap();
         verifier_1.verify(&coordinator).unwrap();
-        println!("verification done, next loop, i is {}", i);
-        println!("\n\n\n");
     }
 
     // Add some more participants to proceed to the next round

@@ -798,8 +798,17 @@ impl Round {
                 if storage.exists(&response_locator) {
                     storage.remove(&response_locator)?;
                 }
+
+                // Removing contribution file signature for pending task
                 let response_signature_locator =
                     Locator::ContributionFileSignature(current_round_height, *chunk_id, next_contribution_id, false);
+                if storage.exists(&response_signature_locator) {
+                    storage.remove(&response_signature_locator)?;
+                }
+
+                // Removing contribution file signature for verified task
+                let response_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, *chunk_id, next_contribution_id, true);
                 if storage.exists(&response_signature_locator) {
                     storage.remove(&response_signature_locator)?;
                 }
@@ -900,6 +909,14 @@ impl Round {
 
                 // Remove the verified contribution file, if it exists.
                 if let Some(locator) = contribution.get_verified_location() {
+                    let path = storage.to_locator(&locator)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
+                }
+
+                // Remove the verified contribution file signature, if it exists.
+                if let Some(locator) = contribution.get_verified_signature_location() {
                     let path = storage.to_locator(&locator)?;
                     if storage.exists(&path) {
                         storage.remove(&path)?;

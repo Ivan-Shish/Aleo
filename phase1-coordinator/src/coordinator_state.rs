@@ -1941,20 +1941,26 @@ impl CoordinatorState {
                         .collect();
             }
 
-            // All verifiers assigned to affected tasks must dispose their affected pending tasks.
+            // All verifiers assigned to affected tasks must dispose their affected
+            // pending and completed tasks.
             for verifier_info in self.current_verifiers.values_mut() {
                 // Filter the current verifier for pending tasks that have been disposed.
-                let mut pending_tasks = LinkedList::new();
-                for pending_task in verifier_info.pending_tasks.iter() {
-                    // Check if the newly disposed tasks contains this pending task.
-                    if all_disposed_tasks.contains(&pending_task) {
-                        // Move the pending task to the verifier's disposing tasks.
-                        verifier_info.disposing_tasks.push_back(*pending_task);
-                    } else {
-                        pending_tasks.push_back(*pending_task);
-                    }
-                }
+                let (disposing_tasks, pending_tasks) = verifier_info
+                    .pending_tasks
+                    .iter()
+                    .cloned()
+                    .partition(|task| all_disposed_tasks.contains(&task));
                 verifier_info.pending_tasks = pending_tasks;
+                verifier_info.disposing_tasks = disposing_tasks;
+
+                // Filter the current verifier for completed tasks that have been disposed.
+                let (disposed_tasks, completed_tasks) = verifier_info
+                    .completed_tasks
+                    .iter()
+                    .cloned()
+                    .partition(|task| all_disposed_tasks.contains(&task));
+                verifier_info.completed_tasks = completed_tasks;
+                verifier_info.disposed_tasks = disposed_tasks;
             }
 
             // Remove the current verifier from the coordinator state.
@@ -2990,6 +2996,7 @@ fn initialize_tasks(
 
 #[derive(Debug)]
 pub(crate) enum Justification {
+    // last field is a replacement participant
     BanCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
     DropCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
     Inactive,
