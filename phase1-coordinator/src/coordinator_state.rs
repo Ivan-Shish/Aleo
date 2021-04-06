@@ -2341,6 +2341,12 @@ impl CoordinatorState {
 
             // Check if the participant is still live and not a coordinator contributor.
             if elapsed.num_minutes() > contributor_timeout && !self.is_coordinator_contributor(&participant) {
+                tracing::info!(
+                    "Dropping participant {} because it has exceeded the maximum allowed time \
+                    ({} mins) since it was last seen by the coordinator.",
+                    participant,
+                    contributor_timeout
+                );
                 // Drop the participant.
                 justifications.push(self.drop_participant(participant)?);
             }
