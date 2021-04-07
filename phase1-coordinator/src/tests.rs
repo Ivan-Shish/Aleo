@@ -1164,14 +1164,14 @@ fn coordinator_drop_contributor_and_release_locks() {
     // Unwraps are used to find out the exact line which produces the error
     // When the test returns Result with an Err, the line is unknown
 
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        1, /* power */
-        2, /* batch_size */
-        2, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
     let replacement_contributor = create_contributor_test_details("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
     let environment = initialize_test_environment(&testing.into());
@@ -1240,14 +1240,14 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     // Unwraps are used to find out the exact line which produces the error
     // When the test returns Result with an Err, the line is unknown
 
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        1, /* power */
-        2, /* batch_size */
-        2, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
     let replacement_contributor = create_contributor_test_details("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
     let environment = initialize_test_environment(&testing.into());
