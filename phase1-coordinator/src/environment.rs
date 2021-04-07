@@ -8,6 +8,7 @@ use setup_utils::{CheckForCorrectness, UseCompression};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use serde_with::DurationSecondsWithFrac;
 use tracing::Level;
 use url::Url;
 
@@ -137,6 +138,7 @@ impl Parameters {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Environment {
     /// The parameter settings of this coordinator.
@@ -161,9 +163,11 @@ pub struct Environment {
     /// The number of chunks a verifier is authorized to lock in tandem in a round.
     verifier_lock_chunk_limit: usize,
     /// The number of minutes tolerated prior to assuming a contributor has dropped.
-    contributor_timeout_in_minutes: u16,
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    contributor_timeout: chrono::Duration,
     /// The number of minutes tolerated prior to assuming a verifier has dropped.
-    verifier_timeout_in_minutes: u16,
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    verifier_timeout: chrono::Duration,
     /// The number of drops tolerated by a participant before banning them from future rounds.
     participant_ban_threshold: u16,
     /// The setting to allow current contributors to join the queue for the next round.
@@ -283,16 +287,16 @@ impl Environment {
     /// Returns the number of minutes the coordinator tolerates
     /// before assuming a contributor has disconnected.
     ///
-    pub const fn contributor_timeout_in_minutes(&self) -> u16 {
-        self.contributor_timeout_in_minutes
+    pub const fn contributor_timeout(&self) -> chrono::Duration {
+        self.contributor_timeout
     }
 
     ///
     /// Returns the number of minutes the coordinator tolerates
     /// before assuming a verifier has disconnected.
     ///
-    pub const fn verifier_timeout_in_minutes(&self) -> u16 {
-        self.verifier_timeout_in_minutes
+    pub const fn verifier_timeout(&self) -> chrono::Duration {
+        self.verifier_timeout
     }
 
     ///
@@ -485,6 +489,12 @@ impl Testing {
         };
         deployment
     }
+
+    pub fn contributor_timeout(&self, contributor_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.contributor_timeout = contributor_timeout;
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -518,8 +528,8 @@ impl std::default::Default for Testing {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_timeout: chrono::Duration::minutes(5),
+                verifier_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -636,8 +646,8 @@ impl std::default::Default for Development {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_timeout: chrono::Duration::minutes(5),
+                verifier_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -748,8 +758,8 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_timeout: chrono::Duration::minutes(5),
+                verifier_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: false,
                 allow_current_verifiers_in_queue: true,
