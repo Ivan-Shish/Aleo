@@ -68,8 +68,8 @@ impl Object {
     pub fn round_file_size(environment: &Environment) -> u64 {
         let compressed = environment.compressed_inputs();
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
-        match curve {
+
+        match settings.curve() {
             CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, compressed),
             CurveKind::BW6 => round_filesize!(BW6_761, settings, compressed),
         }
@@ -78,13 +78,15 @@ impl Object {
     /// Returns the expected file size of a chunked contribution.
     pub fn contribution_file_size(environment: &Environment, chunk_id: u64, verified: bool) -> u64 {
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
+        let curve = settings.curve();
+
         let compressed = match verified {
             // The verified contribution file is used as *input* in the next computation.
             true => environment.compressed_inputs(),
             // The unverified contribution file the *output* of the current computation.
             false => environment.compressed_outputs(),
         };
+
         match (curve, verified) {
             (CurveKind::Bls12_377, true) => verified_contribution_size!(Bls12_377, settings, chunk_id, compressed),
             (CurveKind::Bls12_377, false) => unverified_contribution_size!(Bls12_377, settings, chunk_id, compressed),

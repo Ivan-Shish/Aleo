@@ -247,7 +247,6 @@ impl Verifier {
         remove_file_if_exists(&next_challenge_locator);
 
         let settings = self.environment.parameters();
-        let (_, _, curve, _, _, _) = settings.clone();
 
         let compressed_challenge = self.environment.compressed_inputs();
         let compressed_response = self.environment.compressed_outputs();
@@ -255,7 +254,7 @@ impl Verifier {
         info!("Running verification on chunk {}", chunk_id);
 
         let start = Utc::now();
-        match curve {
+        match settings.curve() {
             CurveKind::Bls12_377 => transform_pok_and_correctness(
                 compressed_challenge,
                 &challenge_file_locator,
@@ -489,7 +488,11 @@ mod tests {
     const TEST_VIEW_KEY: &str = "AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3";
 
     pub fn test_verifier() -> Verifier {
-        let environment: Testing = Testing::from(Parameters::TestCustom(64, 16, 512));
+        let environment: Testing = Testing::from(Parameters::TestCustom {
+            number_of_chunks: 64,
+            power: 16,
+            batch_size: 512,
+        });
 
         Verifier::new(
             "test_coordinator_url".to_string(),

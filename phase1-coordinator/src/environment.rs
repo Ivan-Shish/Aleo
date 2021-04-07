@@ -13,11 +13,69 @@ use url::Url;
 
 type BatchSize = usize;
 type ChunkSize = usize;
-type Curve = CurveKind;
 type NumberOfChunks = usize;
 type Power = usize;
 
-pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub contribution_mode: ContributionMode,
+    pub proving_system: ProvingSystem,
+    pub curve: CurveKind,
+    pub power: Power,
+    pub batch_size: BatchSize,
+    pub chunk_size: ChunkSize,
+}
+
+impl Settings {
+    /// Creates a new `Settings`
+    ///
+    /// + `batch_size` - will panic if this is set to `0`.
+    pub fn new(
+        contribution_mode: ContributionMode,
+        proving_system: ProvingSystem,
+        curve: CurveKind,
+        power: Power,
+        batch_size: BatchSize,
+        chunk_size: ChunkSize,
+    ) -> Self {
+        if batch_size == 0 {
+            panic!("batch_size cannot be equal to zero");
+        }
+
+        Self {
+            contribution_mode,
+            proving_system,
+            curve,
+            power,
+            batch_size,
+            chunk_size,
+        }
+    }
+
+    pub fn contribution_mode(&self) -> ContributionMode {
+        self.contribution_mode
+    }
+
+    pub fn proving_system(&self) -> ProvingSystem {
+        self.proving_system
+    }
+
+    pub fn curve(&self) -> CurveKind {
+        self.curve
+    }
+
+    pub fn power(&self) -> Power {
+        self.power
+    }
+
+    pub fn batch_size(&self) -> BatchSize {
+        self.batch_size
+    }
+
+    pub fn chunk_size(&self) -> ChunkSize {
+        self.chunk_size
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Deployment {
@@ -34,8 +92,14 @@ pub enum Parameters {
     Custom(Settings),
     Test3Chunks,
     Test8Chunks,
-    TestChunks(NumberOfChunks),
-    TestCustom(NumberOfChunks, Power, BatchSize),
+    TestChunks {
+        number_of_chunks: usize,
+    },
+    TestCustom {
+        number_of_chunks: usize,
+        power: usize,
+        batch_size: usize,
+    },
 }
 
 impl Parameters {
@@ -45,18 +109,20 @@ impl Parameters {
             Parameters::AleoInner => Self::aleo_inner(),
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
-            Parameters::Custom(settings) => *settings,
+            Parameters::Custom(settings) => settings.clone(),
             Parameters::Test3Chunks => Self::test_3_chunks(),
             Parameters::Test8Chunks => Self::test_8_chunks(),
-            Parameters::TestChunks(number_of_chunks) => Self::test_chunks(number_of_chunks),
-            Parameters::TestCustom(number_of_chunks, power, batch_size) => {
-                Self::test_custom(number_of_chunks, power, batch_size)
-            }
+            Parameters::TestChunks { number_of_chunks } => Self::test_chunks(number_of_chunks),
+            Parameters::TestCustom {
+                number_of_chunks,
+                power,
+                batch_size,
+            } => Self::test_custom(number_of_chunks, power, batch_size),
         }
     }
 
     fn aleo_inner() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -67,7 +133,7 @@ impl Parameters {
     }
 
     fn aleo_outer() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::BW6,
@@ -78,7 +144,7 @@ impl Parameters {
     }
 
     fn aleo_universal() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
@@ -89,7 +155,7 @@ impl Parameters {
     }
 
     fn test_3_chunks() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -100,7 +166,7 @@ impl Parameters {
     }
 
     fn test_8_chunks() -> Settings {
-        (
+        Settings::new(
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
@@ -114,7 +180,7 @@ impl Parameters {
         let proving_system = ProvingSystem::Groth16;
         let power = 14_usize;
         let batch_size = 128_usize;
-        (
+        Settings::new(
             ContributionMode::Chunked,
             proving_system,
             CurveKind::Bls12_377,
@@ -126,7 +192,7 @@ impl Parameters {
 
     fn test_custom(number_of_chunks: &NumberOfChunks, power: &Power, batch_size: &BatchSize) -> Settings {
         let proving_system = ProvingSystem::Groth16;
-        (
+        Settings::new(
             ContributionMode::Chunked,
             proving_system,
             CurveKind::Bls12_377,
@@ -198,7 +264,7 @@ impl Environment {
     /// Returns the parameter settings of the coordinator.
     ///
     pub fn parameters(&self) -> Settings {
-        self.parameters
+        self.parameters.clone()
     }
 
     ///
@@ -399,7 +465,9 @@ impl Environment {
     /// to run given a proof system, power and chunk size.
     ///
     pub fn number_of_chunks(&self) -> u64 {
-        let (_, proving_system, _, power, _, chunk_size) = self.parameters;
+        let proving_system = &self.parameters.proving_system;
+        let power = self.parameters.power;
+        let chunk_size = self.parameters.chunk_size;
         (total_size_in_g1!(proving_system, power) + chunk_size as u64 - 1) / chunk_size as u64
     }
 
@@ -776,7 +844,7 @@ mod tests {
     #[test]
     fn test_aleo_test_3_chunks() {
         let parameters = Parameters::Test3Chunks;
-        let (_, _, _, power, _, _) = parameters.to_settings();
+        let power = parameters.to_settings().power;
         assert_eq!(Power::from(8_usize), power);
         assert_eq!(3, Testing::from(parameters).number_of_chunks());
     }
@@ -784,7 +852,7 @@ mod tests {
     #[test]
     fn test_aleo_test_8_chunks() {
         let parameters = Parameters::Test8Chunks;
-        let (_, _, _, power, _, _) = parameters.to_settings();
+        let power = parameters.to_settings().power;
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(8, Testing::from(parameters).number_of_chunks());
     }
@@ -793,8 +861,11 @@ mod tests {
     fn test_custom_chunk_3() {
         let number_of_chunks = 3;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(10923_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
@@ -804,8 +875,11 @@ mod tests {
     fn test_custom_chunk_8() {
         let number_of_chunks = 8;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(4096_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());
@@ -815,8 +889,11 @@ mod tests {
     fn test_custom_chunk_20() {
         let number_of_chunks = 20;
 
-        let parameters = Parameters::TestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let parameters = Parameters::TestChunks { number_of_chunks };
+        let settings = parameters.to_settings();
+        let power = settings.power;
+        let chunk_size = settings.chunk_size;
+
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(1639_usize), chunk_size);
         assert_eq!(number_of_chunks as u64, Testing::from(parameters).number_of_chunks());

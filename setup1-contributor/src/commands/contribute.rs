@@ -872,7 +872,7 @@ pub async fn start_contributor(opts: ContributeOptions) {
 
     *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
 
-    let (_, _, curve_kind, _, _, _) = opts.environment.parameters();
+    let curve_kind = opts.environment.parameters().curve();
 
     // Initialize the contributor.
     let contribute = Contribute::new(&opts, private_key.expose_secret()).expect("Unable to initialize a contributor");
