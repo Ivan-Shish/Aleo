@@ -1960,7 +1960,7 @@ impl CoordinatorState {
                     .cloned()
                     .partition(|task| all_disposed_tasks.contains(&task));
                 verifier_info.completed_tasks = completed_tasks;
-                verifier_info.disposed_tasks = disposed_tasks;
+                verifier_info.disposed_tasks.extend(disposed_tasks);
             }
 
             // Remove the current verifier from the coordinator state.
