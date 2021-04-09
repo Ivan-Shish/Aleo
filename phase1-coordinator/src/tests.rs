@@ -1589,7 +1589,6 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     let testing_deployment: Testing = Testing::from(parameters).contributor_timeout(chrono::Duration::minutes(5));
 
     let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
-    let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
@@ -1597,8 +1596,8 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
 
-    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
-    let (verifier, verifier_signing_key) = create_verifier("1");
+    let (contributor1, _contributor_signing_key1, _seed1) = create_contributor("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
 
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(verifier.clone(), 10)?;
@@ -1627,6 +1626,63 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
     assert_eq!(1, coordinator.dropped_participants().len());
     assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
+
+    Ok(())
+}
+
+/// Test that participant who is waiting for a verifier to verify
+/// chunks that it depends on is not dropped from the round.
+fn contributor_wait_verifier_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters).contributor_timeout(chrono::Duration::minutes(5));
+
+    let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    for _ in 0..(number_of_chunks / 2) {
+        time.update(|prev| prev + chrono::Duration::minutes(1));
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+    }
+
+    coordinator.update()?;
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // contributor is stuck waiting for 10 minutes
+    time.update(|prev| prev + chrono::Duration::minutes(10));
+
+    // Emulate contributor querying the current round.
+    let _round = coordinator.current_round().unwrap();
+
+    coordinator.update()?;
+    assert!(coordinator.dropped_participants().is_empty());
 
     Ok(())
 }
@@ -1717,4 +1773,11 @@ fn test_drop_contributor_and_reassign_tasks() {
 #[serial]
 fn test_contributor_timeout_drop() {
     test_report!(contributor_timeout_drop_test);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_contributor_wait_verifier() {
+    test_report!(contributor_wait_verifier_test);
 }

@@ -21,7 +21,7 @@ use phase1::helpers::converters::CurveKind;
 use phase1_cli::contribute;
 use phase1_coordinator::{
     environment::Environment,
-    objects::{Participant, Round},
+    objects::{Chunk, Participant, Round},
 };
 use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
@@ -85,6 +85,8 @@ impl std::fmt::Display for PipelineLane {
 #[derive(Clone)]
 pub struct Contribute {
     pub server_url: Url,
+    /// Public key id for this contributor: e.g.
+    /// `aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a`
     pub participant_id: String,
     pub private_key: String,
     pub upload_mode: UploadMode,
@@ -425,8 +427,8 @@ impl Contribute {
             let auth_rng = &mut rand::rngs::OsRng;
 
             let ceremony = self.get_ceremony().await?;
-            let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony)?;
-            let incomplete_chunks = self.get_non_contributed_and_available_chunks(&ceremony)?;
+            let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony);
+            let incomplete_chunks = self.get_non_contributed_and_available_chunks(&ceremony);
 
             // Check if the contributor is finished or needs to wait for an available lock
             if incomplete_chunks.len() == 0 {
@@ -587,7 +589,7 @@ impl Contribute {
         let number_of_chunks = ceremony.chunks().len();
 
         progress_bar.set_length(number_of_chunks as u64);
-        let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony)?;
+        let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony);
 
         let participant_locked_chunks = self.get_participant_locked_chunks_display(&ceremony)?;
         if participant_locked_chunks.len() > 0 {
@@ -636,30 +638,25 @@ impl Contribute {
         Ok(chunk_ids)
     }
 
-    fn get_non_contributed_chunks(&self, ceremony: &Round) -> Result<Vec<u64>> {
-        let mut non_contributed = vec![];
+    /// Get references to the chunks which have been completely
+    /// verified, and do not yet contain a contribution from this
+    /// contributor.
+    fn get_non_contributed_chunks<'r>(&self, ceremony: &'r Round) -> Vec<&'r Chunk> {
+        ceremony
+            .chunks()
+            .iter()
+            .filter_map(|chunk| {
+                if !chunk_all_verified(chunk) {
+                    return None;
+                }
 
-        for chunk in ceremony.chunks().iter() {
-            if !chunk.get_contributions().iter().all(|(_, c)| c.is_verified()) {
-                continue;
-            }
-            let participant_ids_in_chunk: HashSet<_> = chunk
-                .get_contributions()
-                .iter()
-                .filter(|(_, c)| c.is_verified())
-                .map(|(_, c)| {
-                    c.get_contributor()
-                        .as_ref()
-                        .map(|c| c.to_string().split('.').collect::<Vec<_>>()[0].to_string())
-                })
-                .filter_map(|e| e)
-                .collect();
-            if !participant_ids_in_chunk.contains(&self.participant_id) {
-                non_contributed.push(chunk.chunk_id());
-            }
-        }
-
-        Ok(non_contributed)
+                if !contributor_ids_in_chunk(chunk).contains(&self.participant_id) {
+                    Some(chunk)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Returns `true` if the participant currently holds the lock on the chunk.
@@ -673,30 +670,14 @@ impl Contribute {
         Ok(false)
     }
 
-    fn get_non_contributed_and_available_chunks(&self, ceremony: &Round) -> Result<Vec<u64>> {
-        let mut non_contributed = vec![];
-
-        for chunk in ceremony.chunks().iter().filter(|c| c.lock_holder().is_none()) {
-            if !chunk.get_contributions().iter().all(|(_, c)| c.is_verified()) {
-                continue;
-            }
-            let participant_ids_in_chunk: HashSet<_> = chunk
-                .get_contributions()
-                .iter()
-                .filter(|(_, c)| c.is_verified())
-                .map(|(_, c)| {
-                    c.get_contributor()
-                        .as_ref()
-                        .map(|c| c.to_string().split('.').collect::<Vec<_>>()[0].to_string())
-                })
-                .filter_map(|e| e)
-                .collect();
-            if !participant_ids_in_chunk.contains(&self.participant_id) {
-                non_contributed.push(chunk.chunk_id());
-            }
-        }
-
-        Ok(non_contributed)
+    /// Get references to the unlocked chunks which have been
+    /// completely verified, and do not yet contain a contribution
+    /// from this contributor.
+    fn get_non_contributed_and_available_chunks<'r>(&self, ceremony: &'r Round) -> Vec<&'r Chunk> {
+        self.get_non_contributed_chunks(ceremony)
+            .into_iter()
+            .filter(|chunk| chunk.lock_holder().is_none())
+            .collect()
     }
 
     async fn join_queue<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<bool> {
@@ -886,5 +867,73 @@ pub async fn start_contributor(opts: ContributeOptions) {
     match contribution {
         Err(e) => info!("Error occurred during contribution: {}", e.to_string()),
         _ => {}
+    }
+}
+
+/// Check that every contribution in the chunk has been verified.
+fn chunk_all_verified(chunk: &Chunk) -> bool {
+    chunk.get_contributions().iter().all(|(_, c)| c.is_verified())
+}
+
+/// Obtain a set with the id of every contributor in the chunk who's
+/// contribution has been verified.
+fn contributor_ids_in_chunk(chunk: &Chunk) -> HashSet<String> {
+    chunk
+        .get_contributions()
+        .iter()
+        .filter(|(_, c)| c.is_verified())
+        .filter_map(|(_, c)| {
+            c.get_contributor()
+                .as_ref()
+                .map(|c| c.to_string().split('.').collect::<Vec<_>>()[0].to_string())
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod test {
+    use super::{chunk_all_verified, contributor_ids_in_chunk};
+    use phase1_coordinator::objects::{Chunk, Participant};
+
+    #[test]
+    fn test_participant_ids_in_chunk() {
+        let verifier = Participant::Verifier(
+            "aleo1yphn5z63acdpelyk2c3xmf6fuzpxymusp3c260ne6q0rrhrtdufqenlwqg.verifier".to_string(),
+        );
+        let contributor1 = Participant::Contributor(
+            "aleo1fa6q44gpw0vkpx7xsfhgadz48swtg3wqf98w0xkrydwtvs62q5zsqyv5d7.contributor".to_string(),
+        );
+        let contributor2 = Participant::Contributor(
+            "aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a.contributor".to_string(),
+        );
+
+        let mut chunk = Chunk::new(0, verifier.clone(), String::new(), String::new()).unwrap();
+
+        chunk.acquire_lock(contributor1.clone(), 3).unwrap();
+        chunk
+            .add_contribution(1, &contributor1, String::new(), String::new())
+            .unwrap();
+        assert!(!chunk_all_verified(&chunk));
+        chunk.acquire_lock(verifier.clone(), 3).unwrap();
+        chunk
+            .verify_contribution(1, verifier.clone(), String::new(), String::new())
+            .unwrap();
+        assert!(chunk_all_verified(&chunk));
+
+        chunk.acquire_lock(contributor2.clone(), 3).unwrap();
+        chunk
+            .add_contribution(2, &contributor2, String::new(), String::new())
+            .unwrap();
+        assert!(!chunk_all_verified(&chunk));
+        chunk.acquire_lock(verifier.clone(), 3).unwrap();
+        chunk
+            .verify_contribution(2, verifier.clone(), String::new(), String::new())
+            .unwrap();
+        assert!(chunk_all_verified(&chunk));
+
+        let ids = contributor_ids_in_chunk(&chunk);
+        assert_eq!(2, ids.len());
+        assert!(ids.contains(&contributor1.to_string().replace(".contributor", "")));
+        assert!(ids.contains(&contributor2.to_string().replace(".contributor", "")));
     }
 }
