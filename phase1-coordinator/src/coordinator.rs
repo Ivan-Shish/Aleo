@@ -118,7 +118,7 @@ pub enum CoordinatorError {
     ParticipantMissing,
     ParticipantMissingDisposingTask,
     ParticipantMissingPendingTask,
-    ParticipantNotFound,
+    ParticipantNotFound(Participant),
     ParticipantNotReady,
     ParticipantRoundHeightInvalid,
     ParticipantRoundHeightMissing,
@@ -999,6 +999,13 @@ impl Coordinator {
             // The given round height does not exist.
             false => Err(CoordinatorError::RoundDoesNotExist),
         }
+    }
+
+    /// Lets the coordinator know that the participant is still alive
+    /// and participating (or waiting to participate) in the ceremony.
+    pub fn heartbeat(&self, participant: &Participant) -> Result<(), CoordinatorError> {
+        let mut state = self.state.write().expect("unable to obtain write lock on state");
+        state.heartbeat(participant, self.time.as_ref())
     }
 
     ///

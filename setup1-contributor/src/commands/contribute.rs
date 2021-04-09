@@ -45,7 +45,10 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tokio::time::{delay_for, Instant};
+use tokio::{
+    task::JoinHandle,
+    time::{delay_for, Instant},
+};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -57,6 +60,7 @@ const RESPONSE_HASH_FILENAME: &str = "response.hash";
 const DELAY_AFTER_ERROR_DURATION_SECS: i64 = 60;
 const DELAY_WAIT_FOR_PIPELINE_SECS: i64 = 5;
 const DELAY_POLL_CEREMONY_SECS: i64 = 5;
+const HEARTBEAT_POLL_SECS: i64 = 10;
 
 lazy_static! {
     static ref PIPELINE: RwLock<HashMap<PipelineLane, VecDeque<LockResponse>>> = {
@@ -145,6 +149,7 @@ impl Contribute {
 
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
         let delay_poll_ceremony_duration = Duration::seconds(DELAY_POLL_CEREMONY_SECS).to_std()?;
+        let heartbeat_poll_duration = Duration::seconds(HEARTBEAT_POLL_SECS).to_std()?;
 
         let progress_bar = ProgressBar::new(0);
         let progress_style =
@@ -223,6 +228,34 @@ impl Contribute {
             futures.push(join_handle);
             delay_for(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
         }
+
+        let cloned = self.clone();
+        //TODO: this is broken, probably because there is some
+        // blocking code in one of the other tasks.
+        //
+        // let join_handle: JoinHandle<anyhow::Result<()>> = tokio::task::spawn(async move {
+        //     let auth_rng = &mut rand::rngs::OsRng;
+        //     loop {
+        //         println!("Performing heartbeat.");
+        //         tracing::info!("Performing heartbeat.");
+        //         cloned.heartbeat(auth_rng).await?;
+        //         delay_for(heartbeat_poll_duration).await;
+        //     }
+        // });
+        // futures.push(join_handle);
+
+        std::thread::spawn(move || {
+            let auth_rng = &mut rand::rngs::OsRng;
+            let mut runtime = tokio::runtime::Runtime::new().unwrap();
+            loop {
+                println!("Performing heartbeat.");
+                tracing::info!("Performing heartbeat.");
+                if let Err(error) = runtime.block_on(cloned.heartbeat(auth_rng)) {
+                    tracing::error!("Error performing heartbeat: {}", error);
+                }
+                std::thread::sleep(heartbeat_poll_duration);
+            }
+        });
 
         futures::future::try_join_all(futures).await?;
 
@@ -724,6 +757,23 @@ impl Contribute {
         let lock_response = serde_json::from_value::<LockResponse>(data)?;
 
         Ok(lock_response)
+    }
+
+    async fn heartbeat<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
+        let heartbeat_path = "/v1/contributor/heartbeat";
+        let url = self.server_url.join(&heartbeat_path)?;
+        let client = reqwest::Client::new();
+        let authorization = get_authorization_value(&self.private_key, "POST", &heartbeat_path, auth_rng)?;
+        let response = client
+            .post(url.as_str())
+            .header(AUTHORIZATION, authorization)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        response.error_for_status()?;
+
+        Ok(())
     }
 
     async fn download_challenge<R: Rng + CryptoRng>(

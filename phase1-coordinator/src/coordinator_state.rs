@@ -1370,7 +1370,7 @@ impl CoordinatorState {
                     }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Check that the participant is holding less than the chunk lock limit.
@@ -1382,7 +1382,7 @@ impl CoordinatorState {
                     }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1406,12 +1406,12 @@ impl CoordinatorState {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Acquire the chunk lock for the contributor.
                 Some(participant) => Ok(participant.acquired_lock(chunk_id, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Acquire the chunk lock for the verifier.
                 Some(participant) => Ok(participant.acquired_lock(chunk_id, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1437,12 +1437,12 @@ impl CoordinatorState {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Acquire the chunk lock for the contributor.
                 Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Acquire the chunk lock for the verifier.
                 Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1465,11 +1465,11 @@ impl CoordinatorState {
         let participant_info = match participant {
             Participant::Contributor(_) => match self.current_contributors.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         };
 
@@ -1509,11 +1509,11 @@ impl CoordinatorState {
         let participant_info = match participant {
             Participant::Contributor(_) => match self.current_contributors.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         };
 
@@ -1560,12 +1560,12 @@ impl CoordinatorState {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the contributor.
                 Some(participant) => participant.disposed_task(chunk_id, contribution_id, time),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the verifier.
                 Some(participant) => participant.disposed_task(chunk_id, contribution_id, time),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1687,7 +1687,7 @@ impl CoordinatorState {
                     self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
                     Ok(self.add_pending_verification(chunk_id, contribution_id, time)?)
                 }
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Adds the task to the list of completed tasks for the verifier,
@@ -1697,7 +1697,7 @@ impl CoordinatorState {
                     self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
                     Ok(self.remove_pending_verification(chunk_id, contribution_id)?)
                 }
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1904,12 +1904,12 @@ impl CoordinatorState {
             Participant::Contributor(_) => self
                 .current_contributors
                 .get(participant)
-                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .ok_or_else(|| CoordinatorError::ParticipantNotFound(participant.clone()))?
                 .clone(),
             Participant::Verifier(_) => self
                 .current_verifiers
                 .get(participant)
-                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .ok_or_else(|| CoordinatorError::ParticipantNotFound(participant.clone()))?
                 .clone(),
         };
         {
@@ -3007,6 +3007,48 @@ impl CoordinatorState {
             number_of_dropped_participants,
             number_of_banned_participants
         )
+    }
+
+    /// Updates the coordinator state with the knowledge that the
+    /// participant is still alive and participating (or waiting to
+    /// participate) in the ceremony.
+    pub(crate) fn heartbeat(
+        &mut self,
+        participant: &Participant,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
+        if let Some(_) = self.queue.iter_mut().find(|(p, score)| *p == participant) {
+            // TODO: update reliability score if contributor is in the queue.
+            return Ok(());
+        }
+
+        let info = self
+            .current_contributors
+            .iter_mut()
+            .find(|(p, _info)| *p == participant)
+            .map(|(_p, info)| info);
+
+        let info = match info {
+            Some(info) => Some(info),
+            None => self
+                .finished_contributors
+                .iter_mut()
+                .map(|(_round, finished_contributors)| {
+                    finished_contributors
+                        .iter_mut()
+                        .find(|(p, _info)| *p == participant)
+                        .map(|(_p, info)| info)
+                })
+                .next()
+                .flatten(),
+        };
+
+        if let Some(info) = info {
+            info.last_seen = time.utc_now();
+            Ok(())
+        } else {
+            Err(CoordinatorError::ParticipantNotFound(participant.clone()))
+        }
     }
 
     /// Save the coordinator state in storage.

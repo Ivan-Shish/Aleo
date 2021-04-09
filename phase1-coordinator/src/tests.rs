@@ -1679,19 +1679,24 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     coordinator.update()?;
     assert!(coordinator.dropped_participants().is_empty());
 
-    // contributor is stuck waiting for 10 minutes
+    // contributors are stuck waiting for 10 minutes, longer than the
+    // contributor timeout duration.
     time.update(|prev| prev + chrono::Duration::minutes(10));
 
     // Emulate contributor querying the current round via the
     // `/v1/round/current` endpoint.
     let _round = coordinator.current_round().unwrap();
 
+    // Only contributor1 performs a heartbeat
+    coordinator.heartbeat(&contributor1).unwrap();
+
     coordinator.update()?;
 
-    // TODO: currently is failing because the contributor times out
-    // because simply querying the round is not enough to update its
-    // `last_seen` field in the coordinator.
-    assert!(coordinator.dropped_participants().is_empty());
+    // contributor2 is dropped because it did not perform a heartbeat
+    // while waiting.
+    let dropped_participants = coordinator.dropped_participants();
+    assert_eq!(1, dropped_participants.len());
+    assert_eq!(&contributor2, dropped_participants.get(0).unwrap().id());
 
     Ok(())
 }
