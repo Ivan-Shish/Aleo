@@ -1672,16 +1672,25 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
     }
 
+    // The next contribution cannot be made because it depends on
+    // contributions that have not yet been made.
+    assert!(coordinator.try_lock(&contributor1).is_err());
+
     coordinator.update()?;
     assert!(coordinator.dropped_participants().is_empty());
 
     // contributor is stuck waiting for 10 minutes
     time.update(|prev| prev + chrono::Duration::minutes(10));
 
-    // Emulate contributor querying the current round.
+    // Emulate contributor querying the current round via the
+    // `/v1/round/current` endpoint.
     let _round = coordinator.current_round().unwrap();
 
     coordinator.update()?;
+
+    // TODO: currently is failing because the contributor times out
+    // because simply querying the round is not enough to update its
+    // `last_seen` field in the coordinator.
     assert!(coordinator.dropped_participants().is_empty());
 
     Ok(())
