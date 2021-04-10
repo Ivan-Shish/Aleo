@@ -2213,8 +2213,8 @@ impl Coordinator {
 
         // Check the justification and extract the tasks.
         let (tasks, replacement) = match justification {
-            Justification::BanCurrent(_, _, _, ref tasks, ref replacement) => (tasks, replacement),
-            Justification::DropCurrent(_, _, _, ref tasks, ref replacement) => (tasks, replacement),
+            Justification::BanCurrent(data) => (&data.tasks, &data.replacement),
+            Justification::DropCurrent(data) => (&data.tasks, &data.replacement),
             Justification::Inactive => {
                 warn!("Justification for action is that participant is inactive");
                 return Ok(vec![]);

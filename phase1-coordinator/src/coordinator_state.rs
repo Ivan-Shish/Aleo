@@ -19,7 +19,6 @@ use std::{
     collections::{HashMap, HashSet, LinkedList},
     iter::FromIterator,
     str::FromStr,
-    sync::Arc,
 };
 use tracing::*;
 
@@ -2036,13 +2035,13 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
+            return Ok(Justification::DropCurrent(DropData {
+                participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
                 tasks,
-                Some(replacement_contributor),
-            ));
+                replacement: Some(replacement_contributor),
+            }));
         }
 
         // Reassign the pending verification tasks in the coordinator state to a new verifier.
@@ -2074,13 +2073,13 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
+            return Ok(Justification::DropCurrent(DropData {
+                participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
                 tasks,
-                None,
-            ));
+                replacement: None,
+            }));
         }
 
         Err(CoordinatorError::DropParticipantFailed)
@@ -2102,19 +2101,13 @@ impl CoordinatorState {
 
         // Drop the participant from the queue, precommit, and current round.
         match self.drop_participant(participant, time)? {
-            Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks, replacement) => {
+            Justification::DropCurrent(drop_data) => {
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(Justification::BanCurrent(
-                    participant,
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement,
-                ))
+                Ok(Justification::BanCurrent(drop_data))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -3113,12 +3106,50 @@ fn initialize_tasks(
     tasks
 }
 
+/// Data required by the coordinator to drop a participant from the
+/// ceremony.
+pub(crate) struct DropData {
+    /// The participant being dropped.
+    pub participant: Participant,
+    pub bucket_id: u64,
+    /// Chunks currently locked by the participant.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the participant.
+    pub tasks: Vec<Task>,
+    /// The participant which will replace the participant being
+    /// dropped.
+    pub replacement: Option<Participant>,
+}
+
+/// The reason for performing certain actions which are dangerous
+/// (banning a user, dropping a user, etc), and data required to
+/// perform those actions. Certain actions can only be performed with
+/// sufficient justification.
 pub(crate) enum Justification {
-    BanCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
-    DropCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
+    /// Coordinator has decided that a participant needs to be banned (for a variety of potential reasons).
+    BanCurrent(DropData),
+    /// Coordinator has decided that a participant needs to be dropped (for a variety of potential reasons).
+    DropCurrent(DropData),
+    /// Coordinator has decided that a participant is inactive, and
+    /// not currently participating.
     Inactive,
 }
 
+/// The id of a task to be performed by a ceremony participant at a
+/// given contribution level, for a given chunk.
+///
+/// ```txt, ignore
+/// +----------------+---------+---------+---------+
+/// | ...            |  Task   |  Task   |  Task   |
+/// +----------------+---------+---------+---------+
+/// | Contribution 1 |  Task   |  Task   |  Task   |
+/// +----------------+---------+---------+---------+
+/// | Contribution 0 |  Task   |  Task   |  Task   |
+/// +----------------+---------+---------+---------+
+/// | Chunk          | Chunk 0 | Chunk 1 | ...     |
+/// +----------------+---------+---------+---------+
+/// ```
+///
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Task {
     chunk_id: u64,
