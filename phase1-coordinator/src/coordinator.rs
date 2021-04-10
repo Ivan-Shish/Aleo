@@ -253,7 +253,7 @@ impl From<CoordinatorError> for anyhow::Error {
 
 /// A trait for providing a source of time to the coordinator, used
 /// for mocking system time during testing.
-pub(crate) trait TimeSource: Send + Sync {
+pub trait TimeSource: Send + Sync {
     /// Provide the current time now in the UTC timezone
     fn utc_now(&self) -> DateTime<Utc>;
 }
@@ -275,7 +275,7 @@ impl TimeSource for SystemTimeSource {
 
 /// A time source to use for testing, allows the current time to be
 /// set manually.
-pub(crate) struct MockTimeSource {
+pub struct MockTimeSource {
     time: RwLock<DateTime<Utc>>,
 }
 
@@ -335,7 +335,7 @@ impl Coordinator {
     }
 
     /// Constructor that allows mocking time for testing.
-    pub(crate) fn new_with_time(
+    pub fn new_with_time(
         environment: Environment,
         signature: Box<dyn Signature>,
         time: Arc<dyn TimeSource>,
