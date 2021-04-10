@@ -1,3 +1,7 @@
+//! This module contains the central piece of this crate, the
+//! [Coordinator]. The coordinator's state is stored in a
+//! [CoordinatorState] object.
+
 use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
@@ -312,7 +316,9 @@ impl TimeSource for MockTimeSource {
     }
 }
 
-/// A core structure for operating the Phase 1 ceremony.
+/// A core structure for operating the Phase 1 ceremony. This struct
+/// is designed to be [Send] + [Sync]. The state of the ceremony is
+/// stored in a [CoordinatorState] object.
 #[derive(Clone)]
 pub struct Coordinator {
     /// The parameters and settings of this coordinator.

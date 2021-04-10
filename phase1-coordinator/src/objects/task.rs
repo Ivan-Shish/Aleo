@@ -113,11 +113,68 @@ pub enum TaskInitializationError {
 /// number of buckets is equal to the `number_of_contributors` in the
 /// round. The `starting_bucket_id` specifies which bucket the
 /// participant will start in.
+///
+/// If the `number_of_contributors == 0` then an empty task list will
+/// be returned.
+///
+/// # Constraints
+///
+/// The following contraints/relationships apply to the inputs of this
+/// function if `number_of_contributors > 0`:
+///
+/// + `starting_bucket_id < number_of_contributors`
+/// + `number_of_chunks >= number_of_contributors`
+///
+/// # Examples
+///
+/// With
+///
+/// + `starting_bucket_id = 0`
+/// + `number_of_chunks = 4`
+/// + `number_of_contributors = 2`
+///
+/// The following tasks will be initialized in this `Task N` order:
+///
+/// ```txt, ignore
+///   Contribution ID
+/// +----------------+                   +---------+---------+
+/// | Contribution 1 |                   |  Task 2 |  Task 3 |
+/// +----------------+---------+---------+---------+---------+
+/// | Contribution 0 |  Task 0 |  Task 1 |
+/// +----------------+---------+---------+---------+---------+
+///                  | Chunk 0 | Chunk 1 | Chunk 2 | Chunk 3 | Chunk ID
+///                  +---------+---------+---------+---------+
+///                  |      Bucket 0     |      Bucket 1     |
+/// ```
+///
+/// With
+///
+/// + `starting_bucket_id = 1`
+/// + `number_of_chunks = 4`
+/// + `number_of_contributors = 2`
+///
+/// The following tasks will be initialized in this `Task N` order:
+///
+/// ```txt, ignore
+///   Contribution ID
+/// +----------------+---------+---------+
+/// | Contribution 1 |  Task 2 |  Task 3 |
+/// +----------------+---------+---------+---------+---------+
+/// | Contribution 0 |                   |  Task 0 |  Task 1 |
+/// +----------------+---------+---------+---------+---------+
+///                  | Chunk 0 | Chunk 1 | Chunk 2 | Chunk 3 | Chunk ID
+///                  +---------+---------+---------+---------+
+///                  |      Bucket 0     |      Bucket 1     |
+/// ```
 pub fn initialize_tasks(
     starting_bucket_id: u64, // 0-indexed
     number_of_chunks: u64,
     number_of_contributors: u64,
 ) -> Result<LinkedList<Task>, TaskInitializationError> {
+    if number_of_contributors == 0 {
+        return Ok(LinkedList::new());
+    }
+
     // Check whether the starting bucket id is out of range
     if starting_bucket_id >= number_of_contributors {
         return Err(TaskInitializationError::StartingBucketIdOutOfRange {
@@ -181,6 +238,8 @@ pub fn initialize_tasks(
 
         tasks.push_back(Task::new(chunk_id, contribution_id as u64));
     }
+
+    assert!(tasks.len() == number_of_chunks as usize);
 
     Ok(tasks)
 }
