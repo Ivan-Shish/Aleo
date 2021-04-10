@@ -28,6 +28,36 @@ pub(super) enum CoordinatorStatus {
     Rollback,
 }
 
+/// Represents a participant's exclusive lock on a chunk with the
+/// specified `chunk_id`, which was obtained at the specified
+/// `lock_time`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkLock {
+    chunk_id: u64,
+    lock_time: DateTime<Utc>,
+}
+
+impl ChunkLock {
+    /// Create a new chunk lock for the specified `chunk_id`, and
+    /// recording the `lock_time` using the specified `time` source.
+    pub fn new(chunk_id: u64, time: &dyn TimeSource) -> Self {
+        Self {
+            chunk_id,
+            lock_time: time.utc_now(),
+        }
+    }
+
+    /// The id of the chunk which is locked.
+    pub fn chunk_id(&self) -> u64 {
+        self.chunk_id
+    }
+
+    /// The time that the chunk was locked.
+    pub fn lock_time(&self) -> &DateTime<Utc> {
+        &self.lock_time
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParticipantInfo {
     /// The ID of the participant.
@@ -48,8 +78,8 @@ pub struct ParticipantInfo {
     finished_at: Option<DateTime<Utc>>,
     /// The timestamp when this participant was dropped from the round.
     dropped_at: Option<DateTime<Utc>>,
-    /// The set of chunk IDs that this participant is computing.
-    locked_chunks: HashSet<u64>,
+    /// A map of chunk IDs to locks on chunks that this participant currently holds.
+    locked_chunks: HashMap<u64, ChunkLock>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
     assigned_tasks: LinkedList<Task>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is currently computing.
@@ -83,7 +113,7 @@ impl ParticipantInfo {
             started_at: None,
             finished_at: None,
             dropped_at: None,
-            locked_chunks: HashSet::new(),
+            locked_chunks: HashMap::new(),
             assigned_tasks: LinkedList::new(),
             pending_tasks: LinkedList::new(),
             completed_tasks: LinkedList::new(),
@@ -102,7 +132,7 @@ impl ParticipantInfo {
     ///
     /// Returns the set of chunk IDs that this participant is computing.
     ///
-    pub fn locked_chunks(&self) -> &HashSet<u64> {
+    pub fn locked_chunks(&self) -> &HashMap<u64, ChunkLock> {
         &self.locked_chunks
     }
 
@@ -293,7 +323,7 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
@@ -352,7 +382,7 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
@@ -446,7 +476,7 @@ impl ParticipantInfo {
         }
 
         // Check that this chunk is not currently locked by the participant.
-        if self.locked_chunks.contains(&chunk_id) {
+        if self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
@@ -477,8 +507,9 @@ impl ParticipantInfo {
         // Update the last seen time.
         self.last_seen = time.utc_now();
 
-        // Adds the given chunk ID to the locked chunks.
-        self.locked_chunks.insert(chunk_id);
+        let chunk_lock = ChunkLock::new(chunk_id, time);
+
+        self.locked_chunks.insert(chunk_id, chunk_lock);
 
         Ok(())
     }
@@ -518,7 +549,7 @@ impl ParticipantInfo {
         }
 
         // Check that this chunk is not currently locked by the participant.
-        if self.locked_chunks.contains(&chunk_id) {
+        if self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
@@ -595,7 +626,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains(&chunk_id) {
+        if !self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -678,7 +709,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains(&chunk_id) {
+        if !self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -1471,7 +1502,7 @@ impl CoordinatorState {
 
         // Check that the given chunk ID is locked by the participant,
         // and filter the pending tasks for the given chunk ID.
-        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains_key(&chunk_id) {
             true => participant_info
                 .pending_tasks
                 .par_iter()
@@ -1515,7 +1546,7 @@ impl CoordinatorState {
 
         // Check that the given chunk ID is locked by the participant,
         // and filter the disposing tasks for the given chunk ID.
-        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains_key(&chunk_id) {
             true => participant_info
                 .disposing_tasks
                 .par_iter()
@@ -1922,7 +1953,7 @@ impl CoordinatorState {
 
         // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
-        let locked_chunks: Vec<u64> = participant_info.locked_chunks.iter().cloned().collect();
+        let locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
         let tasks: Vec<Task> = match participant {
             Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
@@ -2390,7 +2421,7 @@ impl CoordinatorState {
         time: &dyn TimeSource,
     ) -> Result<Vec<Justification>, CoordinatorError> {
         // Fetch the timeout threshold for contributors.
-        let contributor_timeout = self.environment.contributor_timeout();
+        let contributor_timeout = self.environment.contributor_seen_timeout();
 
         // Fetch the current time.
         let now = time.utc_now();

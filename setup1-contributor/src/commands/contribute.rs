@@ -45,10 +45,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tokio::{
-    task::JoinHandle,
-    time::{delay_for, Instant},
-};
+use tokio::time::{delay_for, Instant};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -60,7 +57,7 @@ const RESPONSE_HASH_FILENAME: &str = "response.hash";
 const DELAY_AFTER_ERROR_DURATION_SECS: i64 = 60;
 const DELAY_WAIT_FOR_PIPELINE_SECS: i64 = 5;
 const DELAY_POLL_CEREMONY_SECS: i64 = 5;
-const HEARTBEAT_POLL_SECS: i64 = 10;
+const HEARTBEAT_POLL_SECS: i64 = 30;
 
 lazy_static! {
     static ref PIPELINE: RwLock<HashMap<PipelineLane, VecDeque<LockResponse>>> = {
