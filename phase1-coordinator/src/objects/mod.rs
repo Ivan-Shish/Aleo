@@ -12,3 +12,6 @@ pub use participant::*;
 
 pub mod round;
 pub use round::*;
+
+pub mod task;
+pub use task::Task;
