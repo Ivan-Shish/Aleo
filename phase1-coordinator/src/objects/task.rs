@@ -7,6 +7,7 @@ use serde::{
     Serialize,
     Serializer,
 };
+use thiserror::Error;
 
 /// The identity/position of a task to be performed by a ceremony
 /// participant at a given contribution level, for a given chunk.
@@ -84,11 +85,56 @@ impl<'de> Deserialize<'de> for Task {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum TaskInitializationError {
+    #[error(
+        "The specified starting bucket id {starting_bucket_id} is out of range. \
+        It should be less than number of contributors ({number_of_contributors})."
+    )]
+    StartingBucketIdOutOfRange {
+        starting_bucket_id: u64,
+        number_of_contributors: u64,
+    },
+    #[error(
+        "The specified number of chunks ({number_of_chunks}) is too small. \
+        It needs to be greater than or equal to the number of contributors \
+        ({number_of_contributors})."
+    )]
+    NotEnoughChunks {
+        number_of_chunks: u64,
+        number_of_contributors: u64,
+    },
+}
+
+/// Constructs ceremony tasks for a participant. The chunks are
+/// divided up into buckets, ranges of chunks which each participant
+/// will operate on exclusively before moving onto the next bucket
+/// where it will build on another participant's contributions. The
+/// number of buckets is equal to the `number_of_contributors` in the
+/// round. The `starting_bucket_id` specifies which bucket the
+/// participant will start in.
 pub fn initialize_tasks(
     starting_bucket_id: u64, // 0-indexed
     number_of_chunks: u64,
     number_of_contributors: u64,
-) -> LinkedList<Task> {
+) -> Result<LinkedList<Task>, TaskInitializationError> {
+    // Check whether the starting bucket id is out of range
+    if starting_bucket_id >= number_of_contributors {
+        return Err(TaskInitializationError::StartingBucketIdOutOfRange {
+            starting_bucket_id,
+            number_of_contributors,
+        });
+    }
+
+    // Check whether there are not enough chunks for the number of
+    // contributors
+    if number_of_chunks < number_of_contributors {
+        return Err(TaskInitializationError::NotEnoughChunks {
+            number_of_chunks,
+            number_of_contributors,
+        });
+    }
+
     let number_of_buckets = number_of_contributors;
 
     // Fetch the bucket size.
@@ -136,12 +182,12 @@ pub fn initialize_tasks(
         tasks.push_back(Task::new(chunk_id, contribution_id as u64));
     }
 
-    tasks
+    Ok(tasks)
 }
 
 #[cfg(test)]
 mod test {
-    use super::{initialize_tasks, Task};
+    use super::{initialize_tasks, Task, TaskInitializationError};
     use crate::testing::prelude::test_logger;
     use std::collections::HashSet;
 
@@ -153,21 +199,105 @@ mod test {
     }
 
     #[test]
-    fn test_initialize_tasks() {
+    fn test_initialize_tasks_2_chunks_1_contributor() {
+        let number_of_chunks = 2;
+        let number_of_contributors = 1;
+
+        let bucket_id = 0;
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+            .unwrap()
+            .into_iter();
+        assert_eq!(Some(Task::new(0, 1)), tasks.next());
+        assert_eq!(Some(Task::new(1, 1)), tasks.next());
+        assert!(tasks.next().is_none());
+
+        let bucket_id = 1;
+        match initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).unwrap_err() {
+            TaskInitializationError::StartingBucketIdOutOfRange {
+                starting_bucket_id,
+                number_of_contributors,
+            } => {
+                assert_eq!(1, starting_bucket_id);
+                assert_eq!(1, number_of_contributors);
+            }
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn test_initialize_tasks_1_chunk_2_contributors() {
+        let number_of_chunks = 1;
+        let number_of_contributors = 2;
+
+        let bucket_id = 0;
+        match initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).unwrap_err() {
+            TaskInitializationError::NotEnoughChunks {
+                number_of_chunks,
+                number_of_contributors,
+            } => {
+                assert_eq!(1, number_of_chunks);
+                assert_eq!(2, number_of_contributors);
+            }
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn test_initialize_tasks_2_chunks_2_contributors() {
+        let number_of_chunks = 2;
+        let number_of_contributors = 2;
+
+        let bucket_id = 0;
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+            .unwrap()
+            .into_iter();
+        assert_eq!(Some(Task::new(0, 1)), tasks.next());
+        assert_eq!(Some(Task::new(1, 2)), tasks.next());
+        assert!(tasks.next().is_none());
+
+        let bucket_id = 1;
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+            .unwrap()
+            .into_iter();
+        assert_eq!(Some(Task::new(1, 1)), tasks.next());
+        assert_eq!(Some(Task::new(0, 2)), tasks.next());
+        assert!(tasks.next().is_none());
+
+        let bucket_id = 2;
+        match initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).unwrap_err() {
+            TaskInitializationError::StartingBucketIdOutOfRange {
+                starting_bucket_id,
+                number_of_contributors,
+            } => {
+                assert_eq!(2, starting_bucket_id);
+                assert_eq!(2, number_of_contributors);
+            }
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn test_initialize_tasks_3_chunks_2_contributors() {
         let number_of_chunks = 3;
         let number_of_contributors = 2;
 
         let bucket_id = 0;
-        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+            .unwrap()
+            .into_iter();
         assert_eq!(Some(Task::new(0, 1)), tasks.next());
         assert_eq!(Some(Task::new(1, 2)), tasks.next());
         assert_eq!(Some(Task::new(2, 2)), tasks.next());
+        assert!(tasks.next().is_none());
 
         let bucket_id = 1;
-        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+            .unwrap()
+            .into_iter();
         assert_eq!(Some(Task::new(1, 1)), tasks.next());
         assert_eq!(Some(Task::new(2, 1)), tasks.next());
         assert_eq!(Some(Task::new(0, 2)), tasks.next());
+        assert!(tasks.next().is_none());
     }
 
     #[test]
@@ -178,7 +308,9 @@ mod test {
             let mut all_tasks = HashSet::new();
             for bucket_id in 0..number_of_contributors {
                 // trace!("Contributor {}", bucket_id);
-                let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
+                let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
+                    .unwrap()
+                    .into_iter();
                 while let Some(task) = tasks.next() {
                     assert!(all_tasks.insert(task));
                 }

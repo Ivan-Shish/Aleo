@@ -3,7 +3,7 @@ use crate::{
     commands::{Aggregation, Initialization},
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
-    objects::{participant::*, ContributionFileSignature, Round},
+    objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -175,6 +175,7 @@ pub enum CoordinatorError {
     StorageReaderFailed,
     StorageSizeLookupFailed,
     StorageUpdateFailed,
+    TaskInitializationFailed(TaskInitializationError),
     TryFromSliceError(std::array::TryFromSliceError),
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
@@ -184,6 +185,12 @@ pub enum CoordinatorError {
     VerifierMissing,
     VerifierSignatureInvalid,
     VerifiersMissing,
+}
+
+impl From<TaskInitializationError> for CoordinatorError {
+    fn from(error: TaskInitializationError) -> Self {
+        Self::TaskInitializationFailed(error)
+    }
 }
 
 impl From<anyhow::Error> for CoordinatorError {

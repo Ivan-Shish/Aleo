@@ -1997,7 +1997,7 @@ impl CoordinatorState {
 
                 // Reassign tasks for the affected contributor.
                 contributor_info.assigned_tasks =
-                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)
+                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)?
                         .into_iter()
                         .filter(|task| !excluded_tasks.contains(&task.chunk_id()))
                         .collect();
@@ -2157,7 +2157,7 @@ impl CoordinatorState {
         // TODO (raychu86): Update the participant info (interleave the tasks by contribution id).
         // TODO (raychu86): Add tasks to the replacement contributor if it already has pending tasks.
 
-        let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors);
+        let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors)?;
         let mut participant_info =
             ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id, time);
         participant_info.start(tasks, time)?;
@@ -2737,7 +2737,7 @@ impl CoordinatorState {
             // Set the chunk ID ordering for each contributor.
             for (bucket_index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
                 let bucket_id = bucket_index as u64;
-                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64);
+                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
 
                 // Check that each participant is storing the correct round height.
                 if next_round != next_round_height && next_round != current_round_height + 1 {
@@ -3782,9 +3782,9 @@ mod tests {
 
         // Process every chunk in the round as contributor 1 and contributor 2.
         let number_of_chunks = environment.number_of_chunks();
-        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2).unwrap();
         let mut tasks1 = tasks1.iter();
-        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2).unwrap();
         let mut tasks2 = tasks2.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3913,7 +3913,7 @@ mod tests {
 
         // Process every chunk in the round as contributor 1.
         let number_of_chunks = environment.number_of_chunks();
-        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2).unwrap();
         let mut tasks1 = tasks1.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3967,7 +3967,7 @@ mod tests {
         }
 
         // Process every chunk in the round as contributor 2.
-        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2).unwrap();
         let mut tasks2 = tasks2.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);

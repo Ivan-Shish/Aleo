@@ -2527,6 +2527,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
+ "thiserror",
  "tokio 0.3.1",
  "tracing",
  "tracing-appender",
