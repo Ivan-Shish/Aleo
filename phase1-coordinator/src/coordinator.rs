@@ -244,7 +244,10 @@ impl fmt::Display for CoordinatorError {
 impl From<CoordinatorError> for anyhow::Error {
     fn from(error: CoordinatorError) -> Self {
         error!("{}", error);
-        Self::msg(error.to_string())
+        match error {
+            CoordinatorError::Error(anyhow_error) => anyhow_error,
+            _ => Self::msg(error.to_string()),
+        }
     }
 }
 
