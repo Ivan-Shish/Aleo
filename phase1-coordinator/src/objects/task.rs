@@ -8,10 +8,16 @@ use serde::{
     Serializer,
 };
 
-/// The id of a task to be performed by a ceremony participant at a
-/// given contribution level, for a given chunk.
+/// The identity/position of a task to be performed by a ceremony
+/// participant at a given contribution level, for a given chunk.
+///
+/// Each contribution for a given task will be created by a unique
+/// contributor. The total number of contributions per task at the end
+/// of a successful round will be equal to the number of contributors
+/// in that round.
 ///
 /// ```txt, ignore
+///   Contribution ID
 /// +----------------+---------+---------+---------+
 /// | ...            |  Task   |  Task   |  Task   |
 /// +----------------+---------+---------+---------+
@@ -19,10 +25,9 @@ use serde::{
 /// +----------------+---------+---------+---------+
 /// | Contribution 0 |  Task   |  Task   |  Task   |
 /// +----------------+---------+---------+---------+
-/// | Chunk          | Chunk 0 | Chunk 1 | ...     |
-/// +----------------+---------+---------+---------+
+///                  | Chunk 0 | Chunk 1 | ...     | Chunk ID
+///                  +---------+---------+---------+
 /// ```
-///
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Task {
     chunk_id: u64,

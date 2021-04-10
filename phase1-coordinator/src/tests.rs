@@ -1,8 +1,8 @@
 use crate::{
     authentication::Dummy,
     commands::{Seed, SigningKey, SEED_LENGTH},
-    coordinator_state::Task,
     environment::{Environment, Parameters, Testing},
+    objects::Task,
     testing::prelude::*,
     Coordinator,
     MockTimeSource,
