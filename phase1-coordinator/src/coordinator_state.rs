@@ -3084,6 +3084,9 @@ impl CoordinatorState {
 pub(crate) struct DropData {
     /// The participant being dropped.
     pub participant: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this participant. See [initialize_tasks] for more
+    /// information about this parameter.
     pub bucket_id: u64,
     /// Chunks currently locked by the participant.
     pub locked_chunks: Vec<u64>,
