@@ -311,6 +311,15 @@ impl Environment {
     }
 
     ///
+    /// Returns the maximum duration that a participant can hold a
+    /// lock before being dropped from the ceremony by the
+    /// coordinator.
+    ///
+    pub const fn participant_lock_timeout(&self) -> chrono::Duration {
+        self.participant_lock_timeout
+    }
+
+    ///
     /// Returns the number of times the coordinator tolerates
     /// a dropped participant before banning them from future rounds.
     ///
@@ -501,9 +510,15 @@ impl Testing {
         deployment
     }
 
-    pub fn contributor_timeout(&self, contributor_timeout: chrono::Duration) -> Self {
+    pub fn contributor_seen_timeout(&self, contributor_timeout: chrono::Duration) -> Self {
         let mut deployment = self.clone();
         deployment.environment.contributor_seen_timeout = contributor_timeout;
+        deployment
+    }
+
+    pub fn participant_lock_timeout(&self, participant_lock_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.participant_lock_timeout = participant_lock_timeout;
         deployment
     }
 }

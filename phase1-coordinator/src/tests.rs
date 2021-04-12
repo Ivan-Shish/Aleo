@@ -17,7 +17,6 @@ use std::{
     collections::{HashSet, LinkedList},
     iter::FromIterator,
     sync::Arc,
-    time::Duration,
 };
 
 #[inline]
@@ -1574,6 +1573,8 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
 
 /// Test that participants who have not been seen for longer than the
 /// [Environment::contributor_timeout_in_minutes] will be dropped.
+#[test]
+#[serial]
 fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     let time = Arc::new(MockTimeSource::new(Utc::now()));
 
@@ -1586,7 +1587,9 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
         16, /* chunk_size */
     ));
 
-    let testing_deployment: Testing = Testing::from(parameters).contributor_timeout(chrono::Duration::minutes(5));
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(5))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
 
     let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
 
@@ -1632,6 +1635,8 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 
 /// Test that participant who is waiting for a verifier to verify
 /// chunks that it depends on is not dropped from the round.
+#[test]
+#[serial]
 fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     let time = Arc::new(MockTimeSource::new(Utc::now()));
 
@@ -1644,7 +1649,9 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
         16, /* chunk_size */
     ));
 
-    let testing_deployment: Testing = Testing::from(parameters).contributor_timeout(chrono::Duration::minutes(5));
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(5))
+        .participant_lock_timeout(chrono::Duration::minutes(8));
 
     let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
     let number_of_chunks = environment.number_of_chunks() as usize;
@@ -1657,7 +1664,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
-    let (verifier, verifier_signing_key) = create_verifier("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
 
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 10)?;
@@ -1697,6 +1704,75 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     let dropped_participants = coordinator.dropped_participants();
     assert_eq!(1, dropped_participants.len());
     assert_eq!(&contributor2, dropped_participants.get(0).unwrap().id());
+
+    Ok(())
+}
+
+/// Test that a participant who maintains a lock on a chunk for longer
+/// than [Environment::participant_lock_timeout] is dropped from the
+/// round by the coordinator.
+#[test]
+#[serial]
+fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(20))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
+
+    let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+
+    coordinator.try_lock(&verifier)?;
+    coordinator.try_lock(&contributor1)?;
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::minutes(1));
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::minutes(10));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert_eq!(2, coordinator.dropped_participants().len());
+    assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
+    assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
+    assert_eq!(&verifier, coordinator.dropped_participants().get(1).unwrap().id());
 
     Ok(())
 }
@@ -1780,18 +1856,4 @@ fn test_try_lock_blocked() {
 #[serial]
 fn test_drop_contributor_and_reassign_tasks() {
     test_report!(drop_contributor_and_reassign_tasks_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_contributor_timeout_drop() {
-    test_report!(contributor_timeout_drop_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_contributor_wait_verifier() {
-    test_report!(contributor_wait_verifier_test);
 }

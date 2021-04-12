@@ -580,6 +580,11 @@ impl Round {
                 let chunk = self.chunk(chunk_id)?;
                 // Fetch the current contribution ID.
                 let current_contribution_id = chunk.current_contribution_id();
+
+                if current_contribution_id == 0 {
+                    return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
+                }
+
                 // Fetch the previous contribution locator.
                 let challenge_locator =
                     Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id - 1, true);

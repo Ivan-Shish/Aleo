@@ -33,7 +33,9 @@ pub(super) enum CoordinatorStatus {
 /// `lock_time`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkLock {
+    /// The id of the chunk which is locked.
     chunk_id: u64,
+    /// The time that the chunk was locked.
     lock_time: DateTime<Utc>,
 }
 
@@ -2415,40 +2417,86 @@ impl CoordinatorState {
     ///
     /// On success, returns a list of justifications for the coordinator to take actions on.
     ///
-    #[inline]
     pub(super) fn update_dropped_participants(
         &mut self,
         time: &dyn TimeSource,
     ) -> Result<Vec<Justification>, CoordinatorError> {
+        Ok(self
+            .update_contributor_seen_drops(time)?
+            .into_iter()
+            .chain(self.update_participant_lock_drops(time)?.into_iter())
+            .collect())
+    }
+
+    /// This will drop a participant (verifier or contributor) if it
+    /// has been holding a lock for longer than
+    /// [crate::environment::Environment]'s
+    /// `participant_lock_timeout`.
+    fn update_participant_lock_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
         // Fetch the timeout threshold for contributors.
-        let contributor_timeout = self.environment.contributor_seen_timeout();
+        let participant_lock_timeout = self.environment.participant_lock_timeout();
 
         // Fetch the current time.
         let now = time.utc_now();
 
-        // Initialize the list of justifications.
-        let mut justifications = vec![];
+        self.current_contributors
+            .clone()
+            .iter()
+            .chain(self.current_verifiers.clone().iter())
+            .filter_map(|(participant, participant_info)| {
+                dbg!(participant);
+                dbg!(&participant_info.locked_chunks);
+                if !self.is_coordinator_contributor(&participant)
+                    && participant_info
+                        .locked_chunks
+                        .values()
+                        .find(|lock| {
+                            let elapsed = now - lock.lock_time;
+                            elapsed > participant_lock_timeout
+                        })
+                        .is_some()
+                {
+                    Some(self.drop_participant(participant, time))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 
-        // Process the contributors.
-        for (participant, participant_info) in &self.current_contributors.clone() {
-            // Fetch the elapsed time.
-            let elapsed = now - participant_info.last_seen;
+    /// This will drop a contributor if it hasn't been seen for more
+    /// than [crate::environment::Environment]'s
+    /// `contributor_seen_timeout`.
+    fn update_contributor_seen_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
+        // Fetch the timeout threshold for contributors.
+        let contributor_seen_timeout = self.environment.contributor_seen_timeout();
 
-            // Check if the participant is still live and not a coordinator contributor.
-            if elapsed > contributor_timeout && !self.is_coordinator_contributor(&participant) {
-                tracing::info!(
-                    "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
-                     since it was last seen by the coordinator (last seen {} minutes ago).",
-                    participant,
-                    contributor_timeout,
-                    elapsed.num_minutes()
-                );
-                // Drop the participant.
-                justifications.push(self.drop_participant(participant, time)?);
-            }
-        }
+        // Fetch the current time.
+        let now = time.utc_now();
 
-        Ok(justifications)
+        self.current_contributors
+            .clone()
+            .iter()
+            .filter_map(|(participant, participant_info)| {
+                // Fetch the elapsed time.
+                let elapsed = now - participant_info.last_seen;
+
+                // Check if the participant is still live and not a coordinator contributor.
+                if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
+                    tracing::info!(
+                        "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
+                        since it was last seen by the coordinator (last seen {} minutes ago).",
+                        participant,
+                        contributor_seen_timeout,
+                        elapsed.num_minutes()
+                    );
+                    // Drop the participant.
+                    Some(self.drop_participant(participant, time))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     ///
@@ -3038,7 +3086,7 @@ impl CoordinatorState {
         participant: &Participant,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
-        if let Some(_) = self.queue.iter_mut().find(|(p, score)| *p == participant) {
+        if let Some(_) = self.queue.iter_mut().find(|(p, _score)| *p == participant) {
             // TODO: update reliability score if contributor is in the queue.
             return Ok(());
         }

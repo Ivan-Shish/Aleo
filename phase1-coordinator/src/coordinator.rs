@@ -37,6 +37,7 @@ pub enum CoordinatorError {
     ChunkLockLimitReached,
     ChunkMissing,
     ChunkMissingVerification,
+    ChunkCannotLockZeroContributions { chunk_id: u64 },
     ChunkNotLockedOrByWrongParticipant,
     ComputationFailed,
     CompressedContributionHashingUnsupported,
