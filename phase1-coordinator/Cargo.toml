@@ -49,5 +49,3 @@ default = ["log_file"]
 operator = ["log_file", "testing"]
 testing = []
 log_file = []
-silent = []
-

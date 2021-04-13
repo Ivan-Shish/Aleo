@@ -2,21 +2,16 @@ use crate::environment::Environment;
 
 use once_cell::sync::OnceCell;
 
-#[cfg(feature = "silent")]
+#[cfg(not(feature = "log_file"))]
 pub struct LogGuard;
-#[cfg(all(not(feature = "silent"), not(feature = "log_file")))]
-pub struct LogGuard;
-#[cfg(all(not(feature = "silent"), feature = "log_file"))]
+#[cfg(feature = "log_file")]
 pub struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
 
 pub(crate) static LOGGER: OnceCell<LogGuard> = OnceCell::new();
 
 /// Initialize logger with custom format and verbosity.
 pub(crate) fn initialize_logger(environment: &Environment) {
-    #[cfg(feature = "silent")]
-    LOGGER.get_or_init(|| LogGuard {});
-
-    #[cfg(all(not(feature = "silent"), not(feature = "log_file")))]
+    #[cfg(not(feature = "log_file"))]
     LOGGER.get_or_init(|| {
         use tracing_subscriber::{fmt::format::Format, FmtSubscriber};
 
@@ -35,7 +30,7 @@ pub(crate) fn initialize_logger(environment: &Environment) {
         LogGuard {}
     });
 
-    #[cfg(all(not(feature = "silent"), feature = "log_file"))]
+    #[cfg(feature = "log_file")]
     LOGGER.get_or_init(|| {
         use tracing_subscriber::{fmt, fmt::format::Format, layer::SubscriberExt, FmtSubscriber};
 

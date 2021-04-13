@@ -16,7 +16,12 @@ async fn coordinator(environment: &Environment, signature: Box<dyn Signature>) -
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     // Set the environment.
-    let environment: Environment = Development::from(Parameters::TestCustom(8, 12, 256)).into();
+    let environment: Environment = Development::from(Parameters::TestCustom {
+        number_of_chunks: 8,
+        power: 12,
+        batch_size: 256,
+    })
+    .into();
     // use phase1_coordinator::environment::Production;
     // let environment: Environment = Production::from(Parameters::AleoInner).into();
 

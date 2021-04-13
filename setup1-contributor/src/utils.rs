@@ -121,14 +121,15 @@ pub fn create_parameters_for_chunk<E: PairingEngine>(
     environment: &Environment,
     chunk_id: usize,
 ) -> Result<Phase1Parameters<E>> {
-    let (_, proving_system, _, power, batch_size, chunk_size) = environment.parameters();
+    let settings = environment.parameters();
+
     let parameters = Phase1Parameters::<E>::new_chunk(
         ContributionMode::Chunked,
         chunk_id,
-        chunk_size,
-        proving_system,
-        power,
-        batch_size,
+        settings.chunk_size(),
+        settings.proving_system(),
+        settings.power(),
+        settings.batch_size(),
     );
     Ok(parameters)
 }
@@ -172,7 +173,11 @@ pub fn sign_contribution_state<R: Rng + CryptoRng>(
 
 #[inline]
 fn development_environment() -> Environment {
-    let environment = Development::from(Parameters::TestCustom(64, 16, 512));
+    let environment = Development::from(Parameters::TestCustom {
+        number_of_chunks: 64,
+        power: 16,
+        batch_size: 512,
+    });
     environment.into()
 }
 

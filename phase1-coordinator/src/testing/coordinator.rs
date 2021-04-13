@@ -18,10 +18,8 @@ use std::{
 };
 use tracing::*;
 
-#[cfg(not(feature = "silent"))]
 use once_cell::sync::OnceCell;
 
-#[cfg(not(feature = "silent"))]
 static INSTANCE: OnceCell<()> = OnceCell::new();
 
 /// Environment for testing purposes only.
@@ -82,34 +80,17 @@ pub fn test_coordinator_verifier(environment: &Environment) -> anyhow::Result<Pa
 }
 
 pub fn initialize_test_environment(environment: &Environment) -> Environment {
-    #[cfg(not(feature = "silent"))]
     test_logger();
 
     clear_test_storage(environment);
     environment.clone()
 }
 
-pub fn initialize_test_environment_with_debug(environment: &Environment) -> Environment {
-    #[cfg(not(feature = "silent"))]
-    INSTANCE.get_or_init(|| {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
-        tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-    });
-
-    clear_test_storage(environment);
-    environment.clone()
-}
-
-#[cfg(not(feature = "silent"))]
 pub(crate) fn test_logger() {
     INSTANCE.get_or_init(|| {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::TRACE).finish();
-        tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+        tracing_subscriber::fmt::init();
     });
 }
-
-#[cfg(feature = "silent")]
-pub(crate) fn test_logger() {}
 
 /// Clears the transcript directory for testing purposes only.
 fn clear_test_storage(environment: &Environment) {

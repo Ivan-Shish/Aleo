@@ -8,7 +8,12 @@ use tracing::info;
 
 #[inline]
 fn development() -> Environment {
-    Development::from(Parameters::TestCustom(64, 16, 512)).into()
+    Development::from(Parameters::TestCustom {
+        number_of_chunks: 64,
+        power: 16,
+        batch_size: 512,
+    })
+    .into()
 }
 
 #[inline]

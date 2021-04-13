@@ -67,7 +67,7 @@ fn create_contributor_test_details(id: &str) -> ContributorTestDetails {
 }
 
 fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         proving_system,
         curve,
@@ -75,7 +75,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -173,7 +173,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
 
 /// Drops a contributor who does not affect other contributors or verifiers.
 fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -181,7 +181,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -289,7 +289,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
 
 /// Drops a contributor in between two contributors.
 fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -297,7 +297,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -417,7 +417,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
 
 /// Drops a contributor with other contributors in pending tasks.
 fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -425,7 +425,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -575,7 +575,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
 
 /// Drops a contributor with locked chunks and other contributors in pending tasks.
 fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -583,7 +583,7 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -739,7 +739,7 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
 
 /// Drops a contributor and removes all contributions from the contributor.
 fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -747,7 +747,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -866,7 +866,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
 
 /// Drops a contributor and clears locks for contributors/verifiers working on disposed tasks.
 fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -874,7 +874,7 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1063,17 +1063,17 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        1, /* power */
-        2, /* batch_size */
-        2, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
     let (replacement_contributor, ..) = create_contributor("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.clone()]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1139,7 +1139,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
 
 /// Drops a multiple contributors an replaces with the coordinator contributor.
 fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1152,7 +1152,7 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
         Participant::new_contributor("testing-coordinator-contributor-2"),
         Participant::new_contributor("testing-coordinator-contributor-3"),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1304,7 +1304,7 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
 }
 
 fn try_lock_blocked_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1312,7 +1312,7 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1407,14 +1407,14 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        6,  /* power */
-        16, /* batch_size */
-        16, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 6,
+        batch_size: 16,
+        chunk_size: 16,
+    });
 
     // Create replacement contributors
     let replacement_contributor_1 = create_contributor_test_details("replacement-1");
@@ -1424,7 +1424,7 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
         replacement_contributor_1.participant.clone(),
         replacement_contributor_2.participant.clone(),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1497,7 +1497,7 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
 }
 
 fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1505,7 +1505,7 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
