@@ -271,6 +271,8 @@ pub trait TimeSource: Send + Sync {
 }
 
 // Private tuple field to force use of constructor.
+/// A [TimeSource] implementation that fetches the current system time
+/// using [Utc].
 pub(crate) struct SystemTimeSource(());
 
 impl SystemTimeSource {

@@ -62,6 +62,3 @@ pub mod testing;
 
 #[cfg(test)]
 pub mod tests;
-
-#[macro_use]
-extern crate serde_with;

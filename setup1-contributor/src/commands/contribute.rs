@@ -227,25 +227,13 @@ impl Contribute {
         }
 
         let cloned = self.clone();
-        //TODO: this is broken, probably because there is some
-        // blocking code in one of the other tasks.
-        //
-        // let join_handle: JoinHandle<anyhow::Result<()>> = tokio::task::spawn(async move {
-        //     let auth_rng = &mut rand::rngs::OsRng;
-        //     loop {
-        //         println!("Performing heartbeat.");
-        //         tracing::info!("Performing heartbeat.");
-        //         cloned.heartbeat(auth_rng).await?;
-        //         delay_for(heartbeat_poll_duration).await;
-        //     }
-        // });
-        // futures.push(join_handle);
-
+        // NOTE: Attempted to use a task, however this did not work as
+        // epected. It seems likely there is some blocking code in one
+        // of the other tasks.
         std::thread::spawn(move || {
             let auth_rng = &mut rand::rngs::OsRng;
             let mut runtime = tokio::runtime::Runtime::new().unwrap();
             loop {
-                println!("Performing heartbeat.");
                 tracing::info!("Performing heartbeat.");
                 if let Err(error) = runtime.block_on(cloned.heartbeat(auth_rng)) {
                     tracing::error!("Error performing heartbeat: {}", error);

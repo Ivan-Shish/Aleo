@@ -138,7 +138,7 @@ impl Parameters {
     }
 }
 
-#[serde_as]
+#[serde_with::serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Environment {
     /// The parameter settings of this coordinator.

@@ -2444,8 +2444,6 @@ impl CoordinatorState {
             .iter()
             .chain(self.current_verifiers.clone().iter())
             .filter_map(|(participant, participant_info)| {
-                dbg!(participant);
-                dbg!(&participant_info.locked_chunks);
                 if !self.is_coordinator_contributor(&participant)
                     && participant_info
                         .locked_chunks
