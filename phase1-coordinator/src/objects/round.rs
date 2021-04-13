@@ -813,6 +813,8 @@ impl Round {
                     storage.remove(&response_signature_locator)?;
                 }
 
+                // TODO: revisit the logic of removing challenges
+                //       https://github.com/AleoHQ/aleo-setup/issues/250
                 // Remove the next challenge locator if the current response has been verified.
                 if chunk.current_contribution()?.is_verified() {
                     // Fetch whether this is the final contribution of the specified chunk.

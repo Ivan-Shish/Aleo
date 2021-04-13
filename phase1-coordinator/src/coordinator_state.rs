@@ -1911,6 +1911,8 @@ impl CoordinatorState {
                     .cloned()
                     .partition(|task| tasks_by_chunk.get(&task.chunk_id).is_some());
 
+                // TODO: revisit the handling of disposing_tasks
+                //       https://github.com/AleoHQ/aleo-setup/issues/249
                 contributor_info.disposing_tasks = disposing_tasks;
                 contributor_info.pending_tasks = pending_tasks;
 
@@ -1923,6 +1925,9 @@ impl CoordinatorState {
                             false
                         }
                     });
+
+                // TODO: revisit the handling of disposed_tasks
+                //       https://github.com/AleoHQ/aleo-setup/issues/249
                 contributor_info.completed_tasks = completed_tasks;
                 contributor_info.disposed_tasks.extend(disposed_tasks);
 
@@ -1950,6 +1955,9 @@ impl CoordinatorState {
                     .iter()
                     .cloned()
                     .partition(|task| all_disposed_tasks.contains(&task));
+
+                // TODO: revisit the handling of disposing_tasks
+                //       https://github.com/AleoHQ/aleo-setup/issues/249
                 verifier_info.pending_tasks = pending_tasks;
                 verifier_info.disposing_tasks = disposing_tasks;
 
@@ -1959,6 +1967,9 @@ impl CoordinatorState {
                     .iter()
                     .cloned()
                     .partition(|task| all_disposed_tasks.contains(&task));
+
+                // TODO: revisit the handling of disposed_tasks
+                //       https://github.com/AleoHQ/aleo-setup/issues/249
                 verifier_info.completed_tasks = completed_tasks;
                 verifier_info.disposed_tasks.extend(disposed_tasks);
             }
