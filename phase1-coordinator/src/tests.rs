@@ -1,7 +1,7 @@
 use crate::{
     authentication::Dummy,
     commands::{Seed, SigningKey, SEED_LENGTH},
-    environment::{Environment, Parameters, Testing},
+    environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
     testing::prelude::*,
     Coordinator,
@@ -1578,7 +1578,7 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
 fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     let time = Arc::new(MockTimeSource::new(Utc::now()));
 
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1591,7 +1591,7 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
         .contributor_seen_timeout(chrono::Duration::minutes(5))
         .participant_lock_timeout(chrono::Duration::minutes(10));
 
-    let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
@@ -1640,7 +1640,7 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     let time = Arc::new(MockTimeSource::new(Utc::now()));
 
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1648,12 +1648,11 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-
     let testing_deployment: Testing = Testing::from(parameters)
         .contributor_seen_timeout(chrono::Duration::minutes(5))
         .participant_lock_timeout(chrono::Duration::minutes(8));
 
-    let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1716,7 +1715,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     let time = Arc::new(MockTimeSource::new(Utc::now()));
 
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1729,7 +1728,7 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
         .contributor_seen_timeout(chrono::Duration::minutes(20))
         .participant_lock_timeout(chrono::Duration::minutes(10));
 
-    let environment = initialize_test_environment_with_debug(&Environment::from(testing_deployment));
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
