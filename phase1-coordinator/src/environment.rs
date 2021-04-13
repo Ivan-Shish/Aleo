@@ -8,6 +8,7 @@ use setup_utils::{CheckForCorrectness, UseCompression};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use serde_with::DurationSecondsWithFrac;
 use tracing::Level;
 use url::Url;
 
@@ -203,6 +204,7 @@ impl Parameters {
     }
 }
 
+#[serde_with::serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Environment {
     /// The parameter settings of this coordinator.
@@ -226,10 +228,21 @@ pub struct Environment {
     contributor_lock_chunk_limit: usize,
     /// The number of chunks a verifier is authorized to lock in tandem in a round.
     verifier_lock_chunk_limit: usize,
-    /// The number of minutes tolerated prior to assuming a contributor has dropped.
-    contributor_timeout_in_minutes: u16,
-    /// The number of minutes tolerated prior to assuming a verifier has dropped.
-    verifier_timeout_in_minutes: u16,
+    /// Returns the maximum duration a contributor can go without
+    /// being seen by the coordinator before it will be dropped from
+    /// the ceremony by the coordinator.
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    contributor_seen_timeout: chrono::Duration,
+    /// The maximum duration a verifier can go without being seen by
+    /// the coordinator before it will be dropped from the ceremony by
+    /// the coordinator.
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    verifier_seen_timeout: chrono::Duration,
+    /// The maximum duration a lock can be held by a participant
+    /// before it will be dropped from the ceremony by the
+    /// coordinator.
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    participant_lock_timeout: chrono::Duration,
     /// The number of drops tolerated by a participant before banning them from future rounds.
     participant_ban_threshold: u16,
     /// The setting to allow current contributors to join the queue for the next round.
@@ -346,19 +359,30 @@ impl Environment {
     }
 
     ///
-    /// Returns the number of minutes the coordinator tolerates
-    /// before assuming a contributor has disconnected.
+    /// Returns the maximum duration a contributor can go without
+    /// being seen by the coordinator before it will be dropped from
+    /// the ceremony by the coordinator.
     ///
-    pub const fn contributor_timeout_in_minutes(&self) -> u16 {
-        self.contributor_timeout_in_minutes
+    pub const fn contributor_seen_timeout(&self) -> chrono::Duration {
+        self.contributor_seen_timeout
     }
 
     ///
-    /// Returns the number of minutes the coordinator tolerates
-    /// before assuming a verifier has disconnected.
+    /// Returns the maximum duration a verifier can go without being
+    /// seen by the coordinator before it will be dropped from the
+    /// ceremony by the coordinator.
     ///
-    pub const fn verifier_timeout_in_minutes(&self) -> u16 {
-        self.verifier_timeout_in_minutes
+    pub const fn verifier_seen_timeout(&self) -> chrono::Duration {
+        self.verifier_seen_timeout
+    }
+
+    ///
+    /// Returns the maximum duration that a participant can hold a
+    /// lock before being dropped from the ceremony by the
+    /// coordinator.
+    ///
+    pub const fn participant_lock_timeout(&self) -> chrono::Duration {
+        self.participant_lock_timeout
     }
 
     ///
@@ -553,6 +577,18 @@ impl Testing {
         };
         deployment
     }
+
+    pub fn contributor_seen_timeout(&self, contributor_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.contributor_seen_timeout = contributor_timeout;
+        deployment
+    }
+
+    pub fn participant_lock_timeout(&self, participant_lock_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.participant_lock_timeout = participant_lock_timeout;
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -586,8 +622,9 @@ impl std::default::Default for Testing {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_seen_timeout: chrono::Duration::minutes(5),
+                verifier_seen_timeout: chrono::Duration::minutes(15),
+                participant_lock_timeout: chrono::Duration::minutes(20),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -704,8 +741,9 @@ impl std::default::Default for Development {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_seen_timeout: chrono::Duration::minutes(5),
+                verifier_seen_timeout: chrono::Duration::minutes(15),
+                participant_lock_timeout: chrono::Duration::minutes(20),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -816,8 +854,9 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_timeout_in_minutes: 5,
-                verifier_timeout_in_minutes: 15,
+                contributor_seen_timeout: chrono::Duration::minutes(5),
+                verifier_seen_timeout: chrono::Duration::minutes(15),
+                participant_lock_timeout: chrono::Duration::minutes(20),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: false,
                 allow_current_verifiers_in_queue: true,

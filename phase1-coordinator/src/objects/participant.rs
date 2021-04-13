@@ -11,6 +11,8 @@ use std::fmt::{self};
 pub type ContributorId = String;
 pub type VerifierId = String;
 
+/// A participant in the setup ceremony. The participant can either be
+/// a [Participant::Contributor] or a [Participant::Verifier].
 #[derive(Clone, Eq, PartialEq, Hash, SerdeDiff)]
 pub enum Participant {
     Contributor(ContributorId),
