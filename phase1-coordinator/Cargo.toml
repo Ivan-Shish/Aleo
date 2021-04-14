@@ -40,7 +40,6 @@ tracing-subscriber = { version = "0.2" }
 url = { version = "1.0" }
 
 [dev-dependencies]
-function_name = { version = "0.2.0" }
 once_cell = { version = "1.5.2" }
 serial_test = { version = "0.5" }
 

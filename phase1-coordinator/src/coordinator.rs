@@ -2700,7 +2700,9 @@ mod tests {
         initialize_to_round_1(coordinator, &contributors, &verifiers)
     }
 
-    fn coordinator_initialization_matches_json_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_initialization_matches_json() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
@@ -2726,7 +2728,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_initialization_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_initialization() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT.clone(), Box::new(Dummy))?;
@@ -2792,7 +2796,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_contributor_try_lock_chunk_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_contributor_try_lock_chunk() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
@@ -2858,7 +2864,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_contributor_add_contribution_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_contributor_add_contribution() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
@@ -2933,7 +2941,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_verifier_verify_contribution_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_verifier_verify_contribution() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID);
@@ -3031,10 +3041,12 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    #[serial]
     // This test runs a round with a single coordinator and single verifier
     // The verifier instances are run on a separate thread to simulate an environment where
     // verification and contribution happen concurrently.
-    fn coordinator_concurrent_contribution_verification_test() -> anyhow::Result<()> {
+    fn coordinator_concurrent_contribution_verification() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
@@ -3177,7 +3189,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_aggregation_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_aggregation() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
@@ -3340,7 +3354,9 @@ mod tests {
         Ok(())
     }
 
-    fn coordinator_next_round_test() -> anyhow::Result<()> {
+    #[test]
+    #[serial]
+    fn coordinator_next_round() -> anyhow::Result<()> {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy))?;
@@ -3509,63 +3525,8 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_coordinator_initialization_matches_json() {
-        coordinator_initialization_matches_json_test().unwrap();
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_initialization() {
-        test_report!(coordinator_initialization_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_contributor_try_lock_chunk() {
-        test_report!(coordinator_contributor_try_lock_chunk_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_contributor_add_contribution() {
-        test_report!(coordinator_contributor_add_contribution_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_verifier_verify_contribution() {
-        test_report!(coordinator_verifier_verify_contribution_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_concurrent_contribution_verification() {
-        test_report!(coordinator_concurrent_contribution_verification_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_aggregation() {
-        test_report!(coordinator_aggregation_test);
-    }
-
-    #[test]
-    #[named]
-    #[serial]
-    fn test_coordinator_next_round() {
-        test_report!(coordinator_next_round_test);
-    }
-
-    #[test]
-    #[serial]
     #[ignore]
-    fn test_coordinator_number_of_chunks() {
+    fn coordinator_number_of_chunks() {
         let environment = &*Testing::from(Parameters::TestChunks { number_of_chunks: 4096 });
         initialize_test_environment(environment);
 
