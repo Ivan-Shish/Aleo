@@ -580,6 +580,11 @@ impl Round {
                 let chunk = self.chunk(chunk_id)?;
                 // Fetch the current contribution ID.
                 let current_contribution_id = chunk.current_contribution_id();
+
+                if current_contribution_id == 0 {
+                    return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
+                }
+
                 // Fetch the previous contribution locator.
                 let challenge_locator =
                     Locator::ContributionFile(current_round_height, chunk_id, current_contribution_id - 1, true);
@@ -747,8 +752,8 @@ impl Round {
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, locked_chunks) = match justification {
-            Justification::BanCurrent(participant, _, locked_chunks, _, _) => (participant, locked_chunks),
-            Justification::DropCurrent(participant, _, locked_chunks, _, _) => (participant, locked_chunks),
+            Justification::BanCurrent(data) => (&data.participant, &data.locked_chunks),
+            Justification::DropCurrent(data) => (&data.participant, &data.locked_chunks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -869,8 +874,8 @@ impl Round {
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, tasks) = match justification {
-            Justification::BanCurrent(participant, _, _, tasks, _) => (participant, tasks),
-            Justification::DropCurrent(participant, _, _, tasks, _) => (participant, tasks),
+            Justification::BanCurrent(data) => (&data.participant, &data.tasks),
+            Justification::DropCurrent(data) => (&data.participant, &data.tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 

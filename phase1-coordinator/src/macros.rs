@@ -127,11 +127,3 @@ macro_rules! return_error {
         return $error;
     }};
 }
-
-#[cfg(test)]
-#[macro_export]
-macro_rules! test_report {
-    ($function:expr) => {{
-        test_report(function_name!(), $function);
-    }};
-}

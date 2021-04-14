@@ -1,23 +1,21 @@
 use crate::{
     environment::Environment,
-    objects::participant::*,
+    objects::{
+        participant::*,
+        task::{initialize_tasks, Task},
+    },
     storage::{Locator, Object, StorageLock},
     CoordinatorError,
+    TimeSource,
 };
 use phase1::ProvingSystem;
 
 use chrono::{DateTime, Duration, Utc};
 use rayon::prelude::*;
-use serde::{
-    de::{self, Deserializer, Error},
-    ser::Serializer,
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     iter::FromIterator,
-    str::FromStr,
 };
 use tracing::*;
 
@@ -28,6 +26,38 @@ pub(super) enum CoordinatorStatus {
     Precommit,
     Commit,
     Rollback,
+}
+
+/// Represents a participant's exclusive lock on a chunk with the
+/// specified `chunk_id`, which was obtained at the specified
+/// `lock_time`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkLock {
+    /// The id of the chunk which is locked.
+    chunk_id: u64,
+    /// The time that the chunk was locked.
+    lock_time: DateTime<Utc>,
+}
+
+impl ChunkLock {
+    /// Create a new chunk lock for the specified `chunk_id`, and
+    /// recording the `lock_time` using the specified `time` source.
+    pub fn new(chunk_id: u64, time: &dyn TimeSource) -> Self {
+        Self {
+            chunk_id,
+            lock_time: time.utc_now(),
+        }
+    }
+
+    /// The id of the chunk which is locked.
+    pub fn chunk_id(&self) -> u64 {
+        self.chunk_id
+    }
+
+    /// The time that the chunk was locked.
+    pub fn lock_time(&self) -> &DateTime<Utc> {
+        &self.lock_time
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,8 +80,8 @@ pub struct ParticipantInfo {
     finished_at: Option<DateTime<Utc>>,
     /// The timestamp when this participant was dropped from the round.
     dropped_at: Option<DateTime<Utc>>,
-    /// The set of chunk IDs that this participant is computing.
-    locked_chunks: HashSet<u64>,
+    /// A map of chunk IDs to locks on chunks that this participant currently holds.
+    locked_chunks: HashMap<u64, ChunkLock>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
     assigned_tasks: LinkedList<Task>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is currently computing.
@@ -66,9 +96,15 @@ pub struct ParticipantInfo {
 
 impl ParticipantInfo {
     #[inline]
-    fn new(participant: Participant, round_height: u64, reliability: u8, bucket_id: u64) -> Self {
+    fn new(
+        participant: Participant,
+        round_height: u64,
+        reliability: u8,
+        bucket_id: u64,
+        time: &dyn TimeSource,
+    ) -> Self {
         // Fetch the current time.
-        let now = Utc::now();
+        let now = time.utc_now();
         Self {
             id: participant,
             round_height,
@@ -79,7 +115,7 @@ impl ParticipantInfo {
             started_at: None,
             finished_at: None,
             dropped_at: None,
-            locked_chunks: HashSet::new(),
+            locked_chunks: HashMap::new(),
             assigned_tasks: LinkedList::new(),
             pending_tasks: LinkedList::new(),
             completed_tasks: LinkedList::new(),
@@ -89,9 +125,16 @@ impl ParticipantInfo {
     }
 
     ///
+    /// Returns the ID of this participant.
+    ///
+    pub fn id(&self) -> &Participant {
+        &self.id
+    }
+
+    ///
     /// Returns the set of chunk IDs that this participant is computing.
     ///
-    pub fn locked_chunks(&self) -> &HashSet<u64> {
+    pub fn locked_chunks(&self) -> &HashMap<u64, ChunkLock> {
         &self.locked_chunks
     }
 
@@ -193,7 +236,7 @@ impl ParticipantInfo {
     /// and sets the start time as the current time.
     ///
     #[inline]
-    fn start(&mut self, tasks: LinkedList<Task>) -> Result<(), CoordinatorError> {
+    fn start(&mut self, tasks: LinkedList<Task>, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Starting {}", self.id);
 
         // Check that the participant has a valid round height set.
@@ -237,7 +280,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = Utc::now();
+        let now = time.utc_now();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -255,7 +298,12 @@ impl ParticipantInfo {
     /// Adds the given (chunk ID, contribution ID) task in FIFO order for the participant to process.
     ///
     #[inline]
-    fn push_back_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+    fn push_back_task(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         trace!("Pushing back task for {}", self.id);
 
         // Set the task as the given chunk ID and contribution ID.
@@ -277,7 +325,7 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
@@ -297,7 +345,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Add the task to the back of the pending tasks.
         self.assigned_tasks.push_back(task);
@@ -309,7 +357,12 @@ impl ParticipantInfo {
     /// Adds the given (chunk ID, contribution ID) task in LIFO order for the participant to process.
     ///
     #[inline]
-    fn push_front_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+    fn push_front_task(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         trace!("Pushing front task for {}", self.id);
 
         // Set the task as the given chunk ID and contribution ID.
@@ -331,7 +384,7 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains(&chunk_id) {
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
@@ -351,7 +404,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Add the task to the front of the pending tasks.
         self.assigned_tasks.push_front(task);
@@ -364,7 +417,7 @@ impl ParticipantInfo {
     /// in FIFO order when added to the linked list.
     ///
     #[inline]
-    fn pop_task(&mut self) -> Result<Task, CoordinatorError> {
+    fn pop_task(&mut self, time: &dyn TimeSource) -> Result<Task, CoordinatorError> {
         trace!("Popping task for {}", self.id);
 
         // Check that the participant has started in the round.
@@ -388,7 +441,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Fetch the next task in order as stored.
         match self.assigned_tasks.pop_front() {
@@ -406,7 +459,7 @@ impl ParticipantInfo {
     /// Adds the given chunk ID to the locked chunks held by this participant.
     ///
     #[inline]
-    fn acquired_lock(&mut self, chunk_id: u64) -> Result<(), CoordinatorError> {
+    fn acquired_lock(&mut self, chunk_id: u64, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Acquiring lock on chunk {} for {}", chunk_id, self.id);
 
         // Check that the participant has started in the round.
@@ -425,7 +478,7 @@ impl ParticipantInfo {
         }
 
         // Check that this chunk is not currently locked by the participant.
-        if self.locked_chunks.contains(&chunk_id) {
+        if self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
@@ -454,10 +507,11 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
-        // Adds the given chunk ID to the locked chunks.
-        self.locked_chunks.insert(chunk_id);
+        let chunk_lock = ChunkLock::new(chunk_id, time);
+
+        self.locked_chunks.insert(chunk_id, chunk_lock);
 
         Ok(())
     }
@@ -470,7 +524,12 @@ impl ParticipantInfo {
     /// participant fails to acquire the lock for the chunk ID corresponding to the task.
     ///
     #[inline]
-    fn rollback_pending_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+    fn rollback_pending_task(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         trace!("Rolling back pending task on chunk {} for {}", chunk_id, self.id);
 
         // Set the task as the given chunk ID and contribution ID.
@@ -492,7 +551,7 @@ impl ParticipantInfo {
         }
 
         // Check that this chunk is not currently locked by the participant.
-        if self.locked_chunks.contains(&chunk_id) {
+        if self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
@@ -521,7 +580,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Remove the task from the pending tasks.
         self.pending_tasks = self
@@ -532,7 +591,7 @@ impl ParticipantInfo {
             .collect();
 
         // Add the task to the front of the assigned tasks.
-        self.push_front_task(task.chunk_id(), task.contribution_id())?;
+        self.push_front_task(task.chunk_id(), task.contribution_id(), time)?;
 
         Ok(())
     }
@@ -542,7 +601,12 @@ impl ParticipantInfo {
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
     #[inline]
-    fn completed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+    fn completed_task(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         trace!("Completing task for {}", self.id);
 
         // Set the task as the given chunk ID and contribution ID.
@@ -564,7 +628,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains(&chunk_id) {
+        if !self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -596,7 +660,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
@@ -620,7 +684,12 @@ impl ParticipantInfo {
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
     #[inline]
-    fn disposed_task(&mut self, chunk_id: u64, contribution_id: u64) -> Result<(), CoordinatorError> {
+    fn disposed_task(
+        &mut self,
+        chunk_id: u64,
+        contribution_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         trace!("Disposed task for {}", self.id);
 
         // Set the task as the given chunk ID and contribution ID.
@@ -642,7 +711,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains(&chunk_id) {
+        if !self.locked_chunks.contains_key(&chunk_id) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -659,7 +728,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = Utc::now();
+        self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
@@ -682,7 +751,7 @@ impl ParticipantInfo {
     /// Sets the participant to dropped and saves the current time as the dropped time.
     ///
     #[inline]
-    fn drop(&mut self) -> Result<(), CoordinatorError> {
+    fn drop(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Dropping {}", self.id);
 
         // Check that the participant was not already dropped from the round.
@@ -696,7 +765,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = Utc::now();
+        let now = time.utc_now();
 
         // Set the participant info to reflect them dropping now.
         self.dropped_at = Some(now);
@@ -708,7 +777,7 @@ impl ParticipantInfo {
     /// Sets the participant to finished and saves the current time as the completed time.
     ///
     #[inline]
-    fn finish(&mut self) -> Result<(), CoordinatorError> {
+    fn finish(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Finishing {}", self.id);
 
         // Check that the participant already started in the round.
@@ -752,7 +821,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = Utc::now();
+        let now = time.utc_now();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -769,9 +838,9 @@ impl ParticipantInfo {
     #[deprecated]
     #[allow(dead_code)]
     #[inline]
-    fn reset(&mut self) {
+    fn reset(&mut self, time: &dyn TimeSource) {
         warn!("Resetting the state of participant {}", self.id);
-        *self = Self::new(self.id.clone(), self.round_height, self.reliability, 0);
+        *self = Self::new(self.id.clone(), self.round_height, self.reliability, 0, time);
     }
 }
 
@@ -1060,6 +1129,14 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns a list of participants that were dropped from the current round.
+    ///
+    #[inline]
+    pub fn dropped_participants(&self) -> Vec<ParticipantInfo> {
+        self.dropped.clone()
+    }
+
+    ///
     /// Returns the current round height stored in the coordinator state.
     ///
     /// This function returns `0` if the current round height has not been set.
@@ -1130,7 +1207,7 @@ impl CoordinatorState {
     /// during the precommit phase for the next round.
     ///
     #[inline]
-    pub(super) fn is_precommit_next_round_ready(&self) -> bool {
+    pub(super) fn is_precommit_next_round_ready(&self, time: &dyn TimeSource) -> bool {
         // Check that the coordinator is initialized and is not already in a precommit stage.
         if self.status == CoordinatorStatus::Initializing || self.status == CoordinatorStatus::Precommit {
             return false;
@@ -1157,7 +1234,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if Utc::now() < next_round_after {
+                if time.utc_now() < next_round_after {
                     trace!("Required queue wait time has not been reached yet");
                     return false;
                 }
@@ -1301,7 +1378,11 @@ impl CoordinatorState {
     /// Pops the next (chunk ID, contribution ID) task that the participant should process.
     ///
     #[inline]
-    pub(super) fn fetch_task(&mut self, participant: &Participant) -> Result<Task, CoordinatorError> {
+    pub(super) fn fetch_task(
+        &mut self,
+        participant: &Participant,
+        time: &dyn TimeSource,
+    ) -> Result<Task, CoordinatorError> {
         // Fetch the contributor and verifier chunk lock limit.
         let contributor_limit = self.environment.contributor_lock_chunk_limit();
         let verifier_limit = self.environment.verifier_lock_chunk_limit();
@@ -1312,25 +1393,25 @@ impl CoordinatorState {
                 // Check that the participant is holding less than the chunk lock limit.
                 Some(participant_info) => match participant_info.locked_chunks.len() < contributor_limit {
                     true => {
-                        let task = participant_info.pop_task()?;
-                        self.start_task_timer(participant, &task);
+                        let task = participant_info.pop_task(time)?;
+                        self.start_task_timer(participant, &task, time);
                         Ok(task)
                     }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Check that the participant is holding less than the chunk lock limit.
                 Some(participant_info) => match participant_info.locked_chunks.len() < verifier_limit {
                     true => {
-                        let task = participant_info.pop_task()?;
-                        self.start_task_timer(participant, &task);
+                        let task = participant_info.pop_task(time)?;
+                        self.start_task_timer(participant, &task, time);
                         Ok(task)
                     }
                     false => Err(CoordinatorError::ParticipantHasLockedMaximumChunks),
                 },
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1339,7 +1420,12 @@ impl CoordinatorState {
     /// Adds the given chunk ID to the locks held by the given participant.
     ///
     #[inline]
-    pub(super) fn acquired_lock(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+    pub(super) fn acquired_lock(
+        &mut self,
+        participant: &Participant,
+        chunk_id: u64,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -1348,13 +1434,13 @@ impl CoordinatorState {
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Acquire the chunk lock for the contributor.
-                Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => Ok(participant.acquired_lock(chunk_id, time)?),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Acquire the chunk lock for the verifier.
-                Some(participant) => Ok(participant.acquired_lock(chunk_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => Ok(participant.acquired_lock(chunk_id, time)?),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1369,6 +1455,7 @@ impl CoordinatorState {
         participant: &Participant,
         chunk_id: u64,
         contribution_id: u64,
+        time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
@@ -1378,13 +1465,13 @@ impl CoordinatorState {
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Acquire the chunk lock for the contributor.
-                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Acquire the chunk lock for the verifier.
-                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id)?),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1407,17 +1494,17 @@ impl CoordinatorState {
         let participant_info = match participant {
             Participant::Contributor(_) => match self.current_contributors.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         };
 
         // Check that the given chunk ID is locked by the participant,
         // and filter the pending tasks for the given chunk ID.
-        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains_key(&chunk_id) {
             true => participant_info
                 .pending_tasks
                 .par_iter()
@@ -1451,17 +1538,17 @@ impl CoordinatorState {
         let participant_info = match participant {
             Participant::Contributor(_) => match self.current_contributors.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get(participant) {
                 Some(participant_info) => participant_info,
-                None => return Err(CoordinatorError::ParticipantNotFound),
+                None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         };
 
         // Check that the given chunk ID is locked by the participant,
         // and filter the disposing tasks for the given chunk ID.
-        let output: Vec<&Task> = match participant_info.locked_chunks.contains(&chunk_id) {
+        let output: Vec<&Task> = match participant_info.locked_chunks.contains_key(&chunk_id) {
             true => participant_info
                 .disposing_tasks
                 .par_iter()
@@ -1486,6 +1573,7 @@ impl CoordinatorState {
         participant: &Participant,
         chunk_id: u64,
         contribution_id: u64,
+        time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
@@ -1500,13 +1588,13 @@ impl CoordinatorState {
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the contributor.
-                Some(participant) => participant.disposed_task(chunk_id, contribution_id),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => participant.disposed_task(chunk_id, contribution_id, time),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the verifier.
-                Some(participant) => participant.disposed_task(chunk_id, contribution_id),
-                None => Err(CoordinatorError::ParticipantNotFound),
+                Some(participant) => participant.disposed_task(chunk_id, contribution_id, time),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1522,6 +1610,7 @@ impl CoordinatorState {
         &mut self,
         chunk_id: u64,
         contribution_id: u64,
+        time: &dyn TimeSource,
     ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
@@ -1551,7 +1640,7 @@ impl CoordinatorState {
         );
 
         match self.current_verifiers.get_mut(&verifier) {
-            Some(verifier_info) => verifier_info.push_back_task(chunk_id, contribution_id)?,
+            Some(verifier_info) => verifier_info.push_back_task(chunk_id, contribution_id, time)?,
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
@@ -1611,6 +1700,7 @@ impl CoordinatorState {
         participant: &Participant,
         chunk_id: u64,
         contribution_id: u64,
+        time: &dyn TimeSource,
     ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
@@ -1622,21 +1712,21 @@ impl CoordinatorState {
                 // Adds the task to the list of completed tasks for the contributor,
                 // and add the task to the pending verification set.
                 Some(participant_info) => {
-                    participant_info.completed_task(chunk_id, contribution_id)?;
-                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id));
-                    Ok(self.add_pending_verification(chunk_id, contribution_id)?)
+                    participant_info.completed_task(chunk_id, contribution_id, time)?;
+                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
+                    Ok(self.add_pending_verification(chunk_id, contribution_id, time)?)
                 }
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Adds the task to the list of completed tasks for the verifier,
                 // and remove the task from the pending verification set.
                 Some(participant_info) => {
-                    participant_info.completed_task(chunk_id, contribution_id)?;
-                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id));
+                    participant_info.completed_task(chunk_id, contribution_id, time)?;
+                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
                     Ok(self.remove_pending_verification(chunk_id, contribution_id)?)
                 }
-                None => Err(CoordinatorError::ParticipantNotFound),
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
     }
@@ -1650,7 +1740,7 @@ impl CoordinatorState {
     /// provided only for convenience to produce metrics.
     ///
     #[inline]
-    pub(super) fn start_task_timer(&mut self, participant: &Participant, task: &Task) {
+    pub(super) fn start_task_timer(&mut self, participant: &Participant, task: &Task, time: &dyn TimeSource) {
         // Fetch the current metrics for this round.
         if let Some(metrics) = &mut self.current_metrics {
             // Fetch the tasks for the given participant.
@@ -1660,7 +1750,7 @@ impl CoordinatorState {
             };
 
             // Add the given task with a new start timer.
-            updated_tasks.insert(*task, (Utc::now().timestamp(), None));
+            updated_tasks.insert(*task, (time.utc_now().timestamp(), None));
 
             // Set the current task timer for the given participant to the updated task timer.
             metrics.task_timer.insert(participant.clone(), updated_tasks);
@@ -1676,7 +1766,7 @@ impl CoordinatorState {
     /// provided only for convenience to produce metrics.
     ///
     #[inline]
-    pub(super) fn stop_task_timer(&mut self, participant: &Participant, task: &Task) {
+    pub(super) fn stop_task_timer(&mut self, participant: &Participant, task: &Task, time: &dyn TimeSource) {
         // Fetch the current metrics for this round.
         if let Some(metrics) = &mut self.current_metrics {
             // Fetch the tasks for the given participant.
@@ -1692,7 +1782,7 @@ impl CoordinatorState {
             match updated_tasks.get_mut(task) {
                 Some((_, end)) => {
                     if end.is_none() {
-                        *end = Some(Utc::now().timestamp());
+                        *end = Some(time.utc_now().timestamp());
                     }
                 }
                 None => {
@@ -1711,7 +1801,7 @@ impl CoordinatorState {
     /// current round is now being aggregated.
     ///
     #[inline]
-    pub(super) fn aggregating_current_round(&mut self) -> Result<(), CoordinatorError> {
+    pub(super) fn aggregating_current_round(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         let metrics = match &mut self.current_metrics {
             Some(metrics) => metrics,
             None => return Err(CoordinatorError::CoordinatorStateNotInitialized),
@@ -1730,7 +1820,7 @@ impl CoordinatorState {
         }
 
         // Set the start aggregation timestamp to now.
-        metrics.started_aggregation_at = Some(Utc::now());
+        metrics.started_aggregation_at = Some(time.utc_now());
 
         Ok(())
     }
@@ -1740,7 +1830,7 @@ impl CoordinatorState {
     /// current round has been aggregated.
     ///
     #[inline]
-    pub(super) fn aggregated_current_round(&mut self) -> Result<(), CoordinatorError> {
+    pub(super) fn aggregated_current_round(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         let metrics = match &mut self.current_metrics {
             Some(metrics) => metrics,
             None => return Err(CoordinatorError::CoordinatorStateNotInitialized),
@@ -1762,11 +1852,12 @@ impl CoordinatorState {
         metrics.is_round_aggregated = true;
 
         // Set the finish aggregation timestamp to now.
-        metrics.finished_aggregation_at = Some(Utc::now());
+        metrics.finished_aggregation_at = Some(time.utc_now());
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
-            metrics.next_round_after = Some(Utc::now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+            metrics.next_round_after =
+                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
         }
 
         Ok(())
@@ -1806,7 +1897,11 @@ impl CoordinatorState {
     /// On success, this function returns a `Justification` for the coordinator to use.
     ///
     #[inline]
-    pub(super) fn drop_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
+    pub(super) fn drop_participant(
+        &mut self,
+        participant: &Participant,
+        time: &dyn TimeSource,
+    ) -> Result<Justification, CoordinatorError> {
         // Check that the coordinator state is initialized.
         if self.status == CoordinatorStatus::Initializing {
             return Err(CoordinatorError::CoordinatorStateNotInitialized);
@@ -1838,12 +1933,12 @@ impl CoordinatorState {
             Participant::Contributor(_) => self
                 .current_contributors
                 .get(participant)
-                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .ok_or_else(|| CoordinatorError::ParticipantNotFound(participant.clone()))?
                 .clone(),
             Participant::Verifier(_) => self
                 .current_verifiers
                 .get(participant)
-                .ok_or(CoordinatorError::ParticipantNotFound)?
+                .ok_or_else(|| CoordinatorError::ParticipantNotFound(participant.clone()))?
                 .clone(),
         };
         {
@@ -1860,7 +1955,7 @@ impl CoordinatorState {
 
         // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
-        let locked_chunks: Vec<u64> = participant_info.locked_chunks.iter().cloned().collect();
+        let locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
         let tasks: Vec<Task> = match participant {
             Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
@@ -1884,7 +1979,7 @@ impl CoordinatorState {
 
             // Set the participant as dropped.
             let mut dropped_info = participant_info.clone();
-            dropped_info.drop()?;
+            dropped_info.drop(time)?;
 
             // Fetch the number of chunks and number of contributors.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
@@ -1909,7 +2004,7 @@ impl CoordinatorState {
                     .pending_tasks
                     .iter()
                     .cloned()
-                    .partition(|task| tasks_by_chunk.get(&task.chunk_id).is_some());
+                    .partition(|task| tasks_by_chunk.get(&task.chunk_id()).is_some());
 
                 // TODO: revisit the handling of disposing_tasks
                 //       https://github.com/AleoHQ/aleo-setup/issues/249
@@ -1919,8 +2014,8 @@ impl CoordinatorState {
                 // If completed task is based on the dropped task, it should also be dropped
                 let (disposed_tasks, completed_tasks) =
                     contributor_info.completed_tasks.iter().cloned().partition(|task| {
-                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id) {
-                            *contribution_id < task.contribution_id
+                        if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id()) {
+                            *contribution_id < task.contribution_id()
                         } else {
                             false
                         }
@@ -1935,14 +2030,14 @@ impl CoordinatorState {
 
                 // Determine the excluded tasks, which are filtered out from the list of newly assigned tasks.
                 let mut excluded_tasks: HashSet<u64> =
-                    HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id));
-                excluded_tasks.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id));
+                    HashSet::from_iter(contributor_info.completed_tasks.iter().map(|task| task.chunk_id()));
+                excluded_tasks.extend(contributor_info.pending_tasks.iter().map(|task| task.chunk_id()));
 
                 // Reassign tasks for the affected contributor.
                 contributor_info.assigned_tasks =
-                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)
+                    initialize_tasks(contributor_info.bucket_id, number_of_chunks, number_of_contributors)?
                         .into_iter()
-                        .filter(|task| !excluded_tasks.contains(&task.chunk_id))
+                        .filter(|task| !excluded_tasks.contains(&task.chunk_id()))
                         .collect();
             }
 
@@ -1983,17 +2078,17 @@ impl CoordinatorState {
             // TODO (howardwu): Add a flag guard to this call, and return None, to support
             //  the 'drop round' feature in the coordinator.
             // Assign the replacement contributor to the dropped tasks.
-            let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id)?;
+            let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id, time)?;
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
+            return Ok(Justification::DropCurrent(DropData {
+                participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
                 tasks,
-                Some(replacement_contributor),
-            ));
+                replacement: Some(replacement_contributor),
+            }));
         }
 
         // Reassign the pending verification tasks in the coordinator state to a new verifier.
@@ -2001,12 +2096,12 @@ impl CoordinatorState {
             // Add just the current pending tasks to a pending verifications list.
             let mut pending_verifications = vec![];
             for task in &tasks {
-                pending_verifications.push((task.chunk_id, task.contribution_id));
+                pending_verifications.push((task.chunk_id(), task.contribution_id()));
             }
 
             // Set the participant as dropped.
             let mut dropped_info = participant_info.clone();
-            dropped_info.drop()?;
+            dropped_info.drop(time)?;
 
             // Remove the current verifier from the coordinator state.
             self.current_verifiers.remove(&participant);
@@ -2017,7 +2112,7 @@ impl CoordinatorState {
                 self.remove_pending_verification(chunk_id, contribution_id)?;
 
                 // Reassign the pending verification task to a new verifier.
-                self.add_pending_verification(chunk_id, contribution_id)?;
+                self.add_pending_verification(chunk_id, contribution_id, time)?;
             }
 
             // Add the participant info to the dropped participants.
@@ -2025,13 +2120,13 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(
-                participant.clone(),
+            return Ok(Justification::DropCurrent(DropData {
+                participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
                 tasks,
-                None,
-            ));
+                replacement: None,
+            }));
         }
 
         Err(CoordinatorError::DropParticipantFailed)
@@ -2041,27 +2136,25 @@ impl CoordinatorState {
     /// Bans the given participant from the queue, precommit, and current round.
     ///
     #[inline]
-    pub(super) fn ban_participant(&mut self, participant: &Participant) -> Result<Justification, CoordinatorError> {
+    pub(super) fn ban_participant(
+        &mut self,
+        participant: &Participant,
+        time: &dyn TimeSource,
+    ) -> Result<Justification, CoordinatorError> {
         // Check that the participant is not already banned from participating.
         if self.banned.contains(&participant) {
             return Err(CoordinatorError::ParticipantAlreadyBanned);
         }
 
         // Drop the participant from the queue, precommit, and current round.
-        match self.drop_participant(participant)? {
-            Justification::DropCurrent(participant, bucket_id, locked_chunks, tasks, replacement) => {
+        match self.drop_participant(participant, time)? {
+            Justification::DropCurrent(drop_data) => {
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(Justification::BanCurrent(
-                    participant,
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement,
-                ))
+                Ok(Justification::BanCurrent(drop_data))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -2089,6 +2182,7 @@ impl CoordinatorState {
     pub(crate) fn add_replacement_contributor_unsafe(
         &mut self,
         bucket_id: u64,
+        time: &dyn TimeSource,
     ) -> Result<Participant, CoordinatorError> {
         // Fetch a coordinator contributor with the least load.
         let coordinator_contributor =
@@ -2113,10 +2207,10 @@ impl CoordinatorState {
         // TODO (raychu86): Update the participant info (interleave the tasks by contribution id).
         // TODO (raychu86): Add tasks to the replacement contributor if it already has pending tasks.
 
-        let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors);
+        let tasks = initialize_tasks(bucket_id, self.environment.number_of_chunks(), number_of_contributors)?;
         let mut participant_info =
-            ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id);
-        participant_info.start(tasks)?;
+            ParticipantInfo::new(contributor.clone(), self.current_round_height(), 10, bucket_id, time);
+        participant_info.start(tasks, time)?;
         trace!("{:?}", participant_info);
         self.current_contributors.insert(contributor.clone(), participant_info);
 
@@ -2219,7 +2313,7 @@ impl CoordinatorState {
     /// Updates the state of contributors in the current round.
     ///
     #[inline]
-    pub(super) fn update_current_contributors(&mut self) -> Result<(), CoordinatorError> {
+    pub(super) fn update_current_contributors(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.current_round_height.ok_or(CoordinatorError::RoundHeightNotSet)?;
 
@@ -2242,7 +2336,7 @@ impl CoordinatorState {
 
                 // Attempt to set the contributor as finished.
                 let mut finished_info = contributor_info.clone();
-                if let Err(_) = finished_info.finish() {
+                if let Err(_) = finished_info.finish(time) {
                     return true;
                 }
 
@@ -2276,7 +2370,7 @@ impl CoordinatorState {
     /// This function should never be run prior to calling `update_current_contributors`.
     ///
     #[inline]
-    pub(super) fn update_current_verifiers(&mut self) -> Result<(), CoordinatorError> {
+    pub(super) fn update_current_verifiers(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         // Check if the contributors are finished.
         let is_contributors_finished = self.current_contributors.is_empty();
 
@@ -2306,7 +2400,7 @@ impl CoordinatorState {
 
                     // Attempt to set the verifier as finished.
                     let mut finished_info = verifier_info.clone();
-                    if let Err(_) = finished_info.finish() {
+                    if let Err(_) = finished_info.finish(time) {
                         return true;
                     }
 
@@ -2340,30 +2434,84 @@ impl CoordinatorState {
     ///
     /// On success, returns a list of justifications for the coordinator to take actions on.
     ///
-    #[inline]
-    pub(super) fn update_dropped_participants(&mut self) -> Result<Vec<Justification>, CoordinatorError> {
+    pub(super) fn update_dropped_participants(
+        &mut self,
+        time: &dyn TimeSource,
+    ) -> Result<Vec<Justification>, CoordinatorError> {
+        Ok(self
+            .update_contributor_seen_drops(time)?
+            .into_iter()
+            .chain(self.update_participant_lock_drops(time)?.into_iter())
+            .collect())
+    }
+
+    /// This will drop a participant (verifier or contributor) if it
+    /// has been holding a lock for longer than
+    /// [crate::environment::Environment]'s
+    /// `participant_lock_timeout`.
+    fn update_participant_lock_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
         // Fetch the timeout threshold for contributors.
-        let contributor_timeout = self.environment.contributor_timeout_in_minutes() as i64;
+        let participant_lock_timeout = self.environment.participant_lock_timeout();
 
         // Fetch the current time.
-        let now = Utc::now();
+        let now = time.utc_now();
 
-        // Initialize the list of justifications.
-        let mut justifications = vec![];
+        self.current_contributors
+            .clone()
+            .iter()
+            .chain(self.current_verifiers.clone().iter())
+            .filter_map(|(participant, participant_info)| {
+                if !self.is_coordinator_contributor(&participant)
+                    && participant_info
+                        .locked_chunks
+                        .values()
+                        .find(|lock| {
+                            let elapsed = now - lock.lock_time;
+                            elapsed > participant_lock_timeout
+                        })
+                        .is_some()
+                {
+                    Some(self.drop_participant(participant, time))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 
-        // Process the contributors.
-        for (participant, participant_info) in &self.current_contributors.clone() {
-            // Fetch the elapsed time.
-            let elapsed = now - participant_info.last_seen;
+    /// This will drop a contributor if it hasn't been seen for more
+    /// than [crate::environment::Environment]'s
+    /// `contributor_seen_timeout`.
+    fn update_contributor_seen_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
+        // Fetch the timeout threshold for contributors.
+        let contributor_seen_timeout = self.environment.contributor_seen_timeout();
 
-            // Check if the participant is still live and not a coordinator contributor.
-            if elapsed.num_minutes() > contributor_timeout && !self.is_coordinator_contributor(&participant) {
-                // Drop the participant.
-                justifications.push(self.drop_participant(participant)?);
-            }
-        }
+        // Fetch the current time.
+        let now = time.utc_now();
 
-        Ok(justifications)
+        self.current_contributors
+            .clone()
+            .iter()
+            .filter_map(|(participant, participant_info)| {
+                // Fetch the elapsed time.
+                let elapsed = now - participant_info.last_seen;
+
+                // Check if the participant is still live and not a coordinator contributor.
+                if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
+                    tracing::info!(
+                        "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
+                        since it was last seen by the coordinator (last seen {} minutes ago).",
+                        participant,
+                        contributor_seen_timeout,
+                        elapsed.num_minutes()
+                    );
+                    // Drop the participant.
+                    Some(self.drop_participant(participant, time))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     ///
@@ -2512,6 +2660,7 @@ impl CoordinatorState {
     pub(super) fn precommit_next_round(
         &mut self,
         next_round_height: u64,
+        time: &dyn TimeSource,
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
         trace!("Attempting to run precommit for round {}", next_round_height);
 
@@ -2565,7 +2714,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached, if it is set.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if Utc::now() < next_round_after {
+                if time.utc_now() < next_round_after {
                     return Err(CoordinatorError::QueueWaitTimeIncomplete);
                 }
             }
@@ -2682,7 +2831,7 @@ impl CoordinatorState {
             // Set the chunk ID ordering for each contributor.
             for (bucket_index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
                 let bucket_id = bucket_index as u64;
-                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64);
+                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
 
                 // Check that each participant is storing the correct round height.
                 if next_round != next_round_height && next_round != current_round_height + 1 {
@@ -2692,8 +2841,8 @@ impl CoordinatorState {
 
                 // Initialize the participant info for the contributor.
                 let mut participant_info =
-                    ParticipantInfo::new(participant.clone(), next_round_height, reliability, bucket_id);
-                participant_info.start(tasks)?;
+                    ParticipantInfo::new(participant.clone(), next_round_height, reliability, bucket_id, time);
+                participant_info.start(tasks, time)?;
 
                 // Check that the chunk IDs are set in the participant information.
                 if participant_info.assigned_tasks.is_empty() {
@@ -2720,8 +2869,9 @@ impl CoordinatorState {
             }
 
             // Initialize the participant info for the verifier.
-            let mut participant_info = ParticipantInfo::new(participant.clone(), next_round_height, reliability, 0);
-            participant_info.start(LinkedList::new())?;
+            let mut participant_info =
+                ParticipantInfo::new(participant.clone(), next_round_height, reliability, 0, time);
+            participant_info.start(LinkedList::new(), time)?;
 
             // Add the verifier to staging for the next round.
             next.insert(participant.clone(), participant_info);
@@ -2853,7 +3003,7 @@ impl CoordinatorState {
     /// Returns the status of the coordinator state.
     ///
     #[inline]
-    pub(super) fn status_report(&self) -> String {
+    pub(super) fn status_report(&self, time: &dyn TimeSource) -> String {
         let current_round_height = self.current_round_height.unwrap_or_default();
         let next_round_height = current_round_height + 1;
 
@@ -2866,7 +3016,7 @@ impl CoordinatorState {
             (true, _) => format!("Round {} is aggregated", current_round_height),
             (false, _) => format!("Round {} is awaiting aggregation", current_round_height),
         };
-        let precommit_next_round_ready = match self.is_precommit_next_round_ready() {
+        let precommit_next_round_ready = match self.is_precommit_next_round_ready(time) {
             true => format!("Round {} is ready to begin", next_round_height),
             false => format!("Round {} is awaiting participants", next_round_height),
         };
@@ -2943,6 +3093,48 @@ impl CoordinatorState {
         )
     }
 
+    /// Updates the coordinator state with the knowledge that the
+    /// participant is still alive and participating (or waiting to
+    /// participate) in the ceremony.
+    pub(crate) fn heartbeat(
+        &mut self,
+        participant: &Participant,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
+        if let Some(_) = self.queue.iter_mut().find(|(p, _score)| *p == participant) {
+            // TODO: update reliability score if contributor is in the queue.
+            return Ok(());
+        }
+
+        let info = self
+            .current_contributors
+            .iter_mut()
+            .find(|(p, _info)| *p == participant)
+            .map(|(_p, info)| info);
+
+        let info = match info {
+            Some(info) => Some(info),
+            None => self
+                .finished_contributors
+                .iter_mut()
+                .map(|(_round, finished_contributors)| {
+                    finished_contributors
+                        .iter_mut()
+                        .find(|(p, _info)| *p == participant)
+                        .map(|(_p, info)| info)
+                })
+                .next()
+                .flatten(),
+        };
+
+        if let Some(info) = info {
+            info.last_seen = time.utc_now();
+            Ok(())
+        } else {
+            Err(CoordinatorError::ParticipantNotFound(participant.clone()))
+        }
+    }
+
     /// Save the coordinator state in storage.
     #[inline]
     pub(crate) fn save(&self, storage: &mut StorageLock) -> Result<(), CoordinatorError> {
@@ -2950,179 +3142,41 @@ impl CoordinatorState {
     }
 }
 
-fn initialize_tasks(
-    starting_bucket_id: u64, // 0-indexed
-    number_of_chunks: u64,
-    number_of_contributors: u64,
-) -> LinkedList<Task> {
-    let number_of_buckets = number_of_contributors;
-
-    // Fetch the bucket size.
-    let bucket_size = number_of_chunks / number_of_buckets as u64;
-
-    // It takes `number_of_contributors * bucket_size` to get to initial stable state.
-    // You will jump up (total_jumps - starting_bucket_id) times.
-    let number_of_initial_steps = (number_of_contributors - 1) - starting_bucket_id;
-    let number_of_final_steps = starting_bucket_id;
-    let mut initial_steps = 0;
-    let mut final_steps = 0;
-
-    // Compute the start and end indices.
-    let start = starting_bucket_id * bucket_size;
-    let end = start + number_of_chunks;
-
-    // Add the tasks in FIFO ordering.
-    let mut tasks = LinkedList::new();
-    tasks.push_back(Task::new(start % number_of_chunks, 1));
-
-    // Skip one from the start index and calculate the chunk ID and contribution ID to the end.
-    for current_index in start + 1..end {
-        let chunk_id = current_index % number_of_chunks;
-
-        // Check if this is a new bucket.
-        let is_new_bucket = (chunk_id % bucket_size) == 0;
-
-        // Check if we have initial steps to increment.
-        if is_new_bucket && initial_steps < number_of_initial_steps {
-            initial_steps += 1;
-        }
-
-        // Check if we have iterated past the modulus and are in final steps.
-        if is_new_bucket && current_index >= number_of_chunks {
-            // Check if we have final steps to increment.
-            if final_steps < number_of_final_steps {
-                final_steps += 1;
-            }
-        }
-
-        // Compute the contribution ID.
-        let steps = (initial_steps + final_steps) % number_of_contributors;
-        let contribution_id = steps + 1;
-
-        tasks.push_back(Task::new(chunk_id, contribution_id as u64));
-    }
-
-    tasks
+/// Data required by the coordinator to drop a participant from the
+/// ceremony.
+pub(crate) struct DropData {
+    /// The participant being dropped.
+    pub participant: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this participant. See [initialize_tasks] for more
+    /// information about this parameter.
+    pub bucket_id: u64,
+    /// Chunks currently locked by the participant.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the participant.
+    pub tasks: Vec<Task>,
+    /// The participant which will replace the participant being
+    /// dropped.
+    pub replacement: Option<Participant>,
 }
 
-#[derive(Debug)]
+/// The reason for performing certain actions which are dangerous
+/// (banning a user, dropping a user, etc), and data required to
+/// perform those actions. Certain actions can only be performed with
+/// sufficient justification.
 pub(crate) enum Justification {
-    // last field is a replacement participant
-    BanCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
-    DropCurrent(Participant, u64, Vec<u64>, Vec<Task>, Option<Participant>),
+    /// Coordinator has decided that a participant needs to be banned (for a variety of potential reasons).
+    BanCurrent(DropData),
+    /// Coordinator has decided that a participant needs to be dropped (for a variety of potential reasons).
+    DropCurrent(DropData),
+    /// Coordinator has decided that a participant is inactive, and
+    /// not currently participating.
     Inactive,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Task {
-    chunk_id: u64,
-    contribution_id: u64,
-}
-
-impl Task {
-    #[inline]
-    pub fn new(chunk_id: u64, contribution_id: u64) -> Self {
-        Self {
-            chunk_id,
-            contribution_id,
-        }
-    }
-
-    #[inline]
-    pub fn contains(&self, chunk_id: u64) -> bool {
-        self.chunk_id == chunk_id
-    }
-
-    #[inline]
-    pub fn chunk_id(&self) -> u64 {
-        self.chunk_id
-    }
-
-    #[inline]
-    pub fn contribution_id(&self) -> u64 {
-        self.contribution_id
-    }
-
-    #[inline]
-    pub fn to_tuple(&self) -> (u64, u64) {
-        (self.chunk_id, self.contribution_id)
-    }
-}
-
-impl Serialize for Task {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!("{}/{}", self.chunk_id, self.contribution_id))
-    }
-}
-
-impl<'de> Deserialize<'de> for Task {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
-        let s = String::deserialize(deserializer)?;
-
-        let mut task = s.split("/");
-        let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;
-        let contribution_id = task.next().ok_or(D::Error::custom("invalid contribution ID"))?;
-        Ok(Task::new(
-            u64::from_str(&chunk_id).map_err(de::Error::custom)?,
-            u64::from_str(&contribution_id).map_err(de::Error::custom)?,
-        ))
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState};
-
-    use std::collections::HashSet;
-
-    #[test]
-    fn test_task() {
-        let task = Task::new(0, 1);
-        assert_eq!("\"0/1\"", serde_json::to_string(&task).unwrap());
-        assert_eq!(task, serde_json::from_str("\"0/1\"").unwrap());
-    }
-
-    #[test]
-    fn test_initialize_tasks() {
-        let bucket_id = 0;
-        let number_of_chunks = 3;
-        let number_of_contributors = 2;
-        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
-        assert_eq!(Some(Task::new(0, 1)), tasks.next());
-        assert_eq!(Some(Task::new(1, 2)), tasks.next());
-        assert_eq!(Some(Task::new(2, 2)), tasks.next());
-
-        let bucket_id = 1;
-        let number_of_chunks = 3;
-        let number_of_contributors = 2;
-        let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
-        assert_eq!(Some(Task::new(1, 1)), tasks.next());
-        assert_eq!(Some(Task::new(2, 1)), tasks.next());
-        assert_eq!(Some(Task::new(0, 2)), tasks.next());
-    }
-
-    #[test]
-    fn test_initialize_tasks_unique() {
-        test_logger();
-
-        fn test_uniqueness_of_tasks(number_of_chunks: u64, number_of_contributors: u64) {
-            let mut all_tasks = HashSet::new();
-            for bucket_id in 0..number_of_contributors {
-                // trace!("Contributor {}", bucket_id);
-                let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors).into_iter();
-                while let Some(task) = tasks.next() {
-                    assert!(all_tasks.insert(task));
-                }
-            }
-        }
-
-        for number_of_contributors in 1..32 {
-            trace!("{} contributors", number_of_contributors,);
-            for number_of_chunks in number_of_contributors..256 {
-                test_uniqueness_of_tasks(number_of_chunks, number_of_contributors);
-            }
-        }
-    }
+    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState, SystemTimeSource};
 
     #[test]
     fn test_new() {
@@ -3459,7 +3513,7 @@ mod tests {
     #[test]
     fn test_commit_next_round() {
         test_logger();
-
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -3493,20 +3547,20 @@ mod tests {
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
             // Update the current round to aggregated.
-            state.aggregating_current_round().unwrap();
-            state.aggregated_current_round().unwrap();
+            state.aggregating_current_round(&time).unwrap();
+            state.aggregated_current_round(&time).unwrap();
 
             // Update the current round metrics.
             state.update_round_metrics();
 
             // Update the state of current round contributors.
-            state.update_current_contributors().unwrap();
+            state.update_current_contributors(&time).unwrap();
 
             // Update the state of current round verifiers.
-            state.update_current_verifiers().unwrap();
+            state.update_current_verifiers(&time).unwrap();
 
             // Drop disconnected participants from the current round.
-            state.update_dropped_participants().unwrap();
+            state.update_dropped_participants(&time).unwrap();
 
             // Ban any participants who meet the coordinator criteria.
             state.update_banned_participants().unwrap();
@@ -3518,18 +3572,18 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
         let next_round_height = current_round_height + 1;
-        let _precommit = state.precommit_next_round(next_round_height).unwrap();
+        let _precommit = state.precommit_next_round(next_round_height, &time).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(!state.is_precommit_next_round_ready());
+        assert!(!state.is_precommit_next_round_ready(&time));
 
         // Advance the coordinator to the next round.
         state.commit_next_round();
@@ -3545,13 +3599,14 @@ mod tests {
         assert_eq!(0, state.banned.len());
         assert!(!state.is_current_round_finished());
         assert!(!state.is_current_round_aggregated());
-        assert!(!state.is_precommit_next_round_ready());
+        assert!(!state.is_precommit_next_round_ready(&time));
     }
 
     #[test]
     fn test_rollback_next_round() {
         test_logger();
 
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -3585,20 +3640,20 @@ mod tests {
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
             // Update the current round to aggregated.
-            state.aggregating_current_round().unwrap();
-            state.aggregated_current_round().unwrap();
+            state.aggregating_current_round(&time).unwrap();
+            state.aggregated_current_round(&time).unwrap();
 
             // Update the current round metrics.
             state.update_round_metrics();
 
             // Update the state of current round contributors.
-            state.update_current_contributors().unwrap();
+            state.update_current_contributors(&time).unwrap();
 
             // Update the state of current round verifiers.
-            state.update_current_verifiers().unwrap();
+            state.update_current_verifiers(&time).unwrap();
 
             // Drop disconnected participants from the current round.
-            state.update_dropped_participants().unwrap();
+            state.update_dropped_participants(&time).unwrap();
 
             // Ban any participants who meet the coordinator criteria.
             state.update_banned_participants().unwrap();
@@ -3610,17 +3665,17 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Attempt to advance the round.
         trace!("Running precommit for the next round");
-        let _precommit = state.precommit_next_round(current_round_height + 1).unwrap();
+        let _precommit = state.precommit_next_round(current_round_height + 1, &time).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(2, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(!state.is_precommit_next_round_ready());
+        assert!(!state.is_precommit_next_round_ready(&time));
 
         // Rollback the coordinator to the current round.
         state.rollback_next_round();
@@ -3636,11 +3691,12 @@ mod tests {
         assert_eq!(0, state.banned.len());
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
     }
 
     #[test]
     fn test_pop_and_complete_tasks_contributor() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -3654,15 +3710,15 @@ mod tests {
         state.add_to_queue(contributor.clone(), 10).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
-        state.aggregating_current_round().unwrap();
-        state.aggregated_current_round().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Advance the coordinator to the next round.
         let next_round_height = current_round_height + 1;
-        state.precommit_next_round(next_round_height).unwrap();
+        state.precommit_next_round(next_round_height, &time).unwrap();
         state.commit_next_round();
         assert_eq!(0, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3679,10 +3735,10 @@ mod tests {
         let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
         for chunk_id in 0..contributor_lock_chunk_limit {
             // Fetch a pending task for the contributor.
-            let task = state.fetch_task(&contributor).unwrap();
-            assert_eq!((chunk_id as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&contributor, &time).unwrap();
+            assert_eq!((chunk_id as u64, 1), (task.chunk_id(), task.contribution_id()));
 
-            state.acquired_lock(&contributor, task.chunk_id).unwrap();
+            state.acquired_lock(&contributor, task.chunk_id(), &time).unwrap();
             assert_eq!(0, state.pending_verification.len());
         }
 
@@ -3695,13 +3751,14 @@ mod tests {
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {
-            let try_task = state.fetch_task(&contributor);
+            let try_task = state.fetch_task(&contributor, &time);
             assert!(try_task.is_err());
         }
     }
 
     #[test]
     fn test_pop_and_complete_tasks_verifier() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -3715,15 +3772,15 @@ mod tests {
         state.add_to_queue(contributor.clone(), 10).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
-        state.aggregating_current_round().unwrap();
-        state.aggregated_current_round().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Advance the coordinator to the next round.
         let next_round_height = current_round_height + 1;
-        state.precommit_next_round(next_round_height).unwrap();
+        state.precommit_next_round(next_round_height, &time).unwrap();
         state.commit_next_round();
         assert_eq!(Some(next_round_height), state.current_round_height);
         assert_eq!(1, state.current_contributors.len());
@@ -3733,20 +3790,20 @@ mod tests {
         assert_eq!(0, state.finished_verifiers.get(&next_round_height).unwrap().len());
 
         // Ensure that the verifier cannot pop a task prior to a contributor completing a task.
-        let try_task = state.fetch_task(&verifier);
+        let try_task = state.fetch_task(&verifier, &time);
         assert!(try_task.is_err());
 
         // Fetch the maximum number of tasks permitted for a contributor.
         let contributor_lock_chunk_limit = environment.contributor_lock_chunk_limit();
         for i in 0..contributor_lock_chunk_limit {
             // Fetch a pending task for the contributor.
-            let task = state.fetch_task(&contributor).unwrap();
+            let task = state.fetch_task(&contributor, &time).unwrap();
             let chunk_id = i as u64;
-            assert_eq!((chunk_id, 1), (task.chunk_id, task.contribution_id));
+            assert_eq!((chunk_id, 1), (task.chunk_id(), task.contribution_id()));
 
-            state.acquired_lock(&contributor, chunk_id).unwrap();
+            state.acquired_lock(&contributor, chunk_id, &time).unwrap();
             state
-                .completed_task(&contributor, chunk_id, task.contribution_id)
+                .completed_task(&contributor, chunk_id, task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(i + 1, state.pending_verification.len());
         }
@@ -3760,12 +3817,12 @@ mod tests {
         // Fetch the maximum number of tasks permitted for a verifier.
         for i in 0..environment.verifier_lock_chunk_limit() {
             // Fetch a pending task for the verifier.
-            let task = state.fetch_task(&verifier).unwrap();
-            assert_eq!((i as u64, 1), (task.chunk_id, task.contribution_id));
+            let task = state.fetch_task(&verifier, &time).unwrap();
+            assert_eq!((i as u64, 1), (task.chunk_id(), task.contribution_id()));
 
-            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
             state
-                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(contributor_lock_chunk_limit - i - 1, state.pending_verification.len());
         }
@@ -3778,7 +3835,7 @@ mod tests {
 
         // Attempt to fetch past the permitted lock chunk limit.
         for _ in 0..10 {
-            let try_task = state.fetch_task(&verifier);
+            let try_task = state.fetch_task(&verifier, &time);
             assert!(try_task.is_err());
         }
     }
@@ -3787,6 +3844,7 @@ mod tests {
     fn test_round_2x1() {
         test_logger();
 
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch two contributors and two verifiers.
@@ -3802,17 +3860,17 @@ mod tests {
         state.add_to_queue(contributor_2.clone(), 9).unwrap();
         state.add_to_queue(verifier.clone(), 10).unwrap();
         state.update_queue().unwrap();
-        state.aggregating_current_round().unwrap();
-        state.aggregated_current_round().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Advance the coordinator to the next round.
         let next_round_height = current_round_height + 1;
         assert_eq!(3, state.queue.len());
         assert_eq!(0, state.next.len());
-        state.precommit_next_round(next_round_height).unwrap();
+        state.precommit_next_round(next_round_height, &time).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(3, state.next.len());
         state.commit_next_round();
@@ -3821,9 +3879,9 @@ mod tests {
 
         // Process every chunk in the round as contributor 1 and contributor 2.
         let number_of_chunks = environment.number_of_chunks();
-        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2).unwrap();
         let mut tasks1 = tasks1.iter();
-        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2).unwrap();
         let mut tasks2 = tasks2.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3836,49 +3894,49 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for contributor 1.
-            let task = state.fetch_task(&contributor_1).unwrap();
+            let task = state.fetch_task(&contributor_1, &time).unwrap();
             let expected_task1 = tasks1.next();
             assert_eq!(expected_task1, Some(&task));
 
-            state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
+            state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
             let assigned_verifier_1 = state
-                .completed_task(&contributor_1, task.chunk_id, task.contribution_id)
+                .completed_task(&contributor_1, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
             assert_eq!(verifier, assigned_verifier_1);
 
             // Fetch a pending task for contributor 2.
-            let task = state.fetch_task(&contributor_2).unwrap();
+            let task = state.fetch_task(&contributor_2, &time).unwrap();
             let expected_task2 = tasks2.next();
             assert_eq!(expected_task2, Some(&task));
 
-            state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
+            state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
             let assigned_verifier_2 = state
-                .completed_task(&contributor_2, task.chunk_id, task.contribution_id)
+                .completed_task(&contributor_2, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(2, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
             assert_eq!(assigned_verifier_1, assigned_verifier_2);
 
             // Fetch a pending task for the verifier.
-            let task = state.fetch_task(&verifier).unwrap();
+            let task = state.fetch_task(&verifier, &time).unwrap();
             assert_eq!(expected_task1, Some(&task));
 
-            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
             state
-                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.fetch_task(&verifier).unwrap();
+            let task = state.fetch_task(&verifier, &time).unwrap();
             assert_eq!(expected_task2, Some(&task));
 
-            state.acquired_lock(&verifier, task.chunk_id).unwrap();
+            state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
             state
-                .completed_task(&verifier, task.chunk_id, task.contribution_id)
+                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
@@ -3888,13 +3946,13 @@ mod tests {
                 state.update_round_metrics();
 
                 // Update the state of current round contributors.
-                state.update_current_contributors().unwrap();
+                state.update_current_contributors(&time).unwrap();
 
                 // Update the state of current round verifiers.
-                state.update_current_verifiers().unwrap();
+                state.update_current_verifiers(&time).unwrap();
 
                 // Drop disconnected participants from the current round.
-                state.update_dropped_participants().unwrap();
+                state.update_dropped_participants(&time).unwrap();
 
                 // Ban any participants who meet the coordinator criteria.
                 state.update_banned_participants().unwrap();
@@ -3915,6 +3973,7 @@ mod tests {
     fn test_round_2x2() {
         test_logger();
 
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch two contributors and two verifiers.
@@ -3932,17 +3991,17 @@ mod tests {
         state.add_to_queue(verifier_1.clone(), 10).unwrap();
         state.add_to_queue(verifier_2.clone(), 9).unwrap();
         state.update_queue().unwrap();
-        state.aggregating_current_round().unwrap();
-        state.aggregated_current_round().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
         assert!(state.is_current_round_finished());
         assert!(state.is_current_round_aggregated());
-        assert!(state.is_precommit_next_round_ready());
+        assert!(state.is_precommit_next_round_ready(&time));
 
         // Advance the coordinator to the next round.
         let next_round_height = current_round_height + 1;
         assert_eq!(4, state.queue.len());
         assert_eq!(0, state.next.len());
-        state.precommit_next_round(next_round_height).unwrap();
+        state.precommit_next_round(next_round_height, &time).unwrap();
         assert_eq!(0, state.queue.len());
         assert_eq!(4, state.next.len());
         state.commit_next_round();
@@ -3951,7 +4010,7 @@ mod tests {
 
         // Process every chunk in the round as contributor 1.
         let number_of_chunks = environment.number_of_chunks();
-        let tasks1 = initialize_tasks(0, number_of_chunks, 2);
+        let tasks1 = initialize_tasks(0, number_of_chunks, 2).unwrap();
         let mut tasks1 = tasks1.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3964,24 +4023,24 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for the contributor.
-            let task = state.fetch_task(&contributor_1).unwrap();
+            let task = state.fetch_task(&contributor_1, &time).unwrap();
             let expected_task1 = tasks1.next();
             assert_eq!(expected_task1, Some(&task));
 
-            state.acquired_lock(&contributor_1, task.chunk_id).unwrap();
+            state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
             let assigned_verifier = state
-                .completed_task(&contributor_1, task.chunk_id, task.contribution_id)
+                .completed_task(&contributor_1, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.fetch_task(&assigned_verifier).unwrap();
+            let task = state.fetch_task(&assigned_verifier, &time).unwrap();
             assert_eq!(expected_task1, Some(&task));
 
-            state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
+            state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
             state
-                .completed_task(&assigned_verifier, task.chunk_id, task.contribution_id)
+                .completed_task(&assigned_verifier, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
@@ -3991,13 +4050,13 @@ mod tests {
                 state.update_round_metrics();
 
                 // Update the state of current round contributors.
-                state.update_current_contributors().unwrap();
+                state.update_current_contributors(&time).unwrap();
 
                 // Update the state of current round verifiers.
-                state.update_current_verifiers().unwrap();
+                state.update_current_verifiers(&time).unwrap();
 
                 // Drop disconnected participants from the current round.
-                state.update_dropped_participants().unwrap();
+                state.update_dropped_participants(&time).unwrap();
 
                 // Ban any participants who meet the coordinator criteria.
                 state.update_banned_participants().unwrap();
@@ -4005,7 +4064,7 @@ mod tests {
         }
 
         // Process every chunk in the round as contributor 2.
-        let tasks2 = initialize_tasks(1, number_of_chunks, 2);
+        let tasks2 = initialize_tasks(1, number_of_chunks, 2).unwrap();
         let mut tasks2 = tasks2.iter();
         for _ in 0..number_of_chunks {
             assert_eq!(Some(next_round_height), state.current_round_height);
@@ -4018,24 +4077,24 @@ mod tests {
             assert_eq!(0, state.banned.len());
 
             // Fetch a pending task for the contributor.
-            let task = state.fetch_task(&contributor_2).unwrap();
+            let task = state.fetch_task(&contributor_2, &time).unwrap();
             let expected_task2 = tasks2.next();
             assert_eq!(expected_task2, Some(&task));
 
-            state.acquired_lock(&contributor_2, task.chunk_id).unwrap();
+            state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
             let assigned_verifier = state
-                .completed_task(&contributor_2, task.chunk_id, task.contribution_id)
+                .completed_task(&contributor_2, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
             // Fetch a pending task for the verifier.
-            let task = state.fetch_task(&assigned_verifier).unwrap();
+            let task = state.fetch_task(&assigned_verifier, &time).unwrap();
             assert_eq!(expected_task2, Some(&task));
 
-            state.acquired_lock(&assigned_verifier, task.chunk_id).unwrap();
+            state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
             state
-                .completed_task(&assigned_verifier, task.chunk_id, task.contribution_id)
+                .completed_task(&assigned_verifier, task.chunk_id(), task.contribution_id(), &time)
                 .unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
@@ -4045,13 +4104,13 @@ mod tests {
                 state.update_round_metrics();
 
                 // Update the state of current round contributors.
-                state.update_current_contributors().unwrap();
+                state.update_current_contributors(&time).unwrap();
 
                 // Update the state of current round verifiers.
-                state.update_current_verifiers().unwrap();
+                state.update_current_verifiers(&time).unwrap();
 
                 // Drop disconnected participants from the current round.
-                state.update_dropped_participants().unwrap();
+                state.update_dropped_participants(&time).unwrap();
 
                 // Ban any participants who meet the coordinator criteria.
                 state.update_banned_participants().unwrap();

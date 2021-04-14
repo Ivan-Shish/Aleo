@@ -249,17 +249,23 @@ impl Chunk {
     ///
     /// If the chunk is locked already, returns a `CoordinatorError`.
     ///
-    /// If the chunk is already complete, returns a `CoordinatorError`.
+    /// If the chunk is already complete, returns a
+    /// `CoordinatorError`.
     ///
     /// If the participant is a contributor, check that they have not
-    /// contributed to this chunk before and that the current contribution
-    /// is already verified.
+    /// contributed to this chunk before and that the current
+    /// contribution is already verified.
     ///
-    /// If the participant is a verifier, check that the current contribution
-    /// has not been verified yet.
+    /// If the participant is a verifier, check that the current
+    /// contribution has not been verified yet.
+    ///
+    /// `expected_num_contributions` is the expected total number of
+    /// contributions this chunk will contain when it is complete. An
+    /// error will be returned if this chunk already contains this
+    /// number of completed contributions.
     ///
     #[inline]
-    pub(crate) fn acquire_lock(
+    pub fn acquire_lock(
         &mut self,
         participant: Participant,
         expected_num_contributions: u64,
@@ -335,27 +341,27 @@ impl Chunk {
     /// If the operations succeed, returns `Ok(())`. Otherwise, returns `CoordinatorError`.
     ///
     #[inline]
-    pub(crate) fn add_contribution(
+    pub fn add_contribution(
         &mut self,
         contribution_id: u64,
-        participant: &Participant,
+        contributor: &Participant,
         contributed_locator: String,
         contributed_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
-        if !participant.is_contributor() {
+        if !contributor.is_contributor() {
             return Err(CoordinatorError::ExpectedContributor);
         }
 
         // Check that this chunk is locked by the contributor before attempting to add the contribution.
-        if !self.is_locked_by(&participant) {
+        if !self.is_locked_by(&contributor) {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
         // Add the contribution to this chunk.
         self.contributions.insert(
             contribution_id,
-            Contribution::new_contributor(participant.clone(), contributed_locator, contributed_signature_locator)?,
+            Contribution::new_contributor(contributor.clone(), contributed_locator, contributed_signature_locator)?,
         );
 
         // Release the lock on this chunk from the contributor.
@@ -373,20 +379,20 @@ impl Chunk {
     /// The underlying function checks that the contribution has a verifier assigned to it.
     ///
     #[inline]
-    pub(crate) fn verify_contribution(
+    pub fn verify_contribution(
         &mut self,
         contribution_id: u64,
-        participant: Participant,
+        verifier: Participant,
         verified_locator: String,
         verified_signature_locator: String,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
-        if !participant.is_verifier() {
+        if !verifier.is_verifier() {
             return Err(CoordinatorError::ExpectedVerifier);
         }
 
         // Check that this chunk is locked by the verifier before attempting to verify contribution.
-        if !self.is_locked_by(&participant) {
+        if !self.is_locked_by(&verifier) {
             return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
         }
 
@@ -397,7 +403,7 @@ impl Chunk {
         };
 
         // Attempt to assign the verifier to the contribution.
-        contribution.assign_verifier(participant.clone(), verified_locator, verified_signature_locator)?;
+        contribution.assign_verifier(verifier.clone(), verified_locator, verified_signature_locator)?;
 
         // Attempt to verify the contribution.
         match contribution.is_verified() {
@@ -406,7 +412,7 @@ impl Chunk {
             // Case 2 - If the contribution is not verified, attempt to set it to verified.
             false => {
                 // Attempt set the contribution as verified.
-                contribution.set_verified(&participant)?;
+                contribution.set_verified(&verifier)?;
 
                 // Release the lock on this chunk from the verifier.
                 self.set_lock_holder(None);
