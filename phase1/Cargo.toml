@@ -29,16 +29,16 @@ serde = { version = "1.0", features = ["derive"] }
 [dev-dependencies]
 phase1 = { path = "./", features = ["testing"] }
 
-snarkos-algorithms = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-algorithms", default-features = false }
-snarkos-curves = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-curves", default-features = false }
-snarkos-errors = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-errors", default-features = false }
-snarkos-gadgets = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-gadgets", default-features = false }
-snarkos-marlin = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-marlin", default-features = false }
-snarkos-models = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-models", default-features = false }
-snarkos-objects = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-objects", default-features = false }
-snarkos-polycommit = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-polycommit", default-features = false }
-snarkos-posw = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-posw", default-features = false }
-snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities", default-features = false }
+snarkos-algorithms = { version = "1.1.4", default-features = false }
+snarkos-curves = { version = "1.1.4", default-features = false }
+snarkos-errors = { version = "1.1.4", default-features = false }
+snarkos-gadgets = { version = "1.1.4", default-features = false }
+snarkos-marlin = { version = "1.1.4", default-features = false }
+snarkos-models = { version = "1.1.4", default-features = false }
+snarkos-objects = { version = "1.1.4", default-features = false }
+snarkos-polycommit = { version = "1.1.4", default-features = false }
+snarkos-posw = { version = "1.1.4", default-features = false }
+snarkos-utilities = { version = "1.1.4", default-features = false }
 
 anyhow = { version = "1.0.37" }
 blake2 = { version = "0.8", default-features = false }
