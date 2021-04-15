@@ -2,8 +2,7 @@
 /// to Phase 2-compatible Lagrange Coefficients.
 use crate::{buffer_size, CheckForCorrectness, Deserializer, Result, Serializer, UseCompression};
 
-use ark_poly::domain::{radix2::Radix2EvaluationDomain, EvaluationDomain};
-use snarkos_algorithms::{cfg_into_iter, cfg_iter};
+use snarkos_algorithms::{cfg_into_iter, cfg_iter, fft::EvaluationDomain};
 use snarkos_models::curves::{AffineCurve, PairingEngine, PrimeField, ProjectiveCurve};
 
 #[cfg(feature = "parallel")]

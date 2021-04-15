@@ -90,12 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ahash"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
-
-[[package]]
 name = "aho-corasick"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -166,85 +160,6 @@ name = "arc-swap"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dabe5a181f83789739c194cbe5a897dde195078fac08568d09221fd6137a7ba8"
-
-[[package]]
-name = "ark-ff"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "ark-ff-asm",
- "ark-ff-macros",
- "ark-serialize",
- "ark-std",
- "derivative",
- "num-traits",
- "rand 0.7.3",
- "rayon",
- "rustc_version 0.3.0",
- "zeroize",
-]
-
-[[package]]
-name = "ark-ff-asm"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "quote 1.0.7",
- "syn 1.0.60",
-]
-
-[[package]]
-name = "ark-ff-macros"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "num-bigint",
- "num-traits",
- "quote 1.0.7",
- "syn 1.0.60",
-]
-
-[[package]]
-name = "ark-poly"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "ark-ff",
- "ark-serialize",
- "ark-std",
- "derivative",
- "hashbrown",
- "rand 0.7.3",
- "rayon",
-]
-
-[[package]]
-name = "ark-serialize"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "ark-serialize-derive",
- "ark-std",
-]
-
-[[package]]
-name = "ark-serialize-derive"
-version = "0.1.1-alpha.0"
-source = "git+https://github.com/arkworks-rs/algebra?rev=1ebaf95#1ebaf957f804399d468cbd312b005e3a162d2122"
-dependencies = [
- "proc-macro2 1.0.24",
- "quote 1.0.7",
- "syn 1.0.60",
-]
-
-[[package]]
-name = "ark-std"
-version = "0.1.0"
-source = "git+https://github.com/arkworks-rs/utils#b37f1c8f73c94c5648b6dd310d02c3a81c8a37e9"
-dependencies = [
- "rand 0.7.3",
- "rayon",
-]
 
 [[package]]
 name = "arrayref"
@@ -1582,9 +1497,6 @@ name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
-dependencies = [
- "ahash",
-]
 
 [[package]]
 name = "heck"
@@ -2307,17 +2219,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a31937dea023539c72ddae0e3571deadc1414b300483fa7aaec176168cfa9d2"
 dependencies = [
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "num-bigint"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e9a41747ae4633fce5adffb4d2e81ffc5e89593cb19917f8fb2cc5ff76507bf"
-dependencies = [
- "autocfg",
- "num-integer",
- "num-traits",
 ]
 
 [[package]]
@@ -3539,7 +3440,6 @@ dependencies = [
 name = "setup-utils"
 version = "0.3.0"
 dependencies = [
- "ark-poly",
  "blake2",
  "blake2s_simd",
  "cfg-if 0.1.10",
