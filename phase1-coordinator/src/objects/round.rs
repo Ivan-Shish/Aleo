@@ -804,6 +804,22 @@ impl Round {
                     storage.remove(&response_locator)?;
                 }
 
+                // Removing contribution file signature for pending task
+                let response_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, *chunk_id, next_contribution_id, false);
+                if storage.exists(&response_signature_locator) {
+                    storage.remove(&response_signature_locator)?;
+                }
+
+                // Removing contribution file signature for verified task
+                let response_signature_locator =
+                    Locator::ContributionFileSignature(current_round_height, *chunk_id, next_contribution_id, true);
+                if storage.exists(&response_signature_locator) {
+                    storage.remove(&response_signature_locator)?;
+                }
+
+                // TODO: revisit the logic of removing challenges
+                //       https://github.com/AleoHQ/aleo-setup/issues/250
                 // Remove the next challenge locator if the current response has been verified.
                 if chunk.current_contribution()?.is_verified() {
                     // Fetch whether this is the final contribution of the specified chunk.
@@ -821,7 +837,8 @@ impl Round {
                             true,
                         )
                     };
-                    if storage.exists(&contribution_file) {
+                    // Don't remove initial challenge
+                    if storage.exists(&contribution_file) && chunk.current_contribution()?.get_contributor().is_some() {
                         storage.remove(&contribution_file)?;
                     }
                 }
@@ -889,8 +906,24 @@ impl Round {
                     }
                 }
 
+                // Remove the contribution signature file, if it exists.
+                if let Some(locator) = contribution.get_contributed_signature_location() {
+                    let path = storage.to_locator(&locator)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
+                }
+
                 // Remove the verified contribution file, if it exists.
                 if let Some(locator) = contribution.get_verified_location() {
+                    let path = storage.to_locator(&locator)?;
+                    if storage.exists(&path) {
+                        storage.remove(&path)?;
+                    }
+                }
+
+                // Remove the verified contribution file signature, if it exists.
+                if let Some(locator) = contribution.get_verified_signature_location() {
                     let path = storage.to_locator(&locator)?;
                     if storage.exists(&path) {
                         storage.remove(&path)?;

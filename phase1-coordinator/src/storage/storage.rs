@@ -21,6 +21,7 @@ pub enum Locator {
     RoundHeight,
     RoundState(u64),
     RoundFile(u64),
+    /// (round_height, chunk_id, contribution_id, is_verified)
     ContributionFile(u64, u64, u64, bool),
     ContributionFileSignature(u64, u64, u64, bool),
 }

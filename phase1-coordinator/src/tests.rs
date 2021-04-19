@@ -66,6 +66,25 @@ fn create_contributor_test_details(id: &str) -> ContributorTestDetails {
     }
 }
 
+struct VerifierTestDetails {
+    participant: Participant,
+    signing_key: SigningKey,
+}
+
+impl VerifierTestDetails {
+    fn verify(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+        coordinator.verify(&self.participant, &self.signing_key)
+    }
+}
+
+fn create_verifier_test_details(id: &str) -> VerifierTestDetails {
+    let (participant, signing_key) = create_verifier(id);
+    VerifierTestDetails {
+        participant,
+        signing_key,
+    }
+}
+
 fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -1063,9 +1082,9 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
         assert_eq!(0, verifier_info.locked_chunks().len());
         assert_eq!(2, verifier_info.assigned_tasks().len());
         assert_eq!(0, verifier_info.pending_tasks().len());
-        assert_eq!(18, verifier_info.completed_tasks().len());
+        assert_eq!(8, verifier_info.completed_tasks().len());
         assert_eq!(0, verifier_info.disposing_tasks().len());
-        assert_eq!(1, verifier_info.disposed_tasks().len());
+        assert_eq!(11, verifier_info.disposed_tasks().len());
     }
 
     Ok(())
@@ -1147,6 +1166,158 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     }
 
     Ok(())
+}
+
+/// Drops a contributor and release the locks
+///
+/// The key part of this test is that we lock a chunk
+/// by a contributor and then immediately drop the contributor
+/// without contributing
+#[test]
+#[serial]
+fn coordinator_drop_contributor_and_release_locks() {
+    // Unwraps are used to find out the exact line which produces the error
+    // When the test returns Result with an Err, the line is unknown
+
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
+    let replacement_contributor = create_contributor_test_details("replacement-1");
+    let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
+    let environment = initialize_test_environment(&testing.into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
+
+    // Add a contributor and verifier to the queue.
+    let contributor_1 = create_contributor_test_details("1");
+    let contributor_2 = create_contributor_test_details("2");
+    let verifier_1 = create_verifier_test_details("1");
+    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 1.
+    coordinator.update().unwrap();
+
+    // Lock a chunk by a contributor
+    coordinator.try_lock(&contributor_1.participant).unwrap();
+
+    // Drop the contributor which have locked the chunk
+    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
+    assert_eq!(0, locators.len());
+
+    // Contribute to the round 1
+    for _ in 0..number_of_chunks {
+        replacement_contributor.contribute_to(&coordinator).unwrap();
+        contributor_2.contribute_to(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+    assert_eq!(2, coordinator.current_round_height().unwrap());
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+}
+
+/// Drops a contributor and updates verifier tasks
+///
+/// Make one contribution and verify it, then drop the
+/// contributor. The tasks of a verifier should be updated
+/// properly
+#[test]
+#[serial]
+fn coordinator_drop_contributor_and_update_verifier_tasks() {
+    // Unwraps are used to find out the exact line which produces the error
+    // When the test returns Result with an Err, the line is unknown
+
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
+    let replacement_contributor = create_contributor_test_details("replacement-1");
+    let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
+    let environment = initialize_test_environment(&testing.into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
+
+    // Add a contributor and verifier to the queue.
+    let contributor_1 = create_contributor_test_details("1");
+    let contributor_2 = create_contributor_test_details("2");
+    let verifier_1 = create_verifier_test_details("1");
+    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 1.
+    coordinator.update().unwrap();
+
+    contributor_1.contribute_to(&coordinator).unwrap();
+
+    verifier_1.verify(&coordinator).unwrap();
+
+    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
+    assert_eq!(1, locators.len());
+
+    // Contribute to the round 1
+    for _ in 0..number_of_chunks {
+        replacement_contributor.contribute_to(&coordinator).unwrap();
+        contributor_2.contribute_to(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+    assert_eq!(2, coordinator.current_round_height().unwrap());
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
 #[test]
