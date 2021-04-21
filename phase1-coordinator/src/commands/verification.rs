@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{Locator, Object, StorageLock},
+    storage::{ContributionLocator, Locator, Object, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -48,16 +48,36 @@ impl Verification {
         }
 
         // Fetch the locators for `Verification`.
-        let challenge_locator = Locator::ContributionFile(round_height, chunk_id, current_contribution_id - 1, true);
-        let response_locator = Locator::ContributionFile(round_height, chunk_id, current_contribution_id, false);
+        let challenge_locator = Locator::ContributionFile(ContributionLocator::new(
+            round_height,
+            chunk_id,
+            current_contribution_id - 1,
+            true,
+        ));
+        let response_locator = Locator::ContributionFile(ContributionLocator::new(
+            round_height,
+            chunk_id,
+            current_contribution_id,
+            false,
+        ));
         let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
             true => (
-                Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-                Locator::ContributionFileSignature(round_height + 1, chunk_id, 0, true),
+                Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
+                Locator::ContributionFileSignature(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
             ),
             false => (
-                Locator::ContributionFile(round_height, chunk_id, current_contribution_id, true),
-                Locator::ContributionFileSignature(round_height, chunk_id, current_contribution_id, true),
+                Locator::ContributionFile(ContributionLocator::new(
+                    round_height,
+                    chunk_id,
+                    current_contribution_id,
+                    true,
+                )),
+                Locator::ContributionFileSignature(ContributionLocator::new(
+                    round_height,
+                    chunk_id,
+                    current_contribution_id,
+                    true,
+                )),
             ),
         };
 
@@ -314,7 +334,7 @@ mod tests {
     use crate::{
         authentication::Dummy,
         commands::{Computation, Seed, Verification, SEED_LENGTH},
-        storage::{Locator, Object, StorageLock},
+        storage::{ContributionLocator, Locator, Object, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
@@ -369,12 +389,14 @@ mod tests {
 
         for chunk_id in 0..number_of_chunks {
             // Fetch the challenge locator.
-            let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let challenge_locator =
+                &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
             // Fetch the response locator.
-            let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            let response_locator =
+                &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 1, false));
             // Fetch the contribution file signature locator.
             let contribution_file_signature_locator =
-                &Locator::ContributionFileSignature(round_height, chunk_id, 1, false);
+                &Locator::ContributionFileSignature(ContributionLocator::new(round_height, chunk_id, 1, false));
 
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
@@ -417,8 +439,8 @@ mod tests {
 
             // Fetch the next contribution locator.
             let next = match is_final {
-                true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-                false => Locator::ContributionFile(round_height, chunk_id, 1, true),
+                true => Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
+                false => Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 1, true)),
             };
 
             // Check the next challenge file exists.

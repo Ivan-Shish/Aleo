@@ -14,16 +14,34 @@ use std::{
 };
 use zexe_algebra::{Bls12_377, BW6_761};
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ContributionLocator {
+    pub round_height: u64,
+    pub chunk_id: u64,
+    pub contribution_id: u64,
+    pub is_verified: bool,
+}
+
+impl ContributionLocator {
+    pub fn new(round_height: u64, chunk_id: u64, contribution_id: u64, is_verified: bool) -> Self {
+        Self {
+            round_height,
+            chunk_id,
+            contribution_id,
+            is_verified,
+        }
+    }
+}
+
 /// A data structure representing all possible types of keys in storage.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Locator {
     CoordinatorState,
     RoundHeight,
-    RoundState(u64),
-    RoundFile(u64),
-    /// (round_height, chunk_id, contribution_id, is_verified)
-    ContributionFile(u64, u64, u64, bool),
-    ContributionFileSignature(u64, u64, u64, bool),
+    RoundState { round_height: u64 },
+    RoundFile { round_height: u64 },
+    ContributionFile(ContributionLocator),
+    ContributionFileSignature(ContributionLocator),
 }
 
 /// A data structure representing all possible types of values in storage.
