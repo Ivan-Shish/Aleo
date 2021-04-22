@@ -8,7 +8,7 @@ use crate::{
     coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round},
-    storage::{Locator, Object, Storage, StorageLock},
+    storage::{ContributionLocator, Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
 
@@ -967,7 +967,9 @@ impl Coordinator {
         let current_round_height = Self::load_current_round_height(&storage)?;
 
         // Fetch the current round from storage.
-        match storage.exists(&Locator::RoundState(current_round_height)) {
+        match storage.exists(&Locator::RoundState {
+            round_height: current_round_height,
+        }) {
             // Case 1 - This is a typical round of the ceremony.
             true => Ok(current_round_height),
             // Case 2 - Storage failed to locate the current round.
@@ -1013,7 +1015,7 @@ impl Coordinator {
         match round_height <= current_round_height {
             // Fetch the round corresponding to the given round height from storage.
             true => Ok(serde_json::from_slice(
-                &*storage.reader(&Locator::RoundState(round_height))?.as_ref(),
+                &*storage.reader(&Locator::RoundState { round_height })?.as_ref(),
             )?),
             // The given round height does not exist.
             false => Err(CoordinatorError::RoundDoesNotExist),
@@ -1167,7 +1169,8 @@ impl Coordinator {
             state.disposed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
 
             // Remove the response file from storage.
-            let response = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+            let response =
+                Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, false));
             storage.remove(&response)?;
 
             // Save the coordinator state in storage.
@@ -1186,7 +1189,12 @@ impl Coordinator {
             round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
 
             // Save the updated round to storage.
-            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+            storage.update(
+                &Locator::RoundState {
+                    round_height: round.round_height(),
+                },
+                Object::RoundState(round),
+            )?;
 
             return Ok(storage.to_path(&response)?);
         }
@@ -1211,7 +1219,12 @@ impl Coordinator {
                 Err(error) => {
                     info!("Failed to add a contribution and removing the contribution file");
                     // Remove the invalid response file from storage.
-                    let response = Locator::ContributionFile(round_height, chunk_id, task.contribution_id(), false);
+                    let response = Locator::ContributionFile(ContributionLocator::new(
+                        round_height,
+                        chunk_id,
+                        task.contribution_id(),
+                        false,
+                    ));
                     storage.remove(&response)?;
 
                     error!("{}", error);
@@ -1297,12 +1310,24 @@ impl Coordinator {
             // Fetch the next challenge locator.
             let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
             let next_challenge = match is_final_contribution {
-                true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
-                false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
+                true => {
+                    Locator::ContributionFile(ContributionLocator::new(round.round_height() + 1, chunk_id, 0, true))
+                }
+                false => Locator::ContributionFile(ContributionLocator::new(
+                    round.round_height(),
+                    chunk_id,
+                    contribution_id,
+                    true,
+                )),
             };
 
             // Save the updated round to storage.
-            storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+            storage.update(
+                &Locator::RoundState {
+                    round_height: round.round_height(),
+                },
+                Object::RoundState(round),
+            )?;
 
             // Remove the next challenge file from storage.
             storage.remove(&next_challenge)?;
@@ -1341,8 +1366,18 @@ impl Coordinator {
                     // Fetch the next challenge locator.
                     let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
                     let next_challenge = match is_final_contribution {
-                        true => Locator::ContributionFile(round.round_height() + 1, chunk_id, 0, true),
-                        false => Locator::ContributionFile(round.round_height(), chunk_id, contribution_id, true),
+                        true => Locator::ContributionFile(ContributionLocator::new(
+                            round.round_height() + 1,
+                            chunk_id,
+                            0,
+                            true,
+                        )),
+                        false => Locator::ContributionFile(ContributionLocator::new(
+                            round.round_height(),
+                            chunk_id,
+                            contribution_id,
+                            true,
+                        )),
                     };
 
                     // Remove the invalid next challenge file from storage.
@@ -1530,8 +1565,8 @@ impl Coordinator {
         // Fetch the chunk ID corresponding to the given locator path.
         let locator = storage.to_locator(&locator_path)?;
         match &locator {
-            Locator::ContributionFile(_, chunk_id, _, _) => match storage.exists(&locator) {
-                true => Ok(*chunk_id),
+            Locator::ContributionFile(contribution_locator) => match storage.exists(&locator) {
+                true => Ok(contribution_locator.chunk_id),
                 false => Err(CoordinatorError::ContributionLocatorMissing),
             },
             _ => Err(CoordinatorError::ContributionLocatorIncorrect),
@@ -1577,7 +1612,12 @@ impl Coordinator {
         trace!("Participant {} locked chunk {}", participant, chunk_id);
 
         // Add the updated round to storage.
-        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(
+            &Locator::RoundState {
+                round_height: current_round_height,
+            },
+            Object::RoundState(round),
+        ) {
             Ok(_) => {
                 debug!("{} acquired lock on chunk {}", participant, chunk_id);
                 Ok((
@@ -1644,11 +1684,24 @@ impl Coordinator {
         }
 
         // Fetch the challenge, response, and contribution file signature locators.
-        let challenge_file_locator =
-            Locator::ContributionFile(current_round_height, chunk_id, chunk.current_contribution_id(), true);
-        let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
-        let contribution_file_signature_locator =
-            Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, false);
+        let challenge_file_locator = Locator::ContributionFile(ContributionLocator::new(
+            current_round_height,
+            chunk_id,
+            chunk.current_contribution_id(),
+            true,
+        ));
+        let response_file_locator = Locator::ContributionFile(ContributionLocator::new(
+            current_round_height,
+            chunk_id,
+            contribution_id,
+            false,
+        ));
+        let contribution_file_signature_locator = Locator::ContributionFileSignature(ContributionLocator::new(
+            current_round_height,
+            chunk_id,
+            contribution_id,
+            false,
+        ));
 
         // Check the challenge-response hash chain.
         let (challenge_hash, response_hash) = {
@@ -1725,7 +1778,12 @@ impl Coordinator {
         )?;
 
         // Add the updated round to storage.
-        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(
+            &Locator::RoundState {
+                round_height: current_round_height,
+            },
+            Object::RoundState(round),
+        ) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
                 debug!("{} added a contribution to chunk {}", participant, chunk_id);
@@ -1782,20 +1840,44 @@ impl Coordinator {
         let contribution_id = chunk.current_contribution_id();
 
         // Fetch the challenge, response, next challenge, and contribution file signature locators.
-        let challenge_file_locator =
-            Locator::ContributionFile(current_round_height, chunk_id, contribution_id - 1, true);
-        let response_file_locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+        let challenge_file_locator = Locator::ContributionFile(ContributionLocator::new(
+            current_round_height,
+            chunk_id,
+            contribution_id - 1,
+            true,
+        ));
+        let response_file_locator = Locator::ContributionFile(ContributionLocator::new(
+            current_round_height,
+            chunk_id,
+            contribution_id,
+            false,
+        ));
         let (next_challenge_locator, contribution_file_signature_locator) = {
             // Fetch whether this is the final contribution of the specified chunk.
             let is_final_contribution = chunk.only_contributions_complete(round.expected_number_of_contributions());
             match is_final_contribution {
                 true => (
-                    Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true),
-                    Locator::ContributionFileSignature(current_round_height + 1, chunk_id, 0, true),
+                    Locator::ContributionFile(ContributionLocator::new(current_round_height + 1, chunk_id, 0, true)),
+                    Locator::ContributionFileSignature(ContributionLocator::new(
+                        current_round_height + 1,
+                        chunk_id,
+                        0,
+                        true,
+                    )),
                 ),
                 false => (
-                    Locator::ContributionFile(current_round_height, chunk_id, contribution_id, true),
-                    Locator::ContributionFileSignature(current_round_height, chunk_id, contribution_id, true),
+                    Locator::ContributionFile(ContributionLocator::new(
+                        current_round_height,
+                        chunk_id,
+                        contribution_id,
+                        true,
+                    )),
+                    Locator::ContributionFileSignature(ContributionLocator::new(
+                        current_round_height,
+                        chunk_id,
+                        contribution_id,
+                        true,
+                    )),
                 ),
             }
         };
@@ -1915,7 +1997,12 @@ impl Coordinator {
         )?;
 
         // Add the updated round to storage.
-        match storage.update(&Locator::RoundState(current_round_height), Object::RoundState(round)) {
+        match storage.update(
+            &Locator::RoundState {
+                round_height: current_round_height,
+            },
+            Object::RoundState(round),
+        ) {
             Ok(_) => {
                 debug!("Updated round {} in storage", current_round_height);
                 debug!(
@@ -1954,17 +2041,23 @@ impl Coordinator {
         }
 
         // Check that the current round state exists in storage.
-        if !storage.exists(&Locator::RoundState(current_round_height)) {
+        if !storage.exists(&Locator::RoundState {
+            round_height: current_round_height,
+        }) {
             return Err(CoordinatorError::RoundStateMissing);
         }
 
         // Check that the next round state does not exist in storage.
-        if storage.exists(&Locator::RoundState(current_round_height + 1)) {
+        if storage.exists(&Locator::RoundState {
+            round_height: current_round_height + 1,
+        }) {
             return Err(CoordinatorError::RoundShouldNotExist);
         }
 
         // Check that the current round file does not exist.
-        let round_file = Locator::RoundFile(current_round_height);
+        let round_file = Locator::RoundFile {
+            round_height: current_round_height,
+        };
         if storage.exists(&round_file) {
             error!("Round file locator already exists ({})", storage.to_path(&round_file)?);
             return Err(CoordinatorError::RoundLocatorAlreadyExists);
@@ -1977,13 +2070,19 @@ impl Coordinator {
         let contribution_id = round.expected_number_of_contributions() - 1;
         for chunk_id in 0..self.environment.number_of_chunks() {
             // Check that the final unverified contribution locator exists.
-            let locator = Locator::ContributionFile(current_round_height, chunk_id, contribution_id, false);
+            let locator = Locator::ContributionFile(ContributionLocator::new(
+                current_round_height,
+                chunk_id,
+                contribution_id,
+                false,
+            ));
             if !storage.exists(&locator) {
                 error!("Unverified contribution is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionMissing);
             }
             // Check that the final verified contribution locator exists.
-            let locator = Locator::ContributionFile(current_round_height + 1, chunk_id, 0, true);
+            let locator =
+                Locator::ContributionFile(ContributionLocator::new(current_round_height + 1, chunk_id, 0, true));
             if !storage.exists(&locator) {
                 error!("Verified contribution is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionMissing);
@@ -2051,7 +2150,9 @@ impl Coordinator {
         // Ensure the current round has been aggregated if this is not the initial round.
         if current_round_height != 0 {
             // Check that the round file for the current round exists.
-            let round_file = Locator::RoundFile(current_round_height);
+            let round_file = Locator::RoundFile {
+                round_height: current_round_height,
+            };
             if !storage.exists(&round_file) {
                 error!("Round file locator is missing ({})", storage.to_path(&round_file)?);
                 warn!("Coordinator may be missing a call to `try_aggregate` for the current round");
@@ -2066,7 +2167,9 @@ impl Coordinator {
 
         // Check that the new round does not exist in storage.
         // If it exists, this means the round was already initialized.
-        let locator = Locator::RoundState(new_height);
+        let locator = Locator::RoundState {
+            round_height: new_height,
+        };
         if storage.exists(&locator) {
             error!("Round {} already exists ({})", new_height, storage.to_path(&locator)?);
             return Err(CoordinatorError::RoundAlreadyInitialized);
@@ -2075,7 +2178,7 @@ impl Coordinator {
         // Check that each contribution for the next round exists.
         for chunk_id in 0..self.environment.number_of_chunks() {
             debug!("Locating round {} chunk {} contribution 0", new_height, chunk_id);
-            let locator = Locator::ContributionFile(new_height, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(new_height, chunk_id, 0, true));
             if !storage.exists(&locator) {
                 error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorMissing);
@@ -2096,7 +2199,12 @@ impl Coordinator {
         trace!("{:#?}", &new_round);
 
         // Insert the new round into storage.
-        storage.insert(Locator::RoundState(new_height), Object::RoundState(new_round))?;
+        storage.insert(
+            Locator::RoundState {
+                round_height: new_height,
+            },
+            Object::RoundState(new_round),
+        )?;
 
         // Next, update the round height to reflect the new round.
         storage.update(&Locator::RoundHeight, Object::RoundHeight(new_height))?;
@@ -2129,12 +2237,14 @@ impl Coordinator {
         let round_height = 0;
 
         // Check that the current round does not exist in storage.
-        if storage.exists(&Locator::RoundState(round_height)) {
+        if storage.exists(&Locator::RoundState { round_height }) {
             return Err(CoordinatorError::RoundShouldNotExist);
         }
 
         // Check that the next round does not exist in storage.
-        if storage.exists(&Locator::RoundState(round_height + 1)) {
+        if storage.exists(&Locator::RoundState {
+            round_height: round_height + 1,
+        }) {
             return Err(CoordinatorError::RoundShouldNotExist);
         }
 
@@ -2170,14 +2280,14 @@ impl Coordinator {
         // in the new round and check that the new locators exist.
         for chunk_id in 0..self.environment.number_of_chunks() {
             // 1 - Check that the contribution locator corresponding to this round's chunk does not exist.
-            let locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
             if storage.exists(&locator) {
                 error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorAlreadyExists);
             }
 
             // 2 - Check that the contribution locator corresponding to the next round's chunk does not exists.
-            let locator = Locator::ContributionFile(round_height + 1, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true));
             if storage.exists(&locator) {
                 error!("Contribution locator already exists ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorAlreadyExists);
@@ -2188,14 +2298,14 @@ impl Coordinator {
             info!("Coordinator completed initialization on chunk {}", chunk_id);
 
             // 1 - Check that the contribution locator corresponding to this round's chunk now exists.
-            let locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
             if !storage.exists(&locator) {
                 error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorMissing);
             }
 
             // 2 - Check that the contribution locator corresponding to the next round's chunk now exists.
-            let locator = Locator::ContributionFile(round_height + 1, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true));
             if !storage.exists(&locator) {
                 error!("Contribution locator is missing ({})", storage.to_path(&locator)?);
                 return Err(CoordinatorError::ContributionLocatorMissing);
@@ -2206,7 +2316,7 @@ impl Coordinator {
         round.try_finish(self.time.utc_now());
 
         // Add the new round to storage.
-        storage.insert(Locator::RoundState(round_height), Object::RoundState(round))?;
+        storage.insert(Locator::RoundState { round_height }, Object::RoundState(round))?;
 
         // Next, add the round height to storage.
         storage.insert(Locator::RoundHeight, Object::RoundHeight(round_height))?;
@@ -2261,18 +2371,23 @@ impl Coordinator {
             .par_iter()
             .map(|task| {
                 storage
-                    .to_path(&Locator::ContributionFile(
+                    .to_path(&Locator::ContributionFile(ContributionLocator::new(
                         round.round_height(),
                         task.chunk_id(),
                         task.contribution_id(),
                         true,
-                    ))
+                    )))
                     .unwrap()
             })
             .collect();
 
         // Save the updated round to storage.
-        storage.update(&Locator::RoundState(round.round_height()), Object::RoundState(round))?;
+        storage.update(
+            &Locator::RoundState {
+                round_height: round.round_height(),
+            },
+            Object::RoundState(round),
+        )?;
 
         Ok(locators)
     }
@@ -2305,7 +2420,7 @@ impl Coordinator {
         // Fetch the specified round from storage.
         match round_height <= current_round_height {
             // Load the corresponding round data from storage.
-            true => match storage.get(&Locator::RoundState(round_height))? {
+            true => match storage.get(&Locator::RoundState { round_height })? {
                 // Case 1 - The ceremony is running and the round state was fetched.
                 Object::RoundState(round) => Ok(round),
                 // Case 2 - Storage failed to fetch the round height.
@@ -2433,12 +2548,22 @@ impl Coordinator {
         }
 
         // Fetch the challenge locator.
-        let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id - 1, true);
+        let challenge_locator = &Locator::ContributionFile(ContributionLocator::new(
+            round_height,
+            chunk_id,
+            contribution_id - 1,
+            true,
+        ));
         // Fetch the response locator.
-        let response_locator = &Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        let response_locator =
+            &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, false));
         // Fetch the contribution file signature locator.
-        let contribution_file_signature_locator =
-            &Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, false);
+        let contribution_file_signature_locator = &Locator::ContributionFileSignature(ContributionLocator::new(
+            round_height,
+            chunk_id,
+            contribution_id,
+            false,
+        ));
 
         info!(
             "Starting computation on round {} chunk {} contribution {} as {}",
@@ -2513,7 +2638,8 @@ impl Coordinator {
         }
 
         // Check that the contribution locator corresponding to the response file exists.
-        let response_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+        let response_locator =
+            Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, false));
         if !storage.exists(&response_locator) {
             error!("Response file at {} is missing", storage.to_path(&response_locator)?);
             return Err(CoordinatorError::ContributionLocatorMissing);
@@ -2532,8 +2658,8 @@ impl Coordinator {
 
         // Fetch the verified response locator and the contribution file signature locator.
         let verified_locator = match is_final_contribution {
-            true => Locator::ContributionFile(round_height + 1, chunk_id, 0, true),
-            false => Locator::ContributionFile(round_height, chunk_id, contribution_id, true),
+            true => Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
+            false => Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, true)),
         };
 
         info!(
@@ -2595,9 +2721,12 @@ impl Coordinator {
         let storage = StorageLock::Read(self.storage.read().unwrap());
 
         match storage.to_locator(locator_path)? {
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
-                Ok((round_height, chunk_id, contribution_id, verified))
-            }
+            Locator::ContributionFile(contribution_locator) => Ok((
+                contribution_locator.round_height,
+                contribution_locator.chunk_id,
+                contribution_locator.contribution_id,
+                contribution_locator.is_verified,
+            )),
             _ => Err(CoordinatorError::ContributionLocatorIncorrect),
         }
     }

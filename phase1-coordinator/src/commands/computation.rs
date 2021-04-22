@@ -47,9 +47,11 @@ impl Computation {
 
         // Fetch the chunk ID from the response locator.
         let (round_height, chunk_id, contribution_id) = match response_locator {
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, _) => {
-                (*round_height, *chunk_id as usize, *contribution_id)
-            }
+            Locator::ContributionFile(contribution_locator) => (
+                contribution_locator.round_height,
+                contribution_locator.chunk_id as usize,
+                contribution_locator.contribution_id,
+            ),
             _ => return Err(CoordinatorError::ContributionLocatorIncorrect.into()),
         };
 
@@ -172,7 +174,7 @@ mod tests {
     use crate::{
         authentication::{Dummy, Signature},
         commands::{Computation, Initialization, Seed, SEED_LENGTH},
-        storage::{Locator, Object, StorageLock},
+        storage::{ContributionLocator, Locator, Object, StorageLock},
         testing::prelude::*,
     };
     use setup_utils::calculate_hash;
@@ -211,12 +213,14 @@ mod tests {
             trace!("Running computation on test chunk {}", chunk_id);
 
             // Fetch the challenge locator.
-            let challenge_locator = &Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let challenge_locator =
+                &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
             // Fetch the response locator.
-            let response_locator = &Locator::ContributionFile(round_height, chunk_id, 1, false);
+            let response_locator =
+                &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 1, false));
             // Fetch the contribution file signature locator.
             let contribution_file_signature_locator =
-                &Locator::ContributionFileSignature(round_height, chunk_id, 1, false);
+                &Locator::ContributionFileSignature(ContributionLocator::new(round_height, chunk_id, 1, false));
 
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);

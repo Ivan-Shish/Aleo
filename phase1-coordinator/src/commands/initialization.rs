@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{Locator, Object, StorageLock},
+    storage::{ContributionLocator, Locator, Object, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -34,7 +34,7 @@ impl Initialization {
         trace!("Expected challenge file size is {}", expected_challenge_size);
 
         // Initialize and fetch a writer for the contribution locator so the output is saved.
-        let contribution_locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+        let contribution_locator = Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
         storage.initialize(contribution_locator.clone(), expected_challenge_size as u64)?;
 
         // Run ceremony initialization on chunk.
@@ -58,7 +58,8 @@ impl Initialization {
 
         // Copy the current transcript to the next transcript.
         // This operation will *overwrite* the contents of `next_transcript`.
-        let next_contribution_locator = Locator::ContributionFile(round_height + 1, chunk_id, 0, true);
+        let next_contribution_locator =
+            Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true));
         if let Err(error) = storage.copy(&contribution_locator, &next_contribution_locator) {
             return Err(error.into());
         }
@@ -120,7 +121,7 @@ impl Initialization {
 mod tests {
     use crate::{
         commands::Initialization,
-        storage::{Locator, StorageLock},
+        storage::{ContributionLocator, Locator, StorageLock},
         testing::prelude::*,
     };
     use setup_utils::{blank_hash, calculate_hash, GenericArray};
@@ -152,7 +153,7 @@ mod tests {
             let candidate_hash = Initialization::run(&TEST_ENVIRONMENT, &mut storage, round_height, chunk_id).unwrap();
 
             // Open the contribution locator file.
-            let locator = Locator::ContributionFile(round_height, chunk_id, 0, true);
+            let locator = Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 0, true));
             let reader = storage.reader(&locator).unwrap();
 
             // Check that the contribution chunk was generated based on the blank hash.

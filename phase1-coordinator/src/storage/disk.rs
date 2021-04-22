@@ -1,7 +1,16 @@
 use crate::{
     environment::Environment,
     objects::{ContributionFileSignature, Round},
-    storage::{Locator, Object, ObjectReader, ObjectWriter, Storage, StorageLocator, StorageObject},
+    storage::{
+        ContributionLocator,
+        Locator,
+        Object,
+        ObjectReader,
+        ObjectWriter,
+        Storage,
+        StorageLocator,
+        StorageObject,
+    },
     CoordinatorError,
     CoordinatorState,
 };
@@ -167,11 +176,11 @@ impl Storage for Disk {
                 let round_height: u64 = serde_json::from_slice(&*reader)?;
                 Ok(Object::RoundHeight(round_height))
             }
-            Locator::RoundState(_) => {
+            Locator::RoundState { round_height: _ } => {
                 let round: Round = serde_json::from_slice(&*reader)?;
                 Ok(Object::RoundState(round))
             }
-            Locator::RoundFile(round_height) => {
+            Locator::RoundFile { round_height } => {
                 // Check that the round size is correct.
                 let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
@@ -185,11 +194,18 @@ impl Storage for Disk {
                 round_file.write_all(&*reader)?;
                 Ok(Object::RoundFile(round_file))
             }
-            Locator::ContributionFile(round_height, chunk_id, _, verified) => {
+            Locator::ContributionFile(contribution_locator) => {
                 // Check that the contribution size is correct.
-                let expected = Object::contribution_file_size(&self.environment, *chunk_id, *verified);
+                let expected = Object::contribution_file_size(
+                    &self.environment,
+                    contribution_locator.chunk_id,
+                    contribution_locator.is_verified,
+                );
                 let found = self.size(&locator)?;
-                debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
+                debug!(
+                    "Round {} chunk {} filesize is {}",
+                    contribution_locator.round_height, contribution_locator.chunk_id, found
+                );
                 if found == 0 || expected != found {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
@@ -199,13 +215,16 @@ impl Storage for Disk {
                 contribution_file.write_all(&*reader)?;
                 Ok(Object::ContributionFile(contribution_file))
             }
-            Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFileSignature(contribution_locator) => {
                 // Check that the contribution file signature size is correct.
-                let expected = Object::contribution_file_signature_size(*verified);
+                let expected = Object::contribution_file_signature_size(contribution_locator.is_verified);
                 let found = self.size(&locator)?;
                 debug!(
                     "Round {} chunk {} contribution {} signature filesize is {}",
-                    round_height, chunk_id, contribution_id, found
+                    contribution_locator.round_height,
+                    contribution_locator.chunk_id,
+                    contribution_locator.contribution_id,
+                    found
                 );
                 if found == 0 || expected != found {
                     error!(
@@ -426,8 +445,8 @@ impl StorageObject for Disk {
         match locator {
             Locator::CoordinatorState => Ok(reader),
             Locator::RoundHeight => Ok(reader),
-            Locator::RoundState(_) => Ok(reader),
-            Locator::RoundFile(round_height) => {
+            Locator::RoundState { round_height: _ } => Ok(reader),
+            Locator::RoundFile { round_height } => {
                 // Check that the round size is correct.
                 let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
@@ -438,18 +457,25 @@ impl StorageObject for Disk {
                 }
                 Ok(reader)
             }
-            Locator::ContributionFile(round_height, chunk_id, _, verified) => {
+            Locator::ContributionFile(contribution_locator) => {
                 // Check that the contribution size is correct.
-                let expected = Object::contribution_file_size(&self.environment, *chunk_id, *verified);
+                let expected = Object::contribution_file_size(
+                    &self.environment,
+                    contribution_locator.chunk_id,
+                    contribution_locator.is_verified,
+                );
                 let found = self.size(&locator)?;
-                debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
+                debug!(
+                    "Round {} chunk {} filesize is {}",
+                    contribution_locator.round_height, contribution_locator.chunk_id, found
+                );
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
                 }
                 Ok(reader)
             }
-            Locator::ContributionFileSignature(_, _, _, _) => Ok(reader),
+            Locator::ContributionFileSignature(_) => Ok(reader),
         }
     }
 
@@ -480,8 +506,8 @@ impl StorageObject for Disk {
         match locator {
             Locator::CoordinatorState => Ok(writer),
             Locator::RoundHeight => Ok(writer),
-            Locator::RoundState(_) => Ok(writer),
-            Locator::RoundFile(_) => {
+            Locator::RoundState { round_height: _ } => Ok(writer),
+            Locator::RoundFile { round_height: _ } => {
                 // Check that the round size is correct.
                 let expected = Object::round_file_size(&self.environment);
                 let found = self.size(&locator)?;
@@ -492,9 +518,13 @@ impl StorageObject for Disk {
                 }
                 Ok(writer)
             }
-            Locator::ContributionFile(_, chunk_id, _, verified) => {
+            Locator::ContributionFile(contribution_locator) => {
                 // Check that the contribution size is correct.
-                let expected = Object::contribution_file_size(&self.environment, *chunk_id, *verified);
+                let expected = Object::contribution_file_size(
+                    &self.environment,
+                    contribution_locator.chunk_id,
+                    contribution_locator.is_verified,
+                );
                 let found = self.size(&locator)?;
                 debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
@@ -503,7 +533,7 @@ impl StorageObject for Disk {
                 }
                 Ok(writer)
             }
-            Locator::ContributionFileSignature(_, _, _, _) => Ok(writer),
+            Locator::ContributionFileSignature(_) => Ok(writer),
         }
     }
 }
@@ -611,8 +641,9 @@ impl DiskManifest {
         }
 
         // If the locator is a contribution file, initialize its directory.
-        if let Locator::ContributionFile(round_height, chunk_id, _, _) = locator {
-            self.resolver.chunk_directory_init(*round_height, *chunk_id);
+        if let Locator::ContributionFile(contribution_locator) = locator {
+            self.resolver
+                .chunk_directory_init(contribution_locator.round_height, contribution_locator.chunk_id);
         }
 
         // Load the file path.
@@ -828,29 +859,41 @@ impl StorageLocator for DiskResolver {
         let path = match locator {
             Locator::CoordinatorState => format!("{}/coordinator.json", self.base),
             Locator::RoundHeight => format!("{}/round_height", self.base),
-            Locator::RoundState(round_height) => format!("{}/state.json", self.round_directory(*round_height)),
-            Locator::RoundFile(round_height) => {
+            Locator::RoundState { round_height } => format!("{}/state.json", self.round_directory(*round_height)),
+            Locator::RoundFile { round_height } => {
                 let round_directory = self.round_directory(*round_height);
                 format!("{}/round_{}.verified", round_directory, *round_height)
             }
-            Locator::ContributionFile(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFile(contribution_locator) => {
                 // Fetch the chunk directory path.
-                let path = self.chunk_directory(*round_height, *chunk_id);
-                match verified {
+                let path = self.chunk_directory(contribution_locator.round_height, contribution_locator.chunk_id);
+                match contribution_locator.is_verified {
                     // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.verified`.
-                    true => format!("{}/contribution_{}.verified", path, contribution_id),
+                    true => format!(
+                        "{}/contribution_{}.verified",
+                        path, contribution_locator.contribution_id
+                    ),
                     // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified`.
-                    false => format!("{}/contribution_{}.unverified", path, contribution_id),
+                    false => format!(
+                        "{}/contribution_{}.unverified",
+                        path, contribution_locator.contribution_id
+                    ),
                 }
             }
-            Locator::ContributionFileSignature(round_height, chunk_id, contribution_id, verified) => {
+            Locator::ContributionFileSignature(contribution_locator) => {
                 // Fetch the chunk directory path.
-                let path = self.chunk_directory(*round_height, *chunk_id);
-                match verified {
+                let path = self.chunk_directory(contribution_locator.round_height, contribution_locator.chunk_id);
+                match contribution_locator.is_verified {
                     // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.verified.signature`.
-                    true => format!("{}/contribution_{}.verified.signature", path, contribution_id),
+                    true => format!(
+                        "{}/contribution_{}.verified.signature",
+                        path, contribution_locator.contribution_id
+                    ),
                     // Set the contribution locator as `{chunk_directory}/contribution_{contribution_id}.unverified.signature`.
-                    false => format!("{}/contribution_{}.unverified.signature", path, contribution_id),
+                    false => format!(
+                        "{}/contribution_{}.unverified.signature",
+                        path, contribution_locator.contribution_id
+                    ),
                 }
             }
         };
@@ -918,12 +961,12 @@ impl StorageLocator for DiskResolver {
 
                     // Check if it matches the round state.
                     if remainder == "state.json" {
-                        return Ok(Locator::RoundState(round_height));
+                        return Ok(Locator::RoundState { round_height });
                     }
 
                     // Check if it matches the round file.
                     if remainder == format!("round_{}.verified", round_height) {
-                        return Ok(Locator::RoundFile(round_height));
+                        return Ok(Locator::RoundFile { round_height });
                     }
 
                     // Parse the path into its components.
@@ -953,42 +996,42 @@ impl StorageLocator for DiskResolver {
 
                                     // Check if it matches a contribution file signature for an unverified contribution.
                                     if extension == "unverified.signature" {
-                                        return Ok(Locator::ContributionFileSignature(
+                                        return Ok(Locator::ContributionFileSignature(ContributionLocator::new(
                                             round_height,
                                             chunk_id,
                                             contribution_id,
                                             false,
-                                        ));
+                                        )));
                                     }
 
                                     // Check if it matches a contribution file signature for a verified contribution.
                                     if extension == "verified.signature" {
-                                        return Ok(Locator::ContributionFileSignature(
+                                        return Ok(Locator::ContributionFileSignature(ContributionLocator::new(
                                             round_height,
                                             chunk_id,
                                             contribution_id,
                                             true,
-                                        ));
+                                        )));
                                     }
 
                                     // Check if it matches a unverified contribution file.
                                     if extension == "unverified" {
-                                        return Ok(Locator::ContributionFile(
+                                        return Ok(Locator::ContributionFile(ContributionLocator::new(
                                             round_height,
                                             chunk_id,
                                             contribution_id,
                                             false,
-                                        ));
+                                        )));
                                     }
 
                                     // Check if it matches a unverified contribution file.
                                     if extension == "verified" {
-                                        return Ok(Locator::ContributionFile(
+                                        return Ok(Locator::ContributionFile(ContributionLocator::new(
                                             round_height,
                                             chunk_id,
                                             contribution_id,
                                             true,
-                                        ));
+                                        )));
                                     }
                                 }
                             }
@@ -1093,15 +1136,15 @@ mod tests {
 
         assert_eq!(
             "./transcript/test/round_0/state.json",
-            locator.to_path(&Locator::RoundState(0)).unwrap()
+            locator.to_path(&Locator::RoundState { round_height: 0 }).unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/state.json",
-            locator.to_path(&Locator::RoundState(1)).unwrap()
+            locator.to_path(&Locator::RoundState { round_height: 1 }).unwrap()
         );
         assert_eq!(
             "./transcript/test/round_2/state.json",
-            locator.to_path(&Locator::RoundState(2)).unwrap()
+            locator.to_path(&Locator::RoundState { round_height: 2 }).unwrap()
         );
     }
 
@@ -1110,15 +1153,15 @@ mod tests {
         let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
-            Locator::RoundState(0),
+            Locator::RoundState { round_height: 0 },
             locator.to_locator("./transcript/test/round_0/state.json").unwrap(),
         );
         assert_eq!(
-            Locator::RoundState(1),
+            Locator::RoundState { round_height: 1 },
             locator.to_locator("./transcript/test/round_1/state.json").unwrap(),
         );
         assert_eq!(
-            Locator::RoundState(2),
+            Locator::RoundState { round_height: 2 },
             locator.to_locator("./transcript/test/round_2/state.json").unwrap(),
         );
     }
@@ -1129,15 +1172,15 @@ mod tests {
 
         assert_eq!(
             "./transcript/test/round_0/round_0.verified",
-            locator.to_path(&Locator::RoundFile(0)).unwrap()
+            locator.to_path(&Locator::RoundFile { round_height: 0 }).unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/round_1.verified",
-            locator.to_path(&Locator::RoundFile(1)).unwrap()
+            locator.to_path(&Locator::RoundFile { round_height: 1 }).unwrap()
         );
         assert_eq!(
             "./transcript/test/round_2/round_2.verified",
-            locator.to_path(&Locator::RoundFile(2)).unwrap()
+            locator.to_path(&Locator::RoundFile { round_height: 2 }).unwrap()
         );
     }
 
@@ -1146,19 +1189,19 @@ mod tests {
         let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
-            Locator::RoundFile(0),
+            Locator::RoundFile { round_height: 0 },
             locator
                 .to_locator("./transcript/test/round_0/round_0.verified")
                 .unwrap(),
         );
         assert_eq!(
-            Locator::RoundFile(1),
+            Locator::RoundFile { round_height: 1 },
             locator
                 .to_locator("./transcript/test/round_1/round_1.verified")
                 .unwrap(),
         );
         assert_eq!(
-            Locator::RoundFile(2),
+            Locator::RoundFile { round_height: 2 },
             locator
                 .to_locator("./transcript/test/round_2/round_2.verified")
                 .unwrap(),
@@ -1171,74 +1214,106 @@ mod tests {
 
         assert_eq!(
             "./transcript/test/round_0/chunk_0/contribution_0.unverified",
-            locator.to_path(&Locator::ContributionFile(0, 0, 0, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 0, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_0/chunk_0/contribution_0.verified",
-            locator.to_path(&Locator::ContributionFile(0, 0, 0, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 0, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_1/chunk_0/contribution_0.unverified",
-            locator.to_path(&Locator::ContributionFile(1, 0, 0, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 0, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/chunk_0/contribution_0.verified",
-            locator.to_path(&Locator::ContributionFile(1, 0, 0, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 0, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_0/chunk_1/contribution_0.unverified",
-            locator.to_path(&Locator::ContributionFile(0, 1, 0, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 0, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_0/chunk_1/contribution_0.verified",
-            locator.to_path(&Locator::ContributionFile(0, 1, 0, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 0, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_0/chunk_0/contribution_1.unverified",
-            locator.to_path(&Locator::ContributionFile(0, 0, 1, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 1, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_0/chunk_0/contribution_1.verified",
-            locator.to_path(&Locator::ContributionFile(0, 0, 1, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 1, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_1/chunk_1/contribution_0.unverified",
-            locator.to_path(&Locator::ContributionFile(1, 1, 0, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 0, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/chunk_1/contribution_0.verified",
-            locator.to_path(&Locator::ContributionFile(1, 1, 0, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 0, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_1/chunk_0/contribution_1.unverified",
-            locator.to_path(&Locator::ContributionFile(1, 0, 1, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 1, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/chunk_0/contribution_1.verified",
-            locator.to_path(&Locator::ContributionFile(1, 0, 1, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 1, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_0/chunk_1/contribution_1.unverified",
-            locator.to_path(&Locator::ContributionFile(0, 1, 1, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 1, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_0/chunk_1/contribution_1.verified",
-            locator.to_path(&Locator::ContributionFile(0, 1, 1, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 1, true)))
+                .unwrap()
         );
 
         assert_eq!(
             "./transcript/test/round_1/chunk_1/contribution_1.unverified",
-            locator.to_path(&Locator::ContributionFile(1, 1, 1, false)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 1, false)))
+                .unwrap()
         );
         assert_eq!(
             "./transcript/test/round_1/chunk_1/contribution_1.verified",
-            locator.to_path(&Locator::ContributionFile(1, 1, 1, true)).unwrap()
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 1, true)))
+                .unwrap()
         );
     }
 
@@ -1250,104 +1325,104 @@ mod tests {
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_0.unverified")
                 .unwrap(),
-            Locator::ContributionFile(0, 0, 0, false)
+            Locator::ContributionFile(ContributionLocator::new(0, 0, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_0.verified")
                 .unwrap(),
-            Locator::ContributionFile(0, 0, 0, true)
+            Locator::ContributionFile(ContributionLocator::new(0, 0, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_0.unverified")
                 .unwrap(),
-            Locator::ContributionFile(1, 0, 0, false)
+            Locator::ContributionFile(ContributionLocator::new(1, 0, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_0.verified")
                 .unwrap(),
-            Locator::ContributionFile(1, 0, 0, true)
+            Locator::ContributionFile(ContributionLocator::new(1, 0, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_0.unverified")
                 .unwrap(),
-            Locator::ContributionFile(0, 1, 0, false)
+            Locator::ContributionFile(ContributionLocator::new(0, 1, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_0.verified")
                 .unwrap(),
-            Locator::ContributionFile(0, 1, 0, true)
+            Locator::ContributionFile(ContributionLocator::new(0, 1, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_1.unverified")
                 .unwrap(),
-            Locator::ContributionFile(0, 0, 1, false)
+            Locator::ContributionFile(ContributionLocator::new(0, 0, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_1.verified")
                 .unwrap(),
-            Locator::ContributionFile(0, 0, 1, true)
+            Locator::ContributionFile(ContributionLocator::new(0, 0, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_0.unverified")
                 .unwrap(),
-            Locator::ContributionFile(1, 1, 0, false)
+            Locator::ContributionFile(ContributionLocator::new(1, 1, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_0.verified")
                 .unwrap(),
-            Locator::ContributionFile(1, 1, 0, true)
+            Locator::ContributionFile(ContributionLocator::new(1, 1, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_1.unverified")
                 .unwrap(),
-            Locator::ContributionFile(1, 0, 1, false)
+            Locator::ContributionFile(ContributionLocator::new(1, 0, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_1.verified")
                 .unwrap(),
-            Locator::ContributionFile(1, 0, 1, true)
+            Locator::ContributionFile(ContributionLocator::new(1, 0, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_1.unverified")
                 .unwrap(),
-            Locator::ContributionFile(0, 1, 1, false)
+            Locator::ContributionFile(ContributionLocator::new(0, 1, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_1.verified")
                 .unwrap(),
-            Locator::ContributionFile(0, 1, 1, true)
+            Locator::ContributionFile(ContributionLocator::new(0, 1, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_1.unverified")
                 .unwrap(),
-            Locator::ContributionFile(1, 1, 1, false)
+            Locator::ContributionFile(ContributionLocator::new(1, 1, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_1.verified")
                 .unwrap(),
-            Locator::ContributionFile(1, 1, 1, true)
+            Locator::ContributionFile(ContributionLocator::new(1, 1, 1, true))
         );
     }
 
@@ -1359,104 +1434,104 @@ mod tests {
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_0.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 0, 0, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 0, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_0.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 0, 0, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 0, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_0.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 0, 0, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 0, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_0.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 0, 0, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 0, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_0.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 1, 0, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 1, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_0.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 1, 0, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 1, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_1.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 0, 1, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 0, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_0/contribution_1.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 0, 1, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 0, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_0.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 1, 0, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 1, 0, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_0.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 1, 0, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 1, 0, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_1.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 0, 1, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 0, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_0/contribution_1.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 0, 1, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 0, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_1.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 1, 1, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 1, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_0/chunk_1/contribution_1.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(0, 1, 1, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(0, 1, 1, true))
         );
 
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_1.unverified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 1, 1, false)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 1, 1, false))
         );
         assert_eq!(
             locator
                 .to_locator("./transcript/test/round_1/chunk_1/contribution_1.verified.signature")
                 .unwrap(),
-            Locator::ContributionFileSignature(1, 1, 1, true)
+            Locator::ContributionFileSignature(ContributionLocator::new(1, 1, 1, true))
         );
     }
 }
