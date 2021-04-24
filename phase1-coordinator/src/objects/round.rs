@@ -394,7 +394,12 @@ impl Round {
     /// is already completed for the current round,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id),
+        err
+    )]
     pub(crate) fn next_contribution_locator(
         &self,
         storage: &StorageLock,
@@ -425,6 +430,7 @@ impl Round {
         // Check that the contribution locator corresponding to the next contribution ID
         // does NOT exist for the current round and given chunk ID.
         if storage.exists(&next_contribution_locator) {
+            tracing::error!("Contribution locator already exists: {:?}", next_contribution_locator);
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
@@ -494,7 +500,12 @@ impl Round {
     /// On success, if the participant is a verifier, this function
     /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, environment, storage, chunk_id, participant),
+        fields(round = self.round_height(), chunk = chunk_id, participant = ?participant),
+        err
+    )]
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
@@ -624,6 +635,8 @@ impl Round {
                 // current contribution locator exist and
                 // has not been verified yet.
                 let response_locator = self.current_contribution_locator(storage, chunk_id, false)?;
+
+                tracing::debug!("Obtained response locator {:?}", response_locator);
 
                 // Fetch whether this is the final contribution of the specified chunk.
                 let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
