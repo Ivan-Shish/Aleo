@@ -5,7 +5,7 @@
 use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
-    coordinator_state::{CoordinatorState, Justification, ParticipantInfo, RoundMetrics},
+    coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round},
     storage::{ContributionLocator, Locator, Object, Storage, StorageLock},
@@ -453,9 +453,9 @@ impl Coordinator {
             state.save(&mut storage)?;
 
             // Drop disconnected participants from the current round.
-            for justification in state.update_dropped_participants(self.time.as_ref())? {
+            for drop in state.update_dropped_participants(self.time.as_ref())? {
                 // Update the round to reflect the coordinator state changes.
-                self.process_coordinator_state_change(&mut storage, &justification)?;
+                self.drop_participant_from_storage(&mut storage, &drop)?;
             }
             state.save(&mut storage)?;
 
@@ -722,12 +722,12 @@ impl Coordinator {
         let justification = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locators = self.process_coordinator_state_change(&mut storage, &justification)?;
+        let locations = self.drop_participant_from_storage(&mut storage, &justification)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locators)
+        Ok(locations)
     }
 
     ///
@@ -742,15 +742,15 @@ impl Coordinator {
         let mut state = self.state.write().unwrap();
 
         // Ban the participant from the ceremony.
-        let justification = state.ban_participant(participant, self.time.as_ref())?;
+        let drop = state.ban_participant(participant, self.time.as_ref())?;
 
-        // Update the round to reflect the coordinator state change.
-        let locators = self.process_coordinator_state_change(&mut storage, &justification)?;
+        // Update the round on disk to reflect the coordinator state change.
+        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locators)
+        Ok(locations)
     }
 
     ///
@@ -2326,11 +2326,12 @@ impl Coordinator {
         Ok(round_height)
     }
 
+    /// Update the round on disk after a drop has occured.
     #[inline]
-    fn process_coordinator_state_change(
+    fn drop_participant_from_storage(
         &self,
         mut storage: &mut StorageLock,
-        justification: &Justification,
+        drop: &DropParticipant,
     ) -> Result<Vec<String>, CoordinatorError> {
         // Fetch the current round from storage.
         let mut round = match Self::load_current_round(&storage) {
@@ -2341,11 +2342,12 @@ impl Coordinator {
         };
 
         // Check the justification and extract the tasks.
-        let (tasks, replacement) = match justification {
-            Justification::BanCurrent(data) => (&data.tasks, &data.replacement),
-            Justification::DropCurrent(data) => (&data.tasks, &data.replacement),
-            Justification::Inactive => {
-                warn!("Justification for action is that participant is inactive");
+        let (tasks, replacement) = match drop {
+            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement),
+            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement),
+            DropParticipant::Inactive => {
+                // Participant is not part of the round, therefore
+                // there is nothing to do.
                 return Ok(vec![]);
             }
         };
@@ -2353,11 +2355,11 @@ impl Coordinator {
         warn!("Removing locked chunks and all impacted contributions");
 
         // Remove the lock from the specified chunks.
-        round.remove_locks_unsafe(&mut storage, &justification)?;
+        round.remove_locks_unsafe(&mut storage, &drop)?;
         warn!("Removed locked chunks");
 
         // Remove the contributions from the specified chunks.
-        round.remove_chunk_contributions_unsafe(&mut storage, &justification)?;
+        round.remove_chunk_contributions_unsafe(&mut storage, &drop)?;
         warn!("Removed impacted contributions");
 
         // Assign a replacement contributor to the dropped tasks for the current round.

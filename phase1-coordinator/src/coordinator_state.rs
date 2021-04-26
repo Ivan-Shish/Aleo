@@ -1901,7 +1901,7 @@ impl CoordinatorState {
         &mut self,
         participant: &Participant,
         time: &dyn TimeSource,
-    ) -> Result<Justification, CoordinatorError> {
+    ) -> Result<DropParticipant, CoordinatorError> {
         // Check that the coordinator state is initialized.
         if self.status == CoordinatorStatus::Initializing {
             return Err(CoordinatorError::CoordinatorStateNotInitialized);
@@ -1925,7 +1925,7 @@ impl CoordinatorState {
                 self.rollback_next_round();
             }
 
-            return Ok(Justification::Inactive);
+            return Ok(DropParticipant::Inactive);
         }
 
         // Fetch the current participant information.
@@ -2082,7 +2082,7 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(DropData {
+            return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                 participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
@@ -2120,7 +2120,7 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
-            return Ok(Justification::DropCurrent(DropData {
+            return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                 participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
@@ -2140,7 +2140,7 @@ impl CoordinatorState {
         &mut self,
         participant: &Participant,
         time: &dyn TimeSource,
-    ) -> Result<Justification, CoordinatorError> {
+    ) -> Result<DropParticipant, CoordinatorError> {
         // Check that the participant is not already banned from participating.
         if self.banned.contains(&participant) {
             return Err(CoordinatorError::ParticipantAlreadyBanned);
@@ -2148,13 +2148,13 @@ impl CoordinatorState {
 
         // Drop the participant from the queue, precommit, and current round.
         match self.drop_participant(participant, time)? {
-            Justification::DropCurrent(drop_data) => {
+            DropParticipant::DropCurrent(drop_data) => {
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(Justification::BanCurrent(drop_data))
+                Ok(DropParticipant::BanCurrent(drop_data))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -2437,7 +2437,7 @@ impl CoordinatorState {
     pub(super) fn update_dropped_participants(
         &mut self,
         time: &dyn TimeSource,
-    ) -> Result<Vec<Justification>, CoordinatorError> {
+    ) -> Result<Vec<DropParticipant>, CoordinatorError> {
         Ok(self
             .update_contributor_seen_drops(time)?
             .into_iter()
@@ -2449,7 +2449,10 @@ impl CoordinatorState {
     /// has been holding a lock for longer than
     /// [crate::environment::Environment]'s
     /// `participant_lock_timeout`.
-    fn update_participant_lock_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
+    fn update_participant_lock_drops(
+        &mut self,
+        time: &dyn TimeSource,
+    ) -> Result<Vec<DropParticipant>, CoordinatorError> {
         // Fetch the timeout threshold for contributors.
         let participant_lock_timeout = self.environment.participant_lock_timeout();
 
@@ -2482,7 +2485,10 @@ impl CoordinatorState {
     /// This will drop a contributor if it hasn't been seen for more
     /// than [crate::environment::Environment]'s
     /// `contributor_seen_timeout`.
-    fn update_contributor_seen_drops(&mut self, time: &dyn TimeSource) -> Result<Vec<Justification>, CoordinatorError> {
+    fn update_contributor_seen_drops(
+        &mut self,
+        time: &dyn TimeSource,
+    ) -> Result<Vec<DropParticipant>, CoordinatorError> {
         // Fetch the timeout threshold for contributors.
         let contributor_seen_timeout = self.environment.contributor_seen_timeout();
 
@@ -3144,7 +3150,8 @@ impl CoordinatorState {
 
 /// Data required by the coordinator to drop a participant from the
 /// ceremony.
-pub(crate) struct DropData {
+#[derive(Debug)]
+pub(crate) struct DropCurrentParticpantData {
     /// The participant being dropped.
     pub participant: Participant,
     /// Determines the starting chunk, and subsequent tasks selected
@@ -3160,17 +3167,18 @@ pub(crate) struct DropData {
     pub replacement: Option<Participant>,
 }
 
-/// The reason for performing certain actions which are dangerous
-/// (banning a user, dropping a user, etc), and data required to
-/// perform those actions. Certain actions can only be performed with
-/// sufficient justification.
-pub(crate) enum Justification {
-    /// Coordinator has decided that a participant needs to be banned (for a variety of potential reasons).
-    BanCurrent(DropData),
-    /// Coordinator has decided that a participant needs to be dropped (for a variety of potential reasons).
-    DropCurrent(DropData),
-    /// Coordinator has decided that a participant is inactive, and
-    /// not currently participating.
+/// The reason for dropping a participant and the and data needed to
+/// perform the drop.
+#[derive(Debug)]
+pub(crate) enum DropParticipant {
+    /// Coordinator has decided that a participant needs to be banned
+    /// (for a variety of potential reasons).
+    BanCurrent(DropCurrentParticpantData),
+    /// Coordinator has decided that a participant needs to be dropped
+    /// (for a variety of potential reasons).
+    DropCurrent(DropCurrentParticpantData),
+    /// Coordinator has decided that a participant in the queue is
+    /// inactive and needs to be removed from the queue.
     Inactive,
 }
 

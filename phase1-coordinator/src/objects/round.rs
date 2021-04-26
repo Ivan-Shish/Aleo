@@ -337,7 +337,12 @@ impl Round {
     /// If the current contribution is already verified,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id, verified = verified),
+        err
+    )]
     pub(crate) fn current_contribution_locator(
         &self,
         storage: &StorageLock,
@@ -453,6 +458,12 @@ impl Round {
     /// is already completed for the current round,
     /// this function will return a `CoordinatorError`.
     ///
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id),
+        err
+    )]
     #[inline]
     pub(crate) fn next_contribution_file_signature_locator(
         &self,
@@ -807,12 +818,12 @@ impl Round {
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        justification: &Justification,
+        justification: &DropParticipant,
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, locked_chunks) = match justification {
-            Justification::BanCurrent(data) => (&data.participant, &data.locked_chunks),
-            Justification::DropCurrent(data) => (&data.participant, &data.locked_chunks),
+            DropParticipant::BanCurrent(data) => (&data.participant, &data.locked_chunks),
+            DropParticipant::DropCurrent(data) => (&data.participant, &data.locked_chunks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -942,16 +953,20 @@ impl Round {
     /// If the given participant is not the current lock holder of the given chunk IDs,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, drop),
+        fields(round = self.round_height())
+    )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        justification: &Justification,
+        drop: &DropParticipant,
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, tasks) = match justification {
-            Justification::BanCurrent(data) => (&data.participant, &data.tasks),
-            Justification::DropCurrent(data) => (&data.participant, &data.tasks),
+        let (participant, tasks) = match drop {
+            DropParticipant::BanCurrent(data) => (&data.participant, &data.tasks),
+            DropParticipant::DropCurrent(data) => (&data.participant, &data.tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
