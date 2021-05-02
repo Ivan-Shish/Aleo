@@ -1,5 +1,5 @@
 use crate::{
-    coordinator_state::Justification,
+    coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
     storage::{ContributionLocator, Locator, Object, StorageLock},

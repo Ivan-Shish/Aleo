@@ -710,7 +710,10 @@ impl Coordinator {
     ///
     /// Drops the given participant from the ceremony.
     ///
-    #[inline]
+    #[tracing::instrument(
+        skip(self, participant),
+        fields(participant = %participant)
+    )]
     pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<String>, CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
@@ -719,10 +722,10 @@ impl Coordinator {
         let mut state = self.state.write().unwrap();
 
         // Drop the participant from the ceremony.
-        let justification = state.drop_participant(participant, self.time.as_ref())?;
+        let drop = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &justification)?;
+        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
@@ -1119,7 +1122,11 @@ impl Coordinator {
     ///
     /// On failure, it returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, participant, chunk_id),
+        fields(pariticipant = %participant, chunk = chunk_id)
+    )]
     pub fn try_contribute(&self, participant: &Participant, chunk_id: u64) -> Result<String, CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -1176,10 +1183,7 @@ impl Coordinator {
             // Save the coordinator state in storage.
             state.save(&mut storage)?;
 
-            debug!(
-                "Removing lock for contributor {} disposed task {} {}",
-                participant, chunk_id, contribution_id
-            );
+            debug!("Removing lock for disposed task {} {}", chunk_id, contribution_id);
 
             // Fetch the current round from storage.
             let mut round = Self::load_current_round(&storage)?;
@@ -1201,18 +1205,18 @@ impl Coordinator {
 
         // Check if the participant has this chunk ID in a pending task.
         if let Some(task) = state.lookup_pending_task(participant, chunk_id)? {
-            debug!("Adding contribution from {} for chunk {}", participant, chunk_id);
+            debug!("Adding contribution for chunk");
 
             match self.add_contribution(&mut storage, chunk_id, participant) {
                 // Case 1 - Participant added contribution, return the response file locator.
                 Ok((locator, contribution_id)) => {
-                    trace!("Release the lock on chunk {} from {}", chunk_id, participant);
+                    trace!("Release the lock on chunk");
                     state.completed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
                     state.save(&mut storage)?;
 
-                    info!("Added contribution from {} for chunk {}", participant, chunk_id);
+                    info!("Added contribution");
                     return Ok(locator);
                 }
                 // Case 2 - Participant failed to add their contribution, remove the contribution file.
@@ -2333,6 +2337,10 @@ impl Coordinator {
         mut storage: &mut StorageLock,
         drop: &DropParticipant,
     ) -> Result<Vec<String>, CoordinatorError> {
+        debug!(
+            "Dropping participant from storage with the following information: {:#?}",
+            drop
+        );
         // Fetch the current round from storage.
         let mut round = match Self::load_current_round(&storage) {
             // Case 1 - This is a typical round of the ceremony.
