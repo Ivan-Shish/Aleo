@@ -1358,7 +1358,9 @@ fn coordinator_drop_several_contributors() {
 }
 
 fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
+    debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
+        debug!("Checking chunk {}", chunk.chunk_id());
         let current_contributed_location = chunk
             .current_contribution()
             .unwrap()
@@ -1378,21 +1380,21 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
                 expected_n_files += 1;
-                dbg!(path, expected_n_files);
+                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_contributed_signature_location() {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
                 expected_n_files += 1;
-                dbg!(path, expected_n_files);
+                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_verified_location() {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
                 expected_n_files += 1;
-                dbg!(path, expected_n_files);
+                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_verified_signature_location() {
@@ -1402,7 +1404,7 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                     let locator = storage.to_locator(&path).unwrap();
                     assert!(storage.exists(&locator));
                     expected_n_files += 1;
-                    dbg!(path, expected_n_files);
+                    debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
                 }
             }
         }
