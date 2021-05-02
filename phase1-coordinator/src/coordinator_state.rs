@@ -1956,7 +1956,7 @@ impl CoordinatorState {
         // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
         let locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
-        let tasks: Vec<Task> = match participant {
+        let dropped_affected_tasks: Vec<Task> = match participant {
             Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
                 let mut tasks = participant_info.assigned_tasks.clone();
@@ -1993,7 +1993,7 @@ impl CoordinatorState {
             let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
 
             // A HashMap of tasks represented as (chunk ID, contribution ID) pairs.
-            let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
+            let tasks_by_chunk: HashMap<u64, u64> = dropped_affected_tasks.iter().map(|task| task.to_tuple()).collect();
 
             // For every contributor we check if there are affected tasks. If the task
             // is affected, it will be dropped and reassigned
@@ -2086,7 +2086,7 @@ impl CoordinatorState {
                 participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
-                tasks,
+                affected_tasks: dropped_affected_tasks,
                 replacement: Some(replacement_contributor),
             }));
         }
@@ -2095,7 +2095,7 @@ impl CoordinatorState {
         if participant.is_verifier() {
             // Add just the current pending tasks to a pending verifications list.
             let mut pending_verifications = vec![];
-            for task in &tasks {
+            for task in &dropped_affected_tasks {
                 pending_verifications.push((task.chunk_id(), task.contribution_id()));
             }
 
@@ -2124,7 +2124,7 @@ impl CoordinatorState {
                 participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
-                tasks,
+                affected_tasks,
                 replacement: None,
             }));
         }
@@ -3160,8 +3160,8 @@ pub(crate) struct DropCurrentParticpantData {
     pub bucket_id: u64,
     /// Chunks currently locked by the participant.
     pub locked_chunks: Vec<u64>,
-    /// Tasks currently being performed by the participant.
-    pub tasks: Vec<Task>,
+    /// Tasks who's files need to be removed due to this drop.
+    pub affected_tasks: Vec<Task>,
     /// The participant which will replace the participant being
     /// dropped.
     pub replacement: Option<Participant>,

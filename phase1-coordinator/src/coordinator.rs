@@ -1798,18 +1798,28 @@ impl Coordinator {
     }
 
     ///
-    /// Attempts to run verification in the current round for a given chunk ID and participant.
+    /// Attempts to run verification in the current round for a given
+    /// chunk ID and participant.
     ///
-    /// This function checks that the participant is a verifier and has uploaded
-    /// a valid next challenge file to the coordinator. The coordinator sanity checks
-    /// that the next challenge file contains the hash of the corresponding response file.
+    /// This function checks that the participant is a verifier and
+    /// has uploaded a valid next challenge file to the coordinator.
+    /// The coordinator sanity checks that the next challenge file
+    /// contains the hash of the corresponding response file.
     ///
-    /// This function stores the next challenge locator into the round transcript
-    /// and releases the chunk lock from the verifier.
+    /// This function stores the next challenge locator into the round
+    /// transcript and releases the chunk lock from the verifier.
     ///
-    /// On success, this function returns the contribution ID of the unverified response file.
+    /// On success, this function returns the contribution ID of the
+    /// unverified response file.
     ///
-    #[inline]
+    /// **Important**: if the contribution is the final contribution
+    /// for the chunk for the round, its verification will be stored
+    /// in the next round's directory as contribution 0.
+    ///
+    #[tracing::instrument(
+        skip(self, storage, chunk_id, participant),
+        fields(chunk = chunk_id, participant = %participant)
+    )]
     pub(crate) fn verify_contribution(
         &self,
         storage: &mut StorageLock,
@@ -2351,8 +2361,8 @@ impl Coordinator {
 
         // Check the justification and extract the tasks.
         let (tasks, replacement) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement),
+            DropParticipant::BanCurrent(data) => (&data.affected_tasks, &data.replacement),
+            DropParticipant::DropCurrent(data) => (&data.affected_tasks, &data.replacement),
             DropParticipant::Inactive => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
@@ -2467,7 +2477,10 @@ use crate::commands::{Computation, Seed, SigningKey, Verification};
 
 #[cfg(any(test, feature = "operator"))]
 impl Coordinator {
-    #[inline]
+    #[tracing::instrument(
+        skip(self, contributor, contributor_signing_key, contributor_seed),
+        fields(contributor = %contributor),
+    )]
     pub fn contribute(
         &self,
         contributor: &Participant,
@@ -2487,11 +2500,17 @@ impl Coordinator {
             contributor_seed,
         )?;
         let _response = self.try_contribute(contributor, chunk_id)?;
-        debug!("Computed contributions for round {} chunk {}", round_height, chunk_id);
+        debug!(
+            "Successfully computed contribution for round {} chunk {}",
+            round_height, chunk_id
+        );
         Ok(())
     }
 
-    #[inline]
+    #[tracing::instrument(
+        skip(self, verifier, verifier_signing_key),
+        fields(verifier = %verifier),
+    )]
     pub fn verify(&self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
         let (_chunk_id, _challenge, response, _next_challenge) = self.try_lock(&verifier)?;
         let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
@@ -2500,7 +2519,7 @@ impl Coordinator {
         let _next_challenge =
             self.run_verification(round_height, chunk_id, contribution_id, &verifier, verifier_signing_key)?;
         self.try_verify(&verifier, chunk_id)?;
-        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
+        debug!("Successful verification for round {} chunk {}", round_height, chunk_id);
         Ok(())
     }
 

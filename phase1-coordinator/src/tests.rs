@@ -1321,11 +1321,6 @@ fn coordinator_drop_several_contributors() {
         check_round_matches_storage_files(&**storage, &round);
     }
 
-    // TODO: currently short circuited here, because I just found a
-    // strage issue where chunks from round 2 are present in round 1
-    // (causing panic in check_round_matches_storage_files())
-    return;
-
     // Contribute to the round 1
     for i in 0..number_of_chunks {
         replacement_contributor_1.contribute_to(&coordinator).unwrap();
@@ -1361,21 +1356,28 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
     debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
         debug!("Checking chunk {}", chunk.chunk_id());
-        let current_contributed_location = chunk
+        let current_contributed_location = if let Some(current_contributed_location) = chunk
             .current_contribution()
             .unwrap()
             .get_contributed_location()
             .as_ref()
-            .unwrap();
+        {
+            current_contributed_location
+        } else {
+            return;
+        };
         let path = Path::new(&current_contributed_location);
         let chunk_dir = path.parent().unwrap();
 
         let n_files = std::fs::read_dir(&chunk_dir).unwrap().count();
 
+        let contributions_complete = chunk.only_contributions_complete(round.expected_number_of_contributions());
+
         let mut expected_n_files = 0;
 
         let contributions = chunk.get_contributions();
-        for (contribution_id, contribution) in contributions {
+        let last_index = contributions.len() - 1;
+        for (index, (contribution_id, contribution)) in contributions.iter().enumerate() {
             if let Some(path) = contribution.get_contributed_location() {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
@@ -1393,7 +1395,11 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
             if let Some(path) = contribution.get_verified_location() {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
-                expected_n_files += 1;
+
+                // the final contribution's verification goes in the next round's directory
+                if (!contributions_complete) || last_index != index {
+                    expected_n_files += 1;
+                }
                 debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
@@ -1403,7 +1409,11 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                 if *contribution_id != 0 {
                     let locator = storage.to_locator(&path).unwrap();
                     assert!(storage.exists(&locator));
-                    expected_n_files += 1;
+
+                    // the final contribution's verification goes in the next round's directory
+                    if (!contributions_complete) || last_index != index {
+                        expected_n_files += 1;
+                    }
                     debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
                 }
             }

@@ -16,6 +16,12 @@ pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     chunk_id: u64,
     lock_holder: Option<Participant>,
+    /// The contributions for this chunk.
+    ///
+    /// **Note**: contribution files can be located anywhere on disk,
+    /// including in other rounds, as is the case with the
+    /// verification for the final contribution of a chunk for a given
+    /// round, which is stored in the next round's directory.
     #[serde_diff(opaque)]
     contributions: BTreeMap<u64, Contribution>,
 }
@@ -31,7 +37,6 @@ impl Chunk {
     /// This function creates one contribution with a
     /// contribution ID of `0`.
     ///
-    #[inline]
     pub fn new(
         chunk_id: u64,
         participant: Participant,
@@ -115,6 +120,11 @@ impl Chunk {
     }
 
     /// Returns a reference to a list of contributions in this chunk.
+    ///
+    /// **Note**: contribution files can be located anywhere on disk,
+    /// including in other rounds, as is the case with the
+    /// verification for the final contribution of a chunk for a given
+    /// round, which is stored in the next round's directory.
     #[inline]
     pub fn get_contributions(&self) -> &BTreeMap<u64, Contribution> {
         &self.contributions
@@ -340,7 +350,11 @@ impl Chunk {
     ///
     /// If the operations succeed, returns `Ok(())`. Otherwise, returns `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        skip(self, contribution_id, contributor, contributed_locator, contributed_signature_locator),
+        fields(chunk = self.chunk_id, contribution = contribution_id),
+        err
+    )]
     pub fn add_contribution(
         &mut self,
         contribution_id: u64,
@@ -361,12 +375,17 @@ impl Chunk {
         // Add the contribution to this chunk.
         self.contributions.insert(
             contribution_id,
-            Contribution::new_contributor(contributor.clone(), contributed_locator, contributed_signature_locator)?,
+            Contribution::new_contributor(
+                contributor.clone(),
+                contributed_locator.clone(),
+                contributed_signature_locator,
+            )?,
         );
 
         // Release the lock on this chunk from the contributor.
         self.set_lock_holder(None);
 
+        tracing::trace!("Successfully added contribution at {:?}", contributed_locator);
         Ok(())
     }
 
@@ -378,7 +397,10 @@ impl Chunk {
     ///
     /// The underlying function checks that the contribution has a verifier assigned to it.
     ///
-    #[inline]
+    #[tracing::instrument(
+        skip(self, verifier, contribution_id, verified_locator, verified_signature_locator),
+        fields(contribution = contribution_id)
+    )]
     pub fn verify_contribution(
         &mut self,
         contribution_id: u64,
@@ -417,7 +439,7 @@ impl Chunk {
                 // Release the lock on this chunk from the verifier.
                 self.set_lock_holder(None);
 
-                trace!("Verification of contribution {} succeeded", contribution_id);
+                trace!("Verification succeeded");
                 Ok(())
             }
         }
