@@ -818,10 +818,10 @@ impl Round {
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        justification: &DropParticipant,
+        drop: &DropParticipant,
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, locked_chunks) = match justification {
+        let (participant, locked_chunks) = match drop {
             DropParticipant::BanCurrent(data) => (&data.participant, &data.locked_chunks),
             DropParticipant::DropCurrent(data) => (&data.participant, &data.locked_chunks),
             _ => return Err(CoordinatorError::JustificationInvalid),
@@ -830,7 +830,7 @@ impl Round {
         // Sanity check that the participant holds the lock for each specified chunk.
         let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
-            .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
+            // .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
             .collect();
 
         trace!("Removing locks for chunks {:?} from {}", locked_chunks, participant);
@@ -903,6 +903,9 @@ impl Round {
                 // TODO: revisit the logic of removing challenges
                 //       https://github.com/AleoHQ/aleo-setup/issues/250
                 // Remove the next challenge locator if the current response has been verified.
+                //
+                // TODO: check why is this calculating the locators again when
+                // we already have them in strings in Contribution?
                 if chunk.current_contribution()?.is_verified() {
                     // Fetch whether this is the final contribution of the specified chunk.
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);

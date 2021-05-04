@@ -168,6 +168,7 @@ pub enum CoordinatorError {
     RoundVerifiersMissing,
     RoundVerifiersNotUnique,
     SignatureSchemeIsInsecure,
+    StateLockFailed,
     StorageCopyFailed,
     StorageFailed,
     StorageInitializationFailed,
@@ -1169,11 +1170,11 @@ impl Coordinator {
         trace!("Current round height in storage is {}", round_height);
 
         // Check if the participant should dispose the response being contributed.
-        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)? {
+        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)?.cloned() {
             let contribution_id = task.contribution_id();
 
             // Move the task to the disposed tasks of the contributor.
-            state.disposed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
+            state.disposed_task(participant, &task, self.time.as_ref())?;
 
             // Remove the response file from storage.
             let response =
@@ -1290,11 +1291,11 @@ impl Coordinator {
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Check if the participant should dispose the response being contributed.
-        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)? {
+        if let Some(task) = state.lookup_disposing_task(participant, chunk_id)?.cloned() {
             let contribution_id = task.contribution_id();
 
             // Move the task to the disposed tasks of the verifier.
-            state.disposed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
+            state.disposed_task(participant, &task, self.time.as_ref())?;
 
             // Save the coordinator state in storage.
             state.save(&mut storage)?;
@@ -2363,7 +2364,7 @@ impl Coordinator {
         let (tasks, replacement) = match drop {
             DropParticipant::BanCurrent(data) => (&data.affected_tasks, &data.replacement),
             DropParticipant::DropCurrent(data) => (&data.affected_tasks, &data.replacement),
-            DropParticipant::Inactive => {
+            DropParticipant::Inactive(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
                 return Ok(vec![]);
@@ -2408,6 +2409,14 @@ impl Coordinator {
             },
             Object::RoundState(round),
         )?;
+
+        // let state = self.state.clone();
+        // let state_write = state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
+
+        // tasks.iter()
+        //     .for_each(|task| {
+        //         state_write.disposed_task(participant, task, time)
+        //     })
 
         Ok(locators)
     }
