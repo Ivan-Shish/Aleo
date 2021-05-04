@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::Round,
-    storage::{Locator, Object, ObjectReader, StorageLock},
+    storage::{ContributionLocator, Locator, Object, ObjectReader, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
@@ -28,7 +28,7 @@ impl Aggregation {
         let compressed_output = environment.compressed_outputs();
 
         // Fetch the round locator for the given round.
-        let round_locator = Locator::RoundFile(round_height);
+        let round_locator = Locator::RoundFile { round_height };
 
         // Check that the round locator does not already exist.
         if storage.exists(&round_locator) {
@@ -119,11 +119,13 @@ impl Aggregation {
             }
 
             // Fetch the contribution locator.
-            let contribution_locator = Locator::ContributionFile(round_height, chunk_id, contribution_id, false);
+            let contribution_locator =
+                Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, false));
             trace!("Loading contribution from {}", storage.to_path(&contribution_locator)?);
 
             // Check the corresponding verified contribution locator exists.
-            let verified_contribution = Locator::ContributionFile(round_height + 1, chunk_id, 0, true);
+            let verified_contribution =
+                Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true));
             if !storage.exists(&verified_contribution) {
                 error!("{} is missing", storage.to_path(&verified_contribution)?);
                 return Err(CoordinatorError::ContributionMissingVerifiedLocator.into());
@@ -301,7 +303,7 @@ mod tests {
             Aggregation::run(&TEST_ENVIRONMENT_3, &mut storage, &round).unwrap();
 
             // Fetch the round locator for the given round.
-            let round_locator = Locator::RoundFile(round_height);
+            let round_locator = Locator::RoundFile { round_height };
 
             assert!(storage.exists(&round_locator));
         }
