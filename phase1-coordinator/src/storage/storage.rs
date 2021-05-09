@@ -14,15 +14,34 @@ use std::{
 };
 use zexe_algebra::{Bls12_377, BW6_761};
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ContributionLocator {
+    pub round_height: u64,
+    pub chunk_id: u64,
+    pub contribution_id: u64,
+    pub is_verified: bool,
+}
+
+impl ContributionLocator {
+    pub fn new(round_height: u64, chunk_id: u64, contribution_id: u64, is_verified: bool) -> Self {
+        Self {
+            round_height,
+            chunk_id,
+            contribution_id,
+            is_verified,
+        }
+    }
+}
+
 /// A data structure representing all possible types of keys in storage.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Locator {
     CoordinatorState,
     RoundHeight,
-    RoundState(u64),
-    RoundFile(u64),
-    ContributionFile(u64, u64, u64, bool),
-    ContributionFileSignature(u64, u64, u64, bool),
+    RoundState { round_height: u64 },
+    RoundFile { round_height: u64 },
+    ContributionFile(ContributionLocator),
+    ContributionFileSignature(ContributionLocator),
 }
 
 /// A data structure representing all possible types of values in storage.
@@ -68,8 +87,8 @@ impl Object {
     pub fn round_file_size(environment: &Environment) -> u64 {
         let compressed = environment.compressed_inputs();
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
-        match curve {
+
+        match settings.curve() {
             CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, compressed),
             CurveKind::BW6 => round_filesize!(BW6_761, settings, compressed),
         }
@@ -78,13 +97,15 @@ impl Object {
     /// Returns the expected file size of a chunked contribution.
     pub fn contribution_file_size(environment: &Environment, chunk_id: u64, verified: bool) -> u64 {
         let settings = environment.parameters();
-        let (_, _, curve, _, _, _) = settings;
+        let curve = settings.curve();
+
         let compressed = match verified {
             // The verified contribution file is used as *input* in the next computation.
             true => environment.compressed_inputs(),
             // The unverified contribution file the *output* of the current computation.
             false => environment.compressed_outputs(),
         };
+
         match (curve, verified) {
             (CurveKind::Bls12_377, true) => verified_contribution_size!(Bls12_377, settings, chunk_id, compressed),
             (CurveKind::Bls12_377, false) => unverified_contribution_size!(Bls12_377, settings, chunk_id, compressed),

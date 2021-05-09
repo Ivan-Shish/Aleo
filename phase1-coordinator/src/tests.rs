@@ -1,12 +1,14 @@
 use crate::{
     authentication::Dummy,
     commands::{Seed, SigningKey, SEED_LENGTH},
-    coordinator_state::Task,
-    environment::{Parameters, Testing},
+    environment::{Environment, Parameters, Settings, Testing},
+    objects::Task,
     testing::prelude::*,
     Coordinator,
+    MockTimeSource,
     Participant,
 };
+use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rand::RngCore;
@@ -14,6 +16,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashSet, LinkedList},
     iter::FromIterator,
+    sync::Arc,
 };
 
 #[inline]
@@ -63,8 +66,27 @@ fn create_contributor_test_details(id: &str) -> ContributorTestDetails {
     }
 }
 
-fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+struct VerifierTestDetails {
+    participant: Participant,
+    signing_key: SigningKey,
+}
+
+impl VerifierTestDetails {
+    fn verify(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+        coordinator.verify(&self.participant, &self.signing_key)
+    }
+}
+
+fn create_verifier_test_details(id: &str) -> VerifierTestDetails {
+    let (participant, signing_key) = create_verifier(id);
+    VerifierTestDetails {
+        participant,
+        signing_key,
+    }
+}
+
+fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         proving_system,
         curve,
@@ -72,7 +94,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -130,22 +152,22 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
 /*
     Drop Participant Tests
 
-    1. Basic drop - `test_coordinator_drop_contributor_basic`
+    1. Basic drop - `coordinator_drop_contributor_basic`
         Drop a contributor that does not affect other contributors/verifiers.
 
-    2. Given 3 contributors, drop middle contributor - `test_coordinator_drop_contributor_in_between_two_contributors`
+    2. Given 3 contributors, drop middle contributor - `coordinator_drop_contributor_in_between_two_contributors`
         Given contributors 1, 2, and 3, drop contributor 2 and ensure that the tasks are present.
 
-    3. Drop contributor with pending tasks - `test_coordinator_drop_contributor_with_contributors_in_pending_tasks`
+    3. Drop contributor with pending tasks - `coordinator_drop_contributor_with_contributors_in_pending_tasks`
         Drops a contributor with other contributors in pending tasks.
 
-    4. Drop contributor with a locked chunk - `test_coordinator_drop_contributor_with_locked_chunk`
+    4. Drop contributor with a locked chunk - `coordinator_drop_contributor_with_locked_chunk`
         Test that dropping a contributor releases the locks held by the dropped contributor.
 
-    5. Dropping a contributor removes provided contributions - `test_coordinator_drop_contributor_removes_contributions`
+    5. Dropping a contributor removes provided contributions - `coordinator_drop_contributor_removes_contributions`
         Test that dropping a contributor will remove all the contributions that the dropped contributor has provided.
 
-    6. Dropping a participant clears lock for subsequent contributors/verifiers - `test_coordinator_drop_contributor_clear_locks`
+    6. Dropping a participant clears lock for subsequent contributors/verifiers - `coordinator_drop_contributor_clear_locks`
         Test that if a contribution is dropped from a chunk, while a  contributor/verifier is performing their contribution,
         the lock should be released after the task has been disposed. The disposed task should also be reassigned correctly.
         Currently, the lock is release and the task is disposed after the contributor/verifier calls `try_contribute` or `try_verify`.
@@ -154,7 +176,7 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
         If a contributor is dropped, all contributions built on top of the dropped contributions must also
         be dropped.
 
-    8. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - `test_coordinator_drop_multiple_contributors`
+    8. Dropping multiple contributors allocates tasks to the coordinator contributor correctly - `coordinator_drop_multiple_contributors`
         Pick contributor with least load in `add_replacement_contributor_unsafe`.
 
     9. Current contributor/verifier `completed_tasks` should be removed/moved when a participant is dropped
@@ -163,14 +185,16 @@ fn execute_round_test(proving_system: ProvingSystem, curve: CurveKind) -> anyhow
 
     10. The coordinator contributor should replace all dropped participants and complete the round correctly. - `drop_all_contributors_and_complete_round`
 
-    11. Drop one contributor and check that completed tasks are reassigned properly, - `drop_contributor_and_reassign_tasks_test`
+    11. Drop one contributor and check that completed tasks are reassigned properly, - `drop_contributor_and_reassign_tasks`
         as well as a replacement contributor has the right amount of tasks assigned
 
 */
 
+#[test]
+#[serial]
 /// Drops a contributor who does not affect other contributors or verifiers.
-fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -178,7 +202,7 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -284,9 +308,11 @@ fn coordinator_drop_contributor_basic_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+#[serial]
 /// Drops a contributor in between two contributors.
-fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -294,7 +320,7 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -412,9 +438,11 @@ fn coordinator_drop_contributor_in_between_two_contributors_test() -> anyhow::Re
     Ok(())
 }
 
+#[test]
+#[serial]
 /// Drops a contributor with other contributors in pending tasks.
-fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -422,7 +450,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -570,9 +598,11 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks_test() -> any
     Ok(())
 }
 
+#[test]
+#[serial]
 /// Drops a contributor with locked chunks and other contributors in pending tasks.
-fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -580,7 +610,7 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -734,9 +764,11 @@ fn coordinator_drop_contributor_locked_chunks_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+#[serial]
 /// Drops a contributor and removes all contributions from the contributor.
 fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -744,7 +776,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -861,9 +893,11 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+#[serial]
 /// Drops a contributor and clears locks for contributors/verifiers working on disposed tasks.
-fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -871,7 +905,7 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1048,9 +1082,9 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
         assert_eq!(0, verifier_info.locked_chunks().len());
         assert_eq!(2, verifier_info.assigned_tasks().len());
         assert_eq!(0, verifier_info.pending_tasks().len());
-        assert_eq!(18, verifier_info.completed_tasks().len());
+        assert_eq!(8, verifier_info.completed_tasks().len());
         assert_eq!(0, verifier_info.disposing_tasks().len());
-        assert_eq!(1, verifier_info.disposed_tasks().len());
+        assert_eq!(11, verifier_info.disposed_tasks().len());
     }
 
     Ok(())
@@ -1060,17 +1094,17 @@ fn coordinator_drop_contributor_clear_locks_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        1, /* power */
-        2, /* batch_size */
-        2, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
     let (replacement_contributor, ..) = create_contributor("replacement-1");
     let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.clone()]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1134,9 +1168,163 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     Ok(())
 }
 
+/// Drops a contributor and release the locks
+///
+/// The key part of this test is that we lock a chunk
+/// by a contributor and then immediately drop the contributor
+/// without contributing
+#[test]
+#[serial]
+fn coordinator_drop_contributor_and_release_locks() {
+    // Unwraps are used to find out the exact line which produces the error
+    // When the test returns Result with an Err, the line is unknown
+
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
+    let replacement_contributor = create_contributor_test_details("replacement-1");
+    let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
+    let environment = initialize_test_environment(&testing.into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
+
+    // Add a contributor and verifier to the queue.
+    let contributor_1 = create_contributor_test_details("1");
+    let contributor_2 = create_contributor_test_details("2");
+    let verifier_1 = create_verifier_test_details("1");
+    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 1.
+    coordinator.update().unwrap();
+
+    // Lock a chunk by a contributor
+    coordinator.try_lock(&contributor_1.participant).unwrap();
+
+    // Drop the contributor which have locked the chunk
+    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
+    assert_eq!(0, locators.len());
+
+    // Contribute to the round 1
+    for _ in 0..number_of_chunks {
+        replacement_contributor.contribute_to(&coordinator).unwrap();
+        contributor_2.contribute_to(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+    assert_eq!(2, coordinator.current_round_height().unwrap());
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+}
+
+/// Drops a contributor and updates verifier tasks
+///
+/// Make one contribution and verify it, then drop the
+/// contributor. The tasks of a verifier should be updated
+/// properly
+#[test]
+#[serial]
+fn coordinator_drop_contributor_and_update_verifier_tasks() {
+    // Unwraps are used to find out the exact line which produces the error
+    // When the test returns Result with an Err, the line is unknown
+
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 1,
+        batch_size: 2,
+        chunk_size: 2,
+    });
+    let replacement_contributor = create_contributor_test_details("replacement-1");
+    let testing = Testing::from(parameters).coordinator_contributors(&[replacement_contributor.participant.clone()]);
+    let environment = initialize_test_environment(&testing.into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
+
+    // Add a contributor and verifier to the queue.
+    let contributor_1 = create_contributor_test_details("1");
+    let contributor_2 = create_contributor_test_details("2");
+    let verifier_1 = create_verifier_test_details("1");
+    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 1.
+    coordinator.update().unwrap();
+
+    contributor_1.contribute_to(&coordinator).unwrap();
+
+    verifier_1.verify(&coordinator).unwrap();
+
+    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
+    assert_eq!(1, locators.len());
+
+    // Contribute to the round 1
+    for _ in 0..number_of_chunks {
+        replacement_contributor.contribute_to(&coordinator).unwrap();
+        contributor_2.contribute_to(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+    assert_eq!(2, coordinator.current_round_height().unwrap());
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+}
+
+#[test]
+#[serial]
 /// Drops a multiple contributors an replaces with the coordinator contributor.
-fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1149,7 +1337,7 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
         Participant::new_contributor("testing-coordinator-contributor-2"),
         Participant::new_contributor("testing-coordinator-contributor-3"),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1300,8 +1488,10 @@ fn coordinator_drop_multiple_contributors_test() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn try_lock_blocked_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+#[test]
+#[serial]
+fn try_lock_blocked() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1309,7 +1499,7 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
         32, /* batch_size */
         32, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1404,14 +1594,14 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        6,  /* power */
-        16, /* batch_size */
-        16, /* chunk_size */
-    ));
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 6,
+        batch_size: 16,
+        chunk_size: 16,
+    });
 
     // Create replacement contributors
     let replacement_contributor_1 = create_contributor_test_details("replacement-1");
@@ -1421,7 +1611,7 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
         replacement_contributor_1.participant.clone(),
         replacement_contributor_2.participant.clone(),
     ]);
-    let environment = initialize_test_environment_with_debug(&testing.into());
+    let environment = initialize_test_environment(&testing.into());
 
     let number_of_chunks = environment.number_of_chunks() as usize;
 
@@ -1493,8 +1683,10 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom((
+#[test]
+#[serial]
+fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
         CurveKind::Bls12_377,
@@ -1502,7 +1694,7 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
         16, /* batch_size */
         16, /* chunk_size */
     ));
-    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
@@ -1568,83 +1760,225 @@ fn drop_contributor_and_reassign_tasks_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test that participants who have not been seen for longer than the
+/// [Environment::contributor_timeout_in_minutes] will be dropped.
 #[test]
 #[serial]
-fn test_round_on_groth16_bls12_377() {
-    execute_round_test(ProvingSystem::Groth16, CurveKind::Bls12_377).unwrap();
+fn contributor_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(5))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, _contributor_signing_key1, _seed1) = create_contributor("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // increment the time a little bit (but not enough for the
+    // contributor to timeout)
+    time.update(|prev| prev + chrono::Duration::minutes(1));
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::minutes(5));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
+    assert_eq!(1, coordinator.dropped_participants().len());
+    assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
+
+    Ok(())
+}
+
+/// Test that participant who is waiting for a verifier to verify
+/// chunks that it depends on is not dropped from the round.
+#[test]
+#[serial]
+fn contributor_wait_verifier_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(5))
+        .participant_lock_timeout(chrono::Duration::minutes(8));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    for _ in 0..(number_of_chunks / 2) {
+        time.update(|prev| prev + chrono::Duration::minutes(1));
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+    }
+
+    // The next contribution cannot be made because it depends on
+    // contributions that have not yet been made.
+    assert!(coordinator.try_lock(&contributor1).is_err());
+
+    coordinator.update()?;
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // contributors are stuck waiting for 10 minutes, longer than the
+    // contributor timeout duration.
+    time.update(|prev| prev + chrono::Duration::minutes(10));
+
+    // Emulate contributor querying the current round via the
+    // `/v1/round/current` endpoint.
+    let _round = coordinator.current_round().unwrap();
+
+    // Only contributor1 performs a heartbeat
+    coordinator.heartbeat(&contributor1).unwrap();
+
+    coordinator.update()?;
+
+    // contributor2 is dropped because it did not perform a heartbeat
+    // while waiting.
+    let dropped_participants = coordinator.dropped_participants();
+    assert_eq!(1, dropped_participants.len());
+    assert_eq!(&contributor2, dropped_participants.get(0).unwrap().id());
+
+    Ok(())
+}
+
+/// Test that a participant who maintains a lock on a chunk for longer
+/// than [Environment::participant_lock_timeout] is dropped from the
+/// round by the coordinator.
+#[test]
+#[serial]
+fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(20))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+
+    coordinator.try_lock(&verifier)?;
+    coordinator.try_lock(&contributor1)?;
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::minutes(1));
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::minutes(10));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert_eq!(2, coordinator.dropped_participants().len());
+    assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
+    assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
+    assert_eq!(&verifier, coordinator.dropped_participants().get(1).unwrap().id());
+
+    Ok(())
 }
 
 #[test]
 #[serial]
-fn test_round_on_groth16_bw6_761() {
-    execute_round_test(ProvingSystem::Groth16, CurveKind::BW6).unwrap();
+fn round_on_groth16_bls12_377() {
+    execute_round(ProvingSystem::Groth16, CurveKind::Bls12_377).unwrap();
 }
 
 #[test]
 #[serial]
-fn test_round_on_marlin_bls12_377() {
-    execute_round_test(ProvingSystem::Marlin, CurveKind::Bls12_377).unwrap();
+fn round_on_groth16_bw6_761() {
+    execute_round(ProvingSystem::Groth16, CurveKind::BW6).unwrap();
 }
 
 #[test]
-#[named]
 #[serial]
-fn test_coordinator_drop_contributor_basic() {
-    test_report!(coordinator_drop_contributor_basic_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_in_between_two_contributors() {
-    test_report!(coordinator_drop_contributor_in_between_two_contributors_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_with_contributors_in_pending_tasks() {
-    test_report!(coordinator_drop_contributor_with_contributors_in_pending_tasks_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_with_locked_chunk() {
-    test_report!(coordinator_drop_contributor_locked_chunks_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_removes_contributions() {
-    test_report!(coordinator_drop_contributor_removes_contributions);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_contributor_clear_locks() {
-    test_report!(coordinator_drop_contributor_clear_locks_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_coordinator_drop_multiple_contributors() {
-    test_report!(coordinator_drop_multiple_contributors_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_try_lock_blocked() {
-    test_report!(try_lock_blocked_test);
-}
-
-#[test]
-#[named]
-#[serial]
-fn test_drop_contributor_and_reassign_tasks() {
-    test_report!(drop_contributor_and_reassign_tasks_test);
+fn round_on_marlin_bls12_377() {
+    execute_round(ProvingSystem::Marlin, CurveKind::Bls12_377).unwrap();
 }

@@ -1,0 +1,30 @@
+[package]
+name = "setup1-cli-tools"
+version = "0.1.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+edition = "2018"
+
+[[bin]]
+name = "public-key-extractor"
+path = "src/public_key_extractor.rs"
+
+[[bin]]
+name = "view-key"
+path = "src/view_key.rs"
+
+[dependencies]
+anyhow = "1.0.38"
+age = { version = "0.5.0", features = ["cli-common", "armor"] }
+hex = "0.4"
+rand = "0.7"
+secrecy = "0.7"
+serde = "1.0.123"
+serde_json = "1.0.64"
+structopt = "0.3.21"
+unic-langid = "0.9.0"
+
+[dependencies.snarkos-toolkit]
+git = "https://github.com/AleoHQ/snarkOS"
+rev = "6357695"
+package = "snarkos-toolkit"
+default-features = false

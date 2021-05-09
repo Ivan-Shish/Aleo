@@ -27,6 +27,9 @@ This command will lock the queue, and begin the prepare commit phase for transit
 the coordinator commits to the next round and the ceremony advances by one round. If the coordinator fails to aggregate the current round,
 the commit is rolled back to the current round and all participants assigned to the next round are returned to the queue.
 
+See the documentation in [lib.rs](./src/lib.rs) as an entry point to a more
+detailed explaination of how this library works.
+
 ## Build Guide
 
 To start the coordinator, run:
@@ -43,9 +46,15 @@ cargo test
 
 ### Logging
 
-Logging is enabled by default during tests. To silence all logs, run:
+Logging is enabled by default during tests. Use `RUST_LOG` env variable to configure
+the log levels:
+```bash
+RUST_LOG=debug cargo test
 ```
-cargo test --features silent
+
+Default log level is `error`. To completely hide the logs use:
+```bash
+RUST_LOG=none cargo test
 ```
 
 ### Serial Test Execution
