@@ -89,18 +89,6 @@ macro_rules! round_filesize {
     }};
 }
 
-/// Returns an instance of storage based on the environment the coordinator is operating in.
-#[macro_export]
-macro_rules! storage {
-    ($env:ident, $l1:ident, $l2:ident, $l3:ident) => {{
-        match *$env.deployment() {
-            Deployment::Testing => Box::new($l1::load($env)?),
-            Deployment::Development => Box::new($l2::load($env)?),
-            Deployment::Production => Box::new($l3::load($env)?),
-        }
-    }};
-}
-
 /// Returns a pretty print of the given hash bytes for logging.
 macro_rules! pretty_hash {
     ($hash:expr) => {{

@@ -497,7 +497,7 @@ impl Environment {
 
     /// Returns the storage system of the coordinator.
     pub(crate) fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
-        Ok(storage!(self, Disk, Disk, Disk))
+        Ok(Box::new(Disk::load(self)?))
     }
 }
 
