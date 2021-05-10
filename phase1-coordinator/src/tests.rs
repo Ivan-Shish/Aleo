@@ -1314,7 +1314,7 @@ fn coordinator_drop_several_contributors() {
     let _locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
     let _locators = coordinator.drop_participant(&contributor_2.participant).unwrap();
 
-    // coordinator.update().unwrap();
+    coordinator.update().unwrap();
 
     {
         let round = coordinator.current_round().unwrap();
@@ -1323,10 +1323,9 @@ fn coordinator_drop_several_contributors() {
         check_round_matches_storage_files(&**storage, &round);
     }
 
-    return;
-
     // Contribute to the round 1
     for i in 0..number_of_chunks {
+        tracing::debug!("contribution i: {}", i);
         replacement_contributor_1.contribute_to(&coordinator).unwrap();
         replacement_contributor_2.contribute_to(&coordinator).unwrap();
         if i > k - 1 {

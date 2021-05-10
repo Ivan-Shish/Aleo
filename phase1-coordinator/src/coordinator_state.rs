@@ -2109,11 +2109,13 @@ impl CoordinatorState {
 
             warn!("Dropped {} from the ceremony", participant);
 
+            tracing::debug!("affected_tasks: {:#?}", &affected_tasks);
+
             return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                 participant: participant.clone(),
                 bucket_id,
                 locked_chunks,
-                affected_tasks: dropped_affected_tasks,
+                affected_tasks,
                 replacement: Some(replacement_contributor),
             }));
         }
@@ -2146,6 +2148,8 @@ impl CoordinatorState {
             self.dropped.push(dropped_info);
 
             warn!("Dropped {} from the ceremony", participant);
+
+            tracing::debug!("affected_tasks: {:#?}", &affected_tasks);
 
             return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                 participant: participant.clone(),

@@ -1024,15 +1024,14 @@ impl Round {
                     }
                 }
 
-                // Remove the given contribution and all subsequent contributions.
-                for contribution_id in task.contribution_id()..(chunk.get_contributions().len() as u64) {
-                    chunk.remove_contribution_unsafe(contribution_id);
-                }
+                // Remove the given contribution
+                chunk.remove_contribution_unsafe(task.contribution_id());
             } else {
                 warn!(
-                    "Skipping removal of chunk {} contribution {}",
+                    "Skipping removal of chunk {} contribution {} because it does not exist in the chunk {:#?}",
                     task.chunk_id(),
-                    task.contribution_id()
+                    task.contribution_id(),
+                    chunk,
                 );
             }
         }
