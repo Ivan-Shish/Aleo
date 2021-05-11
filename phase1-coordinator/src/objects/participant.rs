@@ -15,7 +15,11 @@ pub type VerifierId = String;
 /// a [Participant::Contributor] or a [Participant::Verifier].
 #[derive(Clone, Eq, PartialEq, Hash, SerdeDiff)]
 pub enum Participant {
+    /// A contributor is a ceremony participant that makes active
+    /// contributions during the setup ceremony.
     Contributor(ContributorId),
+    /// A verifier is a ceremony participant that verifies the
+    /// contributions made by [Participant::Contributor]s.
     Verifier(VerifierId),
 }
 
