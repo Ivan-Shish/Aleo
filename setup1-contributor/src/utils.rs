@@ -7,6 +7,7 @@ use phase1_coordinator::{
     environment::{Development, Environment, Parameters, Production},
     objects::{ContributionFileSignature, ContributionState},
 };
+use setup1_shared::structures::SetupKind;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use zexe_algebra::PairingEngine;
 
@@ -196,19 +197,13 @@ fn universal_environment() -> Environment {
     Production::from(Parameters::AleoUniversal).into()
 }
 
-/// Available environment command line argument variants.
-pub fn environment_variants() -> &'static [&'static str] {
-    &["development", "inner", "outer", "universal"]
-}
-
-/// Parse [Environment] from command line argument string.
-pub fn parse_environment(s: &str) -> Result<Environment, String> {
-    match s {
-        "development" => Ok(development_environment()),
-        "inner" => Ok(inner_environment()),
-        "outer" => Ok(outer_environment()),
-        "universal" => Ok(universal_environment()),
-        unexpected => Err(format!("Could not parse {:?} as EnvirnomentArg", unexpected)),
+/// Returns the [Environment] settings based on a setup kind
+pub fn environment_by_setup_kind(kind: &SetupKind) -> Environment {
+    match kind {
+        SetupKind::Development => development_environment(),
+        SetupKind::Inner => inner_environment(),
+        SetupKind::Outer => outer_environment(),
+        SetupKind::Universal => universal_environment(),
     }
 }
 

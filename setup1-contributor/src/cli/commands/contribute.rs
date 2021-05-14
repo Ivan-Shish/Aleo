@@ -1,7 +1,6 @@
-use crate::utils::{environment_variants, parse_environment, UploadMode};
+use crate::utils::UploadMode;
 
 use clap::AppSettings;
-use phase1_coordinator::environment::Environment;
 use secrecy::SecretString;
 use structopt::StructOpt;
 use url::Url;
@@ -31,14 +30,6 @@ pub struct ContributeOptions {
     /// pinentry dialog.
     #[structopt(long)]
     pub passphrase: Option<SecretString>,
-
-    /// Specify the contribution environment.
-    #[structopt(
-        rename_all = "screaming-snake-case",
-        possible_values = environment_variants(),
-        parse(try_from_str = parse_environment),
-    )]
-    pub environment: Environment,
 
     /// Specify the URL of the ceremony coordinator.
     #[structopt(rename_all = "screaming-snake-case")]
