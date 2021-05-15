@@ -1,12 +1,14 @@
 use setup1_verifier::{utils::init_logger, verifier::Verifier};
 
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
+use setup1_shared::structures::{PublicSettings, SetupKind};
 use snarkos_toolkit::account::{Address, ViewKey};
+use structopt::StructOpt;
+use url::Url;
 
-use std::{env, str::FromStr};
+use std::{path::PathBuf, str::FromStr};
 use tracing::info;
 
-#[inline]
 fn development() -> Environment {
     Development::from(Parameters::TestCustom {
         number_of_chunks: 64,
@@ -16,57 +18,69 @@ fn development() -> Environment {
     .into()
 }
 
-#[inline]
 fn inner() -> Environment {
     Production::from(Parameters::AleoInner).into()
 }
 
-#[inline]
 fn outer() -> Environment {
     Production::from(Parameters::AleoOuter).into()
 }
 
-#[inline]
 fn universal() -> Environment {
     Production::from(Parameters::AleoUniversal).into()
 }
 
+#[derive(Debug, StructOpt)]
+#[structopt(name = "Aleo setup verifier")]
+struct Options {
+    #[structopt(long, help = "Path to a file containing verifier view key")]
+    view_key: PathBuf,
+    #[structopt(long, help = "Coordinator api url, for example http://localhost:9000")]
+    api_url: Url,
+}
+
+async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
+    let settings_endpoint_url = coordinator_url.join("/v1/contributor/settings")?;
+    let client = reqwest::Client::new();
+    let bytes = client.post(settings_endpoint_url).send().await?.bytes().await?;
+    PublicSettings::decode(&bytes.to_vec())
+        .map_err(|e| anyhow::anyhow!("Error decoding coordinator PublicSettings: {}", e))
+}
+
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 4 || args.len() > 5 {
-        println!(
-            "aleo-setup-verifier {{ 'development', 'inner', 'outer', 'universal' }} {{ COORDINATOR_API_URL }} {{ VERIFIER_VIEW_KEY }} {{ (optional) TRACE }}"
-        );
-        return;
-    }
-
-    let environment = match args[1].as_str() {
-        "development" => development(),
-        "inner" => inner(),
-        "outer" => outer(),
-        "universal" => universal(),
-        _ => panic!("Invalid environment"),
-    };
-
-    let tasks_storage_path = format!("{}_verifier.tasks", args[1].as_str());
-
-    let coordinator_api_url = args[2].clone();
-
-    let view_key = ViewKey::from_str(&args[3]).expect("invalid view key");
-    let _address = Address::from_view_key(&view_key).expect("address not derived correctly");
+    let options = Options::from_args();
 
     init_logger();
+
+    let public_settings = request_coordinator_public_settings(&options.api_url)
+        .await
+        .expect("Can't get the coordinator public settings");
+
+    let environment = match public_settings.setup {
+        SetupKind::Development => development(),
+        SetupKind::Inner => inner(),
+        SetupKind::Outer => outer(),
+        SetupKind::Universal => universal(),
+    };
+
+    let storage_prefix = format!("{:?}", public_settings.setup).to_lowercase();
+    let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
+
+    let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
+    let view_key = ViewKey::from_str(&raw_view_key).expect("Invalid view key");
+    let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 
     // Initialize the verifier
     info!("Initializing verifier...");
     let verifier = Verifier::new(
-        coordinator_api_url.to_string(),
-        view_key.to_string(),
-        environment.into(),
+        options.api_url.clone(),
+        view_key,
+        address,
+        environment,
         tasks_storage_path,
     )
-    .expect("failed to initialize verifier");
+    .expect("Failed to initialize verifier");
 
     verifier.start_verifier().await;
 }

@@ -21,6 +21,7 @@ use chrono::Utc;
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
 use tokio::{signal, sync::Mutex};
 use tracing::{debug, error, info, trace, warn};
+use url::Url;
 
 /// Returns a pretty print of the given hash bytes for logging.
 macro_rules! pretty_hash {
@@ -44,13 +45,13 @@ macro_rules! pretty_hash {
 /// The verifier used to manage and dispatch/execute verifier operations
 /// to the remote coordinator.
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Verifier {
     /// The url of the coordinator that will be
-    pub(crate) coordinator_api_url: String,
+    pub(crate) coordinator_api_url: Url,
 
     /// The view key that will be used for server authentication
-    pub(crate) view_key: String,
+    pub(crate) view_key: ViewKey,
 
     /// The identity of the verifier
     pub(crate) verifier: Participant,
@@ -65,17 +66,33 @@ pub struct Verifier {
     pub(crate) tasks_storage_path: String,
 }
 
+// Manual implementation, since ViewKey doesn't implement Clone
+impl Clone for Verifier {
+    fn clone(&self) -> Self {
+        let view_key = ViewKey::from_str(&self.view_key.to_string()).expect("Error cloning the verifier ViewKey");
+        Self {
+            coordinator_api_url: self.coordinator_api_url.clone(),
+            view_key,
+            verifier: self.verifier.clone(),
+            environment: self.environment.clone(),
+            tasks: self.tasks.clone(),
+            tasks_storage_path: self.tasks_storage_path.clone(),
+        }
+    }
+}
+
 impl Verifier {
     ///
     /// Initialize a new verifier.
     ///
     pub fn new(
-        coordinator_api_url: String,
-        view_key: String,
+        coordinator_api_url: Url,
+        view_key: ViewKey,
+        address: Address,
         environment: Environment,
         tasks_storage_path: String,
     ) -> Result<Self, VerifierError> {
-        let verifier_id = Address::from_view_key(&ViewKey::from_str(&view_key)?)?.to_string();
+        let verifier_id = address.to_string();
 
         Ok(Self {
             coordinator_api_url,
@@ -329,8 +346,7 @@ impl Verifier {
         )?;
         let message = contribution_state.signature_message()?;
 
-        let view_key = ViewKey::from_str(&self.view_key)?;
-        let signature = AleoAuthentication::sign(&view_key, message)?;
+        let signature = AleoAuthentication::sign(&self.view_key, message)?;
 
         let contribution_file_signature = ContributionFileSignature::new(signature, contribution_state)?;
 
@@ -494,9 +510,13 @@ mod tests {
             batch_size: 512,
         });
 
+        let view_key = ViewKey::from_str(TEST_VIEW_KEY).expect("Invalid view key");
+        let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
+
         Verifier::new(
-            "test_coordinator_url".to_string(),
-            TEST_VIEW_KEY.to_string(),
+            Url::from_str("http://test_coordinator_url").unwrap(),
+            view_key,
+            address,
             environment.into(),
             "TEST_VERIFIER.tasks".to_string(),
         )
@@ -560,8 +580,7 @@ mod tests {
         let message = contribution_state.signature_message().unwrap();
 
         // Derive the verifier address
-        let view_key = ViewKey::from_str(&verifier.view_key).unwrap();
-        let address = Address::from_view_key(&view_key).unwrap();
+        let address = Address::from_view_key(&verifier.view_key).unwrap();
 
         // Check that the signature verifies
         assert!(AleoAuthentication::verify(&address.to_string(), signature, message).unwrap())

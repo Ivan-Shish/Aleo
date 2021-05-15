@@ -11,9 +11,7 @@ use std::path::PathBuf;
 #[structopt(
     name = "Contribute",
     about = "Contribute to Aleo Setup I",
-    rename_all = "snake-case",
     setting(AppSettings::ColoredHelp),
-    setting(AppSettings::DisableHelpSubcommand),
     setting(AppSettings::DisableVersion)
 )]
 pub struct ContributeOptions {
@@ -32,10 +30,10 @@ pub struct ContributeOptions {
     pub passphrase: Option<SecretString>,
 
     /// Specify the URL of the ceremony coordinator.
-    #[structopt(rename_all = "screaming-snake-case")]
-    pub coordinator_api_url: Url,
+    #[structopt(long, help = "Coordinator api url")]
+    pub api_url: Url,
 
     /// Read seed and private key at the given path.
-    #[structopt(rename_all = "screaming-snake-case", parse(from_os_str))]
+    #[structopt(long, help = "Path to a file containing seed and private key")]
     pub keys_path: PathBuf,
 }

@@ -114,7 +114,7 @@ impl Contribute {
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
         let contribute = Self {
-            server_url: opts.coordinator_api_url.clone(),
+            server_url: opts.api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
             upload_mode: opts.upload_mode.clone(),
@@ -886,12 +886,10 @@ async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::R
 }
 
 pub async fn contribute_subcommand(opts: &ContributeOptions) -> anyhow::Result<()> {
-    let public_settings = request_coordinator_public_settings(&opts.coordinator_api_url)
-        .await
-        .map_err(|e| {
-            tracing::error!("Can't get the coordinator public settings, got error: {}", e);
-            e
-        })?;
+    let public_settings = request_coordinator_public_settings(&opts.api_url).await.map_err(|e| {
+        tracing::error!("Can't get the coordinator public settings, got error: {}", e);
+        e
+    })?;
 
     let environment = crate::utils::environment_by_setup_kind(&public_settings.setup);
 
