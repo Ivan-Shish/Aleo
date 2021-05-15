@@ -192,7 +192,12 @@ impl Contribution {
     /// If this contribution has already been verified,
     /// returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, participant),
+        fields(participant = %participant),
+        err
+    )]
     pub(crate) fn set_verified(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {

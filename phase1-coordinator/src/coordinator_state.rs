@@ -298,16 +298,8 @@ impl ParticipantInfo {
     /// Adds the given (chunk ID, contribution ID) task in FIFO order for the participant to process.
     ///
     #[inline]
-    fn push_back_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
+    fn push_back_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Pushing back task for {}", self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -325,7 +317,7 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&task.chunk_id()) {
             return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
         }
 
@@ -600,17 +592,14 @@ impl ParticipantInfo {
     /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
-    #[inline]
-    fn completed_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
+    #[tracing::instrument(
+        level = "error",
+        skip(self, time),
+        fields(task = ?task)
+        err
+    )]
+    fn completed_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Completing task for {}", self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -628,7 +617,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains_key(&chunk_id) {
+        if !self.locked_chunks.contains_key(&task.chunk_id()) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -639,6 +628,7 @@ impl ParticipantInfo {
 
         // Check that the participant has a pending task for this.
         if !self.pending_tasks.contains(&task) {
+            tracing::debug!("ParticipantMissingPendingTask");
             return Err(CoordinatorError::ParticipantMissingPendingTask);
         }
 
@@ -652,7 +642,7 @@ impl ParticipantInfo {
             && self
                 .completed_tasks
                 .par_iter()
-                .filter(|task| task.contains(chunk_id))
+                .filter(|t| t.contains(task.chunk_id()))
                 .count()
                 > 0
         {
@@ -663,7 +653,7 @@ impl ParticipantInfo {
         self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
-        self.locked_chunks.remove(&chunk_id);
+        self.locked_chunks.remove(&task.chunk_id());
 
         // Remove the task from the pending tasks.
         self.pending_tasks = self
@@ -1612,20 +1602,16 @@ impl CoordinatorState {
     #[inline]
     pub(super) fn add_pending_verification(
         &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
+        task: Task,
         time: &dyn TimeSource,
     ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
         // Check that the pending verification set does not already contain the chunk ID.
-        if self
-            .pending_verification
-            .contains_key(&Task::new(chunk_id, contribution_id))
-        {
+        if self.pending_verification.contains_key(&task) {
             return Err(CoordinatorError::ChunkIdAlreadyAdded);
         }
 
@@ -1640,16 +1626,17 @@ impl CoordinatorState {
 
         info!(
             "Assigning (chunk {}, contribution {}) to {} for verification",
-            chunk_id, contribution_id, verifier
+            task.chunk_id(),
+            task.contribution_id(),
+            verifier
         );
 
         match self.current_verifiers.get_mut(&verifier) {
-            Some(verifier_info) => verifier_info.push_back_task(chunk_id, contribution_id, time)?,
+            Some(verifier_info) => verifier_info.push_back_task(task, time)?,
             None => return Err(CoordinatorError::VerifierMissing),
         };
 
-        self.pending_verification
-            .insert(Task::new(chunk_id, contribution_id), verifier.clone());
+        self.pending_verification.insert(task, verifier.clone());
 
         Ok(verifier)
     }
@@ -1660,33 +1647,27 @@ impl CoordinatorState {
     /// On success, this function returns the verifier that completed the verification task.
     ///
     #[inline]
-    pub(super) fn remove_pending_verification(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-    ) -> Result<Participant, CoordinatorError> {
+    pub(super) fn remove_pending_verification(&mut self, task: Task) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
         // Check that the set pending verification does not already contain the chunk ID.
-        if !self
-            .pending_verification
-            .contains_key(&Task::new(chunk_id, contribution_id))
-        {
+        if !self.pending_verification.contains_key(&task) {
             return Err(CoordinatorError::ChunkIdMissing);
         }
 
         debug!(
             "Removing (chunk {}, contribution {}) from the pending verifications",
-            chunk_id, contribution_id
+            task.chunk_id(),
+            task.contribution_id()
         );
 
         // Remove the task from the pending verification.
         let verifier = self
             .pending_verification
-            .remove(&Task::new(chunk_id, contribution_id))
+            .remove(&task)
             .ok_or(CoordinatorError::VerifierMissing)?;
 
         Ok(verifier)
@@ -1698,16 +1679,20 @@ impl CoordinatorState {
     ///
     /// On success, this function returns the verifier assigned to the verification task.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, time, participant),
+        fields(participant = %participant, task = ?task),chunk_id, contribution_id
+        err
+    )]
     pub(super) fn completed_task(
         &mut self,
         participant: &Participant,
-        chunk_id: u64,
-        contribution_id: u64,
+        task: Task,
         time: &dyn TimeSource,
     ) -> Result<Participant, CoordinatorError> {
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
@@ -1716,9 +1701,9 @@ impl CoordinatorState {
                 // Adds the task to the list of completed tasks for the contributor,
                 // and add the task to the pending verification set.
                 Some(participant_info) => {
-                    participant_info.completed_task(chunk_id, contribution_id, time)?;
-                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
-                    Ok(self.add_pending_verification(chunk_id, contribution_id, time)?)
+                    participant_info.completed_task(task, time)?;
+                    self.stop_task_timer(participant, &task, time);
+                    Ok(self.add_pending_verification(task, time)?)
                 }
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
@@ -1726,9 +1711,9 @@ impl CoordinatorState {
                 // Adds the task to the list of completed tasks for the verifier,
                 // and remove the task from the pending verification set.
                 Some(participant_info) => {
-                    participant_info.completed_task(chunk_id, contribution_id, time)?;
-                    self.stop_task_timer(participant, &Task::new(chunk_id, contribution_id), time);
-                    Ok(self.remove_pending_verification(chunk_id, contribution_id)?)
+                    participant_info.completed_task(task, time)?;
+                    self.stop_task_timer(participant, &task, time);
+                    Ok(self.remove_pending_verification(task)?)
                 }
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
@@ -2124,7 +2109,7 @@ impl CoordinatorState {
                 // Add just the current pending tasks to a pending verifications list.
                 let mut pending_verifications = vec![];
                 for task in &dropped_affected_tasks {
-                    pending_verifications.push((task.chunk_id(), task.contribution_id()));
+                    pending_verifications.push(task);
                 }
 
                 // Set the participant as dropped.
@@ -2135,12 +2120,12 @@ impl CoordinatorState {
                 self.current_verifiers.remove(&participant);
 
                 // TODO (howardwu): Make this operation atomic.
-                for (chunk_id, contribution_id) in pending_verifications {
+                for task in pending_verifications {
                     // Remove the task from the pending verifications.
-                    self.remove_pending_verification(chunk_id, contribution_id)?;
+                    self.remove_pending_verification(*task)?;
 
                     // Reassign the pending verification task to a new verifier.
-                    self.add_pending_verification(chunk_id, contribution_id, time)?;
+                    self.add_pending_verification(*task, time)?;
                 }
 
                 // Add the participant info to the dropped participants.
@@ -3856,9 +3841,8 @@ mod tests {
             assert_eq!((chunk_id, 1), (task.chunk_id(), task.contribution_id()));
 
             state.acquired_lock(&contributor, chunk_id, &time).unwrap();
-            state
-                .completed_task(&contributor, chunk_id, task.contribution_id(), &time)
-                .unwrap();
+            let completed_task = Task::new(chunk_id, task.contribution_id());
+            state.completed_task(&contributor, completed_task, &time).unwrap();
             assert_eq!(i + 1, state.pending_verification.len());
         }
         assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3875,9 +3859,7 @@ mod tests {
             assert_eq!((i as u64, 1), (task.chunk_id(), task.contribution_id()));
 
             state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
-            state
-                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            state.completed_task(&verifier, task, &time).unwrap();
             assert_eq!(contributor_lock_chunk_limit - i - 1, state.pending_verification.len());
         }
         assert_eq!(Some(next_round_height), state.current_round_height);
@@ -3953,9 +3935,7 @@ mod tests {
             assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
-            let assigned_verifier_1 = state
-                .completed_task(&contributor_1, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            let assigned_verifier_1 = state.completed_task(&contributor_1, task, &time).unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
             assert_eq!(verifier, assigned_verifier_1);
@@ -3966,9 +3946,7 @@ mod tests {
             assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
-            let assigned_verifier_2 = state
-                .completed_task(&contributor_2, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            let assigned_verifier_2 = state.completed_task(&contributor_2, task, &time).unwrap();
             assert_eq!(2, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
             assert_eq!(assigned_verifier_1, assigned_verifier_2);
@@ -3978,9 +3956,7 @@ mod tests {
             assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
-            state
-                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            state.completed_task(&verifier, task, &time).unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
@@ -3989,9 +3965,7 @@ mod tests {
             assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&verifier, task.chunk_id(), &time).unwrap();
-            state
-                .completed_task(&verifier, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            state.completed_task(&verifier, task, &time).unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
@@ -4082,9 +4056,7 @@ mod tests {
             assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
-            let assigned_verifier = state
-                .completed_task(&contributor_1, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
@@ -4093,9 +4065,7 @@ mod tests {
             assert_eq!(expected_task1, Some(&task));
 
             state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
-            state
-                .completed_task(&assigned_verifier, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            state.completed_task(&assigned_verifier, task, &time).unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
@@ -4136,9 +4106,7 @@ mod tests {
             assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
-            let assigned_verifier = state
-                .completed_task(&contributor_2, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
             assert_eq!(1, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 
@@ -4147,9 +4115,7 @@ mod tests {
             assert_eq!(expected_task2, Some(&task));
 
             state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
-            state
-                .completed_task(&assigned_verifier, task.chunk_id(), task.contribution_id(), &time)
-                .unwrap();
+            state.completed_task(&assigned_verifier, task, &time).unwrap();
             assert_eq!(0, state.pending_verification.len());
             assert!(!state.is_current_round_finished());
 

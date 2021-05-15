@@ -7,7 +7,7 @@ use crate::{
     commands::{Aggregation, Initialization},
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
-    objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round},
+    objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round, Task},
     storage::{ContributionLocator, Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -1212,7 +1212,8 @@ impl Coordinator {
                 // Case 1 - Participant added contribution, return the response file locator.
                 Ok((locator, contribution_id)) => {
                     trace!("Release the lock on chunk");
-                    state.completed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
+                    let completed_task = Task::new(chunk_id, contribution_id);
+                    state.completed_task(participant, completed_task, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
                     state.save(&mut storage)?;
@@ -1353,7 +1354,8 @@ impl Coordinator {
                 // Case 1 - Participant verified contribution, return the response file locator.
                 Ok(contribution_id) => {
                     trace!("Release the lock on chunk {} from {}", chunk_id, participant);
-                    state.completed_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
+                    let completed_task = Task::new(chunk_id, contribution_id);
+                    state.completed_task(participant, completed_task, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
                     state.save(&mut storage)?;

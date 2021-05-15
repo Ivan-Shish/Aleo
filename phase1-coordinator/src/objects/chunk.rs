@@ -192,7 +192,12 @@ impl Chunk {
     /// If the contributions are complete,
     /// this function returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self),
+        fields(chunk = self.chunk_id)
+        err
+    )]
     pub fn next_contribution_id(&self, expected_contributions: u64) -> Result<u64, CoordinatorError> {
         // Fetch the current contribution.
         let current_contribution = self.current_contribution()?;
