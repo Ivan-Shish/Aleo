@@ -305,6 +305,16 @@ Requires:
 + [REQ-25 Drop Participant][REQ-25]
 + [REQ-32 Handle Verification Failure][REQ-32]
 
+#### REQ-34 No Permanent Stalls
+
+The [ceremony](#setup-ceremony) stall permanently at any point. An offending [contributor](#contributor) should be [dropped](#drop) if required.
+
+Requires:
+
++ [REQ-33 Drop Contributor Repeated Verification Failure][REQ-33]
++ [REQ-20 Drop Unresponsive Participant][REQ-20]
++ [REQ-35 Drop Slow Participant][REQ-35]
+
 #### REQ-35 Drop Slow Participant
 
 [Drop](#drop) a [participant](#participant) if they get stuck for too long (configurable) on a single [contribution](#contribution)/[verification](#verification). This should be fairly excessive, perhaps 10 minutes, to ensure this is only triggered during a serious anomaly, and will not trigger if for example the user's antivirus performs a quick scan or Windows update occurs, or there is a monentary problem with their network connection.
@@ -312,6 +322,22 @@ Requires:
 *Also consider a drop if a contributor is taking too long over a longer average, with a lower threshold*.
 
 + [REQ-25 Drop Participant][REQ-25]
+
+#### REQ-36 Status API
+
+Provide an API where the status of the [coordinator](#coordinator) can be queried. Include information such as:
+
++ The [round queue](#round-queue).
++ The current [round](#round) including current [participants](#participant), the state of [contributions](#contribution) and [verifications](#verification).
++ [Dropped](#drop) participants.
++ [Replacement contributors](#replacement-contributors).
+
+Requires:
+
++ [REQ-19 Round Queue][REQ-19]
++ [REQ-24 Assign Replacement Contributors][REQ-24]
++ [REQ-25 Drop Participant][REQ-25]
++ [REQ-28 Coordinate a Round][REQ-28]
 
 ### Performance Requirements
 
@@ -386,16 +412,6 @@ Requires:
 
 Make use of GitHub pull requests to ensure that changes are reviewed before merged to the `master` branch and can enter production.
 
-#### REQ-34 No Stalls
-
-The [ceremony](#setup-ceremony) stall permanently at any point. An offending [contributor](#contributor) should be [dropped](#drop) if required.
-
-Requires:
-
-+ [REQ-33 Drop Contributor Repeated Verification Failure][REQ-33]
-+ [REQ-20 Drop Unresponsive Participant][REQ-20]
-+ [REQ-35 Drop Slow Participant][REQ-35]
-
 ## References
 
 <!-- References -->
@@ -435,5 +451,6 @@ Requires:
 [REQ-31]: #req-31-verification-api
 [REQ-32]: #req-32-handle-verification-failure
 [REQ-33]: #req-33-drop-contributor-repeated-verification-failure
-[REQ-34]: #req-34-no-stalls
+[REQ-34]: #req-34-no-permanent-stalls
 [REQ-35]: #req-35-drop-slow-participant
+[REQ-36]: #req-36-status-api
