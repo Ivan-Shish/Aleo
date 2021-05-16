@@ -331,6 +331,7 @@ Provide an API where the status of the [coordinator](#coordinator) can be querie
 + The current [round](#round) including current [participants](#participant), the state of [contributions](#contribution) and [verifications](#verification).
 + [Dropped](#drop) participants.
 + [Replacement contributors](#replacement-contributors).
++ The current state of the coordinator, is it waiting for participants, currently performing the round, or currently aggregating. It would be good to include some indication of progress.
 
 Requires:
 
@@ -338,6 +339,13 @@ Requires:
 + [REQ-24 Assign Replacement Contributors][REQ-24]
 + [REQ-25 Drop Participant][REQ-25]
 + [REQ-28 Coordinate a Round][REQ-28]
++ [REQ-37 Aggregate Contributions][REQ-37]
+
+#### REQ-37 Aggregate Contributions
+
+After a [round](#round) completes, the [coordinator](#coordinator) needs to correctly [aggregate](#aggregation) the contributions from the round.
+
+TODO: what does a correct aggregation consist of? How do we prove it?
 
 ### Performance Requirements
 
@@ -454,3 +462,4 @@ Make use of GitHub pull requests to ensure that changes are reviewed before merg
 [REQ-34]: #req-34-no-permanent-stalls
 [REQ-35]: #req-35-drop-slow-participant
 [REQ-36]: #req-36-status-api
+[REQ-37]: #req-37-aggregate-contributions
