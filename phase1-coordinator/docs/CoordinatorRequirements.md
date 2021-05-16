@@ -123,6 +123,12 @@ Extra useful references:
 + [Zcash Parameter Generation](https://z.cash/technology/paramgen/)
 + [Setup Ceremonies ZKProof][Setup Ceremonies ZKProof]
 
+### Verification
+
+TODO: what specificially is a verification?
+
+A verification is calculated from a [contribution](#contribution) by a [verifier](#verifier).
+
 ### Verifier
 
 A type of [participant](#participant) which verifies a [contributor](#contributor)'s [contributions](#contribution) before it can be used as a base for subsequent contributions or in the next [round](#round).
@@ -179,6 +185,15 @@ Secondary to [REQ-1][REQ-1] it is expected that some contributors will need evid
 
 It is expected that the [coordinator](#coordinator) should be able to support up to 5 (**TODO** should this be different per environment?) contributors per round.
 
+#### REQ-15 Restartable
+
+It should be possible to restart the [coordinator](#coordinator) by loading state that was previously saved to disk during a graceful shutdown.
+
+Requires:
+
++ [REQ-16 State Saved to Disk][REQ-16]
++ [REQ-14 Safe Shutdown][REQ-14]
+
 #### REQ-16 State Saved to Disk
 
 The state of the [ceremony](#setup-ceremony) needs to be saved to disk during operation. The state should be updated at least after every [contribution](#contribution)/verification.
@@ -189,16 +204,7 @@ The state of the application needs to maintain a complete history of accepted co
 
 Related to:
 
-+ [REQ-16][REQ-16]
-
-#### REQ-15 Restartable
-
-It should be possible to restart the [coordinator](#coordinator) by loading state that was previously saved to disk during a graceful shutdown.
-
-Requires:
-
-+ [ ] [REQ-16][REQ-16]
-+ [ ] [REQ-14][REQ-14]
++ [REQ-16 State Saved to Disk][REQ-16]
 
 #### REQ-19 Round Queue
 
@@ -206,7 +212,27 @@ There needs to be a queue (known as [round queue](#round-queue)) that [participa
 
 Related to:
 
-+ [REQ-3][REQ-3]
++ [REQ-3 Number of Contributors Per Round][REQ-3]
+
+#### REQ-20 Drop Unresponsive Participant
+
+If [participants](#participant) fail to communicate (for a configurable amount of time) with the [coordinator](#coordinator), they will be [dropped](#drop) from the [round](#round).
+
+Requires:
+
++ [REQ-25 Drop Participant][REQ-25]
+
+#### REQ-23 Publish Participant Instructions
+
+Provide an API where the current instructions for [participants](#participant) can be obtained.
+
+*It could also be good to explore the option of using a subscribe model (instead of polling) for this, but that is not a current requirement.*
+
+TODO: why are locks used in the current implementation? What problem do they solve? If the current tasks are published by the coordinator, shouldn't participants only be working on the tasks that they have been asked to work on, there should be no overlap and no need to apply locks.
+
+#### REQ-24 Assign Replacement Contributors
+
+When a [contributor](#contributor) is [dropped](#drop), an available [replacement contributor](#replacement-contributor) will need to be assigned to complete that contributor's required contributions in order for the current [round](#round) to successfully complete, as a service for the other contributors, as opposed to the alternative option, which is to restart the round.
 
 #### REQ-25 Drop Participant
 
@@ -216,16 +242,8 @@ The contents of removed contributions may be removed from the state that will be
 
 Requires:
 
-+ [ ] [REQ-16][REQ-16]
-+ [ ] [REQ-23][REQ-23]
-
-#### REQ-20 Drop Unresponsive Participant
-
-If [participants](#participant) fail to communicate (for a configurable amount of time) with the [coordinator](#coordinator), they will be [dropped](#drop) from the [round](#round).
-
-Requires:
-
-+ [ ] [REQ-25][REQ-25]
++ [REQ-16 State Saved to Disk][REQ-16]
++ [REQ-23 Publish Participant Instructions][REQ-23]
 
 #### REQ-26 Ban Participant
 
@@ -233,16 +251,8 @@ Provide a method and API to ban participants from joining the [round queue](#rou
 
 Requires:
 
-+ [ ] [REQ-25][REQ-25]
-+ [ ] [REQ-19][REQ-19]
-
-#### REQ-23 Publish Participant Instructions
-
-Provide an API endpoint where the current instructions for [participants](#participant) can be obtained. *It could also be good to explore the option of using a subscribe model (instead of polling) for this, but that is not a current requirement.*
-
-#### REQ-24 Assign Replacement Contributors
-
-When a [contributor](#contributor) is [dropped](#drop), an available [replacement contributor](#replacement-contributor) will need to be assigned to complete that contributor's required contributions in order for the current [round](#round) to successfully complete, as a service for the other contributors, as opposed to the alternative option, which is to restart the round.
++ [REQ-25 Drop Participant][REQ-25]
++ [REQ-19 Round Queue][REQ-19]
 
 #### REQ-27 Generate Initial Challenges
 
@@ -254,10 +264,11 @@ Coordinate a [round](#round) successfully, [aggregate](#aggregation) the results
 
 Requires:
 
-+ [ ] [REQ-27][REQ-27]
-+ [ ] [REQ-29][REQ-29]
-+ [ ] [REQ-20][REQ-20]
-+ [ ] [REQ-24][REQ-24]
++ [REQ-23 Publish Participant Instructions][REQ-23]
++ [REQ-27 Generate Initial Challenges][REQ-27]
++ [REQ-29 Notify Participants Round Complete][REQ-29]
++ [REQ-30 Contribution API][REQ-30]
++ [REQ-31 Verification API][REQ-31]
 
 #### REQ-29 Notify Participants Round Complete
 
@@ -265,7 +276,42 @@ Notify participants that the round has successfully completed, and in the case o
 
 Requires:
 
-+ [ ] [REQ-23][REQ-23]
++ [REQ-23 Publish Participant Instructions][REQ-23]
+
+#### REQ-30 Contribution API
+
+Provide API methods where a [contributor](#contributor) can obtain a [challenge](#challenge), and then upload the completed [contribution](#contribution).
+
+#### REQ-31 Verification API
+
+Provide API methods where a [verifier](#verifier) can obtain unverified [contribution](#contribution)s, and then upload the completed [verifications](#verification).
+
+#### REQ-32 Handle Verification Failure
+
+Handle the situation where the [verification](#verification) of a [contribution](#contribution) fails. Delete the invalid contribution and re-assign the deleted contribution tasks the [contributor](#contributor) which made the contribution.
+
+Requires:
+
++ [REQ-23 Publish Participant Instructions][REQ-23]
++ [REQ-30 Contribution API][REQ-30]
++ [REQ-31 Verification API][REQ-31]
+
+#### REQ-33 Drop Contributor Repeated Verification Failure
+
+*This is a proposed new requirement.*
+
+[Drop](#drop) a [contributor](#contributor) after a configurable amount of [verification](#verification) failures on [contributions](#contributions) made by that contributor.
+
++ [REQ-25 Drop Participant][REQ-25]
++ [REQ-32 Handle Verification Failure][REQ-32]
+
+#### REQ-35 Drop Slow Participant
+
+[Drop](#drop) a [participant](#participant) if they get stuck for too long (configurable) on a single [contribution](#contribution)/[verification](#verification). This should be fairly excessive, perhaps 10 minutes, to ensure this is only triggered during a serious anomaly, and will not trigger if for example the user's antivirus performs a quick scan or Windows update occurs, or there is a monentary problem with their network connection.
+
+*Also consider a drop if a contributor is taking too long over a longer average, with a lower threshold*.
+
++ [REQ-25 Drop Participant][REQ-25]
 
 ### Performance Requirements
 
@@ -287,8 +333,8 @@ Wherever possible the [coordinator](#coordinator) logic should try to make effec
 
 Related to:
 
-+ [REQ-8][REQ-8]
-+ [REQ-9][REQ-9]
++ [REQ-8 Concurrency][REQ-8]
++ [REQ-9 Async][REQ-9]
 
 ### Reliability and Security Requirements
 
@@ -300,38 +346,6 @@ All possible expected points of failure during normal operation of the software 
 
 Aborts and memory segfault errors are unnacceptable, except in the case of when a serious security or reliability fault is detected where continued operation of the module may result in unacceptable consequences.
 
-#### REQ-14 Safe Shutdown
-
-If the process is terminated normally, this should not leave the state persisted to disk in an invalid state. If needed, an in-progress round can be discarded.
-
-Requires:
-
-+ [ ] [REQ-16][REQ-16].
-
-Related to:
-
-+ [REQ-15][REQ-15].
-
-#### REQ-17 Backups
-
-Backups of the persisted ceremony state should be performed during the ceremony at regular intervals, at least once per round.
-
-Requires:
-
-+ [ ] [REQ-16][REQ-16].
-
-#### REQ-21 Continuous Integration Testing
-
-Make use of GitHub actions continous integration testing to ensure that any changes in a pull request need to pass all tests before being merged.
-
-Requires:
-
-+ [ ] [REQ-22][REQ-22]
-
-#### REQ-22 Pull Request Workflow
-
-Make use of GitHub pull requests to ensure that changes are reviewed before merged to the `master` branch and can enter production.
-
 #### REQ-12 No Unsafe
 
 Unsafe code (where memory safety can be accidentally violated) should not be used anywhere in the module implementation, and its use in dependencies should be minimized and carefully.
@@ -339,6 +353,50 @@ Unsafe code (where memory safety can be accidentally violated) should not be use
 #### REQ-13 No Vulnerable Dependencies
 
 Use [cargo-audit](https://github.com/RustSec/rustsec) to ensure that any publicly published vulnerabilities in dependencies are flagged as issues and updated as soon as possible.
+
+#### REQ-14 Safe Shutdown
+
+If the process is terminated normally, this should not leave the state persisted to disk in an invalid state. If needed, an in-progress round can be discarded.
+
+Requires:
+
++ [REQ-16 State Saved to Disk][REQ-16]
+
+Related to:
+
++ [REQ-15 Restartable][REQ-15]
+
+#### REQ-17 Backups
+
+Backups of the persisted ceremony state should be performed during the ceremony at regular intervals, at least once per round.
+
+Requires:
+
++ [REQ-16 State Saved to Disk][REQ-16]
+
+#### REQ-21 Continuous Integration Testing
+
+Make use of GitHub actions continous integration testing to ensure that any changes in a pull request need to pass all tests before being merged.
+
+Requires:
+
++ [REQ-22 Pull Request Workflow][REQ-22]
+
+#### REQ-22 Pull Request Workflow
+
+Make use of GitHub pull requests to ensure that changes are reviewed before merged to the `master` branch and can enter production.
+
+#### REQ-34 No Stalls
+
+The [ceremony](#setup-ceremony) stall permanently at any point. An offending [contributor](#contributor) should be [dropped](#drop) if required.
+
+Requires:
+
++ [REQ-33 Drop Contributor Repeated Verification Failure][REQ-33]
++ [REQ-20 Drop Unresponsive Participant][REQ-20]
++ [REQ-35 Drop Slow Participant][REQ-35]
+
+## References
 
 <!-- References -->
 [Aleo Setup PRD]: https://docs.google.com/document/d/1Vyg2J60zRU6023KXBjZx8CP3V-Nz6hPOUCMplbCxVB4/
@@ -373,3 +431,9 @@ Use [cargo-audit](https://github.com/RustSec/rustsec) to ensure that any publicl
 [REQ-27]: #req-27-generate-initial-challenges
 [REQ-28]: #req-28-coordinate-a-round
 [REQ-29]: #req-29-notify-participants-round-complete
+[REQ-30]: #req-30-contribution-api
+[REQ-31]: #req-31-verification-api
+[REQ-32]: #req-32-handle-verification-failure
+[REQ-33]: #req-33-drop-contributor-repeated-verification-failure
+[REQ-34]: #req-34-no-stalls
+[REQ-35]: #req-35-drop-slow-participant
