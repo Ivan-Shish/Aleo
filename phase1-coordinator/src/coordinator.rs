@@ -378,9 +378,6 @@ impl Coordinator {
     ///
     #[inline]
     pub fn initialize(&self) -> Result<(), CoordinatorError> {
-        #[cfg(not(test))]
-        initialize_logger(&self.environment);
-
         // Check if the deployment is in production, that the signature scheme is secure.
         if *self.environment.deployment() == Deployment::Production && !self.signature.is_secure() {
             return Err(CoordinatorError::SignatureSchemeIsInsecure);
