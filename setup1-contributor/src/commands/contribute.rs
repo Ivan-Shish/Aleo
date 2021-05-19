@@ -886,10 +886,13 @@ async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::R
 }
 
 pub async fn contribute_subcommand(opts: &ContributeOptions) -> anyhow::Result<()> {
-    let public_settings = request_coordinator_public_settings(&opts.api_url).await.map_err(|e| {
-        tracing::error!("Can't get the coordinator public settings, got error: {}", e);
-        e
-    })?;
+    let public_settings = request_coordinator_public_settings(&opts.api_url)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch the coordinator public settings");
+            e
+        })
+        .with_context(|| format!("Failed to fetch the coordinator public settings"))?;
 
     let environment = crate::utils::environment_by_setup_kind(&public_settings.setup);
 

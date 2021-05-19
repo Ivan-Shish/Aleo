@@ -55,7 +55,7 @@ async fn main() {
 
     let public_settings = request_coordinator_public_settings(&options.api_url)
         .await
-        .expect("Can't get the coordinator public settings");
+        .expect("Failed to fetch the coordinator public settings");
 
     let environment = match public_settings.setup {
         SetupKind::Development => development(),
