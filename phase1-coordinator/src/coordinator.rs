@@ -7,7 +7,7 @@ use crate::{
     commands::{Aggregation, Initialization},
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
-    objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, Round, Task},
+    objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
     storage::{ContributionLocator, Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
@@ -1036,16 +1036,10 @@ impl Coordinator {
     ///
     /// Attempts to acquire the lock to a chunk for the given participant.
     ///
-    /// On success, if the participant is a contributor, this function
-    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
-    ///
-    /// On success, if the participant is a verifier, this function
-    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
-    ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[tracing::instrument(skip(self, participant), err)]
-    pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String, String), CoordinatorError> {
+    pub fn try_lock(&self, participant: &Participant) -> Result<(u64, LockedLocators), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
 
@@ -1079,7 +1073,7 @@ impl Coordinator {
         debug!("Locking chunk {} for {}", task.chunk_id(), participant);
         match self.try_lock_chunk(&mut storage, task.chunk_id(), participant) {
             // Case 1 - Participant acquired lock, return the locator.
-            Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
+            Ok(locked_locators) => {
                 trace!("Incrementing the number of locks held by {}", participant);
                 state.acquired_lock(participant, task.chunk_id(), self.time.as_ref())?;
 
@@ -1087,12 +1081,7 @@ impl Coordinator {
                 state.save(&mut storage)?;
 
                 info!("Acquired lock on chunk {} for {}", task.chunk_id(), participant);
-                Ok((
-                    task.chunk_id(),
-                    previous_contribution_locator,
-                    current_contribution_locator,
-                    next_contribution_locator,
-                ))
+                Ok((task.chunk_id(), locked_locators))
             }
             // Case 2 - Participant failed to acquire the lock, put the chunk ID back.
             Err(error) => {
@@ -1126,7 +1115,7 @@ impl Coordinator {
     #[tracing::instrument(
         level = "error",
         skip(self, participant, chunk_id),
-        fields(pariticipant = %participant, chunk = chunk_id)
+        fields(chunk = chunk_id)
     )]
     pub fn try_contribute(&self, participant: &Participant, chunk_id: u64) -> Result<String, CoordinatorError> {
         // Check that the participant is a contributor.
@@ -1585,12 +1574,6 @@ impl Coordinator {
     ///
     /// Attempts to acquire the lock for a given chunk ID and participant.
     ///
-    /// On success, if the participant is a contributor, this function
-    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
-    ///
-    /// On success, if the participant is a verifier, this function
-    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
-    ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
     #[inline]
@@ -1599,7 +1582,7 @@ impl Coordinator {
         mut storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<(String, String, String), CoordinatorError> {
+    ) -> Result<LockedLocators, CoordinatorError> {
         // Check that the chunk ID is valid.
         if chunk_id > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
@@ -1614,8 +1597,7 @@ impl Coordinator {
 
         // Attempt to acquire the chunk lock for participant.
         trace!("Preparing to lock chunk {}", chunk_id);
-        let (previous_contribution_locator, current_contribution_locator, next_contribution_locator) =
-            round.try_lock_chunk(&self.environment, &mut storage, chunk_id, &participant)?;
+        let locked_locators = round.try_lock_chunk(&self.environment, &mut storage, chunk_id, &participant)?;
         trace!("Participant {} locked chunk {}", participant, chunk_id);
 
         // Add the updated round to storage.
@@ -1627,11 +1609,7 @@ impl Coordinator {
         ) {
             Ok(_) => {
                 debug!("{} acquired lock on chunk {}", participant, chunk_id);
-                Ok((
-                    storage.to_path(&previous_contribution_locator)?,
-                    storage.to_path(&current_contribution_locator)?,
-                    storage.to_path(&next_contribution_locator)?,
-                ))
+                Ok(locked_locators)
             }
             _ => Err(CoordinatorError::StorageUpdateFailed),
         }
@@ -2498,9 +2476,19 @@ impl Coordinator {
         contributor_signing_key: &SigningKey,
         contributor_seed: &Seed,
     ) -> anyhow::Result<()> {
-        let (_chunk_id, _previous_response, _challenge, response_locator) = self.try_lock(contributor)?;
+        let (_chunk_id, locked_locators) = self.try_lock(contributor)?;
+        let response_locator = &locked_locators.next_contribution;
         tracing::debug!("Response locator: {:?}", response_locator);
-        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response_locator)?;
+
+        let (round_height, chunk_id, contribution_id) = match response_locator {
+            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unexpected response_locator type: {:?}",
+                    response_locator
+                ));
+            }
+        };
 
         debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
         self.run_computation(
@@ -2524,8 +2512,18 @@ impl Coordinator {
         fields(verifier = %verifier),
     )]
     pub fn verify(&self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
-        let (_chunk_id, _challenge, response, _next_challenge) = self.try_lock(&verifier)?;
-        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
+        let (_chunk_id, locked_locators) = self.try_lock(&verifier)?;
+        let response_locator = &locked_locators.current_contribution;
+
+        let (round_height, chunk_id, contribution_id) = match response_locator {
+            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unexpected response_locator type: {:?}",
+                    response_locator
+                ));
+            }
+        };
 
         debug!("Running verification for round {} chunk {}", round_height, chunk_id);
         let _next_challenge =
@@ -2751,25 +2749,6 @@ impl Coordinator {
     #[inline]
     pub fn environment(&self) -> &Environment {
         &self.environment
-    }
-
-    #[inline]
-    pub(super) fn parse_contribution_file_locator(
-        &self,
-        locator_path: &str,
-    ) -> Result<(u64, u64, u64, bool), CoordinatorError> {
-        // Acquire the storage read lock.
-        let storage = StorageLock::Read(self.storage.read().unwrap());
-
-        match storage.to_locator(locator_path)? {
-            Locator::ContributionFile(contribution_locator) => Ok((
-                contribution_locator.round_height,
-                contribution_locator.chunk_id,
-                contribution_locator.contribution_id,
-                contribution_locator.is_verified,
-            )),
-            _ => Err(CoordinatorError::ContributionLocatorIncorrect),
-        }
     }
 }
 

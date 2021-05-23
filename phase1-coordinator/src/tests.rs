@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::Storage,
+    storage::{Locator, Storage},
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
@@ -957,8 +957,8 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
 
     // Lock the next task for the verifier and contributor 1 and 3.
-    let (contributor1_locked_chunk_id, _, _, _) = coordinator.try_lock(&contributor1)?;
-    let (verifier_locked_chunk_id, _, _, _) = coordinator.try_lock(&verifier)?;
+    let (contributor1_locked_chunk_id, _) = coordinator.try_lock(&contributor1)?;
+    let (verifier_locked_chunk_id, _) = coordinator.try_lock(&verifier)?;
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -1330,6 +1330,16 @@ fn coordinator_drop_several_contributors() {
         let storage_read = storage_lock.read().unwrap();
         let storage = &*storage_read;
         check_round_matches_storage_files(&**storage, &round);
+    }
+
+    {
+        for (participant, participant_info) in coordinator.current_contributors() {
+            if participant == replacement_contributor_1.participant
+                || participant == replacement_contributor_2.participant
+            {
+                tracing::debug!("{} {:#?}", participant, participant_info);
+            }
+        }
     }
 
     // Contribute to the round 1
@@ -1748,7 +1758,8 @@ fn try_lock_blocked() -> anyhow::Result<()> {
      */
 
     // Lock first chunk for contributor 2.
-    let (_, _, _, response) = coordinator.try_lock(&contributor2)?;
+    let (_, locked_locators) = coordinator.try_lock(&contributor2)?;
+    let response_locator = locked_locators.next_contribution;
 
     // Run contributions for the first bucket as contributor 1.
     let bucket_size = bucket_size(number_of_chunks as u64, 2);
@@ -1765,7 +1776,13 @@ fn try_lock_blocked() -> anyhow::Result<()> {
 
     // Run contribution on the locked chunk as contributor 2.
     {
-        let (round_height, chunk_id, contribution_id, _) = coordinator.parse_contribution_file_locator(&response)?;
+        let (round_height, chunk_id, contribution_id) = match response_locator {
+            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
+            _ => {
+                panic!("Unexpected response_locator type: {:?}", response_locator);
+            }
+        };
+
         coordinator.run_computation(
             round_height,
             chunk_id,

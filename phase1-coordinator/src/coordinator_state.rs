@@ -621,7 +621,8 @@ impl ParticipantInfo {
 
         // Check that the participant has a pending task for this.
         if !self.pending_tasks.contains(&task) {
-            tracing::debug!("ParticipantMissingPendingTask");
+            tracing::debug!("pending_tasks: {:?}", self.pending_tasks);
+            tracing::error!("ParticipantMissingPendingTask");
             return Err(CoordinatorError::ParticipantMissingPendingTask);
         }
 

@@ -24,6 +24,15 @@ where
     iter.into_iter().all(move |x| uniq.insert(x))
 }
 
+/// Locators for files that are locked by [Round::try_lock_chunk()]
+#[derive(Debug, Clone)]
+pub struct LockedLocators {
+    pub previous_contribution: Locator,
+    pub current_contribution: Locator,
+    pub next_contribution: Locator,
+    pub next_contribution_file_signature: Locator,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
 #[serde(rename_all = "camelCase")]
 pub struct Round {
@@ -523,7 +532,7 @@ impl Round {
         storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<(Locator, Locator, Locator), CoordinatorError> {
+    ) -> Result<LockedLocators, CoordinatorError> {
         debug!("{} is attempting to lock chunk {}", participant, chunk_id);
 
         // Check that the participant is holding less than the chunk lock limit.
@@ -546,12 +555,7 @@ impl Round {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
-        let (
-            previous_contribution_locator,
-            current_contribution_locator,
-            next_contribution_locator,
-            contribution_file_signature_locator,
-        ) = match participant {
+        let locked_locators = match participant {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
@@ -571,7 +575,7 @@ impl Round {
                 // Fetch the final contribution ID from the previous round.
                 let previous_final_id = self.expected_number_of_contributions() - 1;
                 // Fetch the previous contribution locator.
-                let previous_response_locator = match (is_initial_round, is_initial_contribution) {
+                let previous_contribution = match (is_initial_round, is_initial_contribution) {
                     // This is the initial contribution in the initial round, return the verified response from the previous round.
                     (true, true) => Locator::ContributionFile(ContributionLocator::new(0, chunk_id, 0, true)),
                     // This is the initial contribution in the chunk, return the final response from the previous round.
@@ -591,7 +595,7 @@ impl Round {
                 };
 
                 // Fetch the current contribution locator.
-                let challenge_locator = Locator::ContributionFile(ContributionLocator::new(
+                let current_contribution = Locator::ContributionFile(ContributionLocator::new(
                     current_round_height,
                     chunk_id,
                     current_contribution_id,
@@ -602,18 +606,18 @@ impl Round {
                 // next contribution locator does NOT exist and
                 // that the current contribution locator exists
                 // and has already been verified.
-                let response_locator = self.next_contribution_locator(storage, chunk_id)?;
+                let next_contribution = self.next_contribution_locator(storage, chunk_id)?;
 
                 // Fetch the contribution file signature locator.
-                let contribution_file_signature_locator =
+                let next_contribution_file_signature =
                     self.next_contribution_file_signature_locator(storage, chunk_id)?;
 
-                (
-                    previous_response_locator,
-                    challenge_locator,
-                    response_locator,
-                    contribution_file_signature_locator,
-                )
+                LockedLocators {
+                    previous_contribution,
+                    current_contribution,
+                    next_contribution,
+                    next_contribution_file_signature,
+                }
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -635,7 +639,7 @@ impl Round {
                 }
 
                 // Fetch the previous contribution locator.
-                let challenge_locator = Locator::ContributionFile(ContributionLocator::new(
+                let previous_contribution = Locator::ContributionFile(ContributionLocator::new(
                     current_round_height,
                     chunk_id,
                     current_contribution_id - 1,
@@ -645,14 +649,14 @@ impl Round {
                 // This call enforces a strict check that the
                 // current contribution locator exist and
                 // has not been verified yet.
-                let response_locator = self.current_contribution_locator(storage, chunk_id, false)?;
+                let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
 
-                tracing::debug!("Obtained response locator {:?}", response_locator);
+                tracing::debug!("Obtained response locator {:?}", current_contribution);
 
                 // Fetch whether this is the final contribution of the specified chunk.
                 let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
-                // Fetch the next contribution locator and the contribution file signature locator.
-                let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
+                // Fetch the next contribution locator and its contribution file signature locator.
+                let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
                     // This is the final contribution in the chunk.
                     true => (
                         Locator::ContributionFile(ContributionLocator::new(
@@ -685,12 +689,12 @@ impl Round {
                     ),
                 };
 
-                (
-                    challenge_locator,
-                    response_locator,
-                    next_challenge_locator,
-                    contribution_file_signature_locator,
-                )
+                LockedLocators {
+                    previous_contribution,
+                    current_contribution,
+                    next_contribution,
+                    next_contribution_file_signature,
+                }
             }
         };
 
@@ -719,37 +723,33 @@ impl Round {
             Participant::Contributor(_) => {
                 // Initialize the unverified response file.
                 storage.initialize(
-                    next_contribution_locator.clone(),
+                    locked_locators.next_contribution.clone(),
                     Object::contribution_file_size(environment, chunk_id, false),
                 )?;
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator,
+                    locked_locators.next_contribution_file_signature.clone(),
                     Object::contribution_file_signature_size(false),
                 )?;
             }
             Participant::Verifier(_) => {
                 // Initialize the next challenge file.
                 storage.initialize(
-                    next_contribution_locator.clone(),
+                    locked_locators.next_contribution.clone(),
                     Object::contribution_file_size(environment, chunk_id, true),
                 )?;
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator,
+                    locked_locators.next_contribution_file_signature.clone(),
                     Object::contribution_file_signature_size(true),
                 )?;
             }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
-        Ok((
-            previous_contribution_locator,
-            current_contribution_locator,
-            next_contribution_locator,
-        ))
+        Ok(locked_locators)
     }
 
     ///
