@@ -514,7 +514,7 @@ impl Round {
     #[tracing::instrument(
         level = "error",
         skip(self, environment, storage, chunk_id, participant),
-        fields(round = self.round_height(), chunk = chunk_id, participant = ?participant),
+        fields(chunk = chunk_id),
         err
     )]
     pub(crate) fn try_lock_chunk(

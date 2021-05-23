@@ -1044,7 +1044,7 @@ impl Coordinator {
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(skip(self, participant), err)]
     pub fn try_lock(&self, participant: &Participant) -> Result<(u64, String, String, String), CoordinatorError> {
         // Acquire the state write lock.
         let mut state = self.state.write().unwrap();
@@ -1073,22 +1073,22 @@ impl Coordinator {
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
         // Attempt to fetch the next chunk ID and contribution ID for the given participant.
-        let (chunk_id, contribution_id) = state.fetch_task(participant, self.time.as_ref())?.to_tuple();
-        trace!("Fetched task ({}, {}) for {}", chunk_id, contribution_id, participant);
+        let task = state.fetch_task(participant, self.time.as_ref())?;
+        trace!("Fetched task {} for {}", task, participant);
 
-        debug!("Locking chunk {} for {}", chunk_id, participant);
-        match self.try_lock_chunk(&mut storage, chunk_id, participant) {
+        debug!("Locking chunk {} for {}", task.chunk_id(), participant);
+        match self.try_lock_chunk(&mut storage, task.chunk_id(), participant) {
             // Case 1 - Participant acquired lock, return the locator.
             Ok((previous_contribution_locator, current_contribution_locator, next_contribution_locator)) => {
                 trace!("Incrementing the number of locks held by {}", participant);
-                state.acquired_lock(participant, chunk_id, self.time.as_ref())?;
+                state.acquired_lock(participant, task.chunk_id(), self.time.as_ref())?;
 
                 // Save the coordinator state in storage.
                 state.save(&mut storage)?;
 
-                info!("Acquired lock on chunk {} for {}", chunk_id, participant);
+                info!("Acquired lock on chunk {} for {}", task.chunk_id(), participant);
                 Ok((
-                    chunk_id,
+                    task.chunk_id(),
                     previous_contribution_locator,
                     current_contribution_locator,
                     next_contribution_locator,
@@ -1098,8 +1098,8 @@ impl Coordinator {
             Err(error) => {
                 info!("Failed to acquire lock for {}", participant);
 
-                trace!("Adding task ({}, {}) back to assigned tasks", chunk_id, contribution_id);
-                state.rollback_pending_task(participant, chunk_id, contribution_id, self.time.as_ref())?;
+                trace!("Adding task {} back to assigned tasks", task);
+                state.rollback_pending_task(participant, task, self.time.as_ref())?;
 
                 // Save the coordinator state in storage.
                 state.save(&mut storage)?;
@@ -2498,8 +2498,9 @@ impl Coordinator {
         contributor_signing_key: &SigningKey,
         contributor_seed: &Seed,
     ) -> anyhow::Result<()> {
-        let (_chunk_id, _previous_response, _challenge, response) = self.try_lock(contributor)?;
-        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
+        let (_chunk_id, _previous_response, _challenge, response_locator) = self.try_lock(contributor)?;
+        tracing::debug!("Response locator: {:?}", response_locator);
+        let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response_locator)?;
 
         debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
         self.run_computation(
