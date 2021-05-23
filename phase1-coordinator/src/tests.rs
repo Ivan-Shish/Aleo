@@ -6,6 +6,7 @@ use crate::{
     storage::Storage,
     testing::prelude::*,
     Coordinator,
+    CoordinatorError,
     MockTimeSource,
     Participant,
     Round,
@@ -1772,7 +1773,10 @@ fn try_lock_blocked() -> anyhow::Result<()> {
     // This operation should be blocked by the verifier,
     // who needs to verify this chunk in order for contributor 1 to acquire the lock.
     let result = coordinator.try_lock(&contributor1);
-    assert!(result.is_err());
+    match result {
+        Err(CoordinatorError::ContributionMissingVerification) => {}
+        _ => panic!("Unexpected result: {:#?}", result),
+    }
 
     // Clear all pending verifications, so the locked chunk is released as well.
     while coordinator.verify(&verifier, &verifier_signing_key).is_ok() {}
