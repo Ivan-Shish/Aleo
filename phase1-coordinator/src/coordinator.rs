@@ -8,7 +8,7 @@ use crate::{
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
-    storage::{ContributionLocator, Locator, Object, Storage, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
 
@@ -1562,7 +1562,7 @@ impl Coordinator {
         let locator = storage.to_locator(&locator_path)?;
         match &locator {
             Locator::ContributionFile(contribution_locator) => match storage.exists(&locator) {
-                true => Ok(contribution_locator.chunk_id),
+                true => Ok(contribution_locator.chunk_id()),
                 false => Err(CoordinatorError::ContributionLocatorMissing),
             },
             _ => Err(CoordinatorError::ContributionLocatorIncorrect),
@@ -1681,12 +1681,9 @@ impl Coordinator {
             contribution_id,
             false,
         ));
-        let contribution_file_signature_locator = Locator::ContributionFileSignature(ContributionLocator::new(
-            current_round_height,
-            chunk_id,
-            contribution_id,
-            false,
-        ));
+        let contribution_file_signature_locator = Locator::ContributionFileSignature(
+            ContributionSignatureLocator::new(current_round_height, chunk_id, contribution_id, false),
+        );
 
         // Check the challenge-response hash chain.
         let (challenge_hash, response_hash) = {
@@ -1853,7 +1850,7 @@ impl Coordinator {
             match is_final_contribution {
                 true => (
                     Locator::ContributionFile(ContributionLocator::new(current_round_height + 1, chunk_id, 0, true)),
-                    Locator::ContributionFileSignature(ContributionLocator::new(
+                    Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                         current_round_height + 1,
                         chunk_id,
                         0,
@@ -1867,7 +1864,7 @@ impl Coordinator {
                         contribution_id,
                         true,
                     )),
-                    Locator::ContributionFileSignature(ContributionLocator::new(
+                    Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                         current_round_height,
                         chunk_id,
                         contribution_id,
@@ -2479,16 +2476,9 @@ impl Coordinator {
         let (_chunk_id, locked_locators) = self.try_lock(contributor)?;
         let response_locator = &locked_locators.next_contribution;
         tracing::debug!("Response locator: {:?}", response_locator);
-
-        let (round_height, chunk_id, contribution_id) = match response_locator {
-            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unexpected response_locator type: {:?}",
-                    response_locator
-                ));
-            }
-        };
+        let round_height = response_locator.round_height();
+        let chunk_id = response_locator.chunk_id();
+        let contribution_id = response_locator.contribution_id();
 
         debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
         self.run_computation(
@@ -2514,16 +2504,9 @@ impl Coordinator {
     pub fn verify(&self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
         let (_chunk_id, locked_locators) = self.try_lock(&verifier)?;
         let response_locator = &locked_locators.current_contribution;
-
-        let (round_height, chunk_id, contribution_id) = match response_locator {
-            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unexpected response_locator type: {:?}",
-                    response_locator
-                ));
-            }
-        };
+        let round_height = response_locator.round_height();
+        let chunk_id = response_locator.chunk_id();
+        let contribution_id = response_locator.contribution_id();
 
         debug!("Running verification for round {} chunk {}", round_height, chunk_id);
         let _next_challenge =
@@ -2597,12 +2580,9 @@ impl Coordinator {
         let response_locator =
             &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, contribution_id, false));
         // Fetch the contribution file signature locator.
-        let contribution_file_signature_locator = &Locator::ContributionFileSignature(ContributionLocator::new(
-            round_height,
-            chunk_id,
-            contribution_id,
-            false,
-        ));
+        let contribution_file_signature_locator = &Locator::ContributionFileSignature(
+            ContributionSignatureLocator::new(round_height, chunk_id, contribution_id, false),
+        );
 
         info!(
             "Starting computation on round {} chunk {} contribution {} as {}",

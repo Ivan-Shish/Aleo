@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::{Locator, Storage},
+    storage::Storage,
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
@@ -1776,12 +1776,9 @@ fn try_lock_blocked() -> anyhow::Result<()> {
 
     // Run contribution on the locked chunk as contributor 2.
     {
-        let (round_height, chunk_id, contribution_id) = match response_locator {
-            Locator::ContributionFile(l) => (l.round_height, l.chunk_id, l.contribution_id),
-            _ => {
-                panic!("Unexpected response_locator type: {:?}", response_locator);
-            }
-        };
+        let round_height = response_locator.round_height();
+        let chunk_id = response_locator.chunk_id();
+        let contribution_id = response_locator.contribution_id();
 
         coordinator.run_computation(
             round_height,
