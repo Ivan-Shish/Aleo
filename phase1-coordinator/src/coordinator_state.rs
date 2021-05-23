@@ -1104,6 +1104,14 @@ impl CoordinatorState {
         self.current_contributors.clone().into_iter().collect()
     }
 
+    /// Gets the [ParticipantInfo] for a participant currently in the round.
+    pub fn current_participant_info(&self, participant: &Participant) -> Option<&ParticipantInfo> {
+        match participant {
+            Participant::Contributor(_) => self.current_contributors.get(participant),
+            Participant::Verifier(_) => self.current_verifiers.get(participant),
+        }
+    }
+
     ///
     /// Returns a list of the verifiers currently in the round.
     ///

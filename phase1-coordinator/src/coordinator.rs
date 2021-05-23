@@ -2480,6 +2480,29 @@ impl Coordinator {
         let chunk_id = response_locator.chunk_id();
         let contribution_id = response_locator.contribution_id();
 
+        // check that the response matches a pending task
+        {
+            let response_task = Task::new(chunk_id, contribution_id);
+            let info = self
+                .state
+                .read()
+                .unwrap()
+                .current_participant_info(contributor)
+                .unwrap()
+                .clone();
+            assert!(
+                info.pending_tasks().is_empty(),
+                "Contributor pending tasks cannot be empty"
+            );
+            assert!(
+                info.pending_tasks()
+                    .iter()
+                    .find(|pending_task| { pending_task == &&response_task })
+                    .is_some(),
+                "pending tasks must contain response task"
+            );
+        }
+
         debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
         self.run_computation(
             round_height,
