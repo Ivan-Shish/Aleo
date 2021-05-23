@@ -516,16 +516,8 @@ impl ParticipantInfo {
     /// participant fails to acquire the lock for the chunk ID corresponding to the task.
     ///
     #[inline]
-    fn rollback_pending_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
-        trace!("Rolling back pending task on chunk {} for {}", chunk_id, self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
+    fn rollback_pending_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        trace!("Rolling back pending task on chunk {} for {}", task.chunk_id(), self.id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -543,7 +535,7 @@ impl ParticipantInfo {
         }
 
         // Check that this chunk is not currently locked by the participant.
-        if self.locked_chunks.contains_key(&chunk_id) {
+        if self.locked_chunks.contains_key(&task.chunk_id()) {
             return Err(CoordinatorError::ParticipantAlreadyHasLockedChunk);
         }
 
@@ -552,7 +544,7 @@ impl ParticipantInfo {
             && self
                 .pending_tasks
                 .par_iter()
-                .filter(|task| task.contains(chunk_id))
+                .filter(|task| task.contains(task.chunk_id()))
                 .count()
                 == 0
         {
@@ -564,7 +556,7 @@ impl ParticipantInfo {
             && self
                 .completed_tasks
                 .par_iter()
-                .filter(|task| task.contains(chunk_id))
+                .filter(|task| task.contains(task.chunk_id()))
                 .count()
                 > 0
         {
@@ -589,13 +581,14 @@ impl ParticipantInfo {
     }
 
     ///
-    /// Adds the given (chunk ID, contribution ID) task to the list of completed tasks
-    /// and removes the given chunk ID from the locked chunks held by this participant.
+    /// Adds the given [Task] to the list of completed tasks and
+    /// removes the given chunk ID from the locked chunks held by this
+    /// participant.
     ///
     #[tracing::instrument(
         level = "error",
         skip(self, time),
-        fields(task = ?task)
+        fields(task = %task)
         err
     )]
     fn completed_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
@@ -1443,24 +1436,23 @@ impl CoordinatorState {
     pub(super) fn rollback_pending_task(
         &mut self,
         participant: &Participant,
-        chunk_id: u64,
-        contribution_id: u64,
+        task: Task,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Acquire the chunk lock for the contributor.
-                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
+                Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Acquire the chunk lock for the verifier.
-                Some(participant) => Ok(participant.rollback_pending_task(chunk_id, contribution_id, time)?),
+                Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
@@ -1682,7 +1674,7 @@ impl CoordinatorState {
     #[tracing::instrument(
         level = "error",
         skip(self, time, participant),
-        fields(participant = %participant, task = ?task),chunk_id, contribution_id
+        fields(task = %task),
         err
     )]
     pub(super) fn completed_task(
