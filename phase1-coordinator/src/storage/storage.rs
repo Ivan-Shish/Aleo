@@ -14,7 +14,7 @@ use std::{
 };
 use zexe_algebra::{Bls12_377, BW6_761};
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionLocator {
     round_height: u64,
     chunk_id: u64,
@@ -49,7 +49,7 @@ impl ContributionLocator {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionSignatureLocator {
     round_height: u64,
     chunk_id: u64,
@@ -85,7 +85,7 @@ impl ContributionSignatureLocator {
 }
 
 /// A data structure representing all possible types of keys in storage.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Locator {
     CoordinatorState,
     RoundHeight,

@@ -27,10 +27,32 @@ where
 /// Locators for files that are locked by [Round::try_lock_chunk()]
 #[derive(Debug, Clone)]
 pub struct LockedLocators {
-    pub previous_contribution: ContributionLocator,
-    pub current_contribution: ContributionLocator,
-    pub next_contribution: ContributionLocator,
-    pub next_contribution_file_signature: ContributionSignatureLocator,
+    previous_contribution: ContributionLocator,
+    current_contribution: ContributionLocator,
+    next_contribution: ContributionLocator,
+    next_contribution_file_signature: ContributionSignatureLocator,
+}
+
+impl LockedLocators {
+    /// Get a reference previous contribution's locator.
+    pub fn previous_contribution(&self) -> ContributionLocator {
+        self.previous_contribution
+    }
+
+    /// Get a reference current contribution's locator.
+    pub fn current_contribution(&self) -> ContributionLocator {
+        self.current_contribution
+    }
+
+    /// Get a reference next contribution's locator.
+    pub fn next_contribution(&self) -> ContributionLocator {
+        self.next_contribution
+    }
+
+    /// Get a reference next contribution's signtature locator.
+    pub fn next_contribution_file_signature(&self) -> ContributionSignatureLocator {
+        self.next_contribution_file_signature
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
