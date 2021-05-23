@@ -544,7 +544,7 @@ impl ParticipantInfo {
             && self
                 .pending_tasks
                 .par_iter()
-                .filter(|task| task.contains(task.chunk_id()))
+                .filter(|t| t.contains(task.chunk_id()))
                 .count()
                 == 0
         {
@@ -556,7 +556,7 @@ impl ParticipantInfo {
             && self
                 .completed_tasks
                 .par_iter()
-                .filter(|task| task.contains(task.chunk_id()))
+                .filter(|t| t.contains(task.chunk_id()))
                 .count()
                 > 0
         {
@@ -3192,17 +3192,6 @@ pub(crate) enum DropParticipant {
     /// Coordinator has decided that a participant in the queue is
     /// inactive and needs to be removed from the queue.
     Inactive(DropInactiveParticipantData),
-}
-
-impl DropParticipant {
-    /// The participant being dropped.
-    pub fn participant(&self) -> &Participant {
-        match self {
-            DropParticipant::BanCurrent(data) => &data.participant,
-            DropParticipant::DropCurrent(data) => &data.participant,
-            DropParticipant::Inactive(data) => &data.participant,
-        }
-    }
 }
 
 #[cfg(test)]
