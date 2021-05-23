@@ -2474,7 +2474,7 @@ impl Coordinator {
         contributor_seed: &Seed,
     ) -> anyhow::Result<()> {
         let (_chunk_id, locked_locators) = self.try_lock(contributor)?;
-        let response_locator = &locked_locators.next_contribution;
+        let response_locator = &locked_locators.next_contribution();
         tracing::debug!("Response locator: {:?}", response_locator);
         let round_height = response_locator.round_height();
         let chunk_id = response_locator.chunk_id();
@@ -2503,7 +2503,7 @@ impl Coordinator {
     )]
     pub fn verify(&self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
         let (_chunk_id, locked_locators) = self.try_lock(&verifier)?;
-        let response_locator = &locked_locators.current_contribution;
+        let response_locator = &locked_locators.current_contribution();
         let round_height = response_locator.round_height();
         let chunk_id = response_locator.chunk_id();
         let contribution_id = response_locator.contribution_id();

@@ -1759,7 +1759,7 @@ fn try_lock_blocked() -> anyhow::Result<()> {
 
     // Lock first chunk for contributor 2.
     let (_, locked_locators) = coordinator.try_lock(&contributor2)?;
-    let response_locator = locked_locators.next_contribution;
+    let response_locator = locked_locators.next_contribution();
 
     // Run contributions for the first bucket as contributor 1.
     let bucket_size = bucket_size(number_of_chunks as u64, 2);
