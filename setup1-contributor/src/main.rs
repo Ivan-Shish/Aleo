@@ -1,6 +1,6 @@
 use setup1_contributor::{
     cli::{Command, Options},
-    commands::{generate_keys, start_contributor},
+    commands::{contribute_subcommand, generate_keys},
 };
 
 use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     match opts.subcommand {
         Command::Generate(generate_opts) => generate_keys(generate_opts),
         Command::Contribute(contribute_opts) => {
-            start_contributor(contribute_opts).await;
+            contribute_subcommand(&contribute_opts).await?;
         }
     }
 

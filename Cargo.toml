@@ -12,6 +12,9 @@ members = [
     "setup2",
     "setup-utils",
 ]
+exclude = [
+    "setup1-shared",
+]
 
 [profile.release]
 opt-level = 3
