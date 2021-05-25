@@ -30,6 +30,6 @@ aleo-setup-contributor generate --keys-path keys.json
 
 Run the contributor:
 ```bash
-aleo-setup-contributor --api-url https://... --keys-path keys.json
+aleo-setup-contributor contribute --api-url https://... --keys-path keys.json
 ```
 where `--api-url` is a coordinator api address

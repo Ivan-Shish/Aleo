@@ -40,7 +40,7 @@ struct Options {
 }
 
 async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
-    let settings_endpoint_url = coordinator_url.join("/v1/contributor/settings")?;
+    let settings_endpoint_url = coordinator_url.join("/v1/coordinator/settings")?;
     let client = reqwest::Client::new();
     let bytes = client.post(settings_endpoint_url).send().await?.bytes().await?;
     PublicSettings::decode(&bytes.to_vec())
