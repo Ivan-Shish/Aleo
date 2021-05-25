@@ -529,11 +529,11 @@ impl Round {
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
     ///
-    /// On success, if the participant is a contributor, this function
-    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
-    ///
-    /// On success, if the participant is a verifier, this function
-    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
+    /// **Important**: The returned next contribution locator does not
+    /// always match the current task being performed. If it is the
+    /// final verification for a chunk, the a [Participant::Verifier]
+    /// will receive a locator to the contribution 0 of the same chunk
+    /// in the next round.
     ///
     #[tracing::instrument(
         level = "error",

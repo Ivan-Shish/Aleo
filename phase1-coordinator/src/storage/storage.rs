@@ -95,6 +95,18 @@ pub enum Locator {
     ContributionFileSignature(ContributionSignatureLocator),
 }
 
+impl From<ContributionLocator> for Locator {
+    fn from(locator: ContributionLocator) -> Self {
+        Self::ContributionFile(locator)
+    }
+}
+
+impl From<ContributionSignatureLocator> for Locator {
+    fn from(locator: ContributionSignatureLocator) -> Self {
+        Self::ContributionFileSignature(locator)
+    }
+}
+
 /// A data structure representing all possible types of values in storage.
 #[derive(Debug, Clone)]
 pub enum Object {

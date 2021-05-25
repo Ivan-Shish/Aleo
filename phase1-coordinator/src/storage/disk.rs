@@ -93,11 +93,15 @@ impl Storage for Disk {
     /// Initializes the location corresponding to the given locator.
     #[inline]
     fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError> {
-        trace!("Initializing {}", self.to_path(&locator)?);
+        let locator_path = self.to_path(&locator)?;
+        trace!("Initializing {:?}", locator_path);
 
         // Check that the locator does not already exist in storage.
         if self.exists(&locator) {
-            error!("Locator in call to initialize() already exists in storage.");
+            error!(
+                "Locator {:?} in call to initialize() already exists in storage.",
+                locator_path
+            );
             return Err(CoordinatorError::StorageLocatorAlreadyExists);
         }
 
@@ -341,7 +345,7 @@ impl Storage for Disk {
         // Fetch the source object.
         let source_object = self.get(source_locator)?;
 
-        // Initialize the destination file with the source object size.
+        // Initialize the destination file with the source object size.initializeinitialize
         self.initialize(destination_locator.clone(), source_object.size())?;
 
         // Update the destination locator with the copied source object.

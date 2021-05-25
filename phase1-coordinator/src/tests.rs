@@ -54,7 +54,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+    fn contribute_to(&self, coordinator: &Coordinator) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -1342,17 +1342,35 @@ fn coordinator_drop_several_contributors() {
         }
     }
 
-    // Contribute to the round 1
-    for i in 0..number_of_chunks {
-        tracing::debug!("contribution i: {}", i);
-        replacement_contributor_1.contribute_to(&coordinator).unwrap();
-        replacement_contributor_2.contribute_to(&coordinator).unwrap();
-        if i > k - 1 {
-            contributor_3.contribute_to(&coordinator).unwrap();
-            verifier_1.verify(&coordinator).unwrap();
+    fn contribute_verify_until_no_tasks(
+        contributor: &ContributorTestDetails,
+        verifier: &VerifierTestDetails,
+        coordinator: &Coordinator,
+    ) -> anyhow::Result<bool> {
+        match contributor.contribute_to(coordinator) {
+            Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
+            Err(CoordinatorError::PreviousContributionMissing { current_task: _ }) => Ok(false),
+            Ok(_) => {
+                verifier.verify(&coordinator)?;
+                Ok(false)
+            }
+            Err(error) => return Err(error.into()),
         }
-        verifier_1.verify(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    // Contribute to the round 1
+    let mut all_complete = false;
+    while !all_complete {
+        let c3_complete = contribute_verify_until_no_tasks(&contributor_3, &verifier_1, &coordinator).unwrap();
+        let rc1_complete =
+            contribute_verify_until_no_tasks(&replacement_contributor_1, &verifier_1, &coordinator).unwrap();
+        let rc2_complete =
+            contribute_verify_until_no_tasks(&replacement_contributor_2, &verifier_1, &coordinator).unwrap();
+
+        tracing::debug!("c3_complete: {}", c3_complete);
+        tracing::debug!("rc1_complete: {}", rc1_complete);
+        tracing::debug!("rc2_complete: {}", rc2_complete);
+        all_complete = c3_complete && rc1_complete && rc2_complete;
     }
 
     // Add some more participants to proceed to the next round
@@ -1369,6 +1387,10 @@ fn coordinator_drop_several_contributors() {
 
     // Update the ceremony to round 2.
     coordinator.update().unwrap();
+
+    let round = coordinator.current_round().unwrap();
+    tracing::debug!("{:#?}", round);
+
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());

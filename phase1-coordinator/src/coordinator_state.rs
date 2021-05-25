@@ -1104,11 +1104,21 @@ impl CoordinatorState {
         self.current_contributors.clone().into_iter().collect()
     }
 
-    /// Gets the [ParticipantInfo] for a participant currently in the round.
+    /// Gets reference to the [ParticipantInfo] for a participant
+    /// currently in the round.
     pub fn current_participant_info(&self, participant: &Participant) -> Option<&ParticipantInfo> {
         match participant {
             Participant::Contributor(_) => self.current_contributors.get(participant),
             Participant::Verifier(_) => self.current_verifiers.get(participant),
+        }
+    }
+
+    /// Gets mutable reference to the [ParticipantInfo] for a
+    /// participant currently in the round.
+    pub fn current_participant_info_mut(&mut self, participant: &Participant) -> Option<&mut ParticipantInfo> {
+        match participant {
+            Participant::Contributor(_) => self.current_contributors.get_mut(participant),
+            Participant::Verifier(_) => self.current_verifiers.get_mut(participant),
         }
     }
 
@@ -1369,7 +1379,6 @@ impl CoordinatorState {
     ///
     /// Pops the next (chunk ID, contribution ID) task that the participant should process.
     ///
-    #[inline]
     pub(super) fn fetch_task(
         &mut self,
         participant: &Participant,
@@ -1453,17 +1462,9 @@ impl CoordinatorState {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
-        match participant {
-            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
-                // Acquire the chunk lock for the contributor.
-                Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
-            },
-            Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
-                // Acquire the chunk lock for the verifier.
-                Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
-                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
-            },
+        match self.current_participant_info_mut(participant) {
+            Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
+            None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
         }
     }
 
