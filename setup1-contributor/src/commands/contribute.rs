@@ -23,6 +23,7 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Participant, Round},
 };
+use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
@@ -45,7 +46,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tokio::time::{delay_for, Instant};
+use tokio::time::{sleep, Instant};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -107,17 +108,17 @@ pub struct Contribute {
 }
 
 impl Contribute {
-    pub fn new(opts: &ContributeOptions, private_key: &[u8]) -> Result<Self> {
+    pub fn new(opts: &ContributeOptions, environment: &Environment, private_key: &[u8]) -> Result<Self> {
         let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
         let contribute = Self {
-            server_url: opts.coordinator_api_url.clone(),
+            server_url: opts.api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
             upload_mode: opts.upload_mode.clone(),
-            environment: opts.environment.clone(),
+            environment: environment.clone(),
 
             challenge_filename: CHALLENGE_FILENAME.to_string(),
             challenge_hash_filename: CHALLENGE_HASH_FILENAME.to_string(),
@@ -178,7 +179,7 @@ impl Contribute {
                         progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
                     }
                 }
-                delay_for(delay_poll_ceremony_duration).await;
+                sleep(delay_poll_ceremony_duration).await;
             }
         });
 
@@ -219,11 +220,11 @@ impl Contribute {
                         }
                     }
 
-                    delay_for(delay_duration).await;
+                    sleep(delay_duration).await;
                 }
             });
             futures.push(join_handle);
-            delay_for(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
+            sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
         }
 
         let cloned = self.clone();
@@ -232,7 +233,7 @@ impl Contribute {
         // of the other tasks.
         std::thread::spawn(move || {
             let auth_rng = &mut rand::rngs::OsRng;
-            let mut runtime = tokio::runtime::Runtime::new().unwrap();
+            let runtime = tokio::runtime::Runtime::new().unwrap();
             loop {
                 tracing::info!("Performing heartbeat.");
                 if let Err(error) = runtime.block_on(cloned.heartbeat(auth_rng)) {
@@ -311,7 +312,7 @@ impl Contribute {
                     return Ok(());
                 }
             }
-            delay_for(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
+            sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
         }
     }
 
@@ -385,7 +386,7 @@ impl Contribute {
         loop {
             match self.move_task_from_lane_to_lane(from, to, task)? {
                 true => return Ok(()),
-                false => delay_for(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
+                false => sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
             }
         }
     }
@@ -394,7 +395,7 @@ impl Contribute {
         loop {
             match self.add_task_to_download_lane(task)? {
                 true => return Ok(()),
-                false => delay_for(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
+                false => sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
             }
         }
     }
@@ -458,7 +459,7 @@ impl Contribute {
                     remove_file_if_exists(&self.response_hash_filename)?;
                     return Ok(());
                 } else {
-                    tokio::time::delay_for(Duration::seconds(DELAY_POLL_CEREMONY_SECS).to_std()?).await;
+                    tokio::time::sleep(Duration::seconds(DELAY_POLL_CEREMONY_SECS).to_std()?).await;
                     continue;
                 }
             }
@@ -876,7 +877,30 @@ fn read_keys<P: AsRef<Path>>(keys_path: P, passphrase: Option<SecretString>) -> 
     Ok((aleo_seed, aleo_private_key))
 }
 
-pub async fn start_contributor(opts: ContributeOptions) {
+async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
+    let settings_endpoint_url = coordinator_url.join("/v1/coordinator/settings")?;
+    let client = reqwest::Client::new();
+    let bytes = client.post(settings_endpoint_url).send().await?.bytes().await?;
+    PublicSettings::decode(&bytes.to_vec())
+        .map_err(|e| anyhow::anyhow!("Error decoding coordinator PublicSettings: {}", e))
+}
+
+pub async fn contribute_subcommand(opts: &ContributeOptions) -> anyhow::Result<()> {
+    let public_settings = request_coordinator_public_settings(&opts.api_url)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch the coordinator public settings");
+            e
+        })
+        .with_context(|| format!("Failed to fetch the coordinator public settings"))?;
+
+    let environment = crate::utils::environment_by_setup_kind(&public_settings.setup);
+
+    start_contributor(opts, &environment).await;
+    Ok(())
+}
+
+async fn start_contributor(opts: &ContributeOptions, environment: &Environment) {
     // Initialize tracing logger. Stored to `aleo-setup.log`.
     let appender = tracing_appender::rolling::never(".", "aleo-setup.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
@@ -888,10 +912,11 @@ pub async fn start_contributor(opts: ContributeOptions) {
 
     *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
 
-    let curve_kind = opts.environment.parameters().curve();
+    let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
-    let contribute = Contribute::new(&opts, private_key.expose_secret()).expect("Unable to initialize a contributor");
+    let contribute =
+        Contribute::new(opts, environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
 
     // Run the contributor.
     let contribution = match curve_kind {

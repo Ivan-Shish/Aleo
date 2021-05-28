@@ -8,9 +8,7 @@ use std::path::PathBuf;
 #[structopt(
     name = "Generate",
     about = "Generate a seed and an Aleo private key for contribution",
-    rename_all = "snake-case",
     setting(AppSettings::ColoredHelp),
-    setting(AppSettings::DisableHelpSubcommand),
     setting(AppSettings::DisableVersion)
 )]
 pub struct GenerateOptions {
@@ -20,6 +18,6 @@ pub struct GenerateOptions {
     #[structopt(long)]
     pub passphrase: Option<SecretString>,
     /// Store the seed and private key at the given path.
-    #[structopt(rename_all = "screaming-snake-case", parse(from_os_str))]
+    #[structopt(long, help = "Store the seed and private key at the given path")]
     pub keys_path: PathBuf,
 }
