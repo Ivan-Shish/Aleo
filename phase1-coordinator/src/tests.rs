@@ -1360,6 +1360,7 @@ fn coordinator_drop_several_contributors() {
 
     // Contribute to the round 1
     let mut all_complete = false;
+    let mut count = 0;
     while !all_complete {
         let c3_complete = contribute_verify_until_no_tasks(&contributor_3, &verifier_1, &coordinator).unwrap();
         let rc1_complete =
@@ -1371,6 +1372,11 @@ fn coordinator_drop_several_contributors() {
         tracing::debug!("rc1_complete: {}", rc1_complete);
         tracing::debug!("rc2_complete: {}", rc2_complete);
         all_complete = c3_complete && rc1_complete && rc2_complete;
+        count += 1;
+
+        if count > 50 {
+            panic!("There have been too many attempts to make contributions")
+        }
     }
 
     // Add some more participants to proceed to the next round
