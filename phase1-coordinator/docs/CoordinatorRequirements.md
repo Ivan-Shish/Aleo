@@ -58,7 +58,7 @@ A participant may be "dropped" from a [round](#round) in progress by the [Coordi
 
 ### Environment
 
-Currently aleo is considering running the [setup ceremony](#setup-ceremony) multiple times, with different configurations of curves, proving systems, and size. Currently these are classed as [inner](#inner-setup), [outer](#outer-setup), and [universal](#universal-setup) setups (in order of complexity).
+Currently Aleo is considering running the [setup ceremony](#setup-ceremony) multiple times, with different configurations of curves, proving systems, and size. Currently these are classed as [inner](#inner-setup), [outer](#outer-setup), and [universal](#universal-setup) setups (in order of complexity).
 
 #### Inner Setup
 
@@ -98,7 +98,7 @@ TODO: specifically what are the parameters?
 
 ### Participant
 
-A participant is an actor (in the form of software) who performs a role during the [Setup Ceremony](#setup-ceremony): the [coordinator](#coordinator) provides them with tasks to perform. There are currently two type of participants: [contributor](#contributor)s and [verifiers](#verifier)s. A participant may be operated by an actual member of the public, or by aleo in the form of a [verifier](#verifier) or [replacement contributor](#replacement-contributor).
+A participant is an actor (in the form of software) who performs a role during the [Setup Ceremony](#setup-ceremony): the [coordinator](#coordinator) provides them with tasks to perform. There are currently two types of participants: [contributor](#contributor)s and [verifiers](#verifier)s. A participant may be operated by an actual member of the public, or by aleo in the form of a [verifier](#verifier) or [replacement contributor](#replacement-contributor).
 
 ### Replacement Contributor
 
@@ -116,7 +116,7 @@ A queue where [participants](#participant) wait to join the next [round](#round)
 
 A **Setup Ceremony** (or **Setup** for short) is currently necessary pre-requisite task for a Zero Knowledge cryptography system. The aim of a setup is to generate a set of [parameters](#parameters) using random numbers which will be used as a basis for proofs **TODO is this correct?**. In order for the system to be trustworthy, the source of randomness needs to be discarded. The ceremony is in effect, a public stage-show where members of the public are invited to participate as [contributor](#contributor)s. The advantage of involving multiple contributors from the public is that in order for the system to be trustworthy, only one contributor needs to be honest with disposing of their source of randomness used to generate parameters.
 
-In contrast to previous public setup ceremonies, aleo setup will be making use of the [Optimistic Pipelining](#optimistic-pipelining) technique to allow more contributions in a shorter space of time.
+In contrast to previous public setup ceremonies, Aleo setup will be making use of the [Optimistic Pipelining](#optimistic-pipelining) technique to allow more contributions in a shorter space of time.
 
 Extra useful references:
 
@@ -147,13 +147,13 @@ It is expected that the `phase1-coordinator` module will be consumed by [`aleo-s
 
 Public contributors are members of the public who have decided to contribute to the [setup ceremony](#setup-ceremony) by operating a [contributor](#contributor) node during a [round](#round) of the ceremony.
 
-These people are expected to have an interest in using the aleo system and want to be able to trust the system by participating themselves. Some of these users may expect sufficient evidence that their contribution was effective.
+These people are expected to have an interest in using the Aleo system and want to be able to trust the system by participating themselves. Some of these users may expect sufficient evidence that their contribution was effective.
 
 It is expected that contributors in the [Inner Setup](#inner-setup) ceremony will be willing to run a node for at least a couple of hours in their web browser, and that contributors in the [Universal Setup](#universal-setup) ceremony will be willing to run a high performance node for around 5-10 hours.
 
 #### Aleo System Users
 
-Some members of the public who are using the aleo system which depends upon the parameters generated in the setup ceremony may wish to convince themselves of the soundness of the ceremony with the historical evidence publicly available.
+Some members of the public who are using the Aleo system which depends upon the parameters generated in the setup ceremony may wish to convince themselves of the soundness of the ceremony with the historical evidence publicly available.
 
 ## Requirements
 
@@ -260,7 +260,7 @@ Generate the initial [challenges](#challenge) to be used as the basis for the fi
 
 #### REQ-28 Coordinate a Round
 
-Coordinate a [round](#round) successfully, [aggregate](#aggregation) the results, notify contributors, and proceeed to the next round.
+Coordinate a [round](#round) successfully, [aggregate](#aggregation) the results, notify contributors, and proceed to the next round.
 
 Requires:
 
@@ -317,7 +317,7 @@ Requires:
 
 #### REQ-35 Drop Slow Participant
 
-[Drop](#drop) a [participant](#participant) if they get stuck for too long (configurable) on a single [contribution](#contribution)/[verification](#verification). This should be fairly excessive, perhaps 10 minutes, to ensure this is only triggered during a serious anomaly, and will not trigger if for example the user's antivirus performs a quick scan or Windows update occurs, or there is a monentary problem with their network connection.
+[Drop](#drop) a [participant](#participant) if they get stuck for too long (configurable) on a single [contribution](#contribution)/[verification](#verification). This should be fairly excessive, perhaps 10 minutes, to ensure this is only triggered during a serious anomaly, and will not trigger if for example the user's antivirus performs a quick scan or Windows update occurs, or there is a momentary problem with their network connection.
 
 *Also consider a drop if a contributor is taking too long over a longer average, with a lower threshold*.
 
