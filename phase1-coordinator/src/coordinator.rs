@@ -12,9 +12,6 @@ use crate::{
 };
 use setup_utils::calculate_hash;
 
-#[cfg(not(test))]
-use crate::logger::initialize_logger;
-
 use chrono::{DateTime, Utc};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
