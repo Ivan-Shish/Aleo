@@ -35,16 +35,14 @@ serde_with = { version = "1.8", features = ["chrono", "macros"] }
 thiserror = { version = "1.0" }
 tokio = { version = "0.3", features = ["full"] }
 tracing = { version = "0.1" }
-tracing-appender = { version = "0.1" }
-tracing-subscriber = { version = "0.2" }
+tracing-subscriber = { version = "0.2", optional = true }
 url = { version = "1.0" }
 
 [dev-dependencies]
-once_cell = { version = "1.5.2" }
 serial_test = { version = "0.5" }
+tracing-subscriber = { version = "0.2" }
 
 [features]
-default = ["log_file"]
-operator = ["log_file", "testing"]
-testing = []
-log_file = []
+default = []
+operator = ["testing"]
+testing = ["tracing-subscriber"]
