@@ -1260,7 +1260,6 @@ fn coordinator_drop_contributor_and_release_locks() {
 /// which happens in the integration tests at the moment
 #[test]
 #[serial]
-#[ignore]
 fn coordinator_drop_several_contributors() {
     let parameters = Parameters::Custom(Settings {
         contribution_mode: ContributionMode::Chunked,
