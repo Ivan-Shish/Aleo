@@ -1276,7 +1276,6 @@ fn coordinator_drop_several_contributors() {
         replacement_contributor_2.participant.clone(),
     ]);
     let environment = initialize_test_environment(&testing.into());
-    let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
