@@ -38,6 +38,7 @@ pub enum CoordinatorError {
     ChunkNotLockedOrByWrongParticipant,
     ComputationFailed,
     CompressedContributionHashingUnsupported,
+    ContributorPendingTasksCannotBeEmpty(Participant),
     ContributionAlreadyAssignedVerifiedLocator,
     ContributionAlreadyAssignedVerifier,
     ContributionAlreadyVerified,
@@ -100,13 +101,13 @@ pub enum CoordinatorError {
     ParticipantAlreadyBanned,
     ParticipantAlreadyDropped,
     ParticipantAlreadyFinished,
-    ParticipantAlreadyFinishedChunk,
-    ParticipantAlreadyFinishedTask,
+    ParticipantAlreadyFinishedChunk { chunk_id: u64 },
+    ParticipantAlreadyFinishedTask(Task),
     ParticipantAlreadyHasLockedChunk,
     ParticipantAlreadyHasLockedChunks,
     ParticipantAlreadyPrecommitted,
     ParticipantAlreadyStarted,
-    ParticipantAlreadyWorkingOnChunk,
+    ParticipantAlreadyWorkingOnChunk { chunk_id: u64 },
     ParticipantBanned,
     ParticipantDidNotDoWork,
     ParticipantDidntLockChunkId,
@@ -119,7 +120,7 @@ pub enum CoordinatorError {
     ParticipantLockedChunkWithManyContributions,
     ParticipantMissing,
     ParticipantMissingDisposingTask,
-    ParticipantMissingPendingTask,
+    ParticipantMissingPendingTask { pending_task: Task },
     ParticipantNotFound(Participant),
     ParticipantNotReady,
     ParticipantRoundHeightInvalid,
@@ -131,8 +132,9 @@ pub enum CoordinatorError {
     ParticipantStillHasTaskAsAssigned,
     ParticipantStillHasTaskAsPending,
     ParticipantUnauthorized,
-    ParticipantUnauthorizedForChunkId,
+    ParticipantUnauthorizedForChunkId { chunk_id: u64 },
     ParticipantWasDropped,
+    PendingTasksMustContainResponseTask { response_task: Task },
     Phase1Setup(setup_utils::Error),
     QueueIsEmpty,
     QueueWaitTimeIncomplete,
@@ -2403,14 +2405,6 @@ impl Coordinator {
             Object::RoundState(round),
         )?;
 
-        // let state = self.state.clone();
-        // let state_write = state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
-
-        // tasks.iter()
-        //     .for_each(|task| {
-        //         state_write.disposed_task(participant, task, time)
-        //     })
-
         Ok(locators)
     }
 
@@ -2491,7 +2485,6 @@ impl Coordinator {
     ) -> Result<(), CoordinatorError> {
         let (_chunk_id, locked_locators) = self.try_lock(contributor)?;
         let response_locator = locked_locators.next_contribution();
-        tracing::debug!("Response locator: {:?}", response_locator);
         let round_height = response_locator.round_height();
         let chunk_id = response_locator.chunk_id();
         let contribution_id = response_locator.contribution_id();
@@ -2507,15 +2500,11 @@ impl Coordinator {
                 .unwrap()
                 .clone();
 
-            for (participant, info) in self.state.read().unwrap().current_contributors() {
-                tracing::debug!("{} assigned_tasks: {:#?}", participant, info.assigned_tasks());
-                tracing::debug!("{} pending_tasks: {:#?}", participant, info.pending_tasks());
+            if info.pending_tasks().is_empty() {
+                return Err(CoordinatorError::ContributorPendingTasksCannotBeEmpty(
+                    contributor.clone(),
+                ));
             }
-
-            assert!(
-                !info.pending_tasks().is_empty(),
-                "Contributor pending tasks cannot be empty"
-            );
 
             if !info
                 .pending_tasks()
@@ -2523,7 +2512,7 @@ impl Coordinator {
                 .find(|pending_task| pending_task == &&response_task)
                 .is_some()
             {
-                panic!("pending tasks must contain response task {}", response_task);
+                return Err(CoordinatorError::PendingTasksMustContainResponseTask { response_task });
             }
         }
 

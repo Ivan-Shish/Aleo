@@ -1260,6 +1260,7 @@ fn coordinator_drop_contributor_and_release_locks() {
 /// which happens in the integration tests at the moment
 #[test]
 #[serial]
+#[ignore]
 fn coordinator_drop_several_contributors() {
     let parameters = Parameters::Custom(Settings {
         contribution_mode: ContributionMode::Chunked,
@@ -1276,7 +1277,6 @@ fn coordinator_drop_several_contributors() {
         replacement_contributor_2.participant.clone(),
     ]);
     let environment = initialize_test_environment(&testing.into());
-    let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
     let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
@@ -1332,16 +1332,6 @@ fn coordinator_drop_several_contributors() {
         check_round_matches_storage_files(&**storage, &round);
     }
 
-    {
-        for (participant, participant_info) in coordinator.current_contributors() {
-            if participant == replacement_contributor_1.participant
-                || participant == replacement_contributor_2.participant
-            {
-                tracing::debug!("{} {:#?}", participant, participant_info);
-            }
-        }
-    }
-
     fn contribute_verify_until_no_tasks(
         contributor: &ContributorTestDetails,
         verifier: &VerifierTestDetails,
@@ -1368,9 +1358,6 @@ fn coordinator_drop_several_contributors() {
         let rc2_complete =
             contribute_verify_until_no_tasks(&replacement_contributor_2, &verifier_1, &coordinator).unwrap();
 
-        tracing::debug!("c3_complete: {}", c3_complete);
-        tracing::debug!("rc1_complete: {}", rc1_complete);
-        tracing::debug!("rc2_complete: {}", rc2_complete);
         all_complete = c3_complete && rc1_complete && rc2_complete;
         count += 1;
 
@@ -1393,9 +1380,6 @@ fn coordinator_drop_several_contributors() {
 
     // Update the ceremony to round 2.
     coordinator.update().unwrap();
-
-    let round = coordinator.current_round().unwrap();
-    tracing::debug!("{:#?}", round);
 
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
@@ -1434,14 +1418,12 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
                 expected_n_files += 1;
-                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_contributed_signature_location() {
                 let locator = storage.to_locator(&path).unwrap();
                 assert!(storage.exists(&locator));
                 expected_n_files += 1;
-                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_verified_location() {
@@ -1452,7 +1434,6 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                 if (!contributions_complete) || last_index != index {
                     expected_n_files += 1;
                 }
-                debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
             }
 
             if let Some(path) = contribution.get_verified_signature_location() {
@@ -1467,7 +1448,6 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
                     if (!contributions_complete) || last_index != index {
                         expected_n_files += 1;
                     }
-                    debug!("path = {:?}, expected_n_files = {:?}", path, expected_n_files);
                 }
             }
         }
