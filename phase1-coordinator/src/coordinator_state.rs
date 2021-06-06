@@ -318,7 +318,9 @@ impl ParticipantInfo {
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
         if self.id.is_contributor() && self.locked_chunks.contains_key(&task.chunk_id()) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Check that the task was not already given the assigned task.
@@ -328,12 +330,16 @@ impl ParticipantInfo {
 
         // Check that the task was not already in progress.
         if self.pending_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Check that the participant has not already completed the task.
         if self.completed_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Update the last seen time.
@@ -349,16 +355,8 @@ impl ParticipantInfo {
     /// Adds the given (chunk ID, contribution ID) task in LIFO order for the participant to process.
     ///
     #[inline]
-    fn push_front_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
+    fn push_front_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Pushing front task for {}", self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -376,8 +374,10 @@ impl ParticipantInfo {
         }
 
         // Check that if the participant is a contributor, this chunk is not currently locked.
-        if self.id.is_contributor() && self.locked_chunks.contains_key(&chunk_id) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+        if self.id.is_contributor() && self.locked_chunks.contains_key(&task.chunk_id()) {
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Check that the task was not already given the assigned task.
@@ -387,12 +387,16 @@ impl ParticipantInfo {
 
         // Check that the task was not already added to the pending tasks.
         if self.pending_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk);
+            return Err(CoordinatorError::ParticipantAlreadyWorkingOnChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Check that the participant has not already completed the task.
         if self.completed_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Update the last seen time.
@@ -483,7 +487,7 @@ impl ParticipantInfo {
                 .count()
                 == 0
         {
-            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
+            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId { chunk_id });
         }
 
         // Check that if the participant is a contributor, this chunk was not already completed.
@@ -495,7 +499,7 @@ impl ParticipantInfo {
                 .count()
                 > 0
         {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk { chunk_id });
         }
 
         // Update the last seen time.
@@ -548,7 +552,9 @@ impl ParticipantInfo {
                 .count()
                 == 0
         {
-            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId);
+            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Check that if the participant is a contributor, this chunk was not already completed.
@@ -560,7 +566,9 @@ impl ParticipantInfo {
                 .count()
                 > 0
         {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Update the last seen time.
@@ -575,7 +583,7 @@ impl ParticipantInfo {
             .collect();
 
         // Add the task to the front of the assigned tasks.
-        self.push_front_task(task.chunk_id(), task.contribution_id(), time)?;
+        self.push_front_task(task, time)?;
 
         Ok(())
     }
@@ -626,13 +634,12 @@ impl ParticipantInfo {
 
         // Check that the participant has a pending task for this.
         if !self.pending_tasks.contains(&task) {
-            tracing::error!("ParticipantMissingPendingTask");
-            return Err(CoordinatorError::ParticipantMissingPendingTask);
+            return Err(CoordinatorError::ParticipantMissingPendingTask { pending_task: task });
         }
 
         // Check that the participant has not already completed the task.
         if self.completed_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedTask);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedTask(task));
         }
 
         // Check that if the participant is a contributor, this chunk was not already completed.
@@ -644,7 +651,9 @@ impl ParticipantInfo {
                 .count()
                 > 0
         {
-            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk);
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk {
+                chunk_id: task.chunk_id(),
+            });
         }
 
         // Update the last seen time.
@@ -2030,8 +2039,6 @@ impl CoordinatorState {
                             }
                         });
 
-                    tracing::debug!("disposed completed tasks: {:?}", &disposed_tasks);
-
                     // TODO: revisit the handling of disposed_tasks
                     // https://github.com/AleoHQ/aleo-setup/issues/249
                     contributor_info.completed_tasks = completed_tasks;
@@ -2122,8 +2129,6 @@ impl CoordinatorState {
 
                 warn!("Dropped {} from the ceremony", participant);
 
-                tracing::debug!("affected_tasks: {:#?}", &affected_tasks);
-
                 return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                     participant: participant.clone(),
                     bucket_id,
@@ -2159,8 +2164,6 @@ impl CoordinatorState {
                 self.dropped.push(dropped_info);
 
                 warn!("Dropped {} from the ceremony", participant);
-
-                tracing::debug!("affected_tasks: {:#?}", &affected_tasks);
 
                 return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                     participant: participant.clone(),

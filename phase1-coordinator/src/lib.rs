@@ -47,9 +47,6 @@ pub use coordinator_state::CoordinatorState;
 
 pub mod environment;
 
-#[cfg(not(test))]
-pub mod logger;
-
 pub mod objects;
 pub use objects::{ContributionFileSignature, ContributionState, Participant, Round};
 
