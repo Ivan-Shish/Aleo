@@ -8,12 +8,10 @@ members = [
     "phase2",
     "setup1-cli-tools",
     "setup1-contributor",
+    "setup1-shared",
     "setup1-verifier",
     "setup2",
     "setup-utils",
-]
-exclude = [
-    "setup1-shared",
 ]
 
 [profile.release]
