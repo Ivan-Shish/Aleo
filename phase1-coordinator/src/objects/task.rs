@@ -1,4 +1,4 @@
-use std::{collections::LinkedList, str::FromStr};
+use std::{collections::LinkedList, fmt::Debug, str::FromStr};
 
 use serde::{
     de::{self, Error},
@@ -62,6 +62,12 @@ impl Task {
     #[inline]
     pub fn to_tuple(&self) -> (u64, u64) {
         (self.chunk_id, self.contribution_id)
+    }
+}
+
+impl std::fmt::Display for Task {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.to_tuple().fmt(f)
     }
 }
 

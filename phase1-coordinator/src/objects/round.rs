@@ -1,8 +1,8 @@
 use crate::{
-    coordinator_state::Justification,
+    coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{ContributionLocator, Locator, Object, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
     CoordinatorError,
 };
 
@@ -22,6 +22,37 @@ where
 {
     let mut uniq = HashSet::new();
     iter.into_iter().all(move |x| uniq.insert(x))
+}
+
+/// Locators for files that are locked by [Round::try_lock_chunk()]
+#[derive(Debug, Clone)]
+pub struct LockedLocators {
+    previous_contribution: ContributionLocator,
+    current_contribution: ContributionLocator,
+    next_contribution: ContributionLocator,
+    next_contribution_file_signature: ContributionSignatureLocator,
+}
+
+impl LockedLocators {
+    /// Get a reference previous contribution's locator.
+    pub fn previous_contribution(&self) -> ContributionLocator {
+        self.previous_contribution
+    }
+
+    /// Get a reference current contribution's locator.
+    pub fn current_contribution(&self) -> ContributionLocator {
+        self.current_contribution
+    }
+
+    /// Get a reference next contribution's locator.
+    pub fn next_contribution(&self) -> ContributionLocator {
+        self.next_contribution
+    }
+
+    /// Get a reference next contribution's signtature locator.
+    pub fn next_contribution_file_signature(&self) -> ContributionSignatureLocator {
+        self.next_contribution_file_signature
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, SerdeDiff)]
@@ -123,7 +154,7 @@ impl Round {
                         )))
                         .expect("failed to create locator path"),
                     storage
-                        .to_path(&Locator::ContributionFileSignature(ContributionLocator::new(
+                        .to_path(&Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                             round_height,
                             chunk_id as u64,
                             0,
@@ -337,13 +368,18 @@ impl Round {
     /// If the current contribution is already verified,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id, verified = verified),
+        err
+    )]
     pub(crate) fn current_contribution_locator(
         &self,
         storage: &StorageLock,
         chunk_id: u64,
         verified: bool,
-    ) -> Result<Locator, CoordinatorError> {
+    ) -> Result<ContributionLocator, CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
@@ -352,17 +388,16 @@ impl Round {
         let current_contribution_id = chunk.current_contribution_id();
 
         // Fetch the current contribution locator.
-        let current_contribution_locator = Locator::ContributionFile(ContributionLocator::new(
-            current_round_height,
-            chunk_id,
-            current_contribution_id,
-            verified,
-        ));
+        let current_contribution_locator =
+            ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, verified);
 
         // Check that the contribution locator corresponding to the current contribution ID
         // exists for the current round and given chunk ID.
-        if !storage.exists(&current_contribution_locator) {
-            error!("{} is missing", storage.to_path(&current_contribution_locator)?);
+        if !storage.exists(&Locator::ContributionFile(current_contribution_locator.clone())) {
+            error!(
+                "{} is missing",
+                storage.to_path(&Locator::ContributionFile(current_contribution_locator.clone()))?
+            );
             return Err(CoordinatorError::ContributionLocatorMissing);
         }
 
@@ -370,7 +405,7 @@ impl Round {
         if chunk.get_contribution(current_contribution_id)?.is_verified() {
             error!(
                 "{} is already verified",
-                storage.to_path(&current_contribution_locator)?
+                storage.to_path(&Locator::ContributionFile(current_contribution_locator.clone()))?
             );
             return Err(CoordinatorError::ContributionAlreadyVerified);
         }
@@ -394,12 +429,17 @@ impl Round {
     /// is already completed for the current round,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id),
+        err
+    )]
     pub(crate) fn next_contribution_locator(
         &self,
         storage: &StorageLock,
         chunk_id: u64,
-    ) -> Result<Locator, CoordinatorError> {
+    ) -> Result<ContributionLocator, CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
@@ -415,16 +455,13 @@ impl Round {
         }
 
         // Fetch the next contribution locator.
-        let next_contribution_locator = Locator::ContributionFile(ContributionLocator::new(
-            current_round_height,
-            chunk_id,
-            next_contribution_id,
-            false,
-        ));
+        let next_contribution_locator =
+            ContributionLocator::new(current_round_height, chunk_id, next_contribution_id, false);
 
         // Check that the contribution locator corresponding to the next contribution ID
         // does NOT exist for the current round and given chunk ID.
-        if storage.exists(&next_contribution_locator) {
+        if storage.exists(&Locator::ContributionFile(next_contribution_locator.clone())) {
+            tracing::error!("Contribution locator already exists: {:?}", next_contribution_locator);
             return Err(CoordinatorError::ContributionLocatorAlreadyExists);
         }
 
@@ -447,12 +484,18 @@ impl Round {
     /// is already completed for the current round,
     /// this function will return a `CoordinatorError`.
     ///
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, chunk_id),
+        fields(round = self.round_height(), chunk = chunk_id),
+        err
+    )]
     #[inline]
     pub(crate) fn next_contribution_file_signature_locator(
         &self,
         storage: &StorageLock,
         chunk_id: u64,
-    ) -> Result<Locator, CoordinatorError> {
+    ) -> Result<ContributionSignatureLocator, CoordinatorError> {
         // Fetch the current round height.
         let current_round_height = self.round_height();
         // Fetch the chunk corresponding to the given chunk ID.
@@ -468,16 +511,14 @@ impl Round {
         }
 
         // Fetch the contribution file signature locator.
-        let contribution_file_signature_locator = Locator::ContributionFileSignature(ContributionLocator::new(
-            current_round_height,
-            chunk_id,
-            next_contribution_id,
-            false,
-        ));
+        let contribution_file_signature_locator =
+            ContributionSignatureLocator::new(current_round_height, chunk_id, next_contribution_id, false);
 
         // Check that the contribution file signature locator corresponding to the next contribution ID
         // does NOT exist for the current round and given chunk ID.
-        if storage.exists(&contribution_file_signature_locator) {
+        if storage.exists(&Locator::ContributionFileSignature(
+            contribution_file_signature_locator.clone(),
+        )) {
             return Err(CoordinatorError::ContributionFileSignatureLocatorAlreadyExists);
         }
 
@@ -488,20 +529,25 @@ impl Round {
     /// Attempts to acquire the lock of a given chunk ID from storage
     /// for a given participant.
     ///
-    /// On success, if the participant is a contributor, this function
-    /// returns `(chunk_id, previous_response_locator, challenge_locator, response_locator)`.
+    /// **Important**: The returned next contribution locator does not
+    /// always match the current task being performed. If it is the
+    /// final verification for a chunk, the a [Participant::Verifier]
+    /// will receive a locator to the contribution 0 of the same chunk
+    /// in the next round.
     ///
-    /// On success, if the participant is a verifier, this function
-    /// returns `(chunk_id, challenge_locator, response_locator, next_challenge_locator)`.
-    ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, environment, storage, chunk_id, participant),
+        fields(chunk = chunk_id),
+        err
+    )]
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
         storage: &mut StorageLock,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<(Locator, Locator, Locator), CoordinatorError> {
+    ) -> Result<LockedLocators, CoordinatorError> {
         debug!("{} is attempting to lock chunk {}", participant, chunk_id);
 
         // Check that the participant is holding less than the chunk lock limit.
@@ -524,12 +570,7 @@ impl Round {
         // Check that the participant is authorized to acquire the lock
         // associated with the given chunk ID for the current round,
         // and fetch the appropriate contribution locator.
-        let (
-            previous_contribution_locator,
-            current_contribution_locator,
-            next_contribution_locator,
-            contribution_file_signature_locator,
-        ) = match participant {
+        let locked_locators = match participant {
             Participant::Contributor(_) => {
                 // Check that the participant is an authorized contributor
                 // for the current round.
@@ -549,49 +590,39 @@ impl Round {
                 // Fetch the final contribution ID from the previous round.
                 let previous_final_id = self.expected_number_of_contributions() - 1;
                 // Fetch the previous contribution locator.
-                let previous_response_locator = match (is_initial_round, is_initial_contribution) {
+                let previous_contribution = match (is_initial_round, is_initial_contribution) {
                     // This is the initial contribution in the initial round, return the verified response from the previous round.
-                    (true, true) => Locator::ContributionFile(ContributionLocator::new(0, chunk_id, 0, true)),
+                    (true, true) => ContributionLocator::new(0, chunk_id, 0, true),
                     // This is the initial contribution in the chunk, return the final response from the previous round.
-                    (false, true) => Locator::ContributionFile(ContributionLocator::new(
-                        current_round_height - 1,
-                        chunk_id,
-                        previous_final_id,
-                        false,
-                    )),
+                    (false, true) => {
+                        ContributionLocator::new(current_round_height - 1, chunk_id, previous_final_id, false)
+                    }
                     // This is a typical contribution in the chunk, return the previous response from this round.
-                    (true, false) | (false, false) => Locator::ContributionFile(ContributionLocator::new(
-                        current_round_height,
-                        chunk_id,
-                        current_contribution_id - 1,
-                        false,
-                    )),
+                    (true, false) | (false, false) => {
+                        ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, false)
+                    }
                 };
 
                 // Fetch the current contribution locator.
-                let challenge_locator = Locator::ContributionFile(ContributionLocator::new(
-                    current_round_height,
-                    chunk_id,
-                    current_contribution_id,
-                    true,
-                ));
+                let current_contribution =
+                    ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true);
 
                 // This call enforces a strict check that the
                 // next contribution locator does NOT exist and
                 // that the current contribution locator exists
                 // and has already been verified.
-                let response_locator = self.next_contribution_locator(storage, chunk_id)?;
+                let next_contribution = self.next_contribution_locator(storage, chunk_id)?;
 
                 // Fetch the contribution file signature locator.
-                let contribution_file_signature_locator =
+                let next_contribution_file_signature =
                     self.next_contribution_file_signature_locator(storage, chunk_id)?;
 
-                (
-                    previous_response_locator,
-                    challenge_locator,
-                    response_locator,
-                    contribution_file_signature_locator,
-                )
+                LockedLocators {
+                    previous_contribution,
+                    current_contribution,
+                    next_contribution,
+                    next_contribution_file_signature,
+                }
             }
             Participant::Verifier(_) => {
                 // Check that the participant is an authorized verifier
@@ -613,60 +644,43 @@ impl Round {
                 }
 
                 // Fetch the previous contribution locator.
-                let challenge_locator = Locator::ContributionFile(ContributionLocator::new(
-                    current_round_height,
-                    chunk_id,
-                    current_contribution_id - 1,
-                    true,
-                ));
+                let previous_contribution =
+                    ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, true);
 
                 // This call enforces a strict check that the
                 // current contribution locator exist and
                 // has not been verified yet.
-                let response_locator = self.current_contribution_locator(storage, chunk_id, false)?;
+                let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
+
+                tracing::debug!("Obtained response locator {:?}", current_contribution);
 
                 // Fetch whether this is the final contribution of the specified chunk.
                 let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
-                // Fetch the next contribution locator and the contribution file signature locator.
-                let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
+                // Fetch the next contribution locator and its contribution file signature locator.
+                let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
                     // This is the final contribution in the chunk.
                     true => (
-                        Locator::ContributionFile(ContributionLocator::new(
-                            current_round_height + 1,
-                            chunk_id,
-                            0,
-                            true,
-                        )),
-                        Locator::ContributionFileSignature(ContributionLocator::new(
-                            current_round_height + 1,
-                            chunk_id,
-                            0,
-                            true,
-                        )),
+                        ContributionLocator::new(current_round_height + 1, chunk_id, 0, true),
+                        ContributionSignatureLocator::new(current_round_height + 1, chunk_id, 0, true),
                     ),
                     // This is a typical contribution in the chunk.
                     false => (
-                        Locator::ContributionFile(ContributionLocator::new(
+                        ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true),
+                        ContributionSignatureLocator::new(
                             current_round_height,
                             chunk_id,
                             current_contribution_id,
                             true,
-                        )),
-                        Locator::ContributionFileSignature(ContributionLocator::new(
-                            current_round_height,
-                            chunk_id,
-                            current_contribution_id,
-                            true,
-                        )),
+                        ),
                     ),
                 };
 
-                (
-                    challenge_locator,
-                    response_locator,
-                    next_challenge_locator,
-                    contribution_file_signature_locator,
-                )
+                LockedLocators {
+                    previous_contribution,
+                    current_contribution,
+                    next_contribution,
+                    next_contribution_file_signature,
+                }
             }
         };
 
@@ -695,37 +709,33 @@ impl Round {
             Participant::Contributor(_) => {
                 // Initialize the unverified response file.
                 storage.initialize(
-                    next_contribution_locator.clone(),
+                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
                     Object::contribution_file_size(environment, chunk_id, false),
                 )?;
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator,
+                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
                     Object::contribution_file_signature_size(false),
                 )?;
             }
             Participant::Verifier(_) => {
                 // Initialize the next challenge file.
                 storage.initialize(
-                    next_contribution_locator.clone(),
+                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
                     Object::contribution_file_size(environment, chunk_id, true),
                 )?;
 
                 // Initialize the contribution file signature.
                 storage.initialize(
-                    contribution_file_signature_locator,
+                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
                     Object::contribution_file_signature_size(true),
                 )?;
             }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
-        Ok((
-            previous_contribution_locator,
-            current_contribution_locator,
-            next_contribution_locator,
-        ))
+        Ok(locked_locators)
     }
 
     ///
@@ -794,12 +804,12 @@ impl Round {
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        justification: &Justification,
+        drop: &DropParticipant,
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, locked_chunks) = match justification {
-            Justification::BanCurrent(data) => (&data.participant, &data.locked_chunks),
-            Justification::DropCurrent(data) => (&data.participant, &data.locked_chunks),
+        let (participant, locked_chunks) = match drop {
+            DropParticipant::BanCurrent(data) => (&data.participant, &data.locked_chunks),
+            DropParticipant::DropCurrent(data) => (&data.participant, &data.locked_chunks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -855,7 +865,7 @@ impl Round {
                 }
 
                 // Removing contribution file signature for pending task
-                let response_signature_locator = Locator::ContributionFileSignature(ContributionLocator::new(
+                let response_signature_locator = Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                     current_round_height,
                     *chunk_id,
                     next_contribution_id,
@@ -866,7 +876,7 @@ impl Round {
                 }
 
                 // Removing contribution file signature for verified task
-                let response_signature_locator = Locator::ContributionFileSignature(ContributionLocator::new(
+                let response_signature_locator = Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                     current_round_height,
                     *chunk_id,
                     next_contribution_id,
@@ -879,6 +889,9 @@ impl Round {
                 // TODO: revisit the logic of removing challenges
                 //       https://github.com/AleoHQ/aleo-setup/issues/250
                 // Remove the next challenge locator if the current response has been verified.
+                //
+                // TODO: check why is this calculating the locators again when
+                // we already have them in strings in Contribution?
                 if chunk.current_contribution()?.is_verified() {
                     // Fetch whether this is the final contribution of the specified chunk.
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
@@ -929,16 +942,20 @@ impl Round {
     /// If the given participant is not the current lock holder of the given chunk IDs,
     /// this function will return a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, storage, drop),
+        fields(round = self.round_height())
+    )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        justification: &Justification,
+        drop: &DropParticipant,
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, tasks) = match justification {
-            Justification::BanCurrent(data) => (&data.participant, &data.tasks),
-            Justification::DropCurrent(data) => (&data.participant, &data.tasks),
+        let (participant, tasks) = match drop {
+            DropParticipant::BanCurrent(data) => (&data.participant, &data.tasks),
+            DropParticipant::DropCurrent(data) => (&data.participant, &data.tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -999,9 +1016,10 @@ impl Round {
                 }
             } else {
                 warn!(
-                    "Skipping removal of chunk {} contribution {}",
+                    "Skipping removal of chunk {} contribution {} because it does not exist in the chunk {:#?}",
                     task.chunk_id(),
-                    task.contribution_id()
+                    task.contribution_id(),
+                    chunk,
                 );
             }
         }

@@ -14,12 +14,12 @@ use std::{
 };
 use zexe_algebra::{Bls12_377, BW6_761};
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionLocator {
-    pub round_height: u64,
-    pub chunk_id: u64,
-    pub contribution_id: u64,
-    pub is_verified: bool,
+    round_height: u64,
+    chunk_id: u64,
+    contribution_id: u64,
+    is_verified: bool,
 }
 
 impl ContributionLocator {
@@ -31,17 +31,80 @@ impl ContributionLocator {
             is_verified,
         }
     }
+
+    pub fn round_height(&self) -> u64 {
+        self.round_height
+    }
+
+    pub fn chunk_id(&self) -> u64 {
+        self.chunk_id
+    }
+
+    pub fn contribution_id(&self) -> u64 {
+        self.contribution_id
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.is_verified
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ContributionSignatureLocator {
+    round_height: u64,
+    chunk_id: u64,
+    contribution_id: u64,
+    is_verified: bool,
+}
+
+impl ContributionSignatureLocator {
+    pub fn new(round_height: u64, chunk_id: u64, contribution_id: u64, is_verified: bool) -> Self {
+        Self {
+            round_height,
+            chunk_id,
+            contribution_id,
+            is_verified,
+        }
+    }
+
+    pub fn round_height(&self) -> u64 {
+        self.round_height
+    }
+
+    pub fn chunk_id(&self) -> u64 {
+        self.chunk_id
+    }
+
+    pub fn contribution_id(&self) -> u64 {
+        self.contribution_id
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.is_verified
+    }
 }
 
 /// A data structure representing all possible types of keys in storage.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Locator {
     CoordinatorState,
     RoundHeight,
     RoundState { round_height: u64 },
     RoundFile { round_height: u64 },
     ContributionFile(ContributionLocator),
-    ContributionFileSignature(ContributionLocator),
+    ContributionFileSignature(ContributionSignatureLocator),
+}
+
+impl From<ContributionLocator> for Locator {
+    fn from(locator: ContributionLocator) -> Self {
+        Self::ContributionFile(locator)
+    }
+}
+
+impl From<ContributionSignatureLocator> for Locator {
+    fn from(locator: ContributionSignatureLocator) -> Self {
+        Self::ContributionFileSignature(locator)
+    }
 }
 
 /// A data structure representing all possible types of values in storage.

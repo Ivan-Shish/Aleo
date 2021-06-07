@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{ContributionLocator, Locator, Object, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -63,7 +63,12 @@ impl Verification {
         let (next_challenge_locator, contribution_file_signature_locator) = match is_final_contribution {
             true => (
                 Locator::ContributionFile(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
-                Locator::ContributionFileSignature(ContributionLocator::new(round_height + 1, chunk_id, 0, true)),
+                Locator::ContributionFileSignature(ContributionSignatureLocator::new(
+                    round_height + 1,
+                    chunk_id,
+                    0,
+                    true,
+                )),
             ),
             false => (
                 Locator::ContributionFile(ContributionLocator::new(
@@ -72,7 +77,7 @@ impl Verification {
                     current_contribution_id,
                     true,
                 )),
-                Locator::ContributionFileSignature(ContributionLocator::new(
+                Locator::ContributionFileSignature(ContributionSignatureLocator::new(
                     round_height,
                     chunk_id,
                     current_contribution_id,
@@ -334,7 +339,7 @@ mod tests {
     use crate::{
         authentication::Dummy,
         commands::{Computation, Seed, Verification, SEED_LENGTH},
-        storage::{ContributionLocator, Locator, Object, StorageLock},
+        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
         testing::prelude::*,
         Coordinator,
     };
@@ -395,8 +400,9 @@ mod tests {
             let response_locator =
                 &Locator::ContributionFile(ContributionLocator::new(round_height, chunk_id, 1, false));
             // Fetch the contribution file signature locator.
-            let contribution_file_signature_locator =
-                &Locator::ContributionFileSignature(ContributionLocator::new(round_height, chunk_id, 1, false));
+            let contribution_file_signature_locator = &Locator::ContributionFileSignature(
+                ContributionSignatureLocator::new(round_height, chunk_id, 1, false),
+            );
 
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);

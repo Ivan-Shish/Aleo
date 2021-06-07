@@ -3,10 +3,13 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
+    storage::Storage,
     testing::prelude::*,
     Coordinator,
+    CoordinatorError,
     MockTimeSource,
     Participant,
+    Round,
 };
 use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
@@ -16,10 +19,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashSet, LinkedList},
     iter::FromIterator,
+    path::Path,
     sync::Arc,
 };
 
-#[inline]
 fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
     let contributor = Participant::Contributor(format!("test-contributor-{}", id));
     let contributor_signing_key: SigningKey = "secret_key".to_string();
@@ -30,7 +33,6 @@ fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {
     (contributor, contributor_signing_key, seed)
 }
 
-#[inline]
 fn create_verifier(id: &str) -> (Participant, SigningKey) {
     let verifier = Participant::Verifier(format!("test-verifier-{}", id));
     let verifier_signing_key: SigningKey = "secret_key".to_string();
@@ -52,7 +54,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+    fn contribute_to(&self, coordinator: &Coordinator) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -265,7 +267,9 @@ fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor1)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 1, locators.len());
+
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_verifier(&verifier));
@@ -372,6 +376,7 @@ fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor2)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 1, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -531,6 +536,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor2)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 2, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -694,6 +700,7 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor2)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 2, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -839,6 +846,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor1)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 1, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -949,8 +957,8 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
 
     // Lock the next task for the verifier and contributor 1 and 3.
-    let (contributor1_locked_chunk_id, _, _, _) = coordinator.try_lock(&contributor1)?;
-    let (verifier_locked_chunk_id, _, _, _) = coordinator.try_lock(&verifier)?;
+    let (contributor1_locked_chunk_id, _) = coordinator.try_lock(&contributor1)?;
+    let (verifier_locked_chunk_id, _) = coordinator.try_lock(&verifier)?;
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -1009,6 +1017,7 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor2)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 1, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -1148,6 +1157,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
 
     // Drop one contributor
     let locators = coordinator.drop_participant(&contributor1)?;
+    // Number of files affected by the drop.
     assert_eq!(2, locators.len());
 
     // Check that the tasks were reassigned properly
@@ -1242,6 +1252,219 @@ fn coordinator_drop_contributor_and_release_locks() {
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
     assert_eq!(0, coordinator.number_of_queue_verifiers());
+}
+
+/// Drops a few contributors and see what happens
+///
+/// The goal of this test is to reproduce a specific error
+/// which happens in the integration tests at the moment
+#[test]
+#[serial]
+#[ignore]
+fn coordinator_drop_several_contributors() {
+    let parameters = Parameters::Custom(Settings {
+        contribution_mode: ContributionMode::Chunked,
+        proving_system: ProvingSystem::Groth16,
+        curve: CurveKind::Bls12_377,
+        power: 2,
+        batch_size: 2,
+        chunk_size: 2,
+    });
+    let replacement_contributor_1 = create_contributor_test_details("replacement-1");
+    let replacement_contributor_2 = create_contributor_test_details("replacement-2");
+    let testing = Testing::from(parameters).coordinator_contributors(&[
+        replacement_contributor_1.participant.clone(),
+        replacement_contributor_2.participant.clone(),
+    ]);
+    let environment = initialize_test_environment(&testing.into());
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
+
+    // Add some contributors and one verifier to the queue.
+    let contributor_1 = create_contributor_test_details("1");
+    let contributor_2 = create_contributor_test_details("2");
+    let contributor_3 = create_contributor_test_details("3");
+    let verifier_1 = create_verifier_test_details("1");
+    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_2.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor_3.participant.clone(), 10).unwrap();
+    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 1.
+    coordinator.update().unwrap();
+    assert_eq!(1, coordinator.current_round_height().unwrap());
+
+    // Make some contributions
+    let k = 3;
+    for _ in 0..k {
+        contributor_1.contribute_to(&coordinator).unwrap();
+        contributor_2.contribute_to(&coordinator).unwrap();
+        contributor_3.contribute_to(&coordinator).unwrap();
+
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&coordinator).unwrap();
+    }
+
+    let storage_lock = coordinator.storage();
+
+    {
+        let round = coordinator.current_round().unwrap();
+        let storage_read = storage_lock.read().unwrap();
+        let storage = &*storage_read;
+        check_round_matches_storage_files(&**storage, &round);
+    }
+
+    let _locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
+    let _locators = coordinator.drop_participant(&contributor_2.participant).unwrap();
+
+    coordinator.update().unwrap();
+
+    {
+        let round = coordinator.current_round().unwrap();
+        let storage_read = storage_lock.read().unwrap();
+        let storage = &*storage_read;
+        check_round_matches_storage_files(&**storage, &round);
+    }
+
+    fn contribute_verify_until_no_tasks(
+        contributor: &ContributorTestDetails,
+        verifier: &VerifierTestDetails,
+        coordinator: &Coordinator,
+    ) -> anyhow::Result<bool> {
+        match contributor.contribute_to(coordinator) {
+            Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
+            Err(CoordinatorError::PreviousContributionMissing { current_task: _ }) => Ok(false),
+            Ok(_) => {
+                verifier.verify(&coordinator)?;
+                Ok(false)
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    // Contribute to the round 1
+    let mut all_complete = false;
+    let mut count = 0;
+    while !all_complete {
+        let c3_complete = contribute_verify_until_no_tasks(&contributor_3, &verifier_1, &coordinator).unwrap();
+        let rc1_complete =
+            contribute_verify_until_no_tasks(&replacement_contributor_1, &verifier_1, &coordinator).unwrap();
+        let rc2_complete =
+            contribute_verify_until_no_tasks(&replacement_contributor_2, &verifier_1, &coordinator).unwrap();
+
+        all_complete = c3_complete && rc1_complete && rc2_complete;
+        count += 1;
+
+        if count > 50 {
+            panic!("There have been too many attempts to make contributions")
+        }
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+
+    assert_eq!(2, coordinator.current_round_height().unwrap());
+    assert_eq!(0, coordinator.number_of_queue_contributors());
+    assert_eq!(0, coordinator.number_of_queue_verifiers());
+}
+
+fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
+    debug!("Checking round {}", round.round_height());
+    for chunk in round.chunks() {
+        debug!("Checking chunk {}", chunk.chunk_id());
+        let initial_challenge_location = if let Some(current_contributed_location) =
+            chunk.get_contribution(0).unwrap().get_verified_location().as_ref()
+        {
+            current_contributed_location
+        } else {
+            tracing::warn!(
+                "No initial challenge found for round {} chunk {}",
+                round.round_height(),
+                chunk.chunk_id()
+            );
+            continue;
+        };
+        let path = Path::new(&initial_challenge_location);
+        let chunk_dir = path.parent().unwrap();
+
+        let n_files = std::fs::read_dir(&chunk_dir).unwrap().count();
+
+        let contributions_complete = chunk.only_contributions_complete(round.expected_number_of_contributions());
+
+        let mut expected_n_files = 0;
+
+        let contributions = chunk.get_contributions();
+        let last_index = contributions.len() - 1;
+        for (index, (contribution_id, contribution)) in contributions.iter().enumerate() {
+            if let Some(path) = contribution.get_contributed_location() {
+                let locator = storage.to_locator(&path).unwrap();
+                assert!(storage.exists(&locator));
+                expected_n_files += 1;
+            }
+
+            if let Some(path) = contribution.get_contributed_signature_location() {
+                let locator = storage.to_locator(&path).unwrap();
+                assert!(storage.exists(&locator));
+                expected_n_files += 1;
+            }
+
+            if let Some(path) = contribution.get_verified_location() {
+                let locator = storage.to_locator(&path).unwrap();
+                assert!(storage.exists(&locator));
+
+                // the final contribution's verification goes in the next round's directory
+                if (!contributions_complete) || last_index != index {
+                    expected_n_files += 1;
+                }
+            }
+
+            if let Some(path) = contribution.get_verified_signature_location() {
+                // TODO: for some reason contribution 0 for round 0
+                // and round 1 is missing a signature file, this could
+                // be a bug.
+                if *contribution_id != 0 {
+                    let locator = storage.to_locator(&path).unwrap();
+                    assert!(storage.exists(&locator));
+
+                    // the final contribution's verification goes in the next round's directory
+                    if (!contributions_complete) || last_index != index {
+                        expected_n_files += 1;
+                    }
+                }
+            }
+        }
+
+        if expected_n_files != n_files {
+            panic!(
+                "Error: For round {} chunk {}, expected number of files according to round state ({}) \
+                does not match the actual number of files ({}) in the chunk \
+                directory {:?}",
+                round.round_height(),
+                chunk.chunk_id(),
+                expected_n_files,
+                n_files,
+                chunk_dir
+            )
+        }
+    }
 }
 
 /// Drops a contributor and updates verifier tasks
@@ -1407,6 +1630,7 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
 
     // Drop the contributor 1 from the current round.
     let locators = coordinator.drop_participant(&contributor1)?;
+    // Number of files affected by the drop.
     assert_eq!(&number_of_chunks - 2, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -1542,7 +1766,8 @@ fn try_lock_blocked() -> anyhow::Result<()> {
      */
 
     // Lock first chunk for contributor 2.
-    let (_, _, _, response) = coordinator.try_lock(&contributor2)?;
+    let (_, locked_locators) = coordinator.try_lock(&contributor2)?;
+    let response_locator = locked_locators.next_contribution();
 
     // Run contributions for the first bucket as contributor 1.
     let bucket_size = bucket_size(number_of_chunks as u64, 2);
@@ -1559,7 +1784,10 @@ fn try_lock_blocked() -> anyhow::Result<()> {
 
     // Run contribution on the locked chunk as contributor 2.
     {
-        let (round_height, chunk_id, contribution_id, _) = coordinator.parse_contribution_file_locator(&response)?;
+        let round_height = response_locator.round_height();
+        let chunk_id = response_locator.chunk_id();
+        let contribution_id = response_locator.contribution_id();
+
         coordinator.run_computation(
             round_height,
             chunk_id,
@@ -1576,7 +1804,10 @@ fn try_lock_blocked() -> anyhow::Result<()> {
     // This operation should be blocked by the verifier,
     // who needs to verify this chunk in order for contributor 1 to acquire the lock.
     let result = coordinator.try_lock(&contributor1);
-    assert!(result.is_err());
+    match result {
+        Err(CoordinatorError::ContributionMissingVerification) => {}
+        _ => panic!("Unexpected result: {:#?}", result),
+    }
 
     // Clear all pending verifications, so the locked chunk is released as well.
     while coordinator.verify(&verifier, &verifier_signing_key).is_ok() {}
@@ -1731,6 +1962,7 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
 
     // Drop the contributor from the current round.
     let locators = coordinator.drop_participant(&contributor1)?;
+    // Number of files affected by the drop.
     assert_eq!(number_of_chunks, locators.len());
     assert_eq!(false, coordinator.is_queue_contributor(&contributor1));
     assert_eq!(false, coordinator.is_queue_contributor(&contributor2));

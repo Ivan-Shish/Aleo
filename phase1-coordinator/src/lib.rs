@@ -52,7 +52,7 @@ pub use objects::{ContributionFileSignature, ContributionState, Participant, Rou
 
 mod serialize;
 
-pub(crate) mod storage;
+pub mod storage;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
