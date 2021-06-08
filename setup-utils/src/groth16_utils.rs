@@ -38,12 +38,10 @@ impl<E: PairingEngine> PartialEq for Groth16Params<E> {
 /// Performs an IFFT over the provided evaluation domain to the provided
 /// vector of affine points. It then normalizes and returns them back into
 /// affine form
-fn to_coeffs<F, C, E>(domain: &E, coeffs: &[C]) -> Vec<C>
+fn to_coeffs<F, C>(domain: &EvaluationDomain<F>, coeffs: &[C]) -> Vec<C>
 where
-    E: EvaluationDomain<F>,
     F: PrimeField,
     C: AffineCurve,
-    C::Projective: std::ops::MulAssign<F>,
 {
     let mut coeffs = domain.ifft(&coeffs.iter().map(|e| e.into_projective()).collect::<Vec<_>>());
     C::Projective::batch_normalization(&mut coeffs);
@@ -56,7 +54,7 @@ where
 /// for radix2 evaluation domains
 fn h_query_groth16<C: AffineCurve>(powers: &[C], degree: usize) -> Vec<C> {
     cfg_into_iter!(0..degree - 1)
-        .map(|i| powers[i + degree] + powers[i].neg())
+        .map(|i| powers[i + degree].add(&powers[i].neg()))
         .collect()
 }
 
@@ -79,7 +77,7 @@ impl<E: PairingEngine> Groth16Params<E> {
         let _enter = span.enter();
 
         // Create the evaluation domain
-        let domain = Radix2EvaluationDomain::<E::Fr>::new(phase2_size).expect("could not create domain");
+        let domain = EvaluationDomain::<E::Fr>::new(phase2_size).expect("could not create domain");
 
         info!("converting powers of tau to lagrange coefficients");
 

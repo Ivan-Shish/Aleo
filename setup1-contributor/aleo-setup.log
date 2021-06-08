@@ -1,0 +1,19 @@
+[2mMay 28 22:23:55.865[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:24:56.194[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:27:15.376[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:30:56.479[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:41:35.285[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:45:51.426[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:45:51.702[0m [32m INFO[0m setup1_contributor::commands::contribute: Reliability checks completed successfully
+[2mMay 28 22:45:52.032[0m [33m WARN[0m setup1_contributor::commands::contribute: Failed to join the queue (error HTTP status client error (401 Unauthorized) for url (http://127.0.0.1:9000/v1/queue/contributor/join))
+[2mMay 28 22:49:27.141[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:52:08.008[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:52:30.785[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:53:43.895[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:53:44.478[0m [32m INFO[0m setup1_contributor::commands::contribute: Reliability checks completed successfully
+[2mMay 28 22:53:44.694[0m [32m INFO[0m setup1_contributor::commands::contribute: Attempting to join the queue with response: true
+[2mMay 28 22:54:31.722[0m [32m INFO[0m setup1_contributor::commands::contribute: Checking reliability score before joining the queue
+[2mMay 28 22:54:32.307[0m [32m INFO[0m setup1_contributor::commands::contribute: Reliability checks completed successfully
+[2mMay 28 22:54:32.499[0m [32m INFO[0m setup1_contributor::commands::contribute: Attempting to join the queue with response: false
+[2mMay 28 22:54:47.506[0m [32m INFO[0m setup1_contributor::commands::contribute: Performing heartbeat.
+[2mMay 28 22:55:17.720[0m [32m INFO[0m setup1_contributor::commands::contribute: Performing heartbeat.

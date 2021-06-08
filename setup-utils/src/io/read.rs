@@ -66,7 +66,7 @@ impl<R: Read> Deserializer for R {
                 if check_for_correctness == CheckForCorrectness::OnlyNonZero
                     || check_for_correctness == CheckForCorrectness::No
                 {
-                    G::deserialize_unchecked(self)?
+                    G::read(self)?
                 } else {
                     G::deserialize_uncompressed(self)?
                 }
