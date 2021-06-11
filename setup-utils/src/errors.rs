@@ -1,6 +1,7 @@
 use crate::ElementType;
 
-use snarkos_errors::{gadgets::SynthesisError, serialization::SerializationError};
+use snarkvm_r1cs::errors::synthesis::SynthesisError;
+use snarkvm_utilities::errors::SerializationError;
 
 use std::io;
 use thiserror::Error;

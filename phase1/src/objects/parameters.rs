@@ -1,7 +1,7 @@
 use setup_utils::UseCompression;
 
-use snarkos_models::curves::PairingEngine;
-use snarkos_utilities::ConstantSerializedSize;
+use snarkvm_curves::PairingEngine;
+use snarkvm_utilities::ConstantSerializedSize;
 
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -307,7 +307,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
+    use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
     fn curve_parameters_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
         let p = CurveParameters::<E>::new();

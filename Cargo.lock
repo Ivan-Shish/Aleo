@@ -90,6 +90,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43bb833f0bf979d8475d38fbf09ed3b8a55e1885fe93ad3f93239fc6a4f17b98"
+dependencies = [
+ "getrandom 0.2.3",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -343,30 +354,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bindgen"
-version = "0.54.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66c0bb6167449588ff70803f4127f0684f9063097eca5016f37eb52b92c2cf36"
-dependencies = [
- "bitflags",
- "cexpr",
- "cfg-if 0.1.10",
- "clang-sys",
- "clap",
- "env_logger",
- "lazy_static",
- "lazycell",
- "log",
- "peeking_take_while",
- "proc-macro2 1.0.27",
- "quote 1.0.7",
- "regex",
- "rustc-hash",
- "shlex",
- "which 3.1.1",
-]
-
-[[package]]
 name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -505,18 +492,6 @@ name = "cc"
 version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed67cbde08356238e75fc4656be4749481eeffb09e19f320a25237d5221c985d"
-dependencies = [
- "jobserver",
-]
-
-[[package]]
-name = "cexpr"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4aedb84272dbe89af497cf81375129abda4fc0a9e7c5d317498c15cc30c0d27"
-dependencies = [
- "nom",
-]
 
 [[package]]
 name = "cfg-if"
@@ -572,17 +547,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12f8e7987cbd042a63249497f41aed09f8e65add917ea6566effbc56578d6801"
 dependencies = [
  "generic-array 0.14.4",
-]
-
-[[package]]
-name = "clang-sys"
-version = "0.29.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe6837df1d5cba2397b835c8530f51723267e16abbf83892e9e5af4f0e5dd10a"
-dependencies = [
- "glob",
- "libc",
- "libloading",
 ]
 
 [[package]]
@@ -934,36 +898,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "curl"
-version = "0.4.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e268162af1a5fe89917ae25ba3b0a77c8da752bdc58e7dbb4f15b91fbd33756e"
-dependencies = [
- "curl-sys",
- "libc",
- "openssl-probe",
- "openssl-sys",
- "schannel",
- "socket2 0.3.19",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "curl-sys"
-version = "0.4.38+curl-7.73.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "498ecfb4f59997fd40023d62a9f1e506e768b2baeb59a1d311eb9751cdcd7e3f"
-dependencies = [
- "cc",
- "libc",
- "libz-sys",
- "openssl-sys",
- "pkg-config",
- "vcpkg",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "curve25519-dalek"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1110,19 +1044,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "801bbab217d7f79c0062f4f7205b5d4427c6d1a7bd7aafdd1475f7c59d62b283"
 dependencies = [
  "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
-dependencies = [
- "atty",
- "humantime",
- "log",
- "regex",
- "termcolor",
 ]
 
 [[package]]
@@ -1443,7 +1364,6 @@ dependencies = [
  "cfg-if 0.1.10",
  "libc",
  "wasi 0.9.0+wasi-snapshot-preview1",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1464,12 +1384,6 @@ name = "gimli"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6503fe142514ca4799d4c26297c4248239fe8838d827db6bd6065c6ed29a6ce"
-
-[[package]]
-name = "glob"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "groth16"
@@ -1554,6 +1468,15 @@ name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
+
+[[package]]
+name = "hashbrown"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+dependencies = [
+ "ahash",
+]
 
 [[package]]
 name = "heck"
@@ -1654,15 +1577,6 @@ name = "httpdate"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05842d0d43232b23ccb7060ecb0f0626922c21f30012e97b767b30afd4a5d4b9"
-
-[[package]]
-name = "humantime"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
-dependencies = [
- "quick-error",
-]
 
 [[package]]
 name = "hyper"
@@ -1860,7 +1774,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "824845a0bf897a9042383849b02c1bc219c2383772efcd5c6f9766fa4b81aef3"
 dependencies = [
  "autocfg",
- "hashbrown",
+ "hashbrown 0.9.1",
 ]
 
 [[package]]
@@ -1944,15 +1858,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6f3ad7b9d11a0c00842ff8de1b60ee58661048eb8049ed33c73594f359d7e6"
 
 [[package]]
-name = "jobserver"
-version = "0.1.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c71313ebb9439f74b00d9d2dcec36440beaf57a6aa0623068441dd7cd81a7f2"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1991,12 +1896,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
 name = "lexical-core"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2014,40 +1913,6 @@ name = "libc"
 version = "0.2.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
-
-[[package]]
-name = "libloading"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"
-dependencies = [
- "cc",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "librocksdb-sys"
-version = "6.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb5b56f651c204634b936be2f92dbb42c36867e00ff7fe2405591f3b9fa66f09"
-dependencies = [
- "bindgen",
- "cc",
- "glob",
- "libc",
-]
-
-[[package]]
-name = "libz-sys"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602113192b08db8f38796c4e85c39e960c145965140e918018bcde1952429655"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "locale_config"
@@ -2490,12 +2355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeking_take_while"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
-
-[[package]]
 name = "percent-encoding"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2528,22 +2387,19 @@ dependencies = [
  "itertools 0.9.0",
  "num-traits",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.3",
  "rayon",
  "rusty-hook",
  "serde",
  "setup-utils",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-marlin",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-objects 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-polycommit",
- "snarkos-posw",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-profiler",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-polycommit",
+ "snarkvm-posw",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "tracing",
 ]
 
@@ -2555,12 +2411,11 @@ dependencies = [
  "hex",
  "memmap",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.3",
  "rand_xorshift 0.2.0",
  "rustc_version 0.3.0",
  "setup-utils",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkvm-curves",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
@@ -2578,7 +2433,7 @@ dependencies = [
  "memmap",
  "once_cell",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.3",
  "rayon",
  "serde",
  "serde-aux",
@@ -2587,8 +2442,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkvm-curves",
  "thiserror",
  "tokio 0.3.1",
  "tracing",
@@ -2601,15 +2455,16 @@ name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
  "console_error_panic_hook",
+ "getrandom 0.2.3",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.3",
  "rand_xorshift 0.2.0",
  "rustc_version 0.3.0",
  "serde",
  "serde_derive",
  "setup-utils",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkvm-curves",
+ "snarkvm-fields",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2636,11 +2491,11 @@ dependencies = [
  "rayon",
  "rusty-hook",
  "setup-utils",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms",
+ "snarkos-curves",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-utilities",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2716,7 +2571,7 @@ dependencies = [
  "nom",
  "percent-encoding 2.1.0",
  "secrecy",
- "which 4.0.2",
+ "which",
  "zeroize",
 ]
 
@@ -3128,16 +2983,6 @@ dependencies = [
  "untrusted",
  "web-sys",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "rocksdb"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12069b106981c6103d3eab7dd1c86751482d0779a520b7c14954c8b586c1e643"
-dependencies = [
- "libc",
- "librocksdb-sys",
 ]
 
 [[package]]
@@ -3588,17 +3433,17 @@ dependencies = [
  "crossbeam",
  "num_cpus",
  "phase1",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
+ "rand 0.8.3",
+ "rand_chacha 0.3.0",
  "rayon",
  "rust-crypto",
  "rusty-hook",
  "serde",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
  "tracing",
  "typenum",
@@ -3641,7 +3486,7 @@ dependencies = [
  "phase1",
  "phase1-cli",
  "phase1-coordinator",
- "rand 0.7.3",
+ "rand 0.8.3",
  "reqwest",
  "secrecy",
  "serde",
@@ -3650,9 +3495,8 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-toolkit",
+ "snarkvm-curves",
  "structopt",
  "thiserror",
  "tokio 1.6.0",
@@ -3683,7 +3527,7 @@ dependencies = [
  "phase1",
  "phase1-cli",
  "phase1-coordinator",
- "rand 0.7.3",
+ "rand 0.8.3",
  "rand_xorshift 0.2.0",
  "reqwest",
  "serde",
@@ -3692,8 +3536,8 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-toolkit",
+ "snarkvm-curves",
  "structopt",
  "thiserror",
  "tokio 1.6.0",
@@ -3720,11 +3564,11 @@ dependencies = [
  "rand 0.7.3",
  "rand_xorshift 0.2.0",
  "setup-utils",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-curves",
  "snarkos-dpc",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-models",
+ "snarkos-parameters",
+ "snarkos-utilities",
  "thiserror",
  "tracing-subscriber",
 ]
@@ -3758,12 +3602,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shlex"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3791,27 +3629,6 @@ dependencies = [
 [[package]]
 name = "snarkos-algorithms"
 version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb07037b1575665f3a727ef444c513b4727dda85378c5eba26b4c881bc3046e8"
-dependencies = [
- "blake2 0.8.1",
- "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
- "rayon",
- "sha2",
- "smallvec",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "snarkos-algorithms"
-version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 dependencies = [
  "blake2 0.8.1",
@@ -3823,26 +3640,10 @@ dependencies = [
  "rayon",
  "sha2",
  "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-curves"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aee88d337863483d07cd91e5dbc1c12de1375c1a133c49fe18f771924a80d6e"
-dependencies = [
- "derivative",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "rustc_version 0.2.3",
- "serde",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-profiler",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -3855,20 +3656,9 @@ dependencies = [
  "rand_xorshift 0.2.0",
  "rustc_version 0.2.3",
  "serde",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-derives"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f6ce35f9f73c13e5381c6938747935ca105e22717998489c3e5ddb8c13120d"
-dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.7",
- "syn 1.0.72",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -3891,32 +3681,15 @@ dependencies = [
  "hex",
  "itertools 0.9.0",
  "rand 0.7.3",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-errors"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df927c3b41badf8a8479dd6b23340e4799bec44abb7a479cb253d912e888a1ca"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "bincode",
- "curl",
- "hex",
- "jsonrpc-core",
- "rocksdb",
- "thiserror",
- "toml",
+ "snarkos-algorithms",
+ "snarkos-curves",
+ "snarkos-errors",
+ "snarkos-gadgets",
+ "snarkos-models",
+ "snarkos-objects",
+ "snarkos-parameters",
+ "snarkos-profiler",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -3936,70 +3709,16 @@ dependencies = [
 [[package]]
 name = "snarkos-gadgets"
 version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f4bded425072f394dacf206323bcd3d2e199d6ec5f7ced3c36fb77f7d22300b"
-dependencies = [
- "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "snarkos-gadgets"
-version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 dependencies = [
  "derivative",
  "digest 0.8.1",
  "itertools 0.9.0",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-marlin"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b12c63bbb6a77d46c133a773556e1a97891e37cdd4a9b5e366d21247c147219"
-dependencies = [
- "blake2 0.8.1",
- "derivative",
- "digest 0.8.1",
- "rand_chacha 0.2.2",
- "rand_core 0.5.1",
- "rayon",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-polycommit",
- "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "snarkos-models"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d90d4fd9030e69dcbca1f7eaea3f14c08653f0f06600f42c2022e8cf72f82d"
-dependencies = [
- "bincode",
- "derivative",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "serde",
- "smallvec",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-algorithms",
+ "snarkos-curves",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -4014,30 +3733,8 @@ dependencies = [
  "rand_xorshift 0.2.0",
  "serde",
  "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-objects"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5ec3bdfbe179a157d1484e11ec65fdd3d2bf377ad1a7695753c5f613a57a790"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "chrono",
- "derivative",
- "hex",
- "once_cell",
- "rand 0.7.3",
- "serde",
- "sha2",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -4054,25 +3751,11 @@ dependencies = [
  "rand 0.7.3",
  "serde",
  "sha2",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-parameters"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8d7634a5cd35a680b81d58dbd842ee38413e81cd9ad6b8317cd93f84c9513c3"
-dependencies = [
- "curl",
- "hex",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-algorithms",
+ "snarkos-curves",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-utilities",
 ]
 
 [[package]]
@@ -4081,55 +3764,11 @@ version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 dependencies = [
  "hex",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms",
+ "snarkos-errors",
+ "snarkos-models",
+ "snarkos-utilities",
 ]
-
-[[package]]
-name = "snarkos-polycommit"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdad1535c73ffcfbf5d24f0caa786a25e6db27835debfbd22a0e9c58af938641"
-dependencies = [
- "derivative",
- "digest 0.8.1",
- "rand_core 0.5.1",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "snarkos-posw"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a5a903b2e2c2c6ebdadbf25768ac6c46e56ba73a5d0e5550c612c0e5427a8d"
-dependencies = [
- "blake2 0.8.1",
- "rand 0.7.3",
- "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-marlin",
- "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-objects 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-parameters 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-polycommit",
- "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkos-profiler"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0519c9371650425e332e3971ecfc691fbd1c67e03be15c20aba89ac8242ea2b"
 
 [[package]]
 name = "snarkos-profiler"
@@ -4159,24 +3798,12 @@ dependencies = [
 [[package]]
 name = "snarkos-utilities"
 version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f6e1ccf791ace8d28266d3067d0bf93e3a0c1beafa472f186f55866fe8a7d73"
-dependencies = [
- "bincode",
- "rand 0.7.3",
- "snarkos-derives 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "snarkos-utilities"
-version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 dependencies = [
  "bincode",
  "rand 0.7.3",
- "snarkos-derives 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-derives",
+ "snarkos-errors",
 ]
 
 [[package]]
@@ -4298,6 +3925,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "snarkvm-marlin"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef15310b32f87802a9011d4afb6f969035b75c976469826bc66f07942954bfc2"
+dependencies = [
+ "blake2 0.9.1",
+ "derivative",
+ "digest 0.9.0",
+ "hashbrown 0.11.2",
+ "rand 0.8.3",
+ "rand_chacha 0.3.0",
+ "rand_core 0.6.2",
+ "rayon",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-polycommit",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
+]
+
+[[package]]
 name = "snarkvm-parameters"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4305,6 +3956,47 @@ checksum = "423de9bd2138a73ae8eb7e7962d1c392adfb3c94f51f1a0de7ad0bd955a446d9"
 dependencies = [
  "hex",
  "snarkvm-algorithms",
+ "snarkvm-utilities",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-polycommit"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad666519a605b37c5fd6137ee293d03c9c52de65d8565886450a9cd43106d884"
+dependencies = [
+ "derivative",
+ "digest 0.9.0",
+ "hashbrown 0.11.2",
+ "rand_core 0.6.2",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
+]
+
+[[package]]
+name = "snarkvm-posw"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1af4fd2212a3fc46589fc5956c3df9e9d70c2ce22170dfa26a47b035be955d3"
+dependencies = [
+ "blake2 0.9.1",
+ "rand 0.8.3",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-marlin",
+ "snarkvm-parameters",
+ "snarkvm-polycommit",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
  "snarkvm-utilities",
  "thiserror",
 ]
@@ -4545,15 +4237,6 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "termcolor"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb6bfa289a4d7c5766392812c0a1f4c1ba45afa1ad47803c11e1f407d846d75f"
-dependencies = [
- "winapi-util",
 ]
 
 [[package]]
@@ -5224,15 +4907,6 @@ checksum = "ab146130f5f790d45f82aeeb09e55a256573373ec64409fc19a6fb82fb1032ae"
 dependencies = [
  "ring",
  "untrusted",
-]
-
-[[package]]
-name = "which"
-version = "3.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d011071ae14a2f6671d0b74080ae0cd8ebf3a6f8c9589a2cd45f23126fe29724"
-dependencies = [
- "libc",
 ]
 
 [[package]]

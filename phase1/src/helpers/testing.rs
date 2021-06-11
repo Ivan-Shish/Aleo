@@ -1,8 +1,8 @@
 use crate::{Phase1, Phase1Parameters, PublicKey};
 use setup_utils::*;
 
-use snarkos_models::curves::{AffineCurve, PairingEngine, ProjectiveCurve};
-use snarkos_utilities::UniformRand;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::UniformRand;
 
 use rand::{thread_rng, Rng};
 

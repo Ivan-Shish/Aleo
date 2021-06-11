@@ -1,7 +1,7 @@
 use crate::{buffer_size, CheckForCorrectness, Error, Result, UseCompression};
 
-use snarkos_algorithms::cfg_chunks;
-use snarkos_models::curves::AffineCurve;
+use snarkvm_algorithms::cfg_chunks;
+use snarkvm_curves::AffineCurve;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

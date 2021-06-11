@@ -2,9 +2,10 @@ use crate::{
     errors::{Error, VerificationError},
     Result,
 };
-use snarkos_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut};
-use snarkos_models::curves::{AffineCurve, Field, One, PairingEngine, PrimeField, ProjectiveCurve, Zero};
-use snarkos_utilities::{BigInteger, CanonicalSerialize, ConstantSerializedSize, UniformRand};
+use snarkvm_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::{Field, One, PrimeField, Zero};
+use snarkvm_utilities::{BigInteger, CanonicalSerialize, ConstantSerializedSize, UniformRand};
 
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
 use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
@@ -252,7 +253,7 @@ pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snarkos_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
+    use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
 
     #[test]
     fn test_hash_to_g2() {

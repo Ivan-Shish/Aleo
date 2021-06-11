@@ -15,10 +15,11 @@ crate-type = ["cdylib", "rlib"]
 phase1 = { path = "../phase1", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkos-curves = { version = "1.1.4", default-features = false }
-snarkos-models = { version = "1.1.4", default-features = false }
+snarkvm-curves = { version = "0.5.4", default-features = false }
+snarkvm-fields = { version = "0.5.4", default-features = false }
 
-rand = { version = "0.7" }
+getrandom = "0.2" # required because rand directly doesn't have a wasm feature
+rand = "0.8"
 serde = { version = "1.0.114" }
 serde_derive = { version = "1.0.114" }
 tracing = { version = "0.1.21" }
@@ -40,7 +41,7 @@ rustc_version = { version = "0.3" }
 
 [features]
 default = []
-wasm = ["console_error_panic_hook", "phase1/wasm", "rand/wasm-bindgen", "setup-utils/wasm"]
+wasm = ["console_error_panic_hook", "phase1/wasm", "getrandom/js", "setup-utils/wasm"]
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm

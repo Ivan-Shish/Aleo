@@ -1,5 +1,5 @@
 use super::*;
-use snarkos_models::curves::{batch_inversion, Field};
+use snarkvm_fields::{batch_inversion, Field};
 
 impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     ///
@@ -301,8 +301,7 @@ mod tests {
     use crate::helpers::testing::generate_input;
     use setup_utils::{batch_exp, derive_rng_from_seed, generate_powers_of_tau};
 
-    use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
-    use snarkos_models::curves::ProjectiveCurve;
+    use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, ProjectiveCurve};
 
     fn curve_computation_test<E: PairingEngine>(
         powers: usize,

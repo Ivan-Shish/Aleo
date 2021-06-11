@@ -14,8 +14,7 @@ use setup_utils::{
     UseCompression,
 };
 
-use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
-use snarkos_models::curves::PairingEngine;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
 use rand::Rng;
 use wasm_bindgen::prelude::*;

@@ -6,16 +6,17 @@ mod test {
 
     use blake2::Blake2s;
     use itertools::Itertools;
-    use snarkos_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
-    use snarkos_errors::gadgets::SynthesisError;
-    use snarkos_models::{
-        algorithms::SNARK,
-        curves::{AffineCurve, Field, PairingCurve},
-        gadgets::r1cs::{ConstraintSynthesizer, ConstraintSystem},
+    use snarkvm_algorithms::SNARK;
+    use snarkvm_curves::{
+        bls12_377::{Bls12_377, Fr, G1Affine, G2Affine},
+        AffineCurve,
+        PairingCurve,
     };
-    use snarkos_polycommit::{kzg10::UniversalParams, sonic_pc::SonicKZG10};
-    use snarkos_posw::{txids_to_roots, Marlin, PoswMarlin};
-    use snarkos_utilities::{serialize::*, UniformRand};
+    use snarkvm_fields::Field;
+    use snarkvm_polycommit::{kzg10::UniversalParams, sonic_pc::SonicKZG10};
+    use snarkvm_posw::{txids_to_roots, Marlin, PoswMarlin};
+    use snarkvm_r1cs::{errors::SynthesisError, ConstraintSynthesizer, ConstraintSystem};
+    use snarkvm_utilities::{serialize::*, UniformRand};
     use std::{collections::BTreeMap, io::Cursor, ops::MulAssign};
     use zexe_algebra::{
         bls12_377::{G1Affine as ZexeG1Affine, G2Affine as ZexeG2Affine},

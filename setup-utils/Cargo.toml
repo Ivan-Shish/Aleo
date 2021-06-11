@@ -14,19 +14,19 @@ name = "math"
 harness = false
 
 [dependencies]
-snarkos-algorithms = { version = "1.1.4", default-features = false }
-snarkos-curves = { version = "1.1.4", default-features = false }
-snarkos-errors = { version = "1.1.4", default-features = false }
-snarkos-models = { version = "1.1.4", default-features = false }
-snarkos-utilities = { version = "1.1.4", default-features = false }
+snarkvm-algorithms = { version = "0.5.4", default-features = false, features = ["fft"] }
+snarkvm-curves = { version = "0.5.4", default-features = false }
+snarkvm-fields = { version = "0.5.4", default-features = false }
+snarkvm-r1cs = { version = "0.5.4", default-features = false }
+snarkvm-utilities = { version = "0.5.4", default-features = false }
 
 blake2 = { version = "0.8.1" }
 blake2s_simd = { version = "0.5.11" }
 cfg-if = { version = "0.1.10" }
 crossbeam = { version = "0.8.0" }
 num_cpus = { version = "1.12.0" }
-rand = { version = "0.7.3" }
-rand_chacha = { version = "0.2.1" }
+rand = "0.8"
+rand_chacha = "0.3"
 rayon = { version = "1.4.1", optional = true }
 rust-crypto = { version = "0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -43,6 +43,6 @@ rusty-hook = { version = "0.11.2" }
 [features]
 default = ["parallel"]
 cli = ["parallel", "rust-crypto"]
-wasm = ["rand/wasm-bindgen"]
+wasm = []
 
 parallel = ["rayon"]

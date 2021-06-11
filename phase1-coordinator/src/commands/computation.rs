@@ -9,8 +9,7 @@ use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
 use rand::Rng;
-use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
-use snarkos_models::curves::PairingEngine as Engine;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as Engine};
 use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
 

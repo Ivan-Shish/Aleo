@@ -1,9 +1,8 @@
 use crate::Phase1Parameters;
 use setup_utils::{Error, UseCompression};
 
-use snarkos_errors::serialization::SerializationError;
-use snarkos_models::curves::PairingEngine;
-use snarkos_utilities::{CanonicalDeserialize, CanonicalSerialize};
+use snarkvm_curves::PairingEngine;
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 
 use std::io::{Read, Write};
 

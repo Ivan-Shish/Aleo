@@ -22,10 +22,10 @@ use setup_utils::*;
 use crate::helpers::accumulator::*;
 
 #[cfg(not(feature = "wasm"))]
-use snarkos_models::curves::Zero;
+use snarkvm_fields::Zero;
 
-use snarkos_models::curves::{AffineCurve, PairingEngine, ProjectiveCurve};
-use snarkos_utilities::UniformRand;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::UniformRand;
 
 use rand::Rng;
 use tracing::{debug, info, info_span, trace};

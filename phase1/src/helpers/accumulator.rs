@@ -4,12 +4,12 @@ use crate::{helpers::buffers::*, Phase1Parameters, ProvingSystem};
 use cfg_if::cfg_if;
 use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
-use snarkos_models::curves::{AffineCurve, PairingEngine};
+use snarkvm_curves::{AffineCurve, PairingEngine};
 
 #[cfg(not(feature = "wasm"))]
 use crate::ContributionMode;
 #[cfg(not(feature = "wasm"))]
-use snarkos_models::curves::{FpParameters, PrimeField, Zero};
+use snarkvm_fields::{FieldParameters, PrimeField, Zero};
 
 #[allow(type_alias_bounds)]
 type AccumulatorElements<E: PairingEngine> = (
@@ -34,7 +34,7 @@ cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         use crate::PublicKey;
 
-        use snarkos_algorithms::cfg_iter;
+        use snarkvm_algorithms::cfg_iter;
 
         #[cfg(feature = "parallel")]
         use rayon::prelude::*;
@@ -102,7 +102,7 @@ cfg_if! {
             )?;
             // TODO(kobi): replace with batch subgroup check
             let all_in_prime_order_subgroup = cfg_iter!(elements).all(|p| {
-                p.mul(<<C::ScalarField as PrimeField>::Params as FpParameters>::MODULUS)
+                p.mul(<<C::ScalarField as PrimeField>::Parameters as FieldParameters>::MODULUS)
                     .is_zero()
             });
             if !all_in_prime_order_subgroup {
@@ -315,7 +315,7 @@ mod tests {
     use super::*;
     use crate::helpers::testing::random_point_vec;
 
-    use snarkos_curves::bls12_377::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     use rand::thread_rng;
 

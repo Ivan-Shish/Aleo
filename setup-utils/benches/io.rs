@@ -1,7 +1,6 @@
 use setup_utils::{BatchDeserializer, BatchSerializer, UseCompression};
 
-use snarkos_curves::bls12_377::Bls12_377;
-use snarkos_models::curves::{AffineCurve, PairingEngine};
+use snarkvm_curves::{bls12_377::Bls12_377, AffineCurve, PairingEngine};
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 

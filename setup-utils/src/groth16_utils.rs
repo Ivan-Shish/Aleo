@@ -2,8 +2,9 @@
 /// to Phase 2-compatible Lagrange Coefficients.
 use crate::{buffer_size, CheckForCorrectness, Deserializer, Result, Serializer, UseCompression};
 
-use snarkos_algorithms::{cfg_into_iter, cfg_iter, fft::EvaluationDomain};
-use snarkos_models::curves::{AffineCurve, PairingEngine, PrimeField, ProjectiveCurve};
+use snarkvm_algorithms::{cfg_into_iter, cfg_iter, fft::EvaluationDomain};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::PrimeField;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -269,7 +270,7 @@ mod tests {
         ProvingSystem,
     };
 
-    use snarkos_curves::bls12_377::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
         fn compat(compression: UseCompression) -> UseCompressionPhase1 {

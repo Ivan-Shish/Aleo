@@ -1,7 +1,7 @@
 use phase1::{Phase1, Phase1Parameters};
 use setup_utils::{blank_hash, calculate_hash, print_hash, UseCompression};
 
-use snarkos_models::curves::PairingEngine as Engine;
+use snarkvm_curves::PairingEngine as Engine;
 
 use memmap::*;
 use std::{fs::OpenOptions, io::Write};

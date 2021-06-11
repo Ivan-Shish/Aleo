@@ -5,8 +5,7 @@ use phase1::{
 };
 use setup_utils::{CheckForCorrectness, Groth16Params, Result, UseCompression};
 
-use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
-use snarkos_models::curves::PairingEngine as Engine;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
 use gumdrop::Options;
 use memmap::*;

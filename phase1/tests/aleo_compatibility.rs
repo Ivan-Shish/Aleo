@@ -1,9 +1,13 @@
 use phase1::{helpers::testing::setup_verify, Phase1Parameters, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
-use snarkos_curves::{bls12_377::Bls12_377 as AleoBls12_377, bw6_761::BW6_761 as AleoBW6};
-use snarkos_models::curves::{AffineCurve as AleoAffineCurve, PairingEngine as AleoPairingEngine};
-use snarkos_utilities::serialize::{
+use snarkvm_curves::{
+    bls12_377::Bls12_377 as AleoBls12_377,
+    bw6_761::BW6_761 as AleoBW6,
+    AffineCurve as AleoAffineCurve,
+    PairingEngine as AleoPairingEngine,
+};
+use snarkvm_utilities::serialize::{
     CanonicalDeserialize as AleoCanonicalDeserialize,
     ConstantSerializedSize as AleoConstantSerializedSize,
 };

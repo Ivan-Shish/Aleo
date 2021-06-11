@@ -6,7 +6,7 @@ use phase1::{
 };
 use setup_utils::*;
 
-use snarkos_curves::bls12_377::Bls12_377;
+use snarkvm_curves::bls12_377::Bls12_377;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rand::thread_rng;
