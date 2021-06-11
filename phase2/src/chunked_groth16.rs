@@ -9,16 +9,10 @@ use crate::{
 };
 use setup_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
 
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    Field,
-    PairingEngine,
-    ProjectiveCurve,
-};
-use zexe_groth16::VerifyingKey;
+use snarkvm_algorithms::snark::groth16::VerifyingKey;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::Field;
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, ConstantSerializedSize};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::Rng;

@@ -1,8 +1,6 @@
-use snarkos_errors::gadgets::SynthesisError;
-use snarkos_models::{
-    curves::{Field, PairingEngine},
-    gadgets::r1cs::{ConstraintSynthesizer, ConstraintSystem},
-};
+use snarkvm_curves::PairingEngine;
+use snarkvm_fields::Field;
+use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 
 // circuit proving knowledge of a square root
 // when generating the Setup, the element inside is None
@@ -43,13 +41,13 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snarkos_algorithms::snark::groth16::{
+    use snarkvm_algorithms::snark::groth16::{
         create_random_proof,
         generate_random_parameters,
         prepare_verifying_key,
         verify_proof,
     };
-    use snarkos_curves::bls12_377::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     // no need to run these tests, they're just added as a guideline for how to
     // consume the circuit

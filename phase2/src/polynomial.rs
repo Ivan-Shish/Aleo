@@ -1,5 +1,6 @@
-use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, Zero};
-use zexe_r1cs_core::Index;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::Zero;
+use snarkvm_r1cs::Index;
 
 use rayon::prelude::*;
 
@@ -110,10 +111,9 @@ mod tests {
     use super::*;
     use phase1::helpers::testing::random_point_vec;
     use rand::{thread_rng, Rng};
-    use zexe_algebra::{
-        bls12_377::{Bls12_377, Fr, G1Affine, G1Projective},
-        UniformRand,
-    };
+    use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G1Projective};
+    use snarkvm_r1cs::Index;
+    use snarkvm_utilities::UniformRand;
 
     fn gen_input(rng: &mut impl Rng) -> Vec<(Fr, Index)> {
         let scalar = (0..6).map(|_| Fr::rand(rng)).collect::<Vec<_>>();

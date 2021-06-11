@@ -4,14 +4,8 @@
 //! Dispose of the private key ASAP once it's been used.
 use setup_utils::{hash_to_g2, CheckForCorrectness, Deserializer, HashWriter, Result, Serializer, UseCompression};
 
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    PairingEngine,
-    ProjectiveCurve,
-    UniformRand,
-};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, UniformRand};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::Rng;

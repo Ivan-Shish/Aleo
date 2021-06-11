@@ -3,9 +3,9 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         use super::polynomial::eval;
-        use zexe_algebra::{ Zero };
-        use zexe_groth16::{VerifyingKey};
-        use zexe_r1cs_core::SynthesisError;
+        use snarkvm_fields::Zero;
+        use snarkvm_algorithms::snark::groth16::VerifyingKey;
+        use snarkvm_r1cs::SynthesisError;
     }
 }
 
@@ -13,14 +13,11 @@ use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
 
 use setup_utils::*;
 
-use snarkos_algorithms::snark::groth16::KeypairAssembly;
-use snarkos_models::{
-    curves::{One, PairingEngine as AleoPairingEngine},
-    gadgets::r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable},
-};
-use snarkos_utilities::serialize::CanonicalSerialize as AleoSerialize;
-use zexe_algebra::{AffineCurve, CanonicalDeserialize, CanonicalSerialize, Field, PairingEngine, ProjectiveCurve};
-use zexe_groth16::Parameters;
+use snarkvm_algorithms::snark::groth16::{KeypairAssembly, ProvingKey};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::{Field, One};
+use snarkvm_r1cs::{ConstraintSynthesizer as AleoR1CS, ConstraintSystem, Index, Variable};
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize};
 
 use rand::Rng;
 use std::{
@@ -28,11 +25,11 @@ use std::{
     io::{self, Read, Write},
 };
 
-/// MPC parameters are just like Zexe's `Parameters` except, when serialized,
+/// MPC parameters are just like snarkVM `ProvingKey` except, when serialized,
 /// they contain a transcript of contributions at the end, which can be verified.
 #[derive(Clone)]
 pub struct MPCParameters<E: PairingEngine> {
-    pub params: Parameters<E>,
+    pub params: ProvingKey<E>,
     pub cs_hash: [u8; 64],
     pub contributions: Vec<PublicKey<E>>,
 }
@@ -119,7 +116,7 @@ impl<E: PairingEngine> MPCParameters<E> {
             delta_g2: E::G2Affine::prime_subgroup_generator(),
             gamma_abc_g1,
         };
-        let params = Parameters {
+        let params = ProvingKey {
             vk,
             beta_g1: params.beta_g1,
             delta_g1: E::G1Affine::prime_subgroup_generator(),
@@ -138,8 +135,8 @@ impl<E: PairingEngine> MPCParameters<E> {
         })
     }
 
-    /// Get the underlying Groth16 `Parameters`
-    pub fn get_params(&self) -> &Parameters<E> {
+    /// Get the underlying Groth16 `ProvingKey`
+    pub fn get_params(&self) -> &ProvingKey<E> {
         &self.params
     }
 
@@ -276,7 +273,7 @@ impl<E: PairingEngine> MPCParameters<E> {
     }
 
     /// Serialize these parameters. The serialized parameters
-    /// can be read by Zexe's Groth16 `Parameters`.
+    /// can be read by snarkVM Groth16 `ProvingKey`.
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
         self.params.serialize(writer)?;
         writer.write_all(&self.cs_hash)?;
@@ -287,7 +284,7 @@ impl<E: PairingEngine> MPCParameters<E> {
 
     /// Deserialize these parameters.
     pub fn read<R: Read>(mut reader: R) -> Result<MPCParameters<E>> {
-        let params = Parameters::deserialize(&mut reader)?;
+        let params = ProvingKey::deserialize(&mut reader)?;
 
         let mut cs_hash = [0u8; 64];
         reader.read_exact(&mut cs_hash)?;
@@ -373,7 +370,7 @@ pub fn verify_transcript<E: PairingEngine>(cs_hash: [u8; 64], contributions: &[P
 }
 
 #[allow(unused)]
-fn hash_params<E: PairingEngine>(params: &Parameters<E>) -> Result<[u8; 64]> {
+fn hash_params<E: PairingEngine>(params: &ProvingKey<E>) -> Result<[u8; 64]> {
     let sink = io::sink();
     let mut sink = HashWriter::new(sink);
     params.serialize(&mut sink)?;
@@ -386,7 +383,7 @@ fn hash_params<E: PairingEngine>(params: &Parameters<E>) -> Result<[u8; 64]> {
 /// Converts an R1CS circuit to QAP form
 pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::Fr>>(
     circuit: C,
-) -> Result<zexe_groth16::KeypairAssembly<Zexe>> {
+) -> Result<KeypairAssembly<Zexe>> {
     // This is a snarkOS keypair assembly
     let mut assembly = KeypairAssembly::<E> {
         num_inputs: 0,
@@ -424,7 +421,7 @@ pub fn circuit_to_qap<E: AleoPairingEngine, Zexe: PairingEngine, C: AleoR1CS<E::
     assembly
         .serialize(&mut serialized)
         .expect("serializing the KeypairAssembly should not fail");
-    let assembly = zexe_groth16::KeypairAssembly::<Zexe>::deserialize(&mut &serialized[..])?;
+    let assembly = KeypairAssembly::<Zexe>::deserialize(&mut &serialized[..])?;
 
     Ok(assembly)
 }
