@@ -18,8 +18,3 @@ Must be used with compatible versions of **serde** and **serde_json**.
 
 Right now the errors in encode/decode functions are the same as returned
 by **serde_json**
-
-## Workspace and lockfile
-
-Since it's a library, it doesn't have a lockfile. There's no benefit in including it
-in a workspace either, because it is not supposed to be built alone.

@@ -14,5 +14,6 @@ pub mod cli;
 pub mod commands;
 pub mod errors;
 pub mod objects;
+mod reliability;
 pub mod tasks;
 pub mod utils;
