@@ -894,13 +894,12 @@ pub async fn contribute_subcommand(opts: &ContributeOptions) -> anyhow::Result<(
         })
         .with_context(|| format!("Failed to fetch the coordinator public settings"))?;
 
-    let environment = crate::utils::environment_by_setup_kind(&public_settings.setup);
-
-    start_contributor(opts, &environment).await;
-    Ok(())
+    start_contributor(opts, &public_settings).await
 }
 
-async fn start_contributor(opts: &ContributeOptions, environment: &Environment) {
+async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSettings) -> Result<()> {
+    let environment = crate::utils::environment_by_setup_kind(&public_settings.setup);
+
     // Initialize tracing logger. Stored to `aleo-setup.log`.
     let appender = tracing_appender::rolling::never(".", "aleo-setup.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
@@ -916,7 +915,13 @@ async fn start_contributor(opts: &ContributeOptions, environment: &Environment) 
 
     // Initialize the contributor.
     let contribute =
-        Contribute::new(opts, environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
+        Contribute::new(opts, &environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
+
+    if public_settings.check_reliability {
+        tracing::info!("Checking reliability score before joining the queue");
+        crate::reliability::check(&opts.api_url, &contribute.private_key).await?;
+        tracing::info!("Reliability checks completed successfully");
+    }
 
     // Run the contributor.
     let contribution = match curve_kind {
@@ -928,6 +933,8 @@ async fn start_contributor(opts: &ContributeOptions, environment: &Environment) 
         Err(e) => info!("Error occurred during contribution: {}", e.to_string()),
         _ => {}
     }
+
+    Ok(())
 }
 
 /// Check that every contribution in the chunk has been verified.
