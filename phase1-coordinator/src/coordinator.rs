@@ -185,7 +185,6 @@ pub enum CoordinatorError {
     TryFromSliceError(std::array::TryFromSliceError),
     UnauthorizedChunkContributor,
     UnauthorizedChunkVerifier,
-    Url(url::ParseError),
     VerificationFailed,
     VerificationOnContributionIdZero,
     VerifierMissing,
@@ -238,12 +237,6 @@ impl From<std::io::Error> for CoordinatorError {
 impl From<std::num::ParseIntError> for CoordinatorError {
     fn from(error: std::num::ParseIntError) -> Self {
         CoordinatorError::Integer(error)
-    }
-}
-
-impl From<url::ParseError> for CoordinatorError {
-    fn from(error: url::ParseError) -> Self {
-        CoordinatorError::Url(error)
     }
 }
 
