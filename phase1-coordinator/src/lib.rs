@@ -50,8 +50,6 @@ pub mod environment;
 pub mod objects;
 pub use objects::{ContributionFileSignature, ContributionState, Participant, Round};
 
-mod serialize;
-
 pub mod storage;
 
 #[cfg(any(test, feature = "testing"))]

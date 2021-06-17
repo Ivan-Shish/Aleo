@@ -1,6 +1,5 @@
 use crate::{
     objects::Participant,
-    serialize::string,
     storage::{Disk, Storage},
 };
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
@@ -9,8 +8,6 @@ use setup_utils::{CheckForCorrectness, UseCompression};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_with::DurationSecondsWithFrac;
-use tracing::Level;
-use url::Url;
 
 type BatchSize = usize;
 type ChunkSize = usize;
@@ -263,13 +260,6 @@ pub struct Environment {
     deployment: Deployment,
     /// The base directory for disk storage of this coordinator.
     local_base_directory: String,
-    /// The logging verbosity of this coordinator.
-    #[serde(with = "string")]
-    verbosity: Level,
-    /// The network address for the coordinator.
-    address: String,
-    /// The network port for the coordinator.
-    port: u16,
 }
 
 impl Environment {
@@ -457,34 +447,6 @@ impl Environment {
     }
 
     ///
-    /// Returns the logging verbosity of this coordinator.
-    ///
-    pub fn verbosity(&self) -> &tracing::Level {
-        &self.verbosity
-    }
-
-    ///
-    /// Returns the network address of the coordinator.
-    ///
-    pub fn address(&self) -> &str {
-        &self.address
-    }
-
-    ///
-    /// Returns the network port of the coordinator.
-    ///
-    pub const fn port(&self) -> u16 {
-        self.port
-    }
-
-    ///
-    /// Returns the base URL for the coordinator.
-    ///
-    pub fn base_url(&self) -> Url {
-        format!("http://{}:{}", self.address, self.port).parse().unwrap()
-    }
-
-    ///
     /// Returns the appropriate number of chunks for the coordinator
     /// to run given a proof system, power and chunk size.
     ///
@@ -564,20 +526,6 @@ impl Testing {
         deployment
     }
 
-    #[inline]
-    pub fn verbosity(&self, verbosity: &str) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.verbosity = match verbosity {
-            "ERROR" => Level::ERROR,
-            "WARN" => Level::WARN,
-            "INFO" => Level::INFO,
-            "DEBUG" => Level::DEBUG,
-            "TRACE" => Level::TRACE,
-            _ => Level::TRACE,
-        };
-        deployment
-    }
-
     pub fn contributor_seen_timeout(&self, contributor_timeout: chrono::Duration) -> Self {
         let mut deployment = self.clone();
         deployment.environment.contributor_seen_timeout = contributor_timeout;
@@ -636,9 +584,6 @@ impl std::default::Default for Testing {
                 software_version: 1,
                 deployment: Deployment::Testing,
                 local_base_directory: "./transcript/testing".to_string(),
-                verbosity: Level::TRACE,
-                address: "localhost".to_string(),
-                port: 8080,
             },
         }
     }
@@ -686,20 +631,6 @@ impl Development {
 
         let mut deployment = self.clone();
         deployment.environment.coordinator_verifiers = verifiers.to_vec();
-        deployment
-    }
-
-    #[inline]
-    pub fn verbosity(&self, verbosity: &str) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.verbosity = match verbosity {
-            "ERROR" => Level::ERROR,
-            "WARN" => Level::WARN,
-            "INFO" => Level::INFO,
-            "DEBUG" => Level::DEBUG,
-            "TRACE" => Level::TRACE,
-            _ => Level::DEBUG,
-        };
         deployment
     }
 }
@@ -755,9 +686,6 @@ impl std::default::Default for Development {
                 software_version: 1,
                 deployment: Deployment::Development,
                 local_base_directory: "./transcript/development".to_string(),
-                verbosity: Level::DEBUG,
-                address: "0.0.0.0".to_string(),
-                port: 8080,
             },
         }
     }
@@ -807,20 +735,6 @@ impl Production {
         deployment.environment.coordinator_verifiers = verifiers.to_vec();
         deployment
     }
-
-    #[inline]
-    pub fn verbosity(&self, verbosity: &str) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.verbosity = match verbosity {
-            "ERROR" => Level::ERROR,
-            "WARN" => Level::WARN,
-            "INFO" => Level::INFO,
-            "DEBUG" => Level::DEBUG,
-            "TRACE" => Level::TRACE,
-            _ => Level::DEBUG,
-        };
-        deployment
-    }
 }
 
 impl From<Parameters> for Production {
@@ -868,9 +782,6 @@ impl std::default::Default for Production {
                 software_version: 1,
                 deployment: Deployment::Production,
                 local_base_directory: "./transcript".to_string(),
-                verbosity: Level::DEBUG,
-                address: "0.0.0.0".to_string(),
-                port: 443,
             },
         }
     }
