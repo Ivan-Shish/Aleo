@@ -312,20 +312,6 @@ impl TryFrom<&Path> for LocatorPath {
     }
 }
 
-#[derive(Clone)]
-pub struct RemoveFileAction {
-    path: LocatorPath,
-}
-
-impl RemoveFileAction {
-    pub fn new(path: LocatorPath) -> Self {
-        Self { path }
-    }
-}
-pub enum StorageAction {
-    RemoveFile(RemoveFileAction),
-}
-
 pub trait StorageLocator {
     /// Returns a locator path corresponding to the given locator.
     fn to_path(&self, locator: &Locator) -> Result<LocatorPath, CoordinatorError>;
