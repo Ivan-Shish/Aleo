@@ -256,6 +256,9 @@ pub trait Storage: Send + Sync + StorageLocator + StorageObject {
 
     /// Returns the size of the object stored at the given locator.
     fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
+
+    /// Process a [StorageAction] which mutates the storage.
+    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError>;
 }
 
 /// The path to a resource defined by a [Locator].
@@ -310,6 +313,71 @@ impl TryFrom<&Path> for LocatorPath {
             .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)
             .map(|s| Self::new(s.to_owned()))
     }
+}
+
+/// An enum containing a [Locator] or [LocatorPath].
+///
+/// **Note:** This can probably be refactored out in the future so
+/// that we only use [Locator].
+#[derive(Clone)]
+pub enum LocatorOrPath {
+    Path(LocatorPath),
+    Locator(Locator),
+}
+
+impl LocatorOrPath {
+    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+        match self {
+            LocatorOrPath::Path(path) => storage.to_locator(&path),
+            LocatorOrPath::Locator(locator) => Ok(locator),
+        }
+    }
+}
+
+impl From<LocatorPath> for LocatorOrPath {
+    fn from(path: LocatorPath) -> Self {
+        Self::Path(path)
+    }
+}
+
+impl From<Locator> for LocatorOrPath {
+    fn from(locator: Locator) -> Self {
+        Self::Locator(locator)
+    }
+}
+
+/// An action to remove an item from [Storage].
+#[derive(Clone)]
+pub struct RemoveAction {
+    locator: LocatorOrPath,
+}
+
+impl RemoveAction {
+    /// Create a new [RemoveAction]
+    pub fn new(locator: impl Into<LocatorOrPath>) -> Self {
+        Self {
+            locator: locator.into(),
+        }
+    }
+
+    /// Obtain the location of the item to be removed from [Storage]
+    /// as a [LocatorOrPath].
+    pub fn locator_or_path(&self) -> &LocatorOrPath {
+        &self.locator
+    }
+
+    /// Obtain the location of the item to be removed from [Storage]
+    /// as a [Locator].
+    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+        self.locator.try_into_locator(storage)
+    }
+}
+
+/// An action taken to mutate [Storage], which can be processed by
+/// [Storage::process()].
+#[non_exhaustive]
+pub enum StorageAction {
+    Remove(RemoveAction),
 }
 
 pub trait StorageLocator {

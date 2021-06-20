@@ -8,7 +8,16 @@ use crate::{
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
+    storage::{
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Locator,
+        LocatorPath,
+        Object,
+        Storage,
+        StorageAction,
+        StorageLock,
+    },
 };
 use setup_utils::calculate_hash;
 
@@ -2456,6 +2465,71 @@ impl Coordinator {
     #[inline]
     pub(super) fn signature(&self) -> Arc<Box<dyn Signature>> {
         self.signature.clone()
+    }
+
+    pub fn reset_round(&self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+        // Fetch the current height of the ceremony.
+        let round_height = self.current_round_height()?;
+        info!("Restarting current round {}", round_height);
+
+        let mut round = self.get_round(round_height)?;
+        {
+            let mut storage = self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?;
+            // TODO: decide if we need a backup
+            // if !storage.save_backup(backup_tag) {
+            //     error!(
+            //         "Could not save storage backup for round {} with tag {}",
+            //         round_height, backup_tag
+            //     );
+            //     return Err(CoordinatorError::StorageUpdateFailed);
+            // }
+
+            // if let Err(error) = storage.remove(&Locator::RoundHeight) {
+            //     error!("Could not remove round height from storage because: {}", error);
+            //     return Err(CoordinatorError::StorageUpdateFailed);
+            // }
+            if let Err(error) = storage.insert(Locator::RoundHeight, Object::RoundHeight(round_height - 1)) {
+                error!("Could not insert round height to storage because: {}", error);
+                return Err(CoordinatorError::StorageUpdateFailed);
+            }
+
+            round.reset()
+                .into_iter()
+                .map(StorageAction::Remove)
+                .map(|action| storage.process(action))
+                // this probably causes an allocation, performance could be improved
+                .collect::<Result<(), CoordinatorError>>()?;
+
+            // Update the round in storage
+            storage.update(&Locator::RoundState { round_height }, Object::RoundState(round))?;
+        }
+
+        // If the round is complete, we also need to clear the next round directory.
+        // No need to back it up since it's derived from the backed up round.
+        // TODO: implement this
+        // if round.is_complete() {
+        // self.environment.round_directory_reset(round_height + 1);
+        // }
+
+        // {
+        //     let storage = self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?;
+        //     let mut storage_lock = StorageLock::Write(storage);
+        //     // Execute the round initialization as the coordinator.
+        //     // On success, the reset round will have been saved to storage.
+        //     self.run_initialization(&mut storage_lock, started_at)?;
+        // }
+
+        // Fetch the new round height.
+        // let new_height = self.current_round_height()?;
+
+        // Check that the new height is the same.
+        // if new_height != round_height {
+        //     error!("Round height after initialization is {}", new_height);
+        //     return Err(CoordinatorError::RoundHeightMismatch);
+        // }
+
+        info!("Completed restarting round {}", round_height);
+        Ok(round_height)
     }
 }
 

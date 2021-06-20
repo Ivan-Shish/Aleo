@@ -413,6 +413,15 @@ impl Storage for Disk {
         trace!("Fetched size of {}", self.to_path(&locator)?);
         Ok(size)
     }
+
+    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
+        match action {
+            StorageAction::Remove(remove_action) => {
+                let locator = remove_action.try_into_locator(self)?;
+                self.remove(&locator)
+            }
+        }
+    }
 }
 
 impl StorageLocator for Disk {

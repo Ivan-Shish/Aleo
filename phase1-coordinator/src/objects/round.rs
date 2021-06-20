@@ -2,7 +2,15 @@ use crate::{
     coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, StorageLock},
+    storage::{
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Locator,
+        LocatorPath,
+        Object,
+        RemoveAction,
+        StorageLock,
+    },
     CoordinatorError,
 };
 
@@ -1073,6 +1081,43 @@ impl Round {
             self.finished_at = Some(timestamp);
             warn!("Modified finished_at timestamp for testing only");
         }
+    }
+
+    /// Reset this round back to its initial state before
+    /// contributions started, and remove any
+    /// contributions/verifications that have been made since the
+    /// start of the round. Returns a vector of actions to perform on
+    /// the [crate::storage::Storage], removing the files associated
+    /// with the contributions that were removed.
+    pub(crate) fn reset(&mut self) -> Vec<RemoveAction> {
+        self.chunks
+            .iter_mut()
+            .flat_map(|chunk| {
+                let contributions_remove: Vec<(u64, Vec<RemoveAction>)> = chunk.get_contributions()
+                .iter()
+                .filter(|(id, _)| **id != 0) // don't remove initial challenge
+                .map(|(id, contribution)| {
+                    let actions: Vec<RemoveAction> = contribution.get_locators()
+                        .into_iter()
+                        .map(|path| RemoveAction::new(path))
+                        .collect();
+                    (*id, actions)
+                })
+                .collect();
+
+                chunk.set_lock_holder_unsafe(None);
+
+                let actions: Vec<RemoveAction> = contributions_remove
+                    .into_iter()
+                    .flat_map(|(contribution_id, actions)| {
+                        chunk.remove_contribution_unsafe(contribution_id);
+                        actions.into_iter()
+                    })
+                    .collect();
+
+                actions.into_iter()
+            })
+            .collect()
     }
 }
 
