@@ -2,7 +2,7 @@ use crate::{
     coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, StorageLock},
     CoordinatorError,
 };
 
@@ -145,26 +145,21 @@ impl Round {
                 Chunk::new(
                     chunk_id as u64,
                     verifier.clone(),
-                    storage
-                        .to_path(&Locator::ContributionFile(ContributionLocator::new(
-                            round_height,
-                            chunk_id as u64,
-                            0,
-                            true,
-                        )))
-                        .expect("failed to create locator path"),
-                    storage
-                        .to_path(&Locator::ContributionFileSignature(ContributionSignatureLocator::new(
-                            round_height,
-                            chunk_id as u64,
-                            0,
-                            true,
-                        )))
-                        .expect("failed to create locator path"),
+                    storage.to_path(&Locator::ContributionFile(ContributionLocator::new(
+                        round_height,
+                        chunk_id as u64,
+                        0,
+                        true,
+                    )))?,
+                    storage.to_path(&Locator::ContributionFileSignature(ContributionSignatureLocator::new(
+                        round_height,
+                        chunk_id as u64,
+                        0,
+                        true,
+                    )))?,
                 )
-                .expect("failed to create chunk")
             })
-            .collect();
+            .collect::<Result<Vec<Chunk>, CoordinatorError>>()?;
 
         debug!("Completed creating round {}", round_height);
 
@@ -751,8 +746,8 @@ impl Round {
         chunk_id: u64,
         contribution_id: u64,
         participant: Participant,
-        verified_locator: String,
-        verified_signature_locator: String,
+        verified_locator: LocatorPath,
+        verified_signature_locator: LocatorPath,
     ) -> Result<(), CoordinatorError> {
         // Set the current contribution as verified for the given chunk ID.
         self.chunk_mut(chunk_id)?.verify_contribution(

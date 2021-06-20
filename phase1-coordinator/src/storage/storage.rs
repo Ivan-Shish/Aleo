@@ -9,7 +9,9 @@ use phase1::helpers::CurveKind;
 use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     ops::{Deref, DerefMut},
+    path::Path,
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
 use zexe_algebra::{Bls12_377, BW6_761};
@@ -256,12 +258,80 @@ pub trait Storage: Send + Sync + StorageLocator + StorageObject {
     fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
 }
 
+/// The path to a resource defined by a [Locator].
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, PartialOrd, Ord)]
+pub struct LocatorPath(String);
+
+impl AsRef<Path> for LocatorPath {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl std::fmt::Debug for LocatorPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::fmt::Display for LocatorPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl LocatorPath {
+    pub fn new(path: String) -> Self {
+        Self(path)
+    }
+
+    pub fn as_path(&self) -> &Path {
+        Path::new(&self.0)
+    }
+}
+
+impl From<String> for LocatorPath {
+    fn from(path: String) -> Self {
+        Self::new(path)
+    }
+}
+
+impl From<&str> for LocatorPath {
+    fn from(path: &str) -> Self {
+        Self::new(path.to_owned())
+    }
+}
+
+impl TryFrom<&Path> for LocatorPath {
+    type Error = CoordinatorError;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        path.to_str()
+            .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)
+            .map(|s| Self::new(s.to_owned()))
+    }
+}
+
+#[derive(Clone)]
+pub struct RemoveFileAction {
+    path: LocatorPath,
+}
+
+impl RemoveFileAction {
+    pub fn new(path: LocatorPath) -> Self {
+        Self { path }
+    }
+}
+pub enum StorageAction {
+    RemoveFile(RemoveFileAction),
+}
+
 pub trait StorageLocator {
-    /// Returns a locator path string corresponding to the given locator.
-    fn to_path(&self, locator: &Locator) -> Result<String, CoordinatorError>;
+    /// Returns a locator path corresponding to the given locator.
+    fn to_path(&self, locator: &Locator) -> Result<LocatorPath, CoordinatorError>;
 
     /// Returns a locator corresponding to the given locator path string.
-    fn to_locator(&self, path: &str) -> Result<Locator, CoordinatorError>;
+    fn to_locator(&self, path: &LocatorPath) -> Result<Locator, CoordinatorError>;
 }
 
 pub trait StorageObject {
