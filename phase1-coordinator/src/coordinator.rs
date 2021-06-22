@@ -8,7 +8,7 @@ use crate::{
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
 
@@ -705,7 +705,7 @@ impl Coordinator {
         skip(self, participant),
         fields(participant = %participant)
     )]
-    pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<String>, CoordinatorError> {
+    pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -728,7 +728,7 @@ impl Coordinator {
     /// Bans the given participant from the ceremony.
     ///
     #[inline]
-    pub fn ban_participant(&self, participant: &Participant) -> Result<Vec<String>, CoordinatorError> {
+    pub fn ban_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -1554,7 +1554,7 @@ impl Coordinator {
     /// If the given locator path is invalid, returns a `CoordinatorError`.
     ///
     #[inline]
-    pub fn contribution_locator_to_chunk_id(&self, locator_path: &str) -> Result<u64, CoordinatorError> {
+    pub fn contribution_locator_to_chunk_id(&self, locator_path: &LocatorPath) -> Result<u64, CoordinatorError> {
         // Acquire the storage lock.
         let storage = StorageLock::Read(self.storage.read().unwrap());
 
@@ -1571,12 +1571,10 @@ impl Coordinator {
 
     /// Convert a locator to a path string using the coordinator's
     /// storage layer.
-    pub fn locator_to_path(&self, locator: Locator) -> Result<String, CoordinatorError> {
+    pub fn locator_to_path(&self, locator: Locator) -> Result<LocatorPath, CoordinatorError> {
         self.storage.read().unwrap().to_path(&locator)
     }
-}
 
-impl Coordinator {
     ///
     /// Attempts to acquire the lock for a given chunk ID and
     /// participant.
@@ -2335,7 +2333,7 @@ impl Coordinator {
         &self,
         mut storage: &mut StorageLock,
         drop: &DropParticipant,
-    ) -> Result<Vec<String>, CoordinatorError> {
+    ) -> Result<Vec<LocatorPath>, CoordinatorError> {
         debug!(
             "Dropping participant from storage with the following information: {:#?}",
             drop
@@ -2652,7 +2650,7 @@ impl Coordinator {
         contribution_id: u64,
         participant: &Participant,
         participant_signing_key: &SigningKey,
-    ) -> Result<String, CoordinatorError> {
+    ) -> Result<LocatorPath, CoordinatorError> {
         info!(
             "Running verification for round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant

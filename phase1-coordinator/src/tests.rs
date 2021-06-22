@@ -19,7 +19,6 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashSet, LinkedList},
     iter::FromIterator,
-    path::Path,
     sync::Arc,
 };
 
@@ -1402,7 +1401,7 @@ fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
             );
             continue;
         };
-        let path = Path::new(&initial_challenge_location);
+        let path = initial_challenge_location.as_path();
         let chunk_dir = path.parent().unwrap();
 
         let n_files = std::fs::read_dir(&chunk_dir).unwrap().count();

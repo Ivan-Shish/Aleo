@@ -1,5 +1,6 @@
 use crate::{
     objects::{participant::*, Contribution},
+    storage::LocatorPath,
     CoordinatorError,
 };
 
@@ -40,8 +41,8 @@ impl Chunk {
     pub fn new(
         chunk_id: u64,
         participant: Participant,
-        verifier_locator: String,
-        verifier_signature_locator: String,
+        verifier_locator: LocatorPath,
+        verifier_signature_locator: LocatorPath,
     ) -> Result<Self, CoordinatorError> {
         match participant.is_verifier() {
             // Construct the starting contribution template for this chunk.
@@ -364,8 +365,8 @@ impl Chunk {
         &mut self,
         contribution_id: u64,
         contributor: &Participant,
-        contributed_locator: String,
-        contributed_signature_locator: String,
+        contributed_locator: LocatorPath,
+        contributed_signature_locator: LocatorPath,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a contributor.
         if !contributor.is_contributor() {
@@ -410,8 +411,8 @@ impl Chunk {
         &mut self,
         contribution_id: u64,
         verifier: Participant,
-        verified_locator: String,
-        verified_signature_locator: String,
+        verified_locator: LocatorPath,
+        verified_signature_locator: LocatorPath,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !verifier.is_verifier() {

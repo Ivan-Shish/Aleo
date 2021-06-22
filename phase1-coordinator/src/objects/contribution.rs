@@ -1,4 +1,4 @@
-use crate::{objects::Participant, CoordinatorError};
+use crate::{objects::Participant, storage::LocatorPath, CoordinatorError};
 
 use serde::{Deserialize, Serialize};
 use tracing::trace;
@@ -8,14 +8,14 @@ use tracing::trace;
 pub struct Contribution {
     contributor_id: Option<Participant>,
     #[serde(rename = "contributedLocation")]
-    contributed_locator: Option<String>,
+    contributed_locator: Option<LocatorPath>,
     #[serde(rename = "contributedSignatureLocation")]
-    contributed_signature_locator: Option<String>,
+    contributed_signature_locator: Option<LocatorPath>,
     verifier_id: Option<Participant>,
     #[serde(rename = "verifiedLocation")]
-    verified_locator: Option<String>,
+    verified_locator: Option<LocatorPath>,
     #[serde(rename = "verifiedSignatureLocation")]
-    verified_signature_locator: Option<String>,
+    verified_signature_locator: Option<LocatorPath>,
     verified: bool,
 }
 
@@ -37,14 +37,14 @@ impl Contribution {
     /// Returns a reference to the contributor locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_contributed_location(&self) -> &Option<String> {
+    pub fn get_contributed_location(&self) -> &Option<LocatorPath> {
         &self.contributed_locator
     }
 
     /// Returns a reference to the contributor signature locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_contributed_signature_location(&self) -> &Option<String> {
+    pub fn get_contributed_signature_location(&self) -> &Option<LocatorPath> {
         &self.contributed_signature_locator
     }
 
@@ -59,14 +59,14 @@ impl Contribution {
     /// Returns a reference to the verifier locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_verified_location(&self) -> &Option<String> {
+    pub fn get_verified_location(&self) -> &Option<LocatorPath> {
         &self.verified_locator
     }
 
     /// Returns a reference to the verifier signature locator, if it exists.
     /// Otherwise returns `None`.
     #[inline]
-    pub fn get_verified_signature_location(&self) -> &Option<String> {
+    pub fn get_verified_signature_location(&self) -> &Option<LocatorPath> {
         &self.verified_signature_locator
     }
 
@@ -81,8 +81,8 @@ impl Contribution {
     #[inline]
     pub(crate) fn new_contributor(
         participant: Participant,
-        contributed_locator: String,
-        contributed_signature_locator: String,
+        contributed_locator: LocatorPath,
+        contributed_signature_locator: LocatorPath,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a contributor.
         if !participant.is_contributor() {
@@ -112,8 +112,8 @@ impl Contribution {
     pub(crate) fn new_verifier(
         contribution_id: u64,
         participant: Participant,
-        verified_locator: String,
-        verified_signature_locator: String,
+        verified_locator: LocatorPath,
+        verified_signature_locator: LocatorPath,
     ) -> Result<Self, CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -157,8 +157,8 @@ impl Contribution {
     pub(crate) fn assign_verifier(
         &mut self,
         participant: Participant,
-        verified_locator: String,
-        verified_signature_locator: String,
+        verified_locator: LocatorPath,
+        verified_signature_locator: LocatorPath,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {

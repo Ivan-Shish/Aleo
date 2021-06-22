@@ -974,27 +974,27 @@ mod test {
             "aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a.contributor".to_string(),
         );
 
-        let mut chunk = Chunk::new(0, verifier.clone(), String::new(), String::new()).unwrap();
+        let mut chunk = Chunk::new(0, verifier.clone(), String::new().into(), String::new().into()).unwrap();
 
         chunk.acquire_lock(contributor1.clone(), 3).unwrap();
         chunk
-            .add_contribution(1, &contributor1, String::new(), String::new())
+            .add_contribution(1, &contributor1, String::new().into(), String::new().into())
             .unwrap();
         assert!(!chunk_all_verified(&chunk));
         chunk.acquire_lock(verifier.clone(), 3).unwrap();
         chunk
-            .verify_contribution(1, verifier.clone(), String::new(), String::new())
+            .verify_contribution(1, verifier.clone(), String::new().into(), String::new().into())
             .unwrap();
         assert!(chunk_all_verified(&chunk));
 
         chunk.acquire_lock(contributor2.clone(), 3).unwrap();
         chunk
-            .add_contribution(2, &contributor2, String::new(), String::new())
+            .add_contribution(2, &contributor2, String::new().into(), String::new().into())
             .unwrap();
         assert!(!chunk_all_verified(&chunk));
         chunk.acquire_lock(verifier.clone(), 3).unwrap();
         chunk
-            .verify_contribution(2, verifier.clone(), String::new(), String::new())
+            .verify_contribution(2, verifier.clone(), String::new().into(), String::new().into())
             .unwrap();
         assert!(chunk_all_verified(&chunk));
 
