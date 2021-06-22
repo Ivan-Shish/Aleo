@@ -319,7 +319,7 @@ impl TryFrom<&Path> for LocatorPath {
 ///
 /// **Note:** This can probably be refactored out in the future so
 /// that we only use [Locator].
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum LocatorOrPath {
     Path(LocatorPath),
     Locator(Locator),
@@ -347,7 +347,7 @@ impl From<Locator> for LocatorOrPath {
 }
 
 /// An action to remove an item from [Storage].
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct RemoveAction {
     locator: LocatorOrPath,
 }

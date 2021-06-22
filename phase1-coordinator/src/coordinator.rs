@@ -2347,65 +2347,73 @@ impl Coordinator {
             "Dropping participant from storage with the following information: {:#?}",
             drop
         );
-        // Fetch the current round from storage.
-        let mut round = match Self::load_current_round(&storage) {
-            // Case 1 - This is a typical round of the ceremony.
-            Ok(round) => round,
-            // Case 2 - The ceremony has not started or storage has failed.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
-        };
 
         // Check the justification and extract the tasks.
-        let (tasks, replacement) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::Inactive(_) => {
+        let (tasks, replacement, restart_round) = match drop {
+            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement, data.restart_round),
+            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement, data.restart_round),
+            DropParticipant::DropQueue(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
                 return Ok(vec![]);
             }
         };
 
-        warn!("Removing locked chunks and all impacted contributions");
+        if restart_round {
+            self.reset_round()?;
 
-        // Remove the lock from the specified chunks.
-        round.remove_locks_unsafe(&mut storage, &drop)?;
-        warn!("Removed locked chunks");
+            // TODO: should this get locators back?
+            Ok(Vec::new())
+        } else {
+            // Fetch the current round from storage.
+            let mut round = match Self::load_current_round(&storage) {
+                // Case 1 - This is a typical round of the ceremony.
+                Ok(round) => round,
+                // Case 2 - The ceremony has not started or storage has failed.
+                _ => return Err(CoordinatorError::RoundDoesNotExist),
+            };
 
-        // Remove the contributions from the specified chunks.
-        round.remove_chunk_contributions_unsafe(&mut storage, &drop)?;
-        warn!("Removed impacted contributions");
+            warn!("Removing locked chunks and all impacted contributions");
 
-        // Assign a replacement contributor to the dropped tasks for the current round.
-        if let Some(replacement_contributor) = replacement {
-            round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
-            warn!("Added a replacement contributor {}", replacement_contributor);
+            // Remove the lock from the specified chunks.
+            round.remove_locks_unsafe(&mut storage, &drop)?;
+            warn!("Removed locked chunks");
+
+            // Remove the contributions from the specified chunks.
+            round.remove_chunk_contributions_unsafe(&mut storage, &drop)?;
+            warn!("Removed impacted contributions");
+
+            // Assign a replacement contributor to the dropped tasks for the current round.
+            if let Some(replacement_contributor) = replacement {
+                round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
+                warn!("Added a replacement contributor {}", replacement_contributor);
+            }
+
+            // Convert the tasks into contribution file locators.
+            let locators = tasks
+                .par_iter()
+                .map(|task| {
+                    storage
+                        .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                            round.round_height(),
+                            task.chunk_id(),
+                            task.contribution_id(),
+                            true,
+                        )))
+                        .unwrap()
+                })
+                .collect();
+
+            // Save the updated round to storage.
+            storage.update(
+                &Locator::RoundState {
+                    round_height: round.round_height(),
+                },
+                Object::RoundState(round),
+            )?;
+
+            Ok(locators)
         }
-
-        // Convert the tasks into contribution file locators.
-        let locators = tasks
-            .par_iter()
-            .map(|task| {
-                storage
-                    .to_path(&Locator::ContributionFile(ContributionLocator::new(
-                        round.round_height(),
-                        task.chunk_id(),
-                        task.contribution_id(),
-                        true,
-                    )))
-                    .unwrap()
-            })
-            .collect();
-
-        // Save the updated round to storage.
-        storage.update(
-            &Locator::RoundState {
-                round_height: round.round_height(),
-            },
-            Object::RoundState(round),
-        )?;
-
-        Ok(locators)
     }
 
     #[inline]
@@ -2467,7 +2475,8 @@ impl Coordinator {
         self.signature.clone()
     }
 
-    pub fn reset_round(&self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+    /// Reset/restart the current round.
+    pub fn reset_round(&self) -> Result<u64, CoordinatorError> {
         // Fetch the current height of the ceremony.
         let round_height = self.current_round_height()?;
         info!("Restarting current round {}", round_height);
@@ -2493,16 +2502,22 @@ impl Coordinator {
                 return Err(CoordinatorError::StorageUpdateFailed);
             }
 
-            round.reset()
+            if let Some(error) = round
+                .reset()
                 .into_iter()
                 .map(StorageAction::Remove)
                 .map(|action| storage.process(action))
-                // this probably causes an allocation, performance could be improved
-                .collect::<Result<(), CoordinatorError>>()?;
+                .find_map(Result::err)
+            {
+                return Err(error);
+            }
 
             // Update the round in storage
             storage.update(&Locator::RoundState { round_height }, Object::RoundState(round))?;
         }
+
+        let mut state = self.state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
+        state.reset_round();
 
         // If the round is complete, we also need to clear the next round directory.
         // No need to back it up since it's derived from the backed up round.

@@ -860,6 +860,26 @@ pub struct RoundMetrics {
     next_round_after: Option<DateTime<Utc>>,
 }
 
+impl Default for RoundMetrics {
+    fn default() -> Self {
+        Self {
+            number_of_contributors: 0,
+            number_of_verifiers: 0,
+            is_round_aggregated: false,
+            task_timer: HashMap::new(),
+            seconds_per_task: HashMap::new(),
+            contributor_average_per_task: None,
+            verifier_average_per_task: None,
+            started_aggregation_at: None,
+            finished_aggregation_at: None,
+            estimated_finish_time: None,
+            estimated_aggregation_time: None,
+            estimated_wait_time: None,
+            next_round_after: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorState {
     /// The parameters and settings of this coordinator.
@@ -916,6 +936,28 @@ impl CoordinatorState {
         }
     }
 
+    pub(super) fn reset_round(&mut self) {
+        if let Some(round_height) = self.current_round_height {
+            // Add each current participant back into the queue.
+            for (participant, participant_info) in self.current_contributors.iter().chain(self.current_verifiers.iter())
+            {
+                self.queue.insert(
+                    participant.clone(),
+                    (participant_info.reliability, Some(participant_info.round_height)),
+                );
+            }
+
+            *self = Self {
+                queue: self.queue.clone(),
+                banned: self.banned.clone(),
+                dropped: self.dropped.clone(),
+                ..Self::new(self.environment.clone())
+            };
+
+            self.initialize(round_height);
+        }
+    }
+
     ///
     /// Initializes the coordinator state by setting the round height & metrics, and instantiating
     /// the finished contributors and verifiers map for the given round in the coordinator state.
@@ -929,21 +971,7 @@ impl CoordinatorState {
 
         // Initialize the metrics for this round.
         if self.current_metrics.is_none() {
-            self.current_metrics = Some(RoundMetrics {
-                number_of_contributors: 0,
-                number_of_verifiers: 0,
-                is_round_aggregated: false,
-                task_timer: HashMap::new(),
-                seconds_per_task: HashMap::new(),
-                contributor_average_per_task: None,
-                verifier_average_per_task: None,
-                started_aggregation_at: None,
-                finished_aggregation_at: None,
-                estimated_finish_time: None,
-                estimated_aggregation_time: None,
-                estimated_wait_time: None,
-                next_round_after: None,
-            });
+            self.current_metrics = Some(Default::default());
         }
 
         // Initialize the finished contributors map for the current round, if it does not exist.
@@ -1921,7 +1949,7 @@ impl CoordinatorState {
                 self.rollback_next_round();
             }
 
-            return Ok(DropParticipant::Inactive(DropInactiveParticipantData {
+            return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
                 participant: participant.clone(),
             }));
         }
@@ -2075,10 +2103,14 @@ impl CoordinatorState {
                 // Add the participant info to the dropped participants.
                 self.dropped.push(dropped_info);
 
-                // TODO (howardwu): Add a flag guard to this call, and return None, to support
-                //  the 'drop round' feature in the coordinator.
-                // Assign the replacement contributor to the dropped tasks.
-                let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id, time)?;
+                let (replacement_contributor, restart_round) = if self.environment.coordinator_contributors().is_empty()
+                {
+                    // There are no replacement contributors so the only option is to restart the round.
+                    (None, true)
+                } else {
+                    // Assign the replacement contributor to the dropped tasks.
+                    (Some(self.add_replacement_contributor_unsafe(bucket_id, time)?), false)
+                };
 
                 warn!("Dropped {} from the ceremony", participant);
 
@@ -2087,7 +2119,8 @@ impl CoordinatorState {
                     bucket_id,
                     locked_chunks,
                     tasks,
-                    replacement: Some(replacement_contributor),
+                    replacement: replacement_contributor,
+                    restart_round,
                 }));
             }
             Participant::Verifier(_id) => {
@@ -2118,12 +2151,17 @@ impl CoordinatorState {
 
                 warn!("Dropped {} from the ceremony", participant);
 
+                // Restart the round because there are no verifiers
+                // left for this round.
+                let restart_round = self.current_verifiers.is_empty();
+
                 return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
                     participant: participant.clone(),
                     bucket_id,
                     locked_chunks,
                     tasks,
                     replacement: None,
+                    restart_round,
                 }));
             }
         }
@@ -3162,10 +3200,12 @@ pub(crate) struct DropCurrentParticpantData {
     /// The participant which will replace the participant being
     /// dropped.
     pub replacement: Option<Participant>,
+    /// Whether the current round should be restarted.
+    pub restart_round: bool,
 }
 
 #[derive(Debug)]
-pub(crate) struct DropInactiveParticipantData {
+pub(crate) struct DropQueueParticipantData {
     /// The participant being dropped.
     pub participant: Participant,
 }
@@ -3182,7 +3222,7 @@ pub(crate) enum DropParticipant {
     DropCurrent(DropCurrentParticpantData),
     /// Coordinator has decided that a participant in the queue is
     /// inactive and needs to be removed from the queue.
-    Inactive(DropInactiveParticipantData),
+    DropQueue(DropQueueParticipantData),
 }
 
 #[cfg(test)]

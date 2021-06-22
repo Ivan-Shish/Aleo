@@ -1090,6 +1090,9 @@ impl Round {
     /// the [crate::storage::Storage], removing the files associated
     /// with the contributions that were removed.
     pub(crate) fn reset(&mut self) -> Vec<RemoveAction> {
+        self.contributor_ids.clear();
+        self.verifier_ids.clear();
+
         self.chunks
             .iter_mut()
             .flat_map(|chunk| {
@@ -1165,6 +1168,37 @@ mod tests {
 
         let round_1 = test_round_1_initial_json().unwrap();
         assert_eq!(1, round_1.round_height());
+    }
+
+    #[test]
+    #[serial]
+    fn test_reset_partial() {
+        initialize_test_environment(&TEST_ENVIRONMENT);
+
+        let mut round_1 = test_round_1_partial_json().unwrap();
+        println!("{:?}", *TEST_CONTRIBUTOR_ID);
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_2));
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
+        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_2));
+        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_3));
+
+        let n_contributions = 89;
+        let n_verifications = 30;
+        let n_files = 2 * n_contributions + 2 * n_verifications;
+
+        let actions = round_1.reset();
+        assert_eq!(n_files, actions.len());
+
+        assert_eq!(64, round_1.chunks().len());
+
+        for chunk in round_1.chunks() {
+            assert!(!chunk.is_locked());
+            assert_eq!(1, chunk.get_contributions().len());
+            let contribution = chunk.get_contribution(0).unwrap();
+            assert!(contribution.is_verified());
+        }
+
+        dbg!(round_1);
     }
 
     #[test]

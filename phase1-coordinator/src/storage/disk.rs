@@ -31,7 +31,7 @@ use std::{
 };
 use tracing::{debug, error, trace};
 
-use super::LocatorPath;
+use super::{LocatorPath, StorageAction};
 
 #[derive(Debug)]
 pub struct Disk {
