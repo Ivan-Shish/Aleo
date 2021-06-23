@@ -34,7 +34,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
 use rand::{CryptoRng, Rng};
-use reqwest::header::AUTHORIZATION;
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
 use std::{
@@ -706,13 +705,14 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &join_queue_path, auth_rng)?;
         let response = client
             .post(join_queue_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
 
-        let data = response.json().await?;
-        let joined = serde_json::from_value::<bool>(data)?;
+        let data = response.bytes().await?;
+        let joined = serde_json::from_slice::<bool>(&*data)?;
 
         Ok(joined)
     }
@@ -721,8 +721,8 @@ impl Contribute {
         let ceremony_url = self.server_url.join("/v1/round/current")?;
         let response = reqwest::get(ceremony_url.as_str()).await?.error_for_status()?;
 
-        let data = response.json().await?;
-        let ceremony: Round = serde_json::from_value(data)?;
+        let data = response.bytes().await?;
+        let ceremony: Round = serde_json::from_slice(&*data)?;
 
         Ok(ceremony)
     }
@@ -734,13 +734,14 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &lock_path, auth_rng)?;
         let response = client
             .post(lock_chunk_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
 
-        let data = response.json().await?;
-        let lock_response = serde_json::from_value::<LockResponse>(data)?;
+        let data = response.bytes().await?;
+        let lock_response = serde_json::from_slice::<LockResponse>(&*data)?;
 
         Ok(lock_response)
     }
@@ -752,7 +753,8 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &heartbeat_path, auth_rng)?;
         let response = client
             .post(url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
@@ -776,7 +778,7 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "GET", &download_path, auth_rng)?;
         let mut response = client
             .get(download_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
             .send()
             .await?
             .error_for_status()?;
@@ -804,8 +806,9 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
         client
             .post(upload_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
-            .header("Content-Type", "application/octet-stream")
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_TYPE, "application/octet-stream")
+            .header(http::header::CONTENT_LENGTH, contents.len())
             .body(contents)
             .send()
             .await?
@@ -824,10 +827,12 @@ impl Contribute {
         let contribute_chunk_url = self.server_url.join(&contribute_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "POST", &contribute_path, auth_rng)?;
+        let bytes = serde_json::to_vec(&body)?;
         client
             .post(contribute_chunk_url.as_str())
-            .header(AUTHORIZATION, authorization)
-            .json(&body)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
             .send()
             .await?
             .error_for_status()?;
@@ -880,7 +885,13 @@ fn read_keys<P: AsRef<Path>>(keys_path: P, passphrase: Option<SecretString>) -> 
 async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
     let settings_endpoint_url = coordinator_url.join("/v1/coordinator/settings")?;
     let client = reqwest::Client::new();
-    let bytes = client.post(settings_endpoint_url).send().await?.bytes().await?;
+    let bytes = client
+        .post(settings_endpoint_url)
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await?
+        .bytes()
+        .await?;
     PublicSettings::decode(&bytes.to_vec())
         .map_err(|e| anyhow::anyhow!("Error decoding coordinator PublicSettings: {}", e))
 }

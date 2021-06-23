@@ -48,6 +48,7 @@ pub async fn upload_file_direct_async(authorization: &str, file_path: &str, url:
     client
         .post(url)
         .header(AUTHORIZATION, authorization)
+        .header(http::header::CONTENT_LENGTH, contents.len())
         .body(contents)
         .send()
         .await?
