@@ -26,7 +26,8 @@ impl Verifier {
 
         match Client::new()
             .post(coordinator_api_url.join(path).expect("Should create a path"))
-            .header("Authorization", authentication.to_string())
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await
         {
@@ -37,7 +38,7 @@ impl Verifier {
                 }
 
                 // Parse the lock response
-                let queue_response = serde_json::from_value::<bool>(response.json().await?)?;
+                let queue_response = serde_json::from_slice::<bool>(&*response.bytes().await?)?;
                 info!("{} joined the queue with status {}", aleo_address, queue_response);
                 Ok(queue_response)
             }
@@ -69,7 +70,8 @@ impl Verifier {
 
         match Client::new()
             .post(coordinator_api_url.join(path).expect("Should create a path"))
-            .header("Authorization", authentication.to_string())
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await
         {
@@ -80,8 +82,8 @@ impl Verifier {
                 }
 
                 // Parse the lock response
-                let json_response = response.json().await?;
-                let lock_response = serde_json::from_value::<LockResponse>(json_response)?;
+                let json_response = response.bytes().await?;
+                let lock_response = serde_json::from_slice::<LockResponse>(&*json_response)?;
                 debug!("Decoded verifier lock response: {:#?}", lock_response);
                 info!("Verifier locked chunk {}", lock_response.chunk_id);
 
@@ -118,7 +120,8 @@ impl Verifier {
         let authentication = AleoAuthentication::authenticate(&self.view_key, &method, &signature_path)?;
         match Client::new()
             .post(coordinator_api_url.join(&path).expect("Should create a path"))
-            .header("Authorization", authentication.to_string())
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await
         {
@@ -256,8 +259,12 @@ impl Verifier {
 
         match Client::new()
             .post(coordinator_api_url.join(&path).expect("Should create a path"))
-            .header("Authorization", authentication.to_string())
-            .header("Content-Type", "application/octet-stream")
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_TYPE, "application/octet-stream")
+            .header(
+                http::header::CONTENT_LENGTH,
+                signature_and_next_challenge_file_bytes.len(),
+            )
             .body(signature_and_next_challenge_file_bytes)
             .send()
             .await
