@@ -1,10 +1,14 @@
 use std::io::{BufReader, Read};
 
+#[cfg(feature = "async_message")]
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-pub const MAXIMUM_MESSAGE_SIZE: usize = 101 * 1024 * 1024; // 101 Mb
+/// Message limit in bytes, around 101Mb.
+/// Actual limit is 100Mb, and an extra 1Mb for any
+/// additional needs which may arise in the future
+pub const MAXIMUM_MESSAGE_SIZE: usize = 101 * 1024 * 1024;
 
 pub trait MessageName: Sized {
     fn from_str(input: &str) -> Result<Self, String>;
@@ -20,6 +24,7 @@ pub struct Message<T: MessageName> {
 /// 1 byte name length | name | 4 bytes data length | data
 impl<T: MessageName> Message<T> {
     /// Read message name as Vec of bytes
+    #[cfg(feature = "async_message")]
     pub async fn read_name<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, Error> {
         let mut name_length_buffer = [0u8; 1];
         reader.read_exact(&mut name_length_buffer).await?;
@@ -30,6 +35,7 @@ impl<T: MessageName> Message<T> {
     }
 
     /// Read message data as Vec of bytes
+    #[cfg(feature = "async_message")]
     pub async fn read_data<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, Error> {
         let mut data_length_buffer = [0u8; 4];
         reader.read_exact(&mut data_length_buffer).await?;
@@ -47,6 +53,7 @@ impl<T: MessageName> Message<T> {
     }
 
     /// Write entire message to a provided writer
+    #[cfg(feature = "async_message")]
     pub async fn write<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Result<(), Error> {
         self.write_name(writer).await?;
         self.write_data(writer).await?;
@@ -54,6 +61,7 @@ impl<T: MessageName> Message<T> {
     }
 
     /// Write only message name to a provided writer
+    #[cfg(feature = "async_message")]
     pub async fn write_name<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Result<(), Error> {
         let name = self.name.as_bytes();
         let name_length = (name.len() as u8).to_be_bytes();
@@ -63,6 +71,7 @@ impl<T: MessageName> Message<T> {
     }
 
     /// Write only message name to a provided writer
+    #[cfg(feature = "async_message")]
     pub async fn write_data<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Result<(), Error> {
         let data_length = (self.data.len() as u32).to_be_bytes();
         writer.write(&data_length).await?;
