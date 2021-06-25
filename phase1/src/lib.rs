@@ -24,7 +24,8 @@ use crate::helpers::accumulator::*;
 #[cfg(not(feature = "wasm"))]
 use zexe_algebra::Zero;
 
-use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, UniformRand};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::rand::UniformRand;
 
 use rand::Rng;
 use tracing::{debug, info, info_span, trace};

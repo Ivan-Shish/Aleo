@@ -1,6 +1,7 @@
 use setup_utils::UseCompression;
 
-use zexe_algebra::{ConstantSerializedSize, PairingEngine};
+use snarkvm_curves::PairingEngine;
+use snarkvm_utilities::ConstantSerializedSize;
 
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;

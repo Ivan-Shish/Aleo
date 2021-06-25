@@ -1,5 +1,5 @@
 use super::*;
-use zexe_algebra::{batch_inversion, Field};
+use snarkvm_fields::{batch_inversion, Field};
 
 impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     ///
