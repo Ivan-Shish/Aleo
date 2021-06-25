@@ -6,7 +6,7 @@ mod write;
 pub use write::{BatchSerializer, Serializer};
 
 use crate::UseCompression;
-use zexe_algebra::AffineCurve;
+use snarkvm_curves::AffineCurve;
 
 pub fn buffer_size<C: AffineCurve>(compression: UseCompression) -> usize {
     if compression == UseCompression::Yes {

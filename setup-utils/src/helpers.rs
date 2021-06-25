@@ -2,20 +2,11 @@ use crate::{
     errors::{Error, VerificationError},
     Result,
 };
-use zexe_algebra::{
-    AffineCurve,
-    BigInteger,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    Field,
-    One,
-    PairingEngine,
-    PrimeField,
-    ProjectiveCurve,
-    UniformRand,
-    Zero,
-};
-use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+
+use snarkvm_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::{Field, One, PrimeField, Zero};
+use snarkvm_utilities::{biginteger::BigInteger, rand::UniformRand, CanonicalSerialize, ConstantSerializedSize};
 
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
 use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
@@ -263,7 +254,7 @@ pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zexe_algebra::{
+    use snarkvm_curves::{
         bls12_377::Bls12_377,
         bls12_381::{Bls12_381, Fr, G1Affine, G2Affine},
     };
@@ -343,7 +334,7 @@ pub fn merge_pairs<G: AffineCurve>(v1: &[G], v2: &[G]) -> (G, G) {
     assert_eq!(v1.len(), v2.len());
     let rng = &mut thread_rng();
 
-    let randomness: Vec<<G::ScalarField as PrimeField>::BigInt> =
+    let randomness: Vec<<G::ScalarField as PrimeField>::BigInteger> =
         (0..v1.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect();
 
     let s = dense_multiexp(&v1, &randomness[..]).into_affine();
@@ -411,7 +402,7 @@ pub fn compute_g2_s<E: PairingEngine>(
 #[allow(dead_code)]
 pub fn dense_multiexp<G: AffineCurve>(
     bases: &[G],
-    exponents: &[<G::ScalarField as PrimeField>::BigInt],
+    exponents: &[<G::ScalarField as PrimeField>::BigInteger],
 ) -> G::Projective {
     if exponents.len() != bases.len() {
         panic!("invalid length")
@@ -427,7 +418,7 @@ pub fn dense_multiexp<G: AffineCurve>(
 
 fn dense_multiexp_inner<G: AffineCurve>(
     bases: &[G],
-    exponents: &[<G::ScalarField as PrimeField>::BigInt],
+    exponents: &[<G::ScalarField as PrimeField>::BigInteger],
     mut skip: u32,
     c: u32,
     handle_trivial: bool,
