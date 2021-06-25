@@ -3570,6 +3570,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tokio 1.7.0",
 ]
 
 [[package]]

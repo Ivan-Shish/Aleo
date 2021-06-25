@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use anyhow::{anyhow, Result};
 use futures::{Sink, SinkExt};
-use setup1_shared::reliability::ContributorMessage;
+use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 fn calculate_powers_of_tau(input: Vec<u8>) -> Vec<u8> {
@@ -16,8 +16,11 @@ where
     W::Error: Debug,
 {
     let calculated = calculate_powers_of_tau(data);
-    let challenge = ContributorMessage::CpuChallenge(calculated);
-    let response = Message::binary(challenge.encode()?);
+    let challenge = ContributorMessage {
+        name: ContributorMessageName::CpuChallenge,
+        data: calculated,
+    };
+    let response = Message::binary(challenge.to_vec());
     write_half.send(response).await.map_err(|e| anyhow!("{:?}", e))?;
     Ok(())
 }
