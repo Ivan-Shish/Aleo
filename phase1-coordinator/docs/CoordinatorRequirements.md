@@ -302,6 +302,8 @@ Requires:
 
 [Drop](#drop) a [contributor](#contributor) after a configurable amount of [verification](#verification) failures on [contributions](#contributions) made by that contributor.
 
+Requires:
+
 + [REQ-25 Drop Participant][REQ-25]
 + [REQ-32 Handle Verification Failure][REQ-32]
 
@@ -320,6 +322,8 @@ Requires:
 [Drop](#drop) a [participant](#participant) if they get stuck for too long (configurable) on a single [contribution](#contribution)/[verification](#verification). This should be fairly excessive, perhaps 10 minutes, to ensure this is only triggered during a serious anomaly, and will not trigger if for example the user's antivirus performs a quick scan or Windows update occurs, or there is a momentary problem with their network connection.
 
 *Also consider a drop if a contributor is taking too long over a longer average, with a lower threshold*.
+
+Requires:
 
 + [REQ-25 Drop Participant][REQ-25]
 
@@ -346,6 +350,26 @@ Requires:
 After a [round](#round) completes, the [coordinator](#coordinator) needs to correctly [aggregate](#aggregation) the contributions from the round.
 
 TODO: what does a correct aggregation consist of? How do we prove it?
+
+#### REQ-38 Admin Round Restart
+
+There needs to be a function where an administrator can tell the [coordinator](#coordinator) to restart the current round in the event of an unhandled error state that stalls the ceremony.
+
+Requires:
+
++ [REQ-28 Coordinate a Round][REQ-28]
+
+#### REQ-39 Automatic Round Restart
+
+In the event of a dropped [participant](#participant) when there are no available [Replacement Contributors](#replacement-contributor) or the participant is a [verifier](#verifier), the [round](#round) should be restarted automatically. The resources from the cancelled round should be cleaned up. If possible, we should also consider attempting to restart the round in the event of a fatal unhandled error in the [coordinator](#coordinator).
+
+This should share the functionality added to implement [REQ-38 Admin Round Restart][REQ-38].
+
+Requires:
+
++ [REQ-25 Drop Participant][REQ-25]
++ [REQ-28 Coordinate a Round][REQ-28]
++ [REQ-38 Admin Round Restart][REQ-38]
 
 ### Performance Requirements
 
@@ -463,3 +487,5 @@ Make use of GitHub pull requests to ensure that changes are reviewed before merg
 [REQ-35]: #req-35-drop-slow-participant
 [REQ-36]: #req-36-status-api
 [REQ-37]: #req-37-aggregate-contributions
+[REQ-38]: #req-38-admin-round-restart
+[REQ-39]: #req-39-automatic-round-restart
