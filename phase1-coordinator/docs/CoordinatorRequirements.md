@@ -240,10 +240,13 @@ Provide a method to drop participants. The fact that they have been dropped will
 
 The contents of removed contributions may be removed from the state that will be persisted to disk, however a record will need to be retained as per [REQ-18](#REQ-18-History-Retained).
 
+If there are any [Replacement Contributor](#replacement-contributor)s available assign the dropped participant's tasks to it according to [REQ-24 Assign Replacement Contributors][REQ-24].
+
 Requires:
 
 + [REQ-16 State Saved to Disk][REQ-16]
 + [REQ-23 Publish Participant Instructions][REQ-23]
++ [REQ-24 Assign Replacement Contributors][REQ-24]
 
 #### REQ-26 Ban Participant
 
