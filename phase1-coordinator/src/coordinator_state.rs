@@ -231,11 +231,41 @@ impl ParticipantInfo {
         self.finished_at.is_some()
     }
 
+    /// Clear all the tasks associated with this participant.
+    fn clear_tasks(&mut self) {
+        self.pending_tasks = Default::default();
+        self.assigned_tasks = Default::default();
+        self.completed_tasks = Default::default();
+        self.disposing_tasks = Default::default();
+        self.disposed_tasks = Default::default();
+    }
+
+    /// Clear the locked chunks.
+    fn clear_locks(&mut self) {
+        self.locked_chunks = HashMap::new();
+    }
+
+    /// Clear the recorded times `started_at`, `dropped_at` and
+    /// `finished_at`.
+    fn clear_round_times(&mut self) {
+        self.started_at = None;
+        self.dropped_at = None;
+        self.finished_at = None;
+    }
+
+    /// Clear tasks, locks and round times, and start this contributor
+    /// again, assigning it new tasks.
+    fn restart(&mut self, tasks: LinkedList<Task>, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        self.clear_tasks();
+        self.clear_locks();
+        self.clear_round_times();
+        self.start(tasks, time)
+    }
+
     ///
     /// Assigns the participant to the given chunks for the current round,
     /// and sets the start time as the current time.
     ///
-    #[inline]
     fn start(&mut self, tasks: LinkedList<Task>, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Starting {}", self.id);
 
@@ -936,18 +966,67 @@ impl CoordinatorState {
         }
     }
 
-    pub(super) fn reset_round(&mut self) {
+    pub(super) fn reset_round(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
+        let _guard = span.enter();
+
+        tracing::info!("Resetting round.");
         if let Some(round_height) = self.current_round_height {
             // Add each current participant back into the queue.
-            for (participant, participant_info) in self.current_contributors.iter().chain(self.current_verifiers.iter())
-            {
-                self.queue.insert(
-                    participant.clone(),
-                    (participant_info.reliability, Some(participant_info.round_height)),
-                );
-            }
+            // for (participant, participant_info) in self.current_contributors.iter().chain(self.current_verifiers.iter())
+            // {
+            //     self.queue.insert(
+            //         participant.clone(),
+            //         (participant_info.reliability, Some(participant_info.round_height)),
+            //     );
+            // }
+
+            // Fetch the number of chunks and bucket size.
+            let number_of_chunks = self.environment.number_of_chunks() as u64;
+
+            let prev_finished_contributors = self
+                .finished_contributors
+                .get(&round_height)
+                .cloned()
+                .unwrap_or_else(|| HashMap::new());
+
+            let number_of_contributors = self.current_contributors.len() + self.finished_contributors.len();
+
+            let current_contributors = self
+                .current_contributors
+                .clone()
+                .into_iter()
+                .chain(prev_finished_contributors.into_iter())
+                .enumerate()
+                .map(|(bucket_index, (participant, mut participant_info))| {
+                    let bucket_id = bucket_index as u64;
+                    let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
+                    participant_info.restart(tasks, time)?;
+                    Ok((participant, participant_info))
+                })
+                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+
+            let prev_finished_verifiers = self
+                .finished_verifiers
+                .get(&round_height)
+                .cloned()
+                .unwrap_or_else(|| HashMap::new());
+
+            let current_verifiers = self
+                .current_verifiers
+                .clone()
+                .into_iter()
+                .chain(prev_finished_verifiers.into_iter())
+                .map(|(participant, mut participant_info)| {
+                    participant_info.restart(LinkedList::new(), time)?;
+                    Ok((participant, participant_info))
+                })
+                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
 
             *self = Self {
+                current_contributors,
+                current_verifiers,
+
                 queue: self.queue.clone(),
                 banned: self.banned.clone(),
                 dropped: self.dropped.clone(),
@@ -955,7 +1034,10 @@ impl CoordinatorState {
             };
 
             self.initialize(round_height);
+            self.update_round_metrics();
         }
+
+        Ok(())
     }
 
     ///
@@ -3227,7 +3309,7 @@ pub(crate) enum DropParticipant {
 
 #[cfg(test)]
 mod tests {
-    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState, SystemTimeSource};
+    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState, MockTimeSource, SystemTimeSource};
 
     #[test]
     fn test_new() {
@@ -4157,5 +4239,171 @@ mod tests {
         assert_eq!(2, state.finished_verifiers.get(&next_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
+    }
+
+    #[test]
+    fn test_round_reset() {
+        test_logger();
+
+        let time = SystemTimeSource::new();
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier_1 = TEST_VERIFIER_ID.clone();
+        let verifier_2 = TEST_VERIFIER_ID_2.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.initialize(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier_1.clone(), 10).unwrap();
+        state.add_to_queue(verifier_2.clone(), 9).unwrap();
+        state.update_queue().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height, &time).unwrap();
+        state.commit_next_round();
+
+        let number_of_chunks = environment.number_of_chunks();
+        let chunks_3_4: u64 = (number_of_chunks * 3) / 4;
+
+        for _ in 0..chunks_3_4 {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(!state.is_current_round_finished());
+
+        let time = MockTimeSource::new(Utc::now());
+
+        state.reset_round(&time).unwrap();
+
+        // state.update_queue().unwrap();
+
+        for _ in 0..number_of_chunks {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(state.is_current_round_finished());
     }
 }

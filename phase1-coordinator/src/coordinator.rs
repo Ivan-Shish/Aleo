@@ -2517,7 +2517,7 @@ impl Coordinator {
         }
 
         let mut state = self.state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
-        state.reset_round();
+        state.reset_round(&*self.time)?;
 
         // If the round is complete, we also need to clear the next round directory.
         // No need to back it up since it's derived from the backed up round.
