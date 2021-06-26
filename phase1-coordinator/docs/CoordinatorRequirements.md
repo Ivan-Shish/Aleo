@@ -240,13 +240,14 @@ Provide a method to drop participants. The fact that they have been dropped will
 
 The contents of removed contributions may be removed from the state that will be persisted to disk, however a record will need to be retained as per [REQ-18](#REQ-18-History-Retained).
 
-If there are any [Replacement Contributor](#replacement-contributor)s available assign the dropped participant's tasks to it according to [REQ-24 Assign Replacement Contributors][REQ-24].
+If there are any [Replacement Contributor](#replacement-contributor)s available assign the dropped participant's tasks to it according to [REQ-24 Assign Replacement Contributors][REQ-24]. If there are no replacement contributors available then the round will need to be restarted as per [REQ-39 Drop Participant Round Restart][REQ-39]
 
 Requires:
 
 + [REQ-16 State Saved to Disk][REQ-16]
 + [REQ-23 Publish Participant Instructions][REQ-23]
 + [REQ-24 Assign Replacement Contributors][REQ-24]
++ [REQ-39 Drop Participant Round Restart][REQ-39]
 
 #### REQ-26 Ban Participant
 
@@ -362,15 +363,20 @@ Requires:
 
 + [REQ-28 Coordinate a Round][REQ-28]
 
-#### REQ-39 Automatic Round Restart
+#### REQ-39 Drop Participant Round Restart
 
-In the event of a dropped [participant](#participant) when there are no available [Replacement Contributors](#replacement-contributor) or the participant is a [verifier](#verifier), the [round](#round) should be restarted automatically. The resources from the cancelled round should be cleaned up. If possible, we should also consider attempting to restart the round in the event of a fatal unhandled error in the [coordinator](#coordinator).
+In the event of a dropped [participant](#participant) when there are no available [Replacement Contributors](#replacement-contributor) or the participant is a [verifier](#verifier), or there are no remaining standard contributors, the [round](#round) should be restarted automatically. If possible, we should also consider attempting to restart the round in the event of a fatal unhandled error in the [coordinator](#coordinator).
+
+If the restart is due to a dropped contributor and there are no remaining replacement contributors, then any existing standard contributors should be carried over to the restarted round, and the dropped contributor will remain dropped.
+
+If the restart is due to a dropped verifier, or due to a dropped contributor where there are no remaining normal contributors in the round, then new contributors should be assigned from the queue.
+
+The resources from the cancelled round should be cleaned up. If existing contributors are to participate in the restarted round then their tasks need to be reset.
 
 This should share the functionality added to implement [REQ-38 Admin Round Restart][REQ-38].
 
 Requires:
 
-+ [REQ-25 Drop Participant][REQ-25]
 + [REQ-28 Coordinate a Round][REQ-28]
 + [REQ-38 Admin Round Restart][REQ-38]
 
@@ -491,4 +497,4 @@ Make use of GitHub pull requests to ensure that changes are reviewed before merg
 [REQ-36]: #req-36-status-api
 [REQ-37]: #req-37-aggregate-contributions
 [REQ-38]: #req-38-admin-round-restart
-[REQ-39]: #req-39-automatic-round-restart
+[REQ-39]: #req-39-drop-participant-round-restart
