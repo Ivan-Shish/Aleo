@@ -67,7 +67,6 @@ lazy_static! {
         map.insert(PipelineLane::Upload, VecDeque::new());
         RwLock::new(map)
     };
-    static ref SEED: RwLock<Option<Arc<SecretVec<u8>>>> = RwLock::new(None);
     static ref TASKS: RwLock<Tasks> = RwLock::new(Tasks::default());
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
