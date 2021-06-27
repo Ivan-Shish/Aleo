@@ -365,7 +365,13 @@ Requires:
 
 #### REQ-39 Drop Participant Round Restart
 
-In the event of a dropped [participant](#participant) when there are no available [Replacement Contributors](#replacement-contributor) or the participant is a [verifier](#verifier), or there are no remaining standard contributors, the [round](#round) should be restarted automatically. If possible, we should also consider attempting to restart the round in the event of a fatal unhandled error in the [coordinator](#coordinator).
+In the following situations the [round](#round) should be restarted automatically:
+
++ Dropped [contributor](#contributor) and there are no available [Replacement Contributor](#replacement-contributor)s.
++ Dropped [contributor](#contributor) and there are no remaining standard contributors.
++ Dropped [verifier](#verifier), and there are no remaining verifiers. 
+
+If possible, we should also consider attempting to restart the round in the event of a fatal unhandled error in the [coordinator](#coordinator).
 
 If the restart is due to a dropped contributor and there are no remaining replacement contributors, then any existing standard contributors should be carried over to the restarted round, and the dropped contributor will remain dropped.
 
