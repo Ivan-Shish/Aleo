@@ -90,6 +90,7 @@ pub struct Contribute {
     /// `aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a`
     pub participant_id: String,
     pub private_key: String,
+    seed: Arc<SecretVec<u8>>,
     pub upload_mode: UploadMode,
     pub environment: Environment,
 
@@ -107,7 +108,12 @@ pub struct Contribute {
 }
 
 impl Contribute {
-    pub fn new(opts: &ContributeOptions, environment: &Environment, private_key: &[u8]) -> Result<Self> {
+    pub fn new(
+        opts: &ContributeOptions,
+        environment: &Environment,
+        private_key: &[u8],
+        seed: Arc<SecretVec<u8>>,
+    ) -> Result<Self> {
         let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
@@ -116,6 +122,7 @@ impl Contribute {
             server_url: opts.api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
+            seed,
             upload_mode: opts.upload_mode.clone(),
             environment: environment.clone(),
 
@@ -485,15 +492,7 @@ impl Contribute {
             self.wait_and_move_task_from_lane_to_lane(&PipelineLane::Download, &PipelineLane::Process, &lock_response)
                 .await?;
 
-            // let seed = seed.read().expect("Should have been able to read seed");
-            let seed = SEED
-                .read()
-                .expect("Should have been able to read seed")
-                .as_ref()
-                .ok_or(ContributeError::SeedWasNoneError)
-                .expect("Seed should not have been none")
-                .clone();
-            let exposed_seed = seed.expose_secret();
+            let exposed_seed = self.seed.expose_secret();
             let seeded_rng = derive_rng_from_seed(&exposed_seed[..]);
             let start = Instant::now();
             remove_file_if_exists(&self.response_filename)?;
@@ -920,13 +919,11 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     let (seed, private_key) =
         read_keys(&opts.keys_path, opts.passphrase.clone()).expect("Unable to load Aleo setup keys");
 
-    *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
-
     let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
-    let contribute =
-        Contribute::new(opts, &environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
+    let contribute = Contribute::new(opts, &environment, private_key.expose_secret(), Arc::new(seed))
+        .expect("Unable to initialize a contributor");
 
     if public_settings.check_reliability {
         tracing::info!("Checking reliability score before joining the queue");

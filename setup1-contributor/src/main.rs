@@ -1,10 +1,19 @@
-use setup1_contributor::{
-    cli::{Command, Options},
-    commands::{contribute_subcommand, generate_keys},
-};
+#[cfg(feature = "azure")]
+mod blobstore;
 
 use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
 use structopt::StructOpt;
+
+mod cli;
+mod commands;
+mod errors;
+mod objects;
+mod reliability;
+mod tasks;
+mod utils;
+
+use cli::{Command, Options};
+use commands::{contribute_subcommand, generate_keys};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
