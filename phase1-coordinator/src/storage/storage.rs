@@ -373,11 +373,18 @@ impl RemoveAction {
     }
 }
 
+/// An action to update an item in [Storage].
+pub struct UpdateAction {
+    pub locator: Locator,
+    pub object: Object,
+}
+
 /// An action taken to mutate [Storage], which can be processed by
 /// [Storage::process()].
 #[non_exhaustive]
 pub enum StorageAction {
     Remove(RemoveAction),
+    Update(UpdateAction),
 }
 
 pub trait StorageLocator {

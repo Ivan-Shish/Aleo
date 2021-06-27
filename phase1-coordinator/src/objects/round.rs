@@ -9,7 +9,9 @@ use crate::{
         LocatorPath,
         Object,
         RemoveAction,
+        StorageAction,
         StorageLock,
+        UpdateAction,
     },
     CoordinatorError,
 };
@@ -1027,14 +1029,6 @@ impl Round {
             }
         }
 
-        // Remove the given participant from the set of contributor IDs.
-        self.contributor_ids = self
-            .contributor_ids
-            .par_iter()
-            .cloned()
-            .filter(|p| p != participant)
-            .collect();
-
         Ok(())
     }
 
@@ -1087,13 +1081,18 @@ impl Round {
     /// contributions started, and remove any
     /// contributions/verifications that have been made since the
     /// start of the round. Returns a vector of actions to perform on
-    /// the [crate::storage::Storage], removing the files associated
-    /// with the contributions that were removed.
-    pub(crate) fn reset(&mut self) -> Vec<RemoveAction> {
-        self.contributor_ids.clear();
-        self.verifier_ids.clear();
+    /// the [crate::storage::Storage] to reflect the changes to the
+    /// round state. `remove_participants` is a list of participants
+    /// to remove from the round.
+    pub(crate) fn reset(&mut self, remove_participants: Vec<Participant>) -> Vec<StorageAction> {
+        // TODO: in some cases it might be necessary to clear these,
+        // such as when the round only consists of replacement
+        // contributors.
+        // self.contributor_ids.clear();
+        // self.verifier_ids.clear();
 
-        self.chunks
+        let mut actions: Vec<StorageAction> = self
+            .chunks
             .iter_mut()
             .flat_map(|chunk| {
                 let contributions_remove: Vec<(u64, Vec<RemoveAction>)> = chunk.get_contributions()
@@ -1110,17 +1109,43 @@ impl Round {
 
                 chunk.set_lock_holder_unsafe(None);
 
-                let actions: Vec<RemoveAction> = contributions_remove
+                let actions: Vec<StorageAction> = contributions_remove
                     .into_iter()
                     .flat_map(|(contribution_id, actions)| {
                         chunk.remove_contribution_unsafe(contribution_id);
                         actions.into_iter()
                     })
+                    .map(StorageAction::Remove)
                     .collect();
 
                 actions.into_iter()
             })
-            .collect()
+            .collect();
+
+        // Remove the requested participants from the set of contributor IDs.
+        self.contributor_ids = self
+            .contributor_ids
+            .par_iter()
+            .cloned()
+            .filter(|c| remove_participants.iter().find(|p| p == &c).is_none())
+            .collect();
+
+        // Remove the requested participants from the set of verifier IDs.
+        self.verifier_ids = self
+            .verifier_ids
+            .par_iter()
+            .cloned()
+            .filter(|v| remove_participants.iter().find(|p| p == &v).is_none())
+            .collect();
+
+        actions.push(StorageAction::Update(UpdateAction {
+            locator: Locator::RoundState {
+                round_height: self.height,
+            },
+            object: Object::RoundState(self.clone()), // PERFORMANCE: clone here is not great for performance
+        }));
+
+        actions
     }
 }
 
@@ -1175,8 +1200,7 @@ mod tests {
     fn test_reset_partial() {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
-        let mut round_1 = test_round_1_partial_json().unwrap();
-        println!("{:?}", *TEST_CONTRIBUTOR_ID);
+        let mut round_1: Round = test_round_1_partial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_2));
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
         assert!(round_1.is_verifier(&TEST_VERIFIER_ID_2));
@@ -1185,9 +1209,10 @@ mod tests {
         let n_contributions = 89;
         let n_verifications = 30;
         let n_files = 2 * n_contributions + 2 * n_verifications;
+        let n_actions = n_files + 1; // include action to update round
 
-        let actions = round_1.reset();
-        assert_eq!(n_files, actions.len());
+        let actions = round_1.reset(vec![TEST_CONTRIBUTOR_ID_2.clone()]);
+        assert_eq!(n_actions, actions.len());
 
         assert_eq!(64, round_1.chunks().len());
 
@@ -1198,7 +1223,10 @@ mod tests {
             assert!(contribution.is_verified());
         }
 
-        dbg!(round_1);
+        assert!(!round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_2));
+        assert!(round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_3));
+        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_2));
+        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_3));
     }
 
     #[test]

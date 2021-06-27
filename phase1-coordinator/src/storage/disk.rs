@@ -420,6 +420,7 @@ impl Storage for Disk {
                 let locator = remove_action.try_into_locator(self)?;
                 self.remove(&locator)
             }
+            StorageAction::Update(update_action) => self.update(&update_action.locator, update_action.object),
         }
     }
 }

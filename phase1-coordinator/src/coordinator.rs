@@ -8,16 +8,7 @@ use crate::{
     coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
-    storage::{
-        ContributionLocator,
-        ContributionSignatureLocator,
-        Locator,
-        LocatorPath,
-        Object,
-        Storage,
-        StorageAction,
-        StorageLock,
-    },
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
 };
 use setup_utils::calculate_hash;
 
@@ -25,7 +16,7 @@ use chrono::{DateTime, Utc};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     fmt,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockWriteGuard},
 };
 use tracing::*;
 
@@ -455,7 +446,7 @@ impl Coordinator {
             // Drop disconnected participants from the current round.
             for drop in state.update_dropped_participants(self.time.as_ref())? {
                 // Update the round to reflect the coordinator state changes.
-                self.drop_participant_from_storage(&mut storage, &drop)?;
+                self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
             }
             state.save(&mut storage)?;
 
@@ -725,7 +716,7 @@ impl Coordinator {
         let drop = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        let locations = self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
@@ -748,7 +739,7 @@ impl Coordinator {
         let drop = state.ban_participant(participant, self.time.as_ref())?;
 
         // Update the round on disk to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        let locations = self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
@@ -1006,7 +997,6 @@ impl Coordinator {
     ///
     /// If there are no prior rounds, returns a `CoordinatorError`.
     ///
-    #[inline]
     pub fn get_round(&self, round_height: u64) -> Result<Round, CoordinatorError> {
         // Acquire the storage lock.
         let storage = StorageLock::Read(self.storage.read().unwrap());
@@ -2340,7 +2330,8 @@ impl Coordinator {
     #[inline]
     fn drop_participant_from_storage(
         &self,
-        mut storage: &mut StorageLock,
+        state: &mut RwLockWriteGuard<CoordinatorState>,
+        storage: &mut StorageLock,
         drop: &DropParticipant,
     ) -> Result<Vec<LocatorPath>, CoordinatorError> {
         debug!(
@@ -2349,9 +2340,9 @@ impl Coordinator {
         );
 
         // Check the justification and extract the tasks.
-        let (tasks, replacement, restart_round) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement, data.restart_round),
-            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement, data.restart_round),
+        let drop_data = match drop {
+            DropParticipant::BanCurrent(data) => data,
+            DropParticipant::DropCurrent(data) => data,
             DropParticipant::DropQueue(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
@@ -2359,8 +2350,8 @@ impl Coordinator {
             }
         };
 
-        if restart_round {
-            self.reset_round()?;
+        if drop_data.restart_round {
+            self.reset_round(state, storage, vec![drop_data.participant.clone()])?;
 
             // TODO: should this get locators back?
             Ok(Vec::new())
@@ -2376,21 +2367,22 @@ impl Coordinator {
             warn!("Removing locked chunks and all impacted contributions");
 
             // Remove the lock from the specified chunks.
-            round.remove_locks_unsafe(&mut storage, &drop)?;
+            round.remove_locks_unsafe(storage, &drop)?;
             warn!("Removed locked chunks");
 
             // Remove the contributions from the specified chunks.
-            round.remove_chunk_contributions_unsafe(&mut storage, &drop)?;
+            round.remove_chunk_contributions_unsafe(storage, &drop)?;
             warn!("Removed impacted contributions");
 
             // Assign a replacement contributor to the dropped tasks for the current round.
-            if let Some(replacement_contributor) = replacement {
+            if let Some(replacement_contributor) = &drop_data.replacement {
                 round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
                 warn!("Added a replacement contributor {}", replacement_contributor);
             }
 
             // Convert the tasks into contribution file locators.
-            let locators = tasks
+            let locators = drop_data
+                .tasks
                 .par_iter()
                 .map(|task| {
                     storage
@@ -2475,15 +2467,22 @@ impl Coordinator {
         self.signature.clone()
     }
 
-    /// Reset/restart the current round.
-    pub fn reset_round(&self) -> Result<u64, CoordinatorError> {
+    /// Reset/restart the current round. `remove_participants` is a
+    /// list of participants to remove from the reset round.
+    fn reset_round(
+        &self,
+        state: &mut RwLockWriteGuard<CoordinatorState>,
+        storage: &mut StorageLock,
+        remove_participants: Vec<Participant>,
+    ) -> Result<u64, CoordinatorError> {
         // Fetch the current height of the ceremony.
-        let round_height = self.current_round_height()?;
-        info!("Restarting current round {}", round_height);
+        let round_height = Self::load_current_round_height(storage)?;
+        let span = tracing::error_span!("reset_round", round = round_height);
+        let _guard = span.enter();
+        info!("Restarting round {}", round_height);
 
-        let mut round = self.get_round(round_height)?;
+        let mut round = Self::load_round(storage, round_height)?;
         {
-            let mut storage = self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?;
             // TODO: decide if we need a backup
             // if !storage.save_backup(backup_tag) {
             //     error!(
@@ -2497,27 +2496,25 @@ impl Coordinator {
             //     error!("Could not remove round height from storage because: {}", error);
             //     return Err(CoordinatorError::StorageUpdateFailed);
             // }
-            if let Err(error) = storage.insert(Locator::RoundHeight, Object::RoundHeight(round_height - 1)) {
-                error!("Could not insert round height to storage because: {}", error);
-                return Err(CoordinatorError::StorageUpdateFailed);
-            }
+            // if let Err(error) = storage.insert(Locator::RoundHeight, Object::RoundHeight(round_height - 1)) {
+            //     error!("Could not insert round height to storage because: {}", error);
+            //     return Err(CoordinatorError::StorageUpdateFailed);
+            // }
 
+            tracing::debug!("Resetting round and applying storage changes");
             if let Some(error) = round
-                .reset()
+                .reset(remove_participants)
                 .into_iter()
-                .map(StorageAction::Remove)
                 .map(|action| storage.process(action))
                 .find_map(Result::err)
             {
                 return Err(error);
             }
-
-            // Update the round in storage
-            storage.update(&Locator::RoundState { round_height }, Object::RoundState(round))?;
         }
 
-        let mut state = self.state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
+        tracing::debug!("Obtaining write lock for state.");
         state.reset_round(&*self.time)?;
+        state.save(storage)?;
 
         // If the round is complete, we also need to clear the next round directory.
         // No need to back it up since it's derived from the backed up round.

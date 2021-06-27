@@ -990,7 +990,7 @@ impl CoordinatorState {
                 .cloned()
                 .unwrap_or_else(|| HashMap::new());
 
-            let number_of_contributors = self.current_contributors.len() + self.finished_contributors.len();
+            let number_of_contributors = self.current_contributors.len() + prev_finished_contributors.len();
 
             let current_contributors = self
                 .current_contributors
@@ -2185,11 +2185,14 @@ impl CoordinatorState {
                 // Add the participant info to the dropped participants.
                 self.dropped.push(dropped_info);
 
+                // TODO: also check whether the replacement contributor has already been assigned.
                 let (replacement_contributor, restart_round) = if self.environment.coordinator_contributors().is_empty()
                 {
+                    tracing::info!("No replacement contributors available, the round will be restarted.");
                     // There are no replacement contributors so the only option is to restart the round.
                     (None, true)
                 } else {
+                    tracing::info!("Found a replacement contributor for the dropped contributor.");
                     // Assign the replacement contributor to the dropped tasks.
                     (Some(self.add_replacement_contributor_unsafe(bucket_id, time)?), false)
                 };
