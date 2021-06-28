@@ -2392,7 +2392,6 @@ dependencies = [
 name = "phase1-coordinator"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "anyhow",
  "chrono",
  "ctrlc",
@@ -2401,7 +2400,7 @@ dependencies = [
  "memmap",
  "once_cell",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.4",
  "rayon",
  "serde",
  "serde-aux",
@@ -2410,6 +2409,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
+ "snarkvm-curves",
  "thiserror",
  "tokio 1.7.1",
  "tracing",
