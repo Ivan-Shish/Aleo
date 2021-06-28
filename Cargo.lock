@@ -2420,7 +2420,6 @@ dependencies = [
 name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "console_error_panic_hook",
  "phase1",
  "rand 0.7.3",
@@ -2429,6 +2428,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "setup-utils",
+ "snarkvm-curves",
+ "snarkvm-fields",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -3430,7 +3431,6 @@ name = "setup1-contributor"
 version = "0.4.0"
 dependencies = [
  "age",
- "algebra",
  "anyhow",
  "azure_sdk_core",
  "azure_sdk_storage_blob",
@@ -3459,6 +3459,7 @@ dependencies = [
  "setup-utils",
  "setup1-shared",
  "snarkos-toolkit",
+ "snarkvm-curves",
  "structopt",
  "thiserror",
  "tokio 1.7.1",
@@ -3481,7 +3482,6 @@ dependencies = [
 name = "setup1-verifier"
 version = "0.4.0"
 dependencies = [
- "algebra",
  "anyhow",
  "chrono",
  "ctrlc",
@@ -3502,6 +3502,7 @@ dependencies = [
  "setup-utils",
  "setup1-shared",
  "snarkos-toolkit",
+ "snarkvm-curves",
  "structopt",
  "thiserror",
  "tokio 1.7.1",
@@ -3514,25 +3515,23 @@ dependencies = [
 name = "setup2"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "anyhow",
  "cfg-if 0.1.10",
- "groth16",
  "gumdrop",
  "hex",
  "hex-literal",
  "memmap",
  "phase2",
- "r1cs-core",
- "r1cs-std",
  "rand 0.7.3",
  "rand_xorshift 0.2.0",
  "setup-utils",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-fields",
+ "snarkvm-parameters",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
  "tracing-subscriber",
 ]
@@ -3705,36 +3704,15 @@ dependencies = [
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-gadgets",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-objects",
+ "snarkos-parameters",
  "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
 ]
 
 [[package]]
-name = "snarkos-dpc"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "blake2 0.8.1",
- "derivative",
- "hex",
- "itertools 0.9.0",
- "rand 0.7.3",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
 name = "snarkos-errors"
 version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
@@ -3775,21 +3753,6 @@ dependencies = [
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-gadgets"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
 ]
 
 [[package]]
@@ -3846,27 +3809,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "snarkos-objects"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "chrono",
- "derivative",
- "hex",
- "once_cell",
- "rand 0.7.3",
- "serde",
- "sha2",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
 name = "snarkos-parameters"
 version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
@@ -3876,18 +3818,6 @@ dependencies = [
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-parameters"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "hex",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
 ]
 
 [[package]]
@@ -3907,10 +3837,10 @@ source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f81
 dependencies = [
  "hex",
  "rand 0.7.3",
- "snarkos-dpc 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-dpc",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkos-objects",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "thiserror",
  "wasm-bindgen",
@@ -4019,6 +3949,7 @@ dependencies = [
  "snarkvm-gadgets",
  "snarkvm-parameters",
  "snarkvm-profiler",
+ "snarkvm-r1cs",
  "snarkvm-utilities",
  "thiserror",
 ]
