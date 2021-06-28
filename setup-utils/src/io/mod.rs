@@ -21,7 +21,7 @@ mod tests {
     use super::*;
     use phase1::helpers::testing::random_point_vec;
 
-    use zexe_algebra::bls12_377::{G1Affine, G2Affine};
+    use snarkvm_curves::bls12_377::{G1Affine, G2Affine};
 
     use crate::CheckForCorrectness;
     use rand::thread_rng;

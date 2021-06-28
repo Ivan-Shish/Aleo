@@ -307,7 +307,7 @@ impl<E: PairingEngine> Phase1Parameters<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zexe_algebra::{Bls12_377, Bls12_381, BW6_761};
+    use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
     fn curve_parameters_test<E: PairingEngine>(g1: usize, g2: usize, g1_compressed: usize, g2_compressed: usize) {
         let p = CurveParameters::<E>::new();
@@ -320,7 +320,6 @@ mod tests {
     #[test]
     fn test_parameter_sizes() {
         curve_parameters_test::<Bls12_377>(96, 192, 48, 96);
-        curve_parameters_test::<Bls12_381>(96, 192, 48, 96);
         curve_parameters_test::<BW6_761>(192, 192, 96, 96);
     }
 }

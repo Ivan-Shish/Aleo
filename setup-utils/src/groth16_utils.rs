@@ -2,7 +2,11 @@
 /// to Phase 2-compatible Lagrange Coefficients.
 use crate::{buffer_size, CheckForCorrectness, Deserializer, Result, Serializer, UseCompression};
 
-use snarkvm_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut, fft::EvaluationDomain};
+use snarkvm_algorithms::{
+    cfg_into_iter,
+    cfg_iter,
+    fft::{DomainCoeff, EvaluationDomain},
+};
 use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::PrimeField;
 
@@ -44,6 +48,7 @@ where
     F: PrimeField,
     C: AffineCurve,
     C::Projective: std::ops::MulAssign<F>,
+    <C as AffineCurve>::Projective: DomainCoeff<F>,
 {
     let mut coeffs = domain.ifft(&coeffs.iter().map(|e| e.into_projective()).collect::<Vec<_>>());
     C::Projective::batch_normalization(&mut coeffs);
@@ -271,7 +276,7 @@ mod tests {
         ProvingSystem,
     };
 
-    use zexe_algebra::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     fn read_write_curve<E: PairingEngine>(powers: usize, prepared_phase1_size: usize, compressed: UseCompression) {
         fn compat(compression: UseCompression) -> UseCompressionPhase1 {
