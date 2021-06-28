@@ -2374,15 +2374,15 @@ dependencies = [
 name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "gumdrop",
  "hex",
  "memmap",
  "phase1",
- "rand 0.7.3",
+ "rand 0.8.4",
  "rand_xorshift 0.2.0",
  "rustc_version 0.3.3",
  "setup-utils",
+ "snarkvm-curves",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
