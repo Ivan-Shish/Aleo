@@ -2,11 +2,11 @@ use std::fmt::Debug;
 
 use anyhow::{anyhow, Result};
 use futures::{Sink, SinkExt};
-use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
-use tokio_tungstenite::tungstenite::protocol::Message;
 use phase1::{Phase1, Phase1Parameters, ProvingSystem};
-use zexe_algebra::{PairingEngine, Bls12_377};
-use setup_utils::{CheckForCorrectness, blank_hash, derive_rng_from_seed, UseCompression};
+use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
+use setup_utils::{blank_hash, derive_rng_from_seed, CheckForCorrectness, UseCompression};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use zexe_algebra::{Bls12_377, PairingEngine};
 
 const TOTAL_SIZE: usize = 14; // Proof of Work takes roughly 20 seconds if TOTAL_SIZE=14
 const BATCH_SIZE: usize = 2;
@@ -28,8 +28,8 @@ fn calculate_powers_of_tau<E: PairingEngine>(data: Vec<u8>) -> Vec<u8> {
     // Construct our keypair using the RNG we created above
     let current_accumulator_hash = blank_hash();
     let mut rng = derive_rng_from_seed(&data);
-    let (_, privkey) = Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref())
-        .expect("could not generate keypair");
+    let (_, privkey) =
+        Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
     Phase1::computation(
         &input,
         &mut output,
@@ -39,7 +39,7 @@ fn calculate_powers_of_tau<E: PairingEngine>(data: Vec<u8>) -> Vec<u8> {
         &privkey,
         &parameters,
     )
-        .unwrap();
+    .unwrap();
     output
 }
 
@@ -61,8 +61,8 @@ where
 #[cfg(test)]
 mod test {
     use crate::reliability::cpu::calculate_powers_of_tau;
-    use zexe_algebra::{Bls12_377};
     use std::time::Instant;
+    use zexe_algebra::Bls12_377;
 
     const DATA_LENGTH: usize = 64;
     const OUTPUT_LENGTH: usize = 790192;
@@ -76,6 +76,6 @@ mod test {
         println!("Proof of Work took: {:.2?}", elapsed);
         assert_eq!(output.len(), OUTPUT_LENGTH);
         let expected = [12, 53, 232, 21, 121, 10, 125, 129];
-        assert_eq!(output[OUTPUT_LENGTH-expected.len()..], expected);
+        assert_eq!(output[OUTPUT_LENGTH - expected.len()..], expected);
     }
 }
