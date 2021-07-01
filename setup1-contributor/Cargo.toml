@@ -18,7 +18,7 @@ phase1-coordinator = { path = "../phase1-coordinator", features = ["operator"]}
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
 setup-utils = { path = "../setup-utils" }
 
-snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
+snarkvm-dpc = { git = "https://github.com/emmorais/snarkVM", rev = "5321751" }
 snarkvm-curves = { version = "0.6" }
 
 age = { version = "0.5", features = [ "cli-common", "armor" ] }
@@ -37,7 +37,7 @@ i18n-embed = { version = "0.9", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
 lazy_static = { version = "1.4.0" }
 panic-control = {version = "0.1.4" }
-rand = { version = "0.7" }
+rand = { version = "0.8" }
 reqwest = "0.11"
 secrecy = { version = "0.7" }
 serde = { version = "1.0", features = [ "derive" ] }

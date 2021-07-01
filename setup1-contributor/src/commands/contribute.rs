@@ -25,8 +25,8 @@ use phase1_coordinator::{
 };
 use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
-use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use snarkvm_dpc::account::AccountPrivateKey;
 
 use anyhow::{Context, Result};
 use chrono::Duration;
@@ -36,6 +36,7 @@ use panic_control::{spawn_quiet, ThreadResultExt};
 use rand::{CryptoRng, Rng};
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
+use snarkvm_dpc::{testnet1::instantiated::Components, Address};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs::File,
@@ -108,7 +109,7 @@ pub struct Contribute {
 
 impl Contribute {
     pub fn new(opts: &ContributeOptions, environment: &Environment, private_key: &[u8]) -> Result<Self> {
-        let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
+        let private_key = AccountPrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
@@ -540,9 +541,14 @@ impl Contribute {
             let response_hash = calculate_hash(&response_file).to_vec();
 
             // Sign the contribution state.
-            let view_key = ViewKey::from(&PrivateKey::from_str(&self.private_key)?)?;
-            let signed_contribution_state =
-                sign_contribution_state(&view_key.to_string(), &challenge_hash, &response_hash, None, auth_rng)?;
+            let private_key = AccountPrivateKey::<Components>::from(AccountPrivateKey::from_str(&self.private_key)?);
+            let signed_contribution_state = sign_contribution_state(
+                &private_key.to_string(),
+                &challenge_hash,
+                &response_hash,
+                None,
+                auth_rng
+            )?;
 
             // Construct the serialized response
             let mut file = File::open(&self.response_filename)?;

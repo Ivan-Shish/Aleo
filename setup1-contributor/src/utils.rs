@@ -8,12 +8,13 @@ use phase1_coordinator::{
     objects::{ContributionFileSignature, ContributionState},
 };
 use setup1_shared::structures::SetupKind;
-use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use snarkvm_curves::PairingEngine;
+use snarkvm_dpc::account::{AccountPrivateKey, Address};
 
 use anyhow::Result;
 use rand::{CryptoRng, Rng};
 use reqwest::header::AUTHORIZATION;
+use snarkvm_dpc::{ViewKey, PrivateKey};
 use std::{
     fs::{copy, create_dir_all, remove_file, write, File},
     io::{Read, Write},
@@ -142,8 +143,11 @@ pub fn get_authorization_value<R: Rng + CryptoRng>(
     path: &str,
     rng: &mut R,
 ) -> Result<String> {
-    let private_key = PrivateKey::from_str(private_key)?;
-    let view_key = ViewKey::from(&private_key)?;
+    let private_key = AccountPrivateKey::from_str(private_key)?;
+    let pk = PrivateKey {
+        private_key: private_key.clone()
+    };
+    let view_key = ViewKey::from(&pk)?;
     let address = Address::from(&private_key)?.to_string();
     let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());
     let signature = view_key.sign(message.as_bytes(), rng)?.to_string();
@@ -165,7 +169,9 @@ pub fn sign_contribution_state<R: Rng + CryptoRng>(
         ContributionState::new(challenge_hash.to_vec(), response_hash.to_vec(), next_challenge_hash)?;
     let message = contribution_state.signature_message()?;
 
-    let view_key = ViewKey::from_str(signing_key)?;
+    let private_key = AccountPrivateKey::from_str(signing_key)?;
+    let pk = PrivateKey { private_key };
+    let view_key = ViewKey::from(&pk)?;
     let signature = view_key.sign(&message.into_bytes(), rng)?;
 
     let contribution_file_signature = ContributionFileSignature::new(signature.to_string(), contribution_state)?;
