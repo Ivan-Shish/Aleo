@@ -1,5 +1,5 @@
 use crate::{errors::VerifierError, objects::LockResponse, utils::AleoAuthentication, verifier::Verifier};
-use snarkos_toolkit::account::Address;
+use snarkvm_dpc::Address;
 
 use reqwest::Client;
 use tracing::{debug, error, info};

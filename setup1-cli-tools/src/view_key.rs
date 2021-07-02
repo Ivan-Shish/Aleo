@@ -1,4 +1,4 @@
-use snarkos_toolkit::account::{PrivateKey, ViewKey};
+use snarkvm_dpc::{PrivateKey, ViewKey};
 
 fn main() {
     let mut rng = rand::thread_rng();

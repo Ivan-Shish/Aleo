@@ -2,7 +2,7 @@ use age::Decryptor;
 use anyhow::{anyhow, Result};
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use serde::Deserialize;
-use snarkos_toolkit::account::{Address, PrivateKey};
+use snarkvm_dpc::{Address, PrivateKey};
 use std::{fs, io::Read, str::FromStr};
 use structopt::StructOpt;
 use unic_langid::LanguageIdentifier;
@@ -58,7 +58,7 @@ fn main() {
 
     let private_key = read_private_key(&options.path).expect("Should read a private key");
 
-    let address = Address::from(&private_key)
+    let address = Address::from(&private_key.private_key)
         .expect("Should produce a public key out of a private key")
         .to_string();
     println!("{}", address);

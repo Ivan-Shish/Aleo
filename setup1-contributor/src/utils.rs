@@ -14,7 +14,7 @@ use snarkvm_dpc::account::{AccountPrivateKey, Address};
 use anyhow::Result;
 use rand::{CryptoRng, Rng};
 use reqwest::header::AUTHORIZATION;
-use snarkvm_dpc::{ViewKey, PrivateKey};
+use snarkvm_dpc::{PrivateKey, ViewKey};
 use std::{
     fs::{copy, create_dir_all, remove_file, write, File},
     io::{Read, Write},
@@ -145,7 +145,7 @@ pub fn get_authorization_value<R: Rng + CryptoRng>(
 ) -> Result<String> {
     let private_key = AccountPrivateKey::from_str(private_key)?;
     let pk = PrivateKey {
-        private_key: private_key.clone()
+        private_key: private_key.clone(),
     };
     let view_key = ViewKey::from(&pk)?;
     let address = Address::from(&private_key)?.to_string();

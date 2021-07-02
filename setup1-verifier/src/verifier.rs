@@ -14,10 +14,10 @@ use phase1_coordinator::{
     Participant,
 };
 use setup_utils::calculate_hash;
-use snarkos_toolkit::account::{Address, ViewKey};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use chrono::Utc;
+use snarkvm_dpc::{testnet1::instantiated::Components, Address, ViewKey};
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
 use tokio::{signal, sync::Mutex};
 use tracing::{debug, error, info, trace, warn};
@@ -88,7 +88,7 @@ impl Verifier {
     pub fn new(
         coordinator_api_url: Url,
         view_key: ViewKey,
-        address: Address,
+        address: Address<Components>,
         environment: Environment,
         tasks_storage_path: String,
     ) -> Result<Self, VerifierError> {

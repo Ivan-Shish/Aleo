@@ -1,4 +1,5 @@
 use phase1_coordinator::CoordinatorError;
+use snarkvm_dpc::{AddressError, ViewKeyError};
 
 #[derive(Debug, Error)]
 pub enum VerifierError {
@@ -72,14 +73,14 @@ impl From<serde_json::Error> for VerifierError {
     }
 }
 
-impl From<snarkos_toolkit::errors::AddressError> for VerifierError {
-    fn from(error: snarkos_toolkit::errors::AddressError) -> Self {
+impl From<AddressError> for VerifierError {
+    fn from(error: AddressError) -> Self {
         VerifierError::Crate("snarkos", format!("{:?}", error))
     }
 }
 
-impl From<snarkos_toolkit::errors::ViewKeyError> for VerifierError {
-    fn from(error: snarkos_toolkit::errors::ViewKeyError) -> Self {
+impl From<ViewKeyError> for VerifierError {
+    fn from(error: ViewKeyError) -> Self {
         VerifierError::Crate("snarkos", format!("{:?}", error))
     }
 }

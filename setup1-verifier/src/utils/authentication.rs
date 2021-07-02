@@ -1,11 +1,7 @@
 use crate::errors::VerifierError;
 
-use snarkos_toolkit::account::{
-    view_key::{Signature, ViewKey},
-    Address,
-};
-
-use rand::thread_rng;
+use rand::rngs::OsRng;
+use snarkvm_dpc::{Address, Signature, ViewKey};
 use std::{fmt, str::FromStr};
 use tracing::trace;
 
@@ -68,7 +64,7 @@ impl AleoAuthentication {
     /// returns a `VerifierError`.
     ///
     pub fn sign(view_key: &ViewKey, message: String) -> Result<String, VerifierError> {
-        let rng = &mut thread_rng();
+        let rng = &mut OsRng;
 
         trace!("Signing message - (message: {})", message);
 

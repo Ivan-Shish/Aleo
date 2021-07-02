@@ -547,7 +547,7 @@ impl Contribute {
                 &challenge_hash,
                 &response_hash,
                 None,
-                auth_rng
+                auth_rng,
             )?;
 
             // Construct the serialized response

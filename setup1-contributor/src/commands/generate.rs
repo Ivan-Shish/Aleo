@@ -9,7 +9,7 @@ use age::{
 use anyhow::Result;
 use rand::{rngs::OsRng, RngCore};
 use secrecy::{ExposeSecret, SecretVec};
-use snarkvm_dpc::{PrivateKey, Address};
+use snarkvm_dpc::{Address, PrivateKey};
 use std::io::Write;
 
 fn encrypt(encryptor: Encryptor, secret: &[u8]) -> Result<String> {
