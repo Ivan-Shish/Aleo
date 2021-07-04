@@ -3007,7 +3007,6 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite 0.2.6",
  "serde",
- "serde_json",
  "serde_urlencoded",
  "tokio 1.7.0",
  "tokio-native-tls",
@@ -3549,9 +3548,7 @@ dependencies = [
  "reqwest",
  "secrecy",
  "serde",
- "serde_derive",
  "serde_json",
- "serial_test",
  "setup-utils",
  "setup1-shared",
  "snarkos-toolkit",
@@ -3571,6 +3568,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tokio 1.7.0",
 ]
 
 [[package]]
@@ -3583,6 +3581,7 @@ dependencies = [
  "ctrlc",
  "futures-util",
  "hex",
+ "http",
  "lazy_static",
  "phase1",
  "phase1-cli",

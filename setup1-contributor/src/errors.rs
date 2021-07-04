@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 #[derive(Debug, Error)]
 pub enum ContributeError {
     #[error("Could not choose random chunk")]
@@ -18,8 +20,6 @@ pub enum ContributeError {
     FailedRunningContributeError,
     #[error("Lane was null: {0}")]
     LaneWasNullError(String),
-    #[error("Seed was None")]
-    SeedWasNoneError,
     #[error("Unsupported decryptor")]
     UnsupportedDecryptorError,
 }

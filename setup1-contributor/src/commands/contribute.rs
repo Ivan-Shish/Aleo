@@ -34,7 +34,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
 use rand::{CryptoRng, Rng};
-use reqwest::header::AUTHORIZATION;
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
 use std::{
@@ -68,7 +67,6 @@ lazy_static! {
         map.insert(PipelineLane::Upload, VecDeque::new());
         RwLock::new(map)
     };
-    static ref SEED: RwLock<Option<Arc<SecretVec<u8>>>> = RwLock::new(None);
     static ref TASKS: RwLock<Tasks> = RwLock::new(Tasks::default());
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -91,6 +89,7 @@ pub struct Contribute {
     /// `aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a`
     pub participant_id: String,
     pub private_key: String,
+    seed: Arc<SecretVec<u8>>,
     pub upload_mode: UploadMode,
     pub environment: Environment,
 
@@ -108,7 +107,12 @@ pub struct Contribute {
 }
 
 impl Contribute {
-    pub fn new(opts: &ContributeOptions, environment: &Environment, private_key: &[u8]) -> Result<Self> {
+    pub fn new(
+        opts: &ContributeOptions,
+        environment: &Environment,
+        private_key: &[u8],
+        seed: Arc<SecretVec<u8>>,
+    ) -> Result<Self> {
         let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
@@ -117,6 +121,7 @@ impl Contribute {
             server_url: opts.api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
+            seed,
             upload_mode: opts.upload_mode.clone(),
             environment: environment.clone(),
 
@@ -486,15 +491,7 @@ impl Contribute {
             self.wait_and_move_task_from_lane_to_lane(&PipelineLane::Download, &PipelineLane::Process, &lock_response)
                 .await?;
 
-            // let seed = seed.read().expect("Should have been able to read seed");
-            let seed = SEED
-                .read()
-                .expect("Should have been able to read seed")
-                .as_ref()
-                .ok_or(ContributeError::SeedWasNoneError)
-                .expect("Seed should not have been none")
-                .clone();
-            let exposed_seed = seed.expose_secret();
+            let exposed_seed = self.seed.expose_secret();
             let seeded_rng = derive_rng_from_seed(&exposed_seed[..]);
             let start = Instant::now();
             remove_file_if_exists(&self.response_filename)?;
@@ -706,13 +703,14 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &join_queue_path, auth_rng)?;
         let response = client
             .post(join_queue_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
 
-        let data = response.json().await?;
-        let joined = serde_json::from_value::<bool>(data)?;
+        let data = response.bytes().await?;
+        let joined = serde_json::from_slice::<bool>(&*data)?;
 
         Ok(joined)
     }
@@ -721,8 +719,8 @@ impl Contribute {
         let ceremony_url = self.server_url.join("/v1/round/current")?;
         let response = reqwest::get(ceremony_url.as_str()).await?.error_for_status()?;
 
-        let data = response.json().await?;
-        let ceremony: Round = serde_json::from_value(data)?;
+        let data = response.bytes().await?;
+        let ceremony: Round = serde_json::from_slice(&*data)?;
 
         Ok(ceremony)
     }
@@ -734,13 +732,14 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &lock_path, auth_rng)?;
         let response = client
             .post(lock_chunk_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
 
-        let data = response.json().await?;
-        let lock_response = serde_json::from_value::<LockResponse>(data)?;
+        let data = response.bytes().await?;
+        let lock_response = serde_json::from_slice::<LockResponse>(&*data)?;
 
         Ok(lock_response)
     }
@@ -752,7 +751,8 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &heartbeat_path, auth_rng)?;
         let response = client
             .post(url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
@@ -776,7 +776,7 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "GET", &download_path, auth_rng)?;
         let mut response = client
             .get(download_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
+            .header(http::header::AUTHORIZATION, authorization)
             .send()
             .await?
             .error_for_status()?;
@@ -804,8 +804,9 @@ impl Contribute {
         let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
         client
             .post(upload_path_url.as_str())
-            .header(AUTHORIZATION, authorization)
-            .header("Content-Type", "application/octet-stream")
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_TYPE, "application/octet-stream")
+            .header(http::header::CONTENT_LENGTH, contents.len())
             .body(contents)
             .send()
             .await?
@@ -824,10 +825,12 @@ impl Contribute {
         let contribute_chunk_url = self.server_url.join(&contribute_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "POST", &contribute_path, auth_rng)?;
+        let bytes = serde_json::to_vec(&body)?;
         client
             .post(contribute_chunk_url.as_str())
-            .header(AUTHORIZATION, authorization)
-            .json(&body)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
             .send()
             .await?
             .error_for_status()?;
@@ -880,7 +883,13 @@ fn read_keys<P: AsRef<Path>>(keys_path: P, passphrase: Option<SecretString>) -> 
 async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
     let settings_endpoint_url = coordinator_url.join("/v1/coordinator/settings")?;
     let client = reqwest::Client::new();
-    let bytes = client.post(settings_endpoint_url).send().await?.bytes().await?;
+    let bytes = client
+        .post(settings_endpoint_url)
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await?
+        .bytes()
+        .await?;
     PublicSettings::decode(&bytes.to_vec())
         .map_err(|e| anyhow::anyhow!("Error decoding coordinator PublicSettings: {}", e))
 }
@@ -909,13 +918,11 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     let (seed, private_key) =
         read_keys(&opts.keys_path, opts.passphrase.clone()).expect("Unable to load Aleo setup keys");
 
-    *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
-
     let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
-    let contribute =
-        Contribute::new(opts, &environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
+    let contribute = Contribute::new(opts, &environment, private_key.expose_secret(), Arc::new(seed))
+        .expect("Unable to initialize a contributor");
 
     if public_settings.check_reliability {
         tracing::info!("Checking reliability score before joining the queue");

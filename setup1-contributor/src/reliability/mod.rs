@@ -3,8 +3,17 @@
 use anyhow::{anyhow, Result};
 use futures_util::{SinkExt, StreamExt};
 use http::Request;
-use setup1_shared::reliability::{ContributorMessage, CoordinatorMessage};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use setup1_shared::reliability::{
+    ContributorMessage,
+    ContributorMessageName,
+    CoordinatorMessage,
+    CoordinatorMessageName,
+    MAXIMUM_MESSAGE_SIZE,
+};
+use tokio_tungstenite::{
+    connect_async_with_config,
+    tungstenite::protocol::{Message, WebSocketConfig},
+};
 use url::Url;
 
 use crate::utils::get_authorization_value;
@@ -36,7 +45,11 @@ pub(crate) async fn check(api_base_url: &Url, private_key: &str) -> Result<()> {
     let api_path = "/v1/contributor/reliability";
     let request = prepare_request(api_base_url, api_path, private_key)?;
 
-    let (ws_stream, _response) = connect_async(request)
+    let mut config = WebSocketConfig::default();
+    config.max_frame_size = Some(MAXIMUM_MESSAGE_SIZE);
+    config.max_message_size = Some(MAXIMUM_MESSAGE_SIZE);
+
+    let (ws_stream, _response) = connect_async_with_config(request, Some(config))
         .await
         .map_err(|e| anyhow!("Failed to connect to coordinator via WebSocket: {:?}", e))?;
     tracing::trace!("WebSocket handshake has been successfully completed");
@@ -58,21 +71,24 @@ pub(crate) async fn check(api_base_url: &Url, private_key: &str) -> Result<()> {
             // and tungstenite implementation details
             continue;
         }
-        let decoded = CoordinatorMessage::decode(&raw_message.into_data())?;
-        tracing::trace!("Got message from coordinator: {}", decoded);
+        let decoded = CoordinatorMessage::from_slice(&raw_message.into_data()).map_err(|e| anyhow!("{:?}", e))?;
+        tracing::trace!("Got message from coordinator: {:?}", decoded.name);
 
-        match decoded {
-            CoordinatorMessage::Ping { id } => latency::check(&mut write, id).await?,
-            CoordinatorMessage::BandwidthChallenge(data) => bandwidth::check(&mut write, data).await?,
-            CoordinatorMessage::CpuChallenge(data) => cpu::check(&mut write, data).await?,
+        match decoded.name {
+            CoordinatorMessageName::Ping => latency::check(&mut write, decoded.data).await?,
+            CoordinatorMessageName::BandwidthChallenge => bandwidth::check(&mut write, decoded.data).await?,
+            CoordinatorMessageName::CpuChallenge => cpu::check(&mut write, decoded.data).await?,
             other => {
                 let text = format!(
-                    "Wrong message, expected one of Ping | BandwidthChallenge | CpuChallenge, got {}",
+                    "Wrong message, expected one of Ping | BandwidthChallenge | CpuChallenge, got {:?}",
                     other,
                 );
                 tracing::warn!("{}", text);
-                let error = ContributorMessage::Error(text);
-                let response = Message::binary(error.encode()?);
+                let error = ContributorMessage {
+                    name: ContributorMessageName::Error,
+                    data: text.into_bytes(),
+                };
+                let response = Message::binary(error.to_vec());
                 write.send(response).await.map_err(|e| anyhow!("{:?}", e))?;
             }
         }

@@ -3,6 +3,7 @@ use crate::{
     utils::{read_from_file, write_to_file},
 };
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use tracing::warn;
 
@@ -98,7 +99,7 @@ mod tests {
     use super::*;
     use crate::utils::remove_file_if_exists;
 
-    use serial_test::serial;
+    use lazy_static::lazy_static;
     use std::path::Path;
 
     const TEST_TASK_FILE: &str = "TEST.tasks";
@@ -131,7 +132,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     pub fn test_assign_tasks() {
         let mut tasks = Tasks::default();
         assert_eq!(0, tasks.get_tasks().len());
@@ -150,7 +150,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     pub fn test_next_tasks() {
         let mut tasks = Tasks::default();
 
@@ -167,7 +166,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     pub fn test_remove_tasks() {
         let mut tasks = Tasks::default();
 
@@ -189,7 +187,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     pub fn test_store_tasks() {
         remove_file_if_exists(TEST_TASK_FILE).unwrap();
         let mut tasks = Tasks::default();
@@ -208,7 +205,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     pub fn test_load_tasks() {
         let mut tasks = Tasks::default();
 
