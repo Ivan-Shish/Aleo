@@ -966,7 +966,10 @@ impl CoordinatorState {
         }
     }
 
-    pub(super) fn reset_round(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+    pub(super) fn reset_round(
+        &mut self,
+        time: &dyn TimeSource,
+    ) -> Result<Option<ResetRoundStorageAction>, CoordinatorError> {
         let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
         let _guard = span.enter();
 
@@ -1035,9 +1038,14 @@ impl CoordinatorState {
 
             self.initialize(round_height);
             self.update_round_metrics();
-        }
 
-        Ok(())
+            Ok(Some(ResetRoundStorageAction {
+                round_height: self.current_round_height(),
+                remove_participants: Vec::new(),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     ///
@@ -2082,7 +2090,7 @@ impl CoordinatorState {
         };
 
         // Drop the contributor from the current round, and update participant info and coordinator state.
-        let drop_data = match participant {
+        let storage_action: CeremonyStorageAction = match participant {
             Participant::Contributor(_id) => {
                 // TODO (howardwu): Optimization only.
                 //  -----------------------------------------------------------------------------------
@@ -2193,10 +2201,13 @@ impl CoordinatorState {
                 // Add the participant info to the dropped participants.
                 self.dropped.push(dropped_info);
 
-                let (replacement_contributor, reset_round) = if self.environment.coordinator_contributors().is_empty() {
+                let action = if self.environment.coordinator_contributors().is_empty() {
                     tracing::info!("No replacement contributors available, the round will be restarted.");
                     // There are no replacement contributors so the only option is to restart the round.
-                    (None, true)
+                    CeremonyStorageAction::ResetRound(ResetRoundStorageAction {
+                        round_height: self.current_round_height(),
+                        remove_participants: vec![participant.clone()],
+                    })
                 } else {
                     // TODO: handle the situation where all replacement contributors are currently engaged.
                     tracing::info!(
@@ -2204,19 +2215,20 @@ impl CoordinatorState {
                         Assigning replacement contributor to the dropped contributor's tasks."
                     );
                     // Assign the replacement contributor to the dropped tasks.
-                    (Some(self.add_replacement_contributor_unsafe(bucket_id, time)?), false)
+                    let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id, time)?;
+
+                    CeremonyStorageAction::ReplaceContributor(ReplaceContributorStorageAction {
+                        dropped_contributor: participant.clone(),
+                        bucket_id,
+                        locked_chunks,
+                        tasks,
+                        replacement_contributor,
+                    })
                 };
 
                 warn!("Dropped {} from the ceremony", participant);
 
-                DropCurrentParticpantData {
-                    participant: participant.clone(),
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement: replacement_contributor,
-                    reset_round,
-                }
+                action
             }
             Participant::Verifier(_id) => {
                 // Add just the current pending tasks to a pending verifications list.
@@ -2250,20 +2262,33 @@ impl CoordinatorState {
                 // left for this round.
                 let reset_round = self.current_verifiers.is_empty();
 
-                DropCurrentParticpantData {
-                    participant: participant.clone(),
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement: None,
-                    reset_round,
+                if reset_round {
+                    CeremonyStorageAction::ResetRound(ResetRoundStorageAction {
+                        round_height: self.current_round_height(),
+                        remove_participants: vec![participant.clone()],
+                    })
+                } else {
+                    CeremonyStorageAction::RemoveVerifier(RemoveVerifierStorageAction {
+                        dropped_verifier: participant.clone(),
+                        bucket_id,
+                        locked_chunks,
+                        tasks,
+                    })
                 }
             }
         };
 
-        if drop_data.reset_round {
-            self.reset_round(time)?;
+        match storage_action {
+            CeremonyStorageAction::ResetRound(_) => {
+                self.reset_round(time)?;
+            }
+            _ => {}
         }
+
+        let drop_data = DropCurrentParticpantData {
+            participant: participant.clone(),
+            storage_action,
+        };
 
         Ok(DropParticipant::DropCurrent(drop_data))
     }
@@ -3284,8 +3309,63 @@ impl CoordinatorState {
     }
 }
 
-pub enum CeremonyDataAction {
-    ResetRound(u64),
+/// Action to update the storage to reflect a round being reset in
+/// [CoordinatorState].
+#[derive(Debug)]
+pub struct ResetRoundStorageAction {
+    /// The height of the round to be reset.
+    round_height: u64,
+    /// The participants to be removed from the round during the
+    /// reset.
+    remove_participants: Vec<Participant>,
+}
+
+/// Action to update the storage to reflect a verifier being
+/// removed in [CoordinatorState].
+#[derive(Debug)]
+pub struct RemoveVerifierStorageAction {
+    /// The verifier being dropped.
+    pub dropped_verifier: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this verifier. See [initialize_tasks] for more
+    /// information about this parameter.
+    pub bucket_id: u64,
+    /// Chunks currently locked by the verifier being dropped.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the verifier being
+    /// dropped.
+    pub tasks: Vec<Task>,
+}
+
+/// Action to update the storage to reflect a contributor being
+/// replaced in [CoordinatorState].
+#[derive(Debug)]
+pub struct ReplaceContributorStorageAction {
+    /// The contributor being dropped.
+    pub dropped_contributor: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this contributor. See [initialize_tasks] for more
+    /// information about this parameter.
+    pub bucket_id: u64,
+    /// Chunks currently locked by the contributor being dropped.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the contributor being dropped.
+    pub tasks: Vec<Task>,
+    /// The contributor which will replace the contributor being
+    /// dropped.
+    pub replacement_contributor: Participant,
+}
+
+/// Actions taken to update the round/storage to reflect a change in
+/// [CoordinatorState].
+#[derive(Debug)]
+pub enum CeremonyStorageAction {
+    /// See [ResetRoundStorageAction].
+    ResetRound(ResetRoundStorageAction),
+    /// See [ReplaceContributorStorageAction].
+    ReplaceContributor(ReplaceContributorStorageAction),
+    /// See [RemoveVerifierStorageAction].
+    RemoveVerifier(RemoveVerifierStorageAction),
 }
 
 /// Data required by the coordinator to drop a participant from the
@@ -3294,19 +3374,9 @@ pub enum CeremonyDataAction {
 pub(crate) struct DropCurrentParticpantData {
     /// The participant being dropped.
     pub participant: Participant,
-    /// Determines the starting chunk, and subsequent tasks selected
-    /// for this participant. See [initialize_tasks] for more
-    /// information about this parameter.
-    pub bucket_id: u64,
-    /// Chunks currently locked by the participant.
-    pub locked_chunks: Vec<u64>,
-    /// Tasks currently being performed by the participant.
-    pub tasks: Vec<Task>,
-    /// The participant which will replace the participant being
-    /// dropped.
-    pub replacement: Option<Participant>,
-    /// Whether the current round should be reset/restarted.
-    pub reset_round: bool,
+    /// Action to perform to update the round/storage after the drop
+    /// to match the current coordinator state.
+    pub storage_action: CeremonyStorageAction,
 }
 
 #[derive(Debug)]
@@ -4449,7 +4519,7 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
-        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let _contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
@@ -4513,6 +4583,6 @@ mod tests {
             DropParticipant::DropQueue(_) => panic!("Unexpected drop type: {:?}", drop),
         };
 
-        assert!(drop_data.reset_round);
+        assert!(matches!(drop_data.storage_action, CeremonyStorageAction::ResetRound(_)));
     }
 }

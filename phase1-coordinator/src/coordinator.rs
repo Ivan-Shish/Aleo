@@ -13,7 +13,6 @@ use crate::{
 use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -2348,41 +2347,82 @@ impl Coordinator {
             }
         };
 
-        if drop_data.reset_round {
-            self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
-        } else {
-            // Fetch the current round from storage.
-            let mut round = match Self::load_current_round(&storage) {
-                // Case 1 - This is a typical round of the ceremony.
-                Ok(round) => round,
-                // Case 2 - The ceremony has not started or storage has failed.
-                _ => return Err(CoordinatorError::RoundDoesNotExist),
-            };
-
-            warn!("Removing locked chunks and all impacted contributions");
-
-            // Remove the lock from the specified chunks.
-            round.remove_locks_unsafe(storage, &drop)?;
-            warn!("Removed locked chunks");
-
-            // Remove the contributions from the specified chunks.
-            round.remove_chunk_contributions_unsafe(storage, &drop)?;
-            warn!("Removed impacted contributions");
-
-            // Assign a replacement contributor to the dropped tasks for the current round.
-            if let Some(replacement_contributor) = &drop_data.replacement {
-                round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
-                warn!("Added a replacement contributor {}", replacement_contributor);
+        match &drop_data.storage_action {
+            crate::coordinator_state::CeremonyStorageAction::ResetRound(_) => {
+                self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
             }
+            crate::coordinator_state::CeremonyStorageAction::ReplaceContributor(replace_action) => {
+                warn!(
+                    "Replacing contributor {} with {}",
+                    replace_action.dropped_contributor, replace_action.replacement_contributor
+                );
 
-            // Save the updated round to storage.
-            storage.update(
-                &Locator::RoundState {
-                    round_height: round.round_height(),
-                },
-                Object::RoundState(round),
-            )?;
+                // Fetch the current round from storage.
+                let mut round = Self::load_current_round(&storage)?;
+
+                warn!("Removing locked chunks and all impacted contributions");
+
+                // Remove the lock from the specified chunks.
+                round.remove_locks_unsafe(
+                    storage,
+                    &replace_action.dropped_contributor,
+                    &replace_action.locked_chunks,
+                )?;
+                warn!("Removed locked chunks");
+
+                // Remove the contributions from the specified chunks.
+                round.remove_chunk_contributions_unsafe(
+                    storage,
+                    &replace_action.dropped_contributor,
+                    &replace_action.tasks,
+                )?;
+                warn!("Removed impacted contributions");
+
+                // Assign a replacement contributor to the dropped tasks for the current round.
+                round.add_replacement_contributor_unsafe(replace_action.replacement_contributor.clone())?;
+                warn!(
+                    "Added a replacement contributor {}",
+                    replace_action.replacement_contributor
+                );
+
+                // Save the updated round to storage.
+                storage.update(
+                    &Locator::RoundState {
+                        round_height: round.round_height(),
+                    },
+                    Object::RoundState(round),
+                )?;
+            }
+            crate::coordinator_state::CeremonyStorageAction::RemoveVerifier(remove_action) => {
+                warn!("Removing verifier {}", remove_action.dropped_verifier);
+
+                // Fetch the current round from storage.
+                let mut round = Self::load_current_round(&storage)?;
+
+                warn!("Removing locked chunks and all impacted contributions");
+
+                // Remove the lock from the specified chunks.
+                round.remove_locks_unsafe(storage, &remove_action.dropped_verifier, &remove_action.locked_chunks)?;
+                warn!("Removed locked chunks");
+
+                // Remove the contributions from the specified chunks.
+                round.remove_chunk_contributions_unsafe(
+                    storage,
+                    &remove_action.dropped_verifier,
+                    &remove_action.tasks,
+                )?;
+                warn!("Removed impacted contributions");
+
+                // Save the updated round to storage.
+                storage.update(
+                    &Locator::RoundState {
+                        round_height: round.round_height(),
+                    },
+                    Object::RoundState(round),
+                )?;
+            }
         }
+
         Ok(())
     }
 

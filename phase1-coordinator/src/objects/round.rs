@@ -1,5 +1,4 @@
 use crate::{
-    coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
     storage::{
@@ -23,6 +22,8 @@ use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
 use std::{collections::HashSet, hash::Hash};
 use tracing::{debug, error, trace, warn};
+
+use super::Task;
 
 /// A helper function used to check that each list of participants is unique.
 fn has_unique_elements<T>(iter: T) -> bool
@@ -796,10 +797,7 @@ impl Round {
     ///
     /// Removes the locks for the current round from the given chunk IDs.
     ///
-    /// If the given justification is not valid for this operation,
-    /// this function will return a `CoordinatorError`.
-    ///
-    /// If the given chunk IDs in the justification are not currently locked,
+    /// If the given chunk IDs are not currently locked,
     /// this function will return a `CoordinatorError`.
     ///
     /// If the given participant is not the current lock holder of the given chunk IDs,
@@ -809,14 +807,9 @@ impl Round {
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        drop: &DropParticipant,
+        participant: &Participant,
+        locked_chunks: &[u64],
     ) -> Result<(), CoordinatorError> {
-        // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, locked_chunks) = match drop {
-            DropParticipant::DropCurrent(data) => (&data.participant, &data.locked_chunks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
-        };
-
         // Sanity check that the participant holds the lock for each specified chunk.
         let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
@@ -937,31 +930,26 @@ impl Round {
     /// Removes the contributions from the current round from the
     /// given (chunk ID, contribution ID) tasks.
     ///
-    /// If the given justification is not valid for this operation,
-    /// this function will return a `CoordinatorError`.
     ///
-    /// If the given (chunk ID, contribution ID) tasks in the justification
-    /// are not currently locked, this function will return a `CoordinatorError`.
+    /// If the given (chunk ID, contribution ID) tasks are not
+    /// currently locked, this function will return a
+    /// `CoordinatorError`.
     ///
-    /// If the given participant is not the current lock holder of the given chunk IDs,
-    /// this function will return a `CoordinatorError`.
+    /// If the given participant is not the current lock holder of the
+    /// given chunk IDs, this function will return a
+    /// `CoordinatorError`.
     ///
     #[tracing::instrument(
         level = "error",
-        skip(self, storage, drop),
+        skip(self, storage, tasks),
         fields(round = self.round_height())
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        drop: &DropParticipant,
+        participant: &Participant,
+        tasks: &[Task],
     ) -> Result<(), CoordinatorError> {
-        // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, tasks) = match drop {
-            DropParticipant::DropCurrent(data) => (&data.participant, &data.tasks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
-        };
-
         // Check if the participant is a verifier. As verifications are not dependent
         // on each other, no further update is necessary in the round state.
         if participant.is_verifier() {
