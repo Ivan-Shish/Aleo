@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     fmt,
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    sync::{Arc, RwLock},
 };
 use tracing::*;
 
@@ -446,7 +446,7 @@ impl Coordinator {
             // Drop disconnected participants from the current round.
             for drop in state.update_dropped_participants(self.time.as_ref())? {
                 // Update the round to reflect the coordinator state changes.
-                self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
+                self.drop_participant_from_storage(&mut storage, &drop)?;
             }
             state.save(&mut storage)?;
 
@@ -716,7 +716,7 @@ impl Coordinator {
         let drop = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
+        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
@@ -739,7 +739,7 @@ impl Coordinator {
         let drop = state.ban_participant(participant, self.time.as_ref())?;
 
         // Update the round on disk to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut state, &mut storage, &drop)?;
+        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
@@ -2330,7 +2330,6 @@ impl Coordinator {
     #[inline]
     fn drop_participant_from_storage(
         &self,
-        state: &mut RwLockWriteGuard<CoordinatorState>,
         storage: &mut StorageLock,
         drop: &DropParticipant,
     ) -> Result<Vec<LocatorPath>, CoordinatorError> {
@@ -2349,8 +2348,8 @@ impl Coordinator {
             }
         };
 
-        if drop_data.restart_round {
-            self.reset_round(state, storage, vec![drop_data.participant.clone()])?;
+        if drop_data.reset_round {
+            self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
 
             // TODO: should this get locators back?
             Ok(Vec::new())
@@ -2466,19 +2465,17 @@ impl Coordinator {
         self.signature.clone()
     }
 
-    /// Reset/restart the current round. `remove_participants` is a
-    /// list of participants to remove from the reset round.
-    fn reset_round(
+    /// Reset the current round in storage.
+    fn reset_round_storage(
         &self,
-        state: &mut RwLockWriteGuard<CoordinatorState>,
         storage: &mut StorageLock,
         remove_participants: Vec<Participant>,
-    ) -> Result<u64, CoordinatorError> {
+    ) -> Result<(), CoordinatorError> {
         // Fetch the current height of the ceremony.
         let round_height = Self::load_current_round_height(storage)?;
         let span = tracing::error_span!("reset_round", round = round_height);
         let _guard = span.enter();
-        info!("Restarting round {}", round_height);
+        info!("Resetting round {}", round_height);
 
         let mut round = Self::load_round(storage, round_height)?;
         {
@@ -2511,36 +2508,9 @@ impl Coordinator {
             }
         }
 
-        tracing::debug!("Obtaining write lock for state.");
-        state.reset_round(&*self.time)?;
-        state.save(storage)?;
+        info!("Finished resetting round {}", round_height);
 
-        // If the round is complete, we also need to clear the next round directory.
-        // No need to back it up since it's derived from the backed up round.
-        // TODO: implement this
-        // if round.is_complete() {
-        // self.environment.round_directory_reset(round_height + 1);
-        // }
-
-        // {
-        //     let storage = self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?;
-        //     let mut storage_lock = StorageLock::Write(storage);
-        //     // Execute the round initialization as the coordinator.
-        //     // On success, the reset round will have been saved to storage.
-        //     self.run_initialization(&mut storage_lock, started_at)?;
-        // }
-
-        // Fetch the new round height.
-        // let new_height = self.current_round_height()?;
-
-        // Check that the new height is the same.
-        // if new_height != round_height {
-        //     error!("Round height after initialization is {}", new_height);
-        //     return Err(CoordinatorError::RoundHeightMismatch);
-        // }
-
-        info!("Completed restarting round {}", round_height);
-        Ok(round_height)
+        Ok(())
     }
 }
 
