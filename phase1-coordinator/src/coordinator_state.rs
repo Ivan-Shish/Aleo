@@ -2216,7 +2216,6 @@ impl CoordinatorState {
                     tasks,
                     replacement: replacement_contributor,
                     reset_round,
-                    ban: false,
                 }
             }
             Participant::Verifier(_id) => {
@@ -2258,7 +2257,6 @@ impl CoordinatorState {
                     tasks,
                     replacement: None,
                     reset_round,
-                    ban: false,
                 }
             }
         };
@@ -2286,9 +2284,7 @@ impl CoordinatorState {
 
         // Drop the participant from the queue, precommit, and current round.
         match self.drop_participant(participant, time)? {
-            DropParticipant::DropCurrent(mut drop_data) => {
-                drop_data.ban = true;
-
+            DropParticipant::DropCurrent(drop_data) => {
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
@@ -3288,6 +3284,10 @@ impl CoordinatorState {
     }
 }
 
+pub enum CeremonyDataAction {
+    ResetRound(u64),
+}
+
 /// Data required by the coordinator to drop a participant from the
 /// ceremony.
 #[derive(Debug)]
@@ -3307,8 +3307,6 @@ pub(crate) struct DropCurrentParticpantData {
     pub replacement: Option<Participant>,
     /// Whether the current round should be reset/restarted.
     pub reset_round: bool,
-    /// The dropped participant is to be banned.
-    pub ban: bool,
 }
 
 #[derive(Debug)]
@@ -4516,8 +4514,5 @@ mod tests {
         };
 
         assert!(drop_data.reset_round);
-
-        dbg!(drop_data);
-        state.reset_round(&time).unwrap();
     }
 }

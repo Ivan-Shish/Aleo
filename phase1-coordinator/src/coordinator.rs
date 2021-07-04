@@ -705,7 +705,7 @@ impl Coordinator {
         skip(self, participant),
         fields(participant = %participant)
     )]
-    pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    pub fn drop_participant(&self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -716,19 +716,19 @@ impl Coordinator {
         let drop = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locations)
+        Ok(())
     }
 
     ///
     /// Bans the given participant from the ceremony.
     ///
     #[inline]
-    pub fn ban_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    pub fn ban_participant(&self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -739,12 +739,12 @@ impl Coordinator {
         let drop = state.ban_participant(participant, self.time.as_ref())?;
 
         // Update the round on disk to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locations)
+        Ok(())
     }
 
     ///
@@ -2332,7 +2332,7 @@ impl Coordinator {
         &self,
         storage: &mut StorageLock,
         drop: &DropParticipant,
-    ) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    ) -> Result<(), CoordinatorError> {
         debug!(
             "Dropping participant from storage with the following information: {:#?}",
             drop
@@ -2344,15 +2344,12 @@ impl Coordinator {
             DropParticipant::DropQueue(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
-                return Ok(vec![]);
+                return Ok(());
             }
         };
 
         if drop_data.reset_round {
             self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
-
-            // TODO: should this get locators back?
-            Ok(Vec::new())
         } else {
             // Fetch the current round from storage.
             let mut round = match Self::load_current_round(&storage) {
@@ -2378,22 +2375,6 @@ impl Coordinator {
                 warn!("Added a replacement contributor {}", replacement_contributor);
             }
 
-            // Convert the tasks into contribution file locators.
-            let locators = drop_data
-                .tasks
-                .par_iter()
-                .map(|task| {
-                    storage
-                        .to_path(&Locator::ContributionFile(ContributionLocator::new(
-                            round.round_height(),
-                            task.chunk_id(),
-                            task.contribution_id(),
-                            true,
-                        )))
-                        .unwrap()
-                })
-                .collect();
-
             // Save the updated round to storage.
             storage.update(
                 &Locator::RoundState {
@@ -2401,9 +2382,8 @@ impl Coordinator {
                 },
                 Object::RoundState(round),
             )?;
-
-            Ok(locators)
         }
+        Ok(())
     }
 
     #[inline]
