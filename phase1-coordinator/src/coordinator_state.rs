@@ -969,7 +969,7 @@ impl CoordinatorState {
     pub(super) fn reset_round(
         &mut self,
         time: &dyn TimeSource,
-    ) -> Result<Option<ResetRoundStorageAction>, CoordinatorError> {
+    ) -> Result<Option<ResetCurrentRoundStorageAction>, CoordinatorError> {
         let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
         let _guard = span.enter();
 
@@ -1039,8 +1039,7 @@ impl CoordinatorState {
             self.initialize(round_height);
             self.update_round_metrics();
 
-            Ok(Some(ResetRoundStorageAction {
-                round_height: self.current_round_height(),
+            Ok(Some(ResetCurrentRoundStorageAction {
                 remove_participants: Vec::new(),
             }))
         } else {
@@ -2204,8 +2203,7 @@ impl CoordinatorState {
                 let action = if self.environment.coordinator_contributors().is_empty() {
                     tracing::info!("No replacement contributors available, the round will be restarted.");
                     // There are no replacement contributors so the only option is to restart the round.
-                    CeremonyStorageAction::ResetRound(ResetRoundStorageAction {
-                        round_height: self.current_round_height(),
+                    CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
                         remove_participants: vec![participant.clone()],
                     })
                 } else {
@@ -2263,8 +2261,7 @@ impl CoordinatorState {
                 let reset_round = self.current_verifiers.is_empty();
 
                 if reset_round {
-                    CeremonyStorageAction::ResetRound(ResetRoundStorageAction {
-                        round_height: self.current_round_height(),
+                    CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
                         remove_participants: vec![participant.clone()],
                     })
                 } else {
@@ -2279,7 +2276,7 @@ impl CoordinatorState {
         };
 
         match storage_action {
-            CeremonyStorageAction::ResetRound(_) => {
+            CeremonyStorageAction::ResetCurrentRound(_) => {
                 self.reset_round(time)?;
             }
             _ => {}
@@ -3312,9 +3309,7 @@ impl CoordinatorState {
 /// Action to update the storage to reflect a round being reset in
 /// [CoordinatorState].
 #[derive(Debug)]
-pub struct ResetRoundStorageAction {
-    /// The height of the round to be reset.
-    round_height: u64,
+pub struct ResetCurrentRoundStorageAction {
     /// The participants to be removed from the round during the
     /// reset.
     remove_participants: Vec<Participant>,
@@ -3360,8 +3355,8 @@ pub struct ReplaceContributorStorageAction {
 /// [CoordinatorState].
 #[derive(Debug)]
 pub enum CeremonyStorageAction {
-    /// See [ResetRoundStorageAction].
-    ResetRound(ResetRoundStorageAction),
+    /// See [ResetCurrentRoundStorageAction].
+    ResetCurrentRound(ResetCurrentRoundStorageAction),
     /// See [ReplaceContributorStorageAction].
     ReplaceContributor(ReplaceContributorStorageAction),
     /// See [RemoveVerifierStorageAction].
@@ -4583,6 +4578,9 @@ mod tests {
             DropParticipant::DropQueue(_) => panic!("Unexpected drop type: {:?}", drop),
         };
 
-        assert!(matches!(drop_data.storage_action, CeremonyStorageAction::ResetRound(_)));
+        assert!(matches!(
+            drop_data.storage_action,
+            CeremonyStorageAction::ResetCurrentRound(_)
+        ));
     }
 }

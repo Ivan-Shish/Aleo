@@ -2348,7 +2348,7 @@ impl Coordinator {
         };
 
         match &drop_data.storage_action {
-            crate::coordinator_state::CeremonyStorageAction::ResetRound(_) => {
+            crate::coordinator_state::CeremonyStorageAction::ResetCurrentRound(_) => {
                 self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
             }
             crate::coordinator_state::CeremonyStorageAction::ReplaceContributor(replace_action) => {
