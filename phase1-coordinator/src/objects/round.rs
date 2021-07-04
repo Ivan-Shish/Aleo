@@ -1070,7 +1070,7 @@ impl Round {
     /// the [crate::storage::Storage] to reflect the changes to the
     /// round state. `remove_participants` is a list of participants
     /// to remove from the round.
-    pub(crate) fn reset(&mut self, remove_participants: Vec<Participant>) -> Vec<StorageAction> {
+    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> Vec<StorageAction> {
         // TODO: in some cases it might be necessary to clear these,
         // such as when the round only consists of replacement
         // contributors.
@@ -1197,7 +1197,7 @@ mod tests {
         let n_files = 2 * n_contributions + 2 * n_verifications;
         let n_actions = n_files + 1; // include action to update round
 
-        let actions = round_1.reset(vec![TEST_CONTRIBUTOR_ID_2.clone()]);
+        let actions = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
         assert_eq!(n_actions, actions.len());
 
         assert_eq!(64, round_1.chunks().len());

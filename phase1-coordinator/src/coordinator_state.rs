@@ -972,6 +972,9 @@ impl CoordinatorState {
     ///
     /// Returns [CoordinatorError::RoundDoesNotExist] if
     /// [CoordinatorState::current_round_height] is set to `None`.
+    ///
+    /// Returns [CoordinatorError::RoundHeightIsZero] if
+    /// [CoordinatorState::current_round_height] is set to `Some(0)`.
     pub fn reset_current_round(
         &mut self,
         time: &dyn TimeSource,
@@ -979,67 +982,126 @@ impl CoordinatorState {
         let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
         let _guard = span.enter();
 
-        let round_height = self.current_round_height.ok_or(CoordinatorError::RoundDoesNotExist)?;
-        tracing::info!("Resetting round {}.", round_height);
+        let current_round_height = self.current_round_height.ok_or(CoordinatorError::RoundDoesNotExist)?;
+        if current_round_height == 0 {
+            return Err(CoordinatorError::RoundHeightIsZero);
+        }
 
-        // Fetch the number of chunks and bucket size.
-        let number_of_chunks = self.environment.number_of_chunks() as u64;
+        tracing::warn!("Resetting round {}.", current_round_height);
 
-        let prev_finished_contributors = self
+        let finished_contributors = self
             .finished_contributors
-            .get(&round_height)
+            .get(&current_round_height)
             .cloned()
             .unwrap_or_else(|| HashMap::new());
 
-        let number_of_contributors = self.current_contributors.len() + prev_finished_contributors.len();
-
-        let current_contributors = self
-            .current_contributors
-            .clone()
-            .into_iter()
-            .chain(prev_finished_contributors.into_iter())
-            .enumerate()
-            .map(|(bucket_index, (participant, mut participant_info))| {
-                let bucket_id = bucket_index as u64;
-                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
-                participant_info.restart_tasks(tasks, time)?;
-                Ok((participant, participant_info))
-            })
-            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
-
-        let prev_finished_verifiers = self
+        let finished_verifiers = self
             .finished_verifiers
-            .get(&round_height)
+            .get(&current_round_height)
             .cloned()
             .unwrap_or_else(|| HashMap::new());
 
-        let current_verifiers = self
-            .current_verifiers
-            .clone()
-            .into_iter()
-            .chain(prev_finished_verifiers.into_iter())
-            .map(|(participant, mut participant_info)| {
-                participant_info.restart_tasks(LinkedList::new(), time)?;
-                Ok((participant, participant_info))
+        let number_of_contributors = self.current_contributors.len() + finished_contributors.len();
+        let number_of_verifiers = self.current_verifiers.len() + finished_verifiers.len();
+        let need_to_rollback = number_of_contributors == 0 || number_of_verifiers == 0;
+
+        if need_to_rollback {
+            // Will roll back to the previous round and await new
+            // contributors/verifiers before starting the round again.
+
+            if number_of_contributors == 0 {
+                tracing::warn!(
+                    "No contributors remaining to reset and complete the current round. \
+                    Rolling back to wait and accept new participants."
+                );
+            }
+
+            if number_of_verifiers == 0 {
+                tracing::warn!(
+                    "No verifiers remaining to reset and complete the current round. \
+                    Rolling back to wait and accept new participants."
+                );
+            }
+
+            let new_round_height = current_round_height - 1;
+
+            let remove_participants: Vec<Participant> = self
+                .current_contributors
+                .clone()
+                .into_iter()
+                .chain(finished_contributors.into_iter())
+                .map(|(participant, _participant_info)| participant)
+                .collect();
+
+            *self = Self {
+                current_round_height: Some(new_round_height),
+                queue: self.queue.clone(),
+                banned: self.banned.clone(),
+                ..Self::new(self.environment.clone())
+            };
+
+            self.initialize(new_round_height);
+            self.update_next_round_after(time);
+
+            assert!(self.is_current_round_finished());
+            assert!(self.is_current_round_aggregated());
+
+            // TODO there may be more things that we need to do here
+            // to get the coordinator into the waiting state.
+
+            Ok(ResetCurrentRoundStorageAction {
+                remove_participants,
+                rollback: true,
             })
-            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+        } else {
+            // Will reset the round to run with the remaining participants.
 
-        *self = Self {
-            current_contributors,
-            current_verifiers,
+            // Fetch the number of chunks and bucket size.
+            let number_of_chunks = self.environment.number_of_chunks() as u64;
 
-            queue: self.queue.clone(),
-            banned: self.banned.clone(),
-            dropped: self.dropped.clone(),
-            ..Self::new(self.environment.clone())
-        };
+            let current_contributors = self
+                .current_contributors
+                .clone()
+                .into_iter()
+                .chain(finished_contributors.into_iter())
+                .enumerate()
+                .map(|(bucket_index, (participant, mut participant_info))| {
+                    let bucket_id = bucket_index as u64;
+                    let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
+                    participant_info.restart_tasks(tasks, time)?;
+                    Ok((participant, participant_info))
+                })
+                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
 
-        self.initialize(round_height);
-        self.update_round_metrics();
+            let current_verifiers = self
+                .current_verifiers
+                .clone()
+                .into_iter()
+                .chain(finished_verifiers.into_iter())
+                .map(|(participant, mut participant_info)| {
+                    participant_info.restart_tasks(LinkedList::new(), time)?;
+                    Ok((participant, participant_info))
+                })
+                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
 
-        Ok(ResetCurrentRoundStorageAction {
-            remove_participants: Vec::new(),
-        })
+            *self = Self {
+                current_contributors,
+                current_verifiers,
+
+                queue: self.queue.clone(),
+                banned: self.banned.clone(),
+                dropped: self.dropped.clone(),
+                ..Self::new(self.environment.clone())
+            };
+
+            self.initialize(current_round_height);
+            self.update_round_metrics();
+
+            Ok(ResetCurrentRoundStorageAction {
+                remove_participants: Vec::new(),
+                rollback: false,
+            })
+        }
     }
 
     ///
@@ -1961,7 +2023,7 @@ impl CoordinatorState {
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
-            self.set_next_round_after(time);
+            self.update_next_round_after(time);
         }
 
         Ok(())
@@ -1969,7 +2031,7 @@ impl CoordinatorState {
 
     /// Set the `current_metrics` ([RoundMetrics]) `next_round_after`
     /// field to the appropriate value specified in the [Environment].
-    fn set_next_round_after(&mut self, time: &dyn TimeSource) {
+    fn update_next_round_after(&mut self, time: &dyn TimeSource) {
         if let Some(metrics) = &mut self.current_metrics {
             metrics.next_round_after =
                 Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
@@ -2200,6 +2262,7 @@ impl CoordinatorState {
                     // There are no replacement contributors so the only option is to restart the round.
                     CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
                         remove_participants: vec![participant.clone()],
+                        rollback: true,
                     })
                 } else {
                     // TODO: handle the situation where all replacement contributors are currently engaged.
@@ -2253,11 +2316,12 @@ impl CoordinatorState {
 
                 // Restart the round because there are no verifiers
                 // left for this round.
-                let reset_round = self.current_verifiers.is_empty();
+                let reset_round = self.current_verifiers.is_empty() && self.finished_verifiers.is_empty();
 
                 if reset_round {
                     CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
                         remove_participants: vec![participant.clone()],
+                        rollback: false,
                     })
                 } else {
                     CeremonyStorageAction::RemoveVerifier(RemoveVerifierStorageAction {
@@ -2272,7 +2336,9 @@ impl CoordinatorState {
 
         match &storage_action {
             CeremonyStorageAction::ResetCurrentRound(_reset_action) => {
-                self.reset_current_round(time)?;
+                // TODO: update the storage action if it now requires a rollback.
+                // Or think of some cleaner way to do this.
+                let _updated_action = self.reset_current_round(time)?;
             }
             _ => {}
         }
@@ -3307,7 +3373,9 @@ impl CoordinatorState {
 pub struct ResetCurrentRoundStorageAction {
     /// The participants to be removed from the round during the
     /// reset.
-    remove_participants: Vec<Participant>,
+    pub remove_participants: Vec<Participant>,
+    /// Roll back to the previous round to await new participants.
+    pub rollback: bool,
 }
 
 /// Action to update the storage to reflect a verifier being

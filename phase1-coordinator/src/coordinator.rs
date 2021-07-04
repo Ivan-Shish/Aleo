@@ -5,7 +5,7 @@
 use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
-    coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
+    coordinator_state::{CeremonyStorageAction, CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
     storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
@@ -2348,10 +2348,10 @@ impl Coordinator {
         };
 
         match &drop_data.storage_action {
-            crate::coordinator_state::CeremonyStorageAction::ResetCurrentRound(_) => {
-                self.reset_round_storage(storage, vec![drop_data.participant.clone()])?;
+            CeremonyStorageAction::ResetCurrentRound(reset_action) => {
+                self.reset_round_storage(storage, &reset_action.remove_participants, reset_action.rollback)?;
             }
-            crate::coordinator_state::CeremonyStorageAction::ReplaceContributor(replace_action) => {
+            CeremonyStorageAction::ReplaceContributor(replace_action) => {
                 warn!(
                     "Replacing contributor {} with {}",
                     replace_action.dropped_contributor, replace_action.replacement_contributor
@@ -2393,7 +2393,7 @@ impl Coordinator {
                     Object::RoundState(round),
                 )?;
             }
-            crate::coordinator_state::CeremonyStorageAction::RemoveVerifier(remove_action) => {
+            CeremonyStorageAction::RemoveVerifier(remove_action) => {
                 warn!("Removing verifier {}", remove_action.dropped_verifier);
 
                 // Fetch the current round from storage.
@@ -2486,18 +2486,26 @@ impl Coordinator {
     }
 
     /// Reset the current round in storage.
+    ///
+    /// + `remove_participants` is a list of participants that will
+    ///   have their contributions removed from the round.
+    /// + If `rollback` is set to `true`, the current round will be
+    ///   decremented by 1. If `rollback` is set to `true` and the
+    ///   current round height is `0` then this will return an error
+    ///   [CoordinatorError::RoundHeightIsZero]
     fn reset_round_storage(
         &self,
         storage: &mut StorageLock,
-        remove_participants: Vec<Participant>,
+        remove_participants: &[Participant],
+        rollback: bool,
     ) -> Result<(), CoordinatorError> {
         // Fetch the current height of the ceremony.
-        let round_height = Self::load_current_round_height(storage)?;
-        let span = tracing::error_span!("reset_round", round = round_height);
+        let current_round_height = Self::load_current_round_height(storage)?;
+        let span = tracing::error_span!("reset_round", round = current_round_height);
         let _guard = span.enter();
-        info!("Resetting round {}", round_height);
+        warn!("Resetting round {}", current_round_height);
 
-        let mut round = Self::load_round(storage, round_height)?;
+        let mut round = Self::load_round(storage, current_round_height)?;
         {
             // TODO: decide if we need a backup
             // if !storage.save_backup(backup_tag) {
@@ -2528,7 +2536,15 @@ impl Coordinator {
             }
         }
 
-        info!("Finished resetting round {}", round_height);
+        if rollback {
+            if current_round_height == 0 {
+                return Err(CoordinatorError::RoundHeightIsZero);
+            }
+
+            // TODO: perform the rollback
+        }
+
+        warn!("Finished resetting round {}", current_round_height);
 
         Ok(())
     }
