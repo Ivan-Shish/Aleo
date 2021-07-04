@@ -1959,11 +1959,19 @@ impl CoordinatorState {
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
-            metrics.next_round_after =
-                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+            self.set_next_round_after(time);
         }
 
         Ok(())
+    }
+
+    /// Set the `current_metrics` ([RoundMetrics]) `next_round_after`
+    /// field to the appropriate value specified in the [Environment].
+    fn set_next_round_after(&mut self, time: &dyn TimeSource) {
+        if let Some(metrics) = &mut self.current_metrics {
+            metrics.next_round_after =
+                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+        }
     }
 
     ///
@@ -2074,7 +2082,7 @@ impl CoordinatorState {
         };
 
         // Drop the contributor from the current round, and update participant info and coordinator state.
-        match participant {
+        let drop = match participant {
             Participant::Contributor(_id) => {
                 // TODO (howardwu): Optimization only.
                 //  -----------------------------------------------------------------------------------
@@ -2185,28 +2193,32 @@ impl CoordinatorState {
                 // Add the participant info to the dropped participants.
                 self.dropped.push(dropped_info);
 
-                // TODO: also check whether the replacement contributor has already been assigned.
                 let (replacement_contributor, restart_round) = if self.environment.coordinator_contributors().is_empty()
                 {
                     tracing::info!("No replacement contributors available, the round will be restarted.");
                     // There are no replacement contributors so the only option is to restart the round.
                     (None, true)
                 } else {
-                    tracing::info!("Found a replacement contributor for the dropped contributor.");
+                    // TODO: handle the situation where all replacement contributors are currently engaged.
+                    tracing::info!(
+                        "Found a replacement contributor for the dropped contributor. \
+                        Assigning replacement contributor to the dropped contributor's tasks."
+                    );
                     // Assign the replacement contributor to the dropped tasks.
                     (Some(self.add_replacement_contributor_unsafe(bucket_id, time)?), false)
                 };
 
                 warn!("Dropped {} from the ceremony", participant);
 
-                return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
+                DropParticipant::DropCurrent(DropCurrentParticpantData {
                     participant: participant.clone(),
                     bucket_id,
                     locked_chunks,
                     tasks,
                     replacement: replacement_contributor,
                     restart_round,
-                }));
+                    ban: false,
+                })
             }
             Participant::Verifier(_id) => {
                 // Add just the current pending tasks to a pending verifications list.
@@ -2240,16 +2252,19 @@ impl CoordinatorState {
                 // left for this round.
                 let restart_round = self.current_verifiers.is_empty();
 
-                return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
+                DropParticipant::DropCurrent(DropCurrentParticpantData {
                     participant: participant.clone(),
                     bucket_id,
                     locked_chunks,
                     tasks,
                     replacement: None,
                     restart_round,
-                }));
+                    ban: false,
+                })
             }
-        }
+        };
+
+        Ok(drop)
     }
 
     ///
@@ -2268,13 +2283,15 @@ impl CoordinatorState {
 
         // Drop the participant from the queue, precommit, and current round.
         match self.drop_participant(participant, time)? {
-            DropParticipant::DropCurrent(drop_data) => {
+            DropParticipant::DropCurrent(mut drop_data) => {
+                drop_data.ban = true;
+
                 // Add the participant to the banned list.
                 self.banned.insert(participant.clone());
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(DropParticipant::BanCurrent(drop_data))
+                Ok(DropParticipant::DropCurrent(drop_data))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -3287,6 +3304,8 @@ pub(crate) struct DropCurrentParticpantData {
     pub replacement: Option<Participant>,
     /// Whether the current round should be restarted.
     pub restart_round: bool,
+    /// The dropped participant is to be banned.
+    pub ban: bool,
 }
 
 #[derive(Debug)]
@@ -3299,9 +3318,6 @@ pub(crate) struct DropQueueParticipantData {
 /// perform the drop.
 #[derive(Debug)]
 pub(crate) enum DropParticipant {
-    /// Coordinator has decided that a participant needs to be banned
-    /// (for a variety of potential reasons).
-    BanCurrent(DropCurrentParticpantData),
     /// Coordinator has decided that a participant needs to be dropped
     /// (for a variety of potential reasons).
     DropCurrent(DropCurrentParticpantData),

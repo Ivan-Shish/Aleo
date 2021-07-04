@@ -2341,7 +2341,6 @@ impl Coordinator {
 
         // Check the justification and extract the tasks.
         let drop_data = match drop {
-            DropParticipant::BanCurrent(data) => data,
             DropParticipant::DropCurrent(data) => data,
             DropParticipant::DropQueue(_) => {
                 // Participant is not part of the round, therefore
