@@ -969,6 +969,9 @@ impl CoordinatorState {
     /// Reset the progress of the current round, back to how it was in
     /// its initialized state, however this does maintain the drop
     /// status of participants.
+    ///
+    /// Returns [CoordinatorError::RoundDoesNotExist] if
+    /// [CoordinatorState::current_round_height] is set to `None`.
     pub fn reset_current_round(
         &mut self,
         time: &dyn TimeSource,
