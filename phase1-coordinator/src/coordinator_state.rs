@@ -1003,27 +1003,55 @@ impl CoordinatorState {
 
         let number_of_contributors = self.current_contributors.len() + finished_contributors.len();
         let number_of_verifiers = self.current_verifiers.len() + finished_verifiers.len();
+        let number_of_chunks = self.environment.number_of_chunks() as u64;
+
+        let current_contributors = self
+            .current_contributors
+            .clone()
+            .into_iter()
+            .chain(finished_contributors.clone().into_iter())
+            .enumerate()
+            .map(|(bucket_index, (participant, mut participant_info))| {
+                let bucket_id = bucket_index as u64;
+                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
+                participant_info.restart_tasks(tasks, time)?;
+                Ok((participant, participant_info))
+            })
+            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+
+        let current_verifiers = self
+            .current_verifiers
+            .clone()
+            .into_iter()
+            .chain(finished_verifiers.clone().into_iter())
+            .map(|(participant, mut participant_info)| {
+                participant_info.restart_tasks(LinkedList::new(), time)?;
+                Ok((participant, participant_info))
+            })
+            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+
         let need_to_rollback = number_of_contributors == 0 || number_of_verifiers == 0;
 
         if need_to_rollback {
             // Will roll back to the previous round and await new
             // contributors/verifiers before starting the round again.
+            let new_round_height = current_round_height - 1;
 
             if number_of_contributors == 0 {
                 tracing::warn!(
                     "No contributors remaining to reset and complete the current round. \
-                    Rolling back to wait and accept new participants."
+                    Rolling back to round {} to wait and accept new participants.",
+                    new_round_height
                 );
             }
 
             if number_of_verifiers == 0 {
                 tracing::warn!(
                     "No verifiers remaining to reset and complete the current round. \
-                    Rolling back to wait and accept new participants."
+                    Rolling back to round {} to wait and accept new participants.",
+                    new_round_height
                 );
             }
-
-            let new_round_height = current_round_height - 1;
 
             let remove_participants: Vec<Participant> = self
                 .current_contributors
@@ -1033,9 +1061,31 @@ impl CoordinatorState {
                 .map(|(participant, _participant_info)| participant)
                 .collect();
 
+            let current_metrics = Some(RoundMetrics {
+                is_round_aggregated: true,
+                started_aggregation_at: Some(time.utc_now()),
+                finished_aggregation_at: Some(time.utc_now()),
+                ..Default::default()
+            });
+
+            let mut queue = self.queue.clone();
+
+            // Add each participant back into the queue.
+            for (participant, participant_info) in current_contributors
+                .iter()
+                .chain(self.current_verifiers.iter())
+                .chain(self.next.iter())
+            {
+                queue.insert(
+                    participant.clone(),
+                    (participant_info.reliability, Some(participant_info.round_height)),
+                );
+            }
+
             *self = Self {
+                current_metrics,
                 current_round_height: Some(new_round_height),
-                queue: self.queue.clone(),
+                queue,
                 banned: self.banned.clone(),
                 ..Self::new(self.environment.clone())
             };
@@ -1043,8 +1093,24 @@ impl CoordinatorState {
             self.initialize(new_round_height);
             self.update_next_round_after(time);
 
-            assert!(self.is_current_round_finished());
-            assert!(self.is_current_round_aggregated());
+            if !self.is_current_round_finished() {
+                tracing::error!(
+                    "Round rollback was not properly completed, \
+                    the current round is not finished."
+                );
+            }
+
+            if !self.is_current_round_aggregated() {
+                tracing::error!(
+                    "Round rollback was not properly completed, \
+                    the current round is not aggregated."
+                );
+            }
+
+            tracing::info!(
+                "Completed rollback to round {}, now awaiting new participants.",
+                new_round_height
+            );
 
             // TODO there may be more things that we need to do here
             // to get the coordinator into the waiting state.
@@ -1055,34 +1121,6 @@ impl CoordinatorState {
             })
         } else {
             // Will reset the round to run with the remaining participants.
-
-            // Fetch the number of chunks and bucket size.
-            let number_of_chunks = self.environment.number_of_chunks() as u64;
-
-            let current_contributors = self
-                .current_contributors
-                .clone()
-                .into_iter()
-                .chain(finished_contributors.into_iter())
-                .enumerate()
-                .map(|(bucket_index, (participant, mut participant_info))| {
-                    let bucket_id = bucket_index as u64;
-                    let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
-                    participant_info.restart_tasks(tasks, time)?;
-                    Ok((participant, participant_info))
-                })
-                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
-
-            let current_verifiers = self
-                .current_verifiers
-                .clone()
-                .into_iter()
-                .chain(finished_verifiers.into_iter())
-                .map(|(participant, mut participant_info)| {
-                    participant_info.restart_tasks(LinkedList::new(), time)?;
-                    Ok((participant, participant_info))
-                })
-                .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
 
             *self = Self {
                 current_contributors,
@@ -2334,18 +2372,26 @@ impl CoordinatorState {
             }
         };
 
-        match &storage_action {
-            CeremonyStorageAction::ResetCurrentRound(_reset_action) => {
-                // TODO: update the storage action if it now requires a rollback.
-                // Or think of some cleaner way to do this.
-                let _updated_action = self.reset_current_round(time)?;
+        // Perform the round reset if we need to.
+        let final_storage_action = match storage_action {
+            CeremonyStorageAction::ResetCurrentRound(mut reset_action) => {
+                let extra_reset_action = self.reset_current_round(time)?;
+                // Extend the reset action with any requirements from reset_current_round
+                for participant in extra_reset_action.remove_participants {
+                    if !reset_action.remove_participants.contains(&participant) {
+                        reset_action.remove_participants.push(participant)
+                    }
+                }
+                // Rollback takes priority.
+                reset_action.rollback |= extra_reset_action.rollback;
+                CeremonyStorageAction::ResetCurrentRound(reset_action)
             }
-            _ => {}
-        }
+            action => action,
+        };
 
         let drop_data = DropCurrentParticpantData {
             participant: participant.clone(),
-            storage_action,
+            storage_action: final_storage_action,
         };
 
         Ok(DropParticipant::DropCurrent(drop_data))
@@ -2881,13 +2927,13 @@ impl CoordinatorState {
     /// Prepares transition of the coordinator state from the current round to the next round.
     /// On precommit success, returns the list of contributors and verifiers for the next round.
     ///
-    #[inline]
+    #[tracing::instrument(skip(self, time))]
     pub(super) fn precommit_next_round(
         &mut self,
         next_round_height: u64,
         time: &dyn TimeSource,
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
-        trace!("Attempting to run precommit for round {}", next_round_height);
+        tracing::debug!("Attempting to run precommit for round {}", next_round_height);
 
         // Check that the coordinator state is initialized.
         if self.status == CoordinatorStatus::Initializing {
@@ -4641,9 +4687,12 @@ mod tests {
             DropParticipant::DropQueue(_) => panic!("Unexpected drop type: {:?}", drop),
         };
 
-        assert!(matches!(
-            drop_data.storage_action,
-            CeremonyStorageAction::ResetCurrentRound(_)
-        ));
+        match drop_data.storage_action {
+            CeremonyStorageAction::ResetCurrentRound(reset_action) => {
+                dbg!(reset_action.remove_participants);
+                assert!(reset_action.rollback)
+            }
+            unexpected => panic!("unexpected storage action: {:?}", unexpected),
+        }
     }
 }

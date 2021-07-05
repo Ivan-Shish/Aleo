@@ -1471,8 +1471,9 @@ impl Coordinator {
     ///
     /// Attempts to advance the ceremony to the next round.
     ///
-    #[inline]
+    #[tracing::instrument(skip(self, started_at))]
     pub fn try_advance(&self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+        tracing::debug!("Trying to advance to the next round.");
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -1483,16 +1484,23 @@ impl Coordinator {
         let current_round_height = {
             // Fetch the current round height from storage.
             let current_round_height_in_storage = Self::load_current_round_height(&storage)?;
-            trace!("Current round height in storage is {}", current_round_height_in_storage);
+            debug!("Current round height in storage is {}", current_round_height_in_storage);
 
             // Fetch the current round height from coordinator state.
             let current_round_height = state.current_round_height();
-            trace!("Current round height in coordinator state is {}", current_round_height);
+            debug!("Current round height in coordinator state is {}", current_round_height);
 
             // Check that the current round height matches in storage and state.
-            match current_round_height_in_storage == current_round_height {
-                true => current_round_height,
-                false => return Err(CoordinatorError::RoundHeightMismatch),
+            if current_round_height_in_storage == current_round_height {
+                current_round_height
+            } else {
+                tracing::error!(
+                    "Round height in storage ({}) does not match the \
+                    round height in coordinator state ({})",
+                    current_round_height_in_storage,
+                    current_round_height,
+                );
+                return Err(CoordinatorError::RoundHeightMismatch);
             }
         };
 
