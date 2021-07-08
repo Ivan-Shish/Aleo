@@ -1,5 +1,4 @@
 use crate::{errors::VerifierError, objects::LockResponse, utils::AleoAuthentication, verifier::Verifier};
-use snarkvm_dpc::Address;
 
 use reqwest::Client;
 use tracing::{debug, error, info};
@@ -15,7 +14,7 @@ impl Verifier {
     pub(crate) async fn join_queue(&self) -> Result<bool, VerifierError> {
         let coordinator_api_url = &self.coordinator_api_url;
 
-        let aleo_address = Address::from_view_key(&self.view_key)?.to_string();
+        let aleo_address = &self.view_key.to_string();
 
         let method = "post";
         let path = "/v1/queue/verifier/join";

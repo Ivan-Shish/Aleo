@@ -51,7 +51,7 @@ pub struct Verifier {
     pub(crate) coordinator_api_url: Url,
 
     /// The view key that will be used for server authentication
-    pub(crate) view_key: ViewKey,
+    pub(crate) view_key: ViewKey<Components>,
 
     /// The identity of the verifier
     pub(crate) verifier: Participant,
@@ -87,7 +87,7 @@ impl Verifier {
     ///
     pub fn new(
         coordinator_api_url: Url,
-        view_key: ViewKey,
+        view_key: ViewKey<Components>,
         address: Address<Components>,
         environment: Environment,
         tasks_storage_path: String,
@@ -497,8 +497,8 @@ mod tests {
     use super::*;
     use phase1_coordinator::environment::{Parameters, Testing};
 
-    use rand::{Rng, SeedableRng};
-    use rand_xorshift::XorShiftRng;
+    use rand::{rngs::OsRng, Rng};
+    use snarkvm_dpc::testnet1::SystemParameters;
     use std::str::FromStr;
 
     const TEST_VIEW_KEY: &str = "AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3";
@@ -511,7 +511,9 @@ mod tests {
         });
 
         let view_key = ViewKey::from_str(TEST_VIEW_KEY).expect("Invalid view key");
-        let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
+        let parameters = SystemParameters::<Components>::load().unwrap();
+        let address =
+            Address::from_view_key(&parameters.account_encryption, &view_key).expect("Address not derived correctly");
 
         Verifier::new(
             Url::from_str("http://test_coordinator_url").unwrap(),
@@ -525,7 +527,7 @@ mod tests {
 
     #[test]
     pub fn test_verify_response_hash() {
-        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+        let mut rng = OsRng;
 
         let verifier = test_verifier();
 
@@ -549,7 +551,7 @@ mod tests {
 
     #[test]
     pub fn test_contribution_signatures() {
-        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+        let mut rng = OsRng;
 
         let verifier = test_verifier();
 
@@ -580,7 +582,8 @@ mod tests {
         let message = contribution_state.signature_message().unwrap();
 
         // Derive the verifier address
-        let address = Address::from_view_key(&verifier.view_key).unwrap();
+        let parameters = SystemParameters::<Components>::load().unwrap();
+        let address = Address::from_view_key(&parameters.account_encryption, &verifier.view_key).unwrap();
 
         // Check that the signature verifies
         assert!(AleoAuthentication::verify(&address.to_string(), signature, message).unwrap())
@@ -588,7 +591,7 @@ mod tests {
 
     #[test]
     pub fn test_contribution_serialization() {
-        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+        let mut rng = OsRng;
 
         let verifier = test_verifier();
 
@@ -617,7 +620,7 @@ mod tests {
 
         // Deserialize the contribution
         let declared_verifier_flag = serialized_contribution.drain(0..1).collect::<Vec<u8>>();
-        let declared_signature = serialized_contribution.drain(0..signature_length).collect::<Vec<u8>>();
+        let _ = serialized_contribution.drain(0..signature_length).collect::<Vec<u8>>();
         let declared_challenge_hash = serialized_contribution
             .drain(0..challenge_hash.len())
             .collect::<Vec<u8>>();

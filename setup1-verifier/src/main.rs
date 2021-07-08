@@ -2,10 +2,14 @@ use setup1_verifier::{utils::init_logger, verifier::Verifier};
 
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use setup1_shared::structures::{PublicSettings, SetupKind};
-use snarkos_toolkit::account::{Address, ViewKey};
 use structopt::StructOpt;
 use url::Url;
 
+use snarkvm_dpc::{
+    testnet1::{instantiated::Components, SystemParameters},
+    Address,
+    ViewKey,
+};
 use std::{path::PathBuf, str::FromStr};
 use tracing::info;
 
@@ -75,7 +79,9 @@ async fn main() {
 
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
     let view_key = ViewKey::from_str(&raw_view_key).expect("Invalid view key");
-    let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
+    let parameters = SystemParameters::<Components>::load().unwrap();
+    let address =
+        Address::from_view_key(&parameters.account_encryption, &view_key).expect("Address not derived correctly");
 
     // Initialize the verifier
     info!("Initializing verifier...");
