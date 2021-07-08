@@ -61,9 +61,6 @@ impl AleoAuthentication {
 
         // Construct the authentication signature.
         let signature = Self::sign(&view_key, message.clone())?;
-        println!("signature: {}", signature);
-        let result = Self::verify(&address.to_string(), &signature, message);
-        println!("result: {}", result.unwrap());
 
         // Construct the authentication header.
         Ok(AuthenticationHeader::new(
