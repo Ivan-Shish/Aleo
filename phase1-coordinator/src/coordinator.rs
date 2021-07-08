@@ -2514,34 +2514,15 @@ impl Coordinator {
         warn!("Resetting round {}", current_round_height);
 
         let mut round = Self::load_round(storage, current_round_height)?;
+
+        tracing::debug!("Resetting round and applying storage changes");
+        if let Some(error) = round
+            .reset(remove_participants)
+            .into_iter()
+            .map(|action| storage.process(action))
+            .find_map(Result::err)
         {
-            // TODO: decide if we need a backup
-            // if !storage.save_backup(backup_tag) {
-            //     error!(
-            //         "Could not save storage backup for round {} with tag {}",
-            //         round_height, backup_tag
-            //     );
-            //     return Err(CoordinatorError::StorageUpdateFailed);
-            // }
-
-            // if let Err(error) = storage.remove(&Locator::RoundHeight) {
-            //     error!("Could not remove round height from storage because: {}", error);
-            //     return Err(CoordinatorError::StorageUpdateFailed);
-            // }
-            // if let Err(error) = storage.insert(Locator::RoundHeight, Object::RoundHeight(round_height - 1)) {
-            //     error!("Could not insert round height to storage because: {}", error);
-            //     return Err(CoordinatorError::StorageUpdateFailed);
-            // }
-
-            tracing::debug!("Resetting round and applying storage changes");
-            if let Some(error) = round
-                .reset(remove_participants)
-                .into_iter()
-                .map(|action| storage.process(action))
-                .find_map(Result::err)
-            {
-                return Err(error);
-            }
+            return Err(error);
         }
 
         if rollback {
@@ -2549,10 +2530,16 @@ impl Coordinator {
                 return Err(CoordinatorError::RoundHeightIsZero);
             }
 
-            // TODO: perform the rollback
+            let new_round_height = current_round_height - 1;
+            tracing::debug!("Rolling back to round {} in storage.", new_round_height);
+
+            storage.remove(&Locator::RoundState {
+                round_height: current_round_height,
+            })?;
+            storage.update(&Locator::RoundHeight, Object::RoundHeight(new_round_height))?;
         }
 
-        warn!("Finished resetting round {}", current_round_height);
+        warn!("Finished resetting round {} storage", current_round_height);
 
         Ok(())
     }
