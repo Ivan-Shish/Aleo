@@ -5,7 +5,14 @@
 use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
-    coordinator_state::{CeremonyStorageAction, CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
+    coordinator_state::{
+        CeremonyStorageAction,
+        CoordinatorState,
+        DropParticipant,
+        ParticipantInfo,
+        ResetCurrentRoundStorageAction,
+        RoundMetrics,
+    },
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
     storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
@@ -2357,7 +2364,7 @@ impl Coordinator {
 
         match &drop_data.storage_action {
             CeremonyStorageAction::ResetCurrentRound(reset_action) => {
-                self.reset_round_storage(storage, &reset_action.remove_participants, reset_action.rollback)?;
+                self.reset_round_storage(storage, reset_action)?;
             }
             CeremonyStorageAction::ReplaceContributor(replace_action) => {
                 warn!(
@@ -2493,6 +2500,23 @@ impl Coordinator {
         self.signature.clone()
     }
 
+    ///
+    /// Resets the current round, with a rollback to the end of the
+    /// previous round to invite new participants into the round.
+    ///
+    pub fn reset_round(&self) -> Result<(), CoordinatorError> {
+        let mut state = self.state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
+        let reset_action = state.reset_current_round(true, &*self.time)?;
+
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?);
+
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        self.reset_round_storage(&mut storage, &reset_action)?;
+
+        Ok(())
+    }
+
     /// Reset the current round in storage.
     ///
     /// + `remove_participants` is a list of participants that will
@@ -2504,8 +2528,7 @@ impl Coordinator {
     fn reset_round_storage(
         &self,
         storage: &mut StorageLock,
-        remove_participants: &[Participant],
-        rollback: bool,
+        reset_action: &ResetCurrentRoundStorageAction,
     ) -> Result<(), CoordinatorError> {
         // Fetch the current height of the ceremony.
         let current_round_height = Self::load_current_round_height(storage)?;
@@ -2517,7 +2540,7 @@ impl Coordinator {
 
         tracing::debug!("Resetting round and applying storage changes");
         if let Some(error) = round
-            .reset(remove_participants)
+            .reset(&reset_action.remove_participants)
             .into_iter()
             .map(|action| storage.process(action))
             .find_map(Result::err)
@@ -2525,7 +2548,7 @@ impl Coordinator {
             return Err(error);
         }
 
-        if rollback {
+        if reset_action.rollback {
             if current_round_height == 0 {
                 return Err(CoordinatorError::RoundHeightIsZero);
             }

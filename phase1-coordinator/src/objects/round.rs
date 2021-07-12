@@ -1071,12 +1071,6 @@ impl Round {
     /// round state. `remove_participants` is a list of participants
     /// to remove from the round.
     pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> Vec<StorageAction> {
-        // TODO: in some cases it might be necessary to clear these,
-        // such as when the round only consists of replacement
-        // contributors.
-        // self.contributor_ids.clear();
-        // self.verifier_ids.clear();
-
         let mut actions: Vec<StorageAction> = self
             .chunks
             .iter_mut()

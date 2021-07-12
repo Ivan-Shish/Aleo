@@ -970,6 +970,13 @@ impl CoordinatorState {
     /// its initialized state, however this does maintain the drop
     /// status of participants.
     ///
+    /// If `force_rollback` is set to `true` the coordinator will be
+    /// forced to reset to the end of the previous round and begin
+    /// waiting for new participants again before restarting the
+    /// current round. If set to `false` the rollback will only occur
+    /// if there are no available contributors or no available
+    /// verifiers left in the round.
+    ///
     /// Returns [CoordinatorError::RoundDoesNotExist] if
     /// [CoordinatorState::current_round_height] is set to `None`.
     ///
@@ -977,6 +984,7 @@ impl CoordinatorState {
     /// [CoordinatorState::current_round_height] is set to `Some(0)`.
     pub fn reset_current_round(
         &mut self,
+        force_rollback: bool,
         time: &dyn TimeSource,
     ) -> Result<ResetCurrentRoundStorageAction, CoordinatorError> {
         let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
@@ -1030,7 +1038,7 @@ impl CoordinatorState {
             })
             .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
 
-        let need_to_rollback = number_of_contributors == 0 || number_of_verifiers == 0;
+        let need_to_rollback = force_rollback || number_of_contributors == 0 || number_of_verifiers == 0;
 
         if need_to_rollback {
             // Will roll back to the previous round and await new
@@ -2385,7 +2393,7 @@ impl CoordinatorState {
         // Perform the round reset if we need to.
         let final_storage_action = match storage_action {
             CeremonyStorageAction::ResetCurrentRound(mut reset_action) => {
-                let extra_reset_action = self.reset_current_round(time)?;
+                let extra_reset_action = self.reset_current_round(false, time)?;
                 // Extend the reset action with any requirements from reset_current_round
                 for participant in extra_reset_action.remove_participants {
                     if !reset_action.remove_participants.contains(&participant) {
@@ -4554,7 +4562,7 @@ mod tests {
 
         let time = MockTimeSource::new(Utc::now());
 
-        let action = state.reset_current_round(&time).unwrap();
+        let action = state.reset_current_round(false, &time).unwrap();
         assert!(!action.rollback);
 
         for _ in 0..number_of_chunks {
