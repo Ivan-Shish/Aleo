@@ -794,6 +794,34 @@ impl Round {
         }
     }
 
+    /// Remove a contributor from the round.
+    pub(crate) fn remove_contributor_unsafe(
+        &mut self,
+        storage: &mut StorageLock,
+        contributor: &Participant,
+        locked_chunks: &[u64],
+        tasks: &[Task],
+    ) -> Result<(), CoordinatorError> {
+        warn!("Removing locked chunks and all impacted contributions");
+
+        // Remove the lock from the specified chunks.
+        self.remove_locks_unsafe(storage, contributor, locked_chunks)?;
+        warn!("Removed locked chunks");
+
+        // Remove the contributions from the specified chunks.
+        self.remove_chunk_contributions_unsafe(storage, contributor, tasks)?;
+        warn!("Removed impacted contributions");
+
+        self.contributor_ids = self
+            .contributor_ids
+            .clone()
+            .into_iter()
+            .filter(|participant| participant != contributor)
+            .collect();
+
+        Ok(())
+    }
+
     ///
     /// Removes the locks for the current round from the given chunk IDs.
     ///

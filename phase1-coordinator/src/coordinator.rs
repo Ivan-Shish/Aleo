@@ -2375,23 +2375,13 @@ impl Coordinator {
                 // Fetch the current round from storage.
                 let mut round = Self::load_current_round(&storage)?;
 
-                warn!("Removing locked chunks and all impacted contributions");
-
-                // Remove the lock from the specified chunks.
-                round.remove_locks_unsafe(
+                // Remove the contributor from the round state.
+                round.remove_contributor_unsafe(
                     storage,
                     &replace_action.dropped_contributor,
                     &replace_action.locked_chunks,
-                )?;
-                warn!("Removed locked chunks");
-
-                // Remove the contributions from the specified chunks.
-                round.remove_chunk_contributions_unsafe(
-                    storage,
-                    &replace_action.dropped_contributor,
                     &replace_action.tasks,
                 )?;
-                warn!("Removed impacted contributions");
 
                 // Assign a replacement contributor to the dropped tasks for the current round.
                 round.add_replacement_contributor_unsafe(replace_action.replacement_contributor.clone())?;
