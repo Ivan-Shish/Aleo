@@ -2829,12 +2829,7 @@ impl CoordinatorState {
             .filter_map(|(participant, participant_info)| {
                 // Ensure we get the proper elapsed time since the last task was assigned.
                 // If no tasks have been assigned yet, we measure from the starting time.
-                let last_seen = if participant_info.last_released.is_none() {
-                    participant_info.first_seen
-                } else {
-                    participant_info.last_released.unwrap()
-                };
-
+                let last_seen = participant_info.last_released.unwrap_or(participant_info.first_seen);
                 let elapsed = now - last_seen;
 
                 if elapsed > participant_acceptance_timeout
@@ -2843,9 +2838,9 @@ impl CoordinatorState {
                 {
                     tracing::info!(
                         "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
-                    since it has last accepted a task from the coordinator (last accetped {} minutes ago).",
+                    since it has last accepted a task from the coordinator (last accepted {} minutes ago).",
                         participant,
-                        participant_acceptance_timeout,
+                        participant_acceptance_timeout.num_minutes(),
                         elapsed.num_minutes()
                     );
 
