@@ -488,7 +488,7 @@ impl Coordinator {
                 state.update_round_metrics();
                 state.save(&mut storage)?;
 
-                match self.state.read().unwrap().current_round_finished_contributors() {
+                match state.current_round_finished_contributors() {
                     Ok(contributors) => {
                         (self.aggregation_callback)(contributors);
                     }
