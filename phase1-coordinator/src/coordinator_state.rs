@@ -82,7 +82,7 @@ pub struct ParticipantInfo {
     dropped_at: Option<DateTime<Utc>>,
     /// A map of chunk IDs to locks on chunks that this participant currently holds.
     locked_chunks: HashMap<u64, ChunkLock>,
-    /// The timestamp when this participant last released a lock.
+    /// The timestamp when this participant last was released a lock.
     last_released: Option<DateTime<Utc>>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
     assigned_tasks: LinkedList<Task>,
@@ -2834,6 +2834,7 @@ impl CoordinatorState {
 
                 if elapsed > participant_acceptance_timeout
                     && participant_info.locked_chunks.is_empty()
+                    && !participant_info.assigned_tasks.is_empty()
                     && !self.is_coordinator_contributor(&participant)
                 {
                     tracing::info!(
