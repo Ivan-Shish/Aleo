@@ -11,8 +11,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("Disk IO error: {0}")]
     IoError(#[from] io::Error),
-    #[error("Serialization error in Zexe: {0}")]
-    ZexeSerializationError(#[from] SerializationError),
+    #[error("Serialization error")]
+    SerializationError,
     #[error("Got point at infinity")]
     PointAtInfinity,
     #[error("Index of {0} must not exceed {1} (got {2}.")]
@@ -33,6 +33,10 @@ pub enum Error {
     IncorrectSubgroup,
     #[error("Got invalid decompression parameters")]
     InvalidDecompressionParametersError,
+}
+
+impl From<SerializationError> for self::Error {
+    fn from(_: SerializationError) -> Error { Error::SerializationError }
 }
 
 impl From<Box<dyn std::any::Any + Send>> for Error {

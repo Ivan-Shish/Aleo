@@ -11,29 +11,15 @@ edition = "2018"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[[test]]
-name = "aleo_compatibility"
-path = "tests/aleo_compatibility.rs"
-required-features = ["phase2/testing"]
-
 [dependencies]
 setup-utils = { path = "../setup-utils", default-features = false }
-
-snarkos-algorithms = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-algorithms", default-features = false }
-snarkos-errors = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-errors", default-features = false, optional = true }
-snarkos-models = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-models", default-features = false }
-snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities", default-features = false }
-
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761"] }
-zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "groth16", version = "0.1.0", features = [] }
-zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
 
 byteorder = { version = "1.3.4" }
 cfg-if = { version = "0.1.10" }
 crossbeam = { version = "0.8" }
 itertools = { version = "0.9.0", optional = true }
 num_cpus = { version = "1" }
-rand = { version = "0.7.3" }
+rand = { version = "0.8" }
 rayon = { version = "1.4.1", optional = true }
 tracing = { version = "0.1.21" }
 wasm-bindgen = { version = "0.2.69", features=["serde-serialize"] }
@@ -46,23 +32,26 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 
 web-sys = { version = "0.3", features = ["console"], optional = true }
 
+snarkvm-algorithms = { version = "0.6" }
+snarkvm-curves = { version = "0.6" }
+snarkvm-gadgets = { version = "0.6" }
+snarkvm-r1cs = { version = "0.6"}
+snarkvm-parameters = { version = "0.6" }
+snarkvm-fields = { version = "0.6" }
+snarkvm-utilities = { version = "0.6" }
+
 [dev-dependencies]
 phase1 = { path = "../phase1", features = ["testing"] }
 phase2 = { path = "./", features = ["testing"] }
 wasm-bindgen-test = { version = "0.3.18" }
-
-snarkos-curves = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-curves", default-features = false }
-snarkos-errors = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-errors", default-features = false }
-
-zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-std", version = "0.1.0" }
 
 rusty-hook = { version = "0.11.2" }
 tracing-subscriber = { version = "0.2.3" }
 
 [features]
 default = []
-testing = ["parallel", "snarkos-errors"]
-parallel = ["rayon", "setup-utils/parallel", "zexe_algebra/parallel", "zexe_groth16/parallel"]
+testing = ["parallel"]
+parallel = ["rayon", "setup-utils/parallel"]
 
 cli = ["setup-utils/cli"]
 wasm = ["console_error_panic_hook", "itertools", "web-sys", "setup-utils/wasm"]

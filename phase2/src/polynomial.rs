@@ -1,7 +1,10 @@
-use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, Zero};
-use zexe_r1cs_core::Index;
 
 use rayon::prelude::*;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_r1cs::Index;
+use snarkvm_fields::Zero;
+use std::ops::AddAssign;
+
 
 /// Evaluates and returns the provided QAP Polynomial vectors at the provided coefficients.
 /// Format: [a_g1, b_g1, b_g2, gamma_abc_g1, l_g1]
@@ -95,39 +98,43 @@ fn dot_product<C: AffineCurve>(input: &[(C::ScalarField, Index)], coeffs: &[C], 
             || C::Projective::zero(),
             |mut sum, &(coeff, lag)| {
                 let ind = match lag {
-                    Index::Input(i) => i,
-                    Index::Aux(i) => num_inputs + i,
+                    Index::Public(i) => i,
+                    Index::Private(i) => num_inputs + i,
                 };
-                sum += &coeffs[ind].mul(coeff);
+                sum = From::from(coeffs[ind].mul(coeff).add(sum.into_affine()));
                 sum
             },
         )
-        .sum()
+        .reduce(
+            || C::Projective::zero(),
+            | mut sum, elem | { sum.add_assign(elem); sum }
+        )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use phase1::helpers::testing::random_point_vec;
     use rand::{thread_rng, Rng};
-    use zexe_algebra::{
-        bls12_377::{Bls12_377, Fr, G1Affine, G1Projective},
-        UniformRand,
-    };
+    use snarkvm_curves::bls12_377::{Fr, G1Affine, Bls12_377};
+    use snarkvm_r1cs::Index;
+    use crate::polynomial::{dot_product, dot_product_vec, dot_product_ext};
+    use snarkvm_utilities::UniformRand;
+    use std::ops::Mul;
+    use snarkvm_curves::ProjectiveCurve;
 
     fn gen_input(rng: &mut impl Rng) -> Vec<(Fr, Index)> {
         let scalar = (0..6).map(|_| Fr::rand(rng)).collect::<Vec<_>>();
         vec![
-            (scalar[0], Index::Input(0)),
-            (scalar[1], Index::Input(1)),
-            (scalar[2], Index::Aux(0)),
-            (scalar[3], Index::Aux(2)), // can they ever be out of order in reality?
-            (scalar[4], Index::Aux(1)),
-            (scalar[5], Index::Input(2)),
+            (scalar[0], Index::Public(0)),
+            (scalar[1], Index::Public(1)),
+            (scalar[2], Index::Private(0)),
+            (scalar[3], Index::Private(2)), // can they ever be out of order in reality?
+            (scalar[4], Index::Private(1)),
+            (scalar[5], Index::Public(2)),
         ]
     }
 
-    fn get_expected(elements: &[G1Affine], scalar: &[Fr]) -> G1Projective {
+    fn get_expected(elements: &[G1Affine], scalar: &[Fr]) -> G1Affine {
         let num_inputs = 3;
         elements[0].mul(scalar[0])
             + elements[1].mul(scalar[1])
@@ -152,13 +159,15 @@ mod tests {
 
         let got = dot_product(&input, &elements, num_inputs);
 
-        assert_eq!(got, expected);
+        assert_eq!(got.into_affine(), expected);
 
         // it also applies the coefficients vector to each row
         // in the inputs vector
         let input_vec = vec![input; 10];
         let got = dot_product_vec(&input_vec, &elements, num_inputs);
-        assert_eq!(got, vec![expected; 10])
+        for i in 0..got.len() {
+            assert_eq!(got[i].into_affine(), expected)
+        }
     }
 
     #[test]
@@ -193,6 +202,9 @@ mod tests {
                     + get_expected(&coeffs_g1, &scalar_ct),
             );
         }
-        assert_eq!(got, expected);
+        //assert_eq!(got, expected);
+        for i in 0..got.len() {
+            assert_eq!(got[i].into_affine(), expected[i])
+        }
     }
 }

@@ -12,7 +12,7 @@ edition = "2018"
 phase2 = { path = "../phase2", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkvm-algorithms = { version = "0.6", default-features = false }
+snarkvm-algorithms = { path = "../../snarkVM/algorithms" }
 snarkvm-curves = { version = "0.6" }
 snarkvm-dpc = { version = "0.6" }
 snarkvm-fields = { version = "0.6" }

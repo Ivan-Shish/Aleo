@@ -9,16 +9,6 @@ use crate::{
 };
 use setup_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
 
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    Field,
-    PairingEngine,
-    ProjectiveCurve,
-};
-use zexe_groth16::VerifyingKey;
 
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::Rng;
@@ -27,6 +17,11 @@ use std::{
     ops::Neg,
 };
 use tracing::{debug, info, info_span, trace};
+use snarkvm_curves::{PairingEngine, AffineCurve};
+use snarkvm_algorithms::snark::groth16::VerifyingKey;
+use snarkvm_utilities::{ConstantSerializedSize, CanonicalDeserialize, CanonicalSerialize};
+use snarkvm_fields::Field;
+use std::ops::Mul;
 
 /// Given two serialized contributions to the ceremony, this will check that `after`
 /// has been correctly calculated from `before`. Large vectors will be read in
@@ -248,8 +243,8 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
     let delta_inv = private_key.delta.inverse().expect("nonzero");
 
     // update the values
-    delta_g1 = delta_g1.mul(delta).into_affine();
-    vk.delta_g2 = vk.delta_g2.mul(delta).into_affine();
+    delta_g1 = delta_g1.mul(delta);
+    vk.delta_g2 = vk.delta_g2.mul(delta);
 
     // go back to the start of the buffer to write the updated vk and delta_g1
     buffer.seek(SeekFrom::Start(0))?;
