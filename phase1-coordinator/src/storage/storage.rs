@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    objects::{ContributionFileSignature, Round},
+    objects::{ContributionFileSignature, Round, Task},
     CoordinatorError,
     CoordinatorState,
 };
@@ -19,17 +19,15 @@ use zexe_algebra::{Bls12_377, BW6_761};
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionLocator {
     round_height: u64,
-    chunk_id: u64,
-    contribution_id: u64,
+    task: Task,
     is_verified: bool,
 }
 
 impl ContributionLocator {
-    pub fn new(round_height: u64, chunk_id: u64, contribution_id: u64, is_verified: bool) -> Self {
+    pub fn new(round_height: u64, task: Task, is_verified: bool) -> Self {
         Self {
             round_height,
-            chunk_id,
-            contribution_id,
+            task,
             is_verified,
         }
     }
@@ -39,11 +37,11 @@ impl ContributionLocator {
     }
 
     pub fn chunk_id(&self) -> u64 {
-        self.chunk_id
+        self.task.chunk_id()
     }
 
     pub fn contribution_id(&self) -> u64 {
-        self.contribution_id
+        self.task.contribution_id()
     }
 
     pub fn is_verified(&self) -> bool {
@@ -54,17 +52,15 @@ impl ContributionLocator {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionSignatureLocator {
     round_height: u64,
-    chunk_id: u64,
-    contribution_id: u64,
+    task: Task,
     is_verified: bool,
 }
 
 impl ContributionSignatureLocator {
-    pub fn new(round_height: u64, chunk_id: u64, contribution_id: u64, is_verified: bool) -> Self {
+    pub fn new(round_height: u64, task: Task, is_verified: bool) -> Self {
         Self {
             round_height,
-            chunk_id,
-            contribution_id,
+            task,
             is_verified,
         }
     }
@@ -74,11 +70,11 @@ impl ContributionSignatureLocator {
     }
 
     pub fn chunk_id(&self) -> u64 {
-        self.chunk_id
+        self.task.chunk_id()
     }
 
     pub fn contribution_id(&self) -> u64 {
-        self.contribution_id
+        self.task.contribution_id()
     }
 
     pub fn is_verified(&self) -> bool {

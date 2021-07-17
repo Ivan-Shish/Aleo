@@ -700,16 +700,8 @@ impl ParticipantInfo {
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
     #[inline]
-    fn dispose_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
+    fn dispose_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Disposed task for {}", self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -727,7 +719,7 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains_key(&chunk_id) {
+        if !self.locked_chunks.contains_key(&task.chunk_id()) {
             return Err(CoordinatorError::ParticipantDidntLockChunkId);
         }
 
@@ -747,7 +739,7 @@ impl ParticipantInfo {
         self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
-        self.locked_chunks.remove(&chunk_id);
+        self.locked_chunks.remove(&task.chunk_id());
 
         // Remove the task from the disposing tasks.
         self.disposing_tasks = self
@@ -1787,7 +1779,7 @@ impl CoordinatorState {
     pub(super) fn disposed_task(
         &mut self,
         participant: &Participant,
-        task: &Task,
+        task: Task,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         let chunk_id = task.chunk_id();
@@ -1806,12 +1798,12 @@ impl CoordinatorState {
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the contributor.
-                Some(participant) => participant.dispose_task(chunk_id, contribution_id, time),
+                Some(participant) => participant.dispose_task(task, time),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the verifier.
-                Some(participant) => participant.dispose_task(chunk_id, contribution_id, time),
+                Some(participant) => participant.dispose_task(task, time),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
@@ -3521,6 +3513,10 @@ pub(crate) enum DropParticipant {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use uuid::Uuid;
+
     use crate::{
         coordinator_state::*,
         environment::{Parameters, Testing},
@@ -4154,7 +4150,11 @@ mod tests {
             assert_eq!((chunk_id, 1), (task.chunk_id(), task.contribution_id()));
 
             state.acquired_lock(&contributor, chunk_id, &time).unwrap();
-            let completed_task = Task::new(chunk_id, task.contribution_id());
+            let completed_task = Task::new(
+                Uuid::from_str("00000000000000000000000000000001").unwrap(),
+                chunk_id,
+                task.contribution_id(),
+            );
             state.completed_task(&contributor, completed_task, &time).unwrap();
             assert_eq!(i + 1, state.pending_verification.len());
         }

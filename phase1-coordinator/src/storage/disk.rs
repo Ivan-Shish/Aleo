@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    objects::{ContributionFileSignature, Round},
+    objects::{ContributionFileSignature, Round, Task},
     storage::{
         ContributionLocator,
         ContributionSignatureLocator,
@@ -30,6 +30,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tracing::{debug, error, trace};
+use uuid::Uuid;
 
 use super::{LocatorPath, StorageAction};
 
@@ -996,51 +997,56 @@ impl StorageLocator for DiskResolver {
                     }
 
                     // Parse the path into its components.
-                    if let Some((chunk, path)) = remainder.splitn(2, "/").collect_tuple() {
+                    if let Some((chunk_dir_name, path)) = remainder.splitn(2, "/").collect_tuple() {
                         // Check if it resembles the chunk directory.
-                        if chunk.starts_with("chunk_") {
+                        if chunk_dir_name.starts_with("chunk_") {
                             // Attempt to parse the path string for the chunk ID.
                             let chunk_id = u64::from_str(
-                                chunk
+                                chunk_dir_name
                                     .strip_prefix("chunk_")
                                     .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?,
                             )?;
 
                             // Check if it matches the chunk directory.
-                            if chunk == &format!("chunk_{}", chunk_id) {
+                            if chunk_dir_name == &format!("chunk_{}", chunk_id) {
                                 /* In chunk directory */
 
                                 // Check if it matches the contribution file.
                                 if path.starts_with("contribution_") {
-                                    let (id, extension) = path
+                                    let (contribution_id_str, id_and_extension) = path
                                         .strip_prefix("contribution_")
+                                        .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?
+                                        .splitn(2, '_')
+                                        .collect_tuple()
+                                        .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?;
+
+                                    let contribution_id = u64::from_str(contribution_id_str)?;
+
+                                    let (id_str, extension) = id_and_extension
+                                        .strip_prefix('_')
                                         .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?
                                         .splitn(2, '.')
                                         .collect_tuple()
                                         .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)?;
-                                    let contribution_id = u64::from_str(id)?;
+
+                                    let id = Uuid::from_str(id_str).map_err(|err| {
+                                        tracing::error!("Error in task uuid format: {}", err);
+                                        CoordinatorError::StorageLocatorFormatIncorrect
+                                    })?;
+
+                                    let task = Task::new(id, chunk_id, contribution_id);
 
                                     // Check if it matches a contribution file signature for an unverified contribution.
                                     if extension == "unverified.signature" {
                                         return Ok(Locator::ContributionFileSignature(
-                                            ContributionSignatureLocator::new(
-                                                round_height,
-                                                chunk_id,
-                                                contribution_id,
-                                                false,
-                                            ),
+                                            ContributionSignatureLocator::new(round_height, task, false),
                                         ));
                                     }
 
                                     // Check if it matches a contribution file signature for a verified contribution.
                                     if extension == "verified.signature" {
                                         return Ok(Locator::ContributionFileSignature(
-                                            ContributionSignatureLocator::new(
-                                                round_height,
-                                                chunk_id,
-                                                contribution_id,
-                                                true,
-                                            ),
+                                            ContributionSignatureLocator::new(round_height, task, true),
                                         ));
                                     }
 
@@ -1048,8 +1054,7 @@ impl StorageLocator for DiskResolver {
                                     if extension == "unverified" {
                                         return Ok(Locator::ContributionFile(ContributionLocator::new(
                                             round_height,
-                                            chunk_id,
-                                            contribution_id,
+                                            task,
                                             false,
                                         )));
                                     }
@@ -1058,8 +1063,7 @@ impl StorageLocator for DiskResolver {
                                     if extension == "verified" {
                                         return Ok(Locator::ContributionFile(ContributionLocator::new(
                                             round_height,
-                                            chunk_id,
-                                            contribution_id,
+                                            task,
                                             true,
                                         )));
                                     }
@@ -1251,106 +1255,202 @@ mod tests {
         let locator = DiskResolver::new("./transcript/test");
 
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_0/contribution_0.unverified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_0/contribution_0_00000000000000000000000000000001.unverified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 0, false)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                    false
+                )))
                 .unwrap()
         );
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_0/contribution_0.verified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_0/contribution_0_00000000000000000000000000000001.verified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 0, true)))
-                .unwrap()
-        );
-
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_0/contribution_0.unverified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 0, false)))
-                .unwrap()
-        );
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_0/contribution_0.verified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 0, true)))
-                .unwrap()
-        );
-
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_1/contribution_0.unverified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 0, false)))
-                .unwrap()
-        );
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_1/contribution_0.verified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 0, true)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                    true
+                )))
                 .unwrap()
         );
 
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_0/contribution_1.unverified"),
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.unverified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 1, false)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                    false
+                )))
                 .unwrap()
         );
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_0/contribution_1.verified"),
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.verified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 0, 1, true)))
-                .unwrap()
-        );
-
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_1/contribution_0.unverified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 0, false)))
-                .unwrap()
-        );
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_1/contribution_0.verified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 0, true)))
-                .unwrap()
-        );
-
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_0/contribution_1.unverified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 1, false)))
-                .unwrap()
-        );
-        assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_0/contribution_1.verified"),
-            locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 0, 1, true)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                    true
+                )))
                 .unwrap()
         );
 
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_1/contribution_1.unverified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_1/contribution_0_00000000000000000000000000000001.unverified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 1, false)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                    false
+                )))
                 .unwrap()
         );
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_0/chunk_1/contribution_1.verified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_1/contribution_0_00000000000000000000000000000001.verified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(0, 1, 1, true)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                    true
+                )))
                 .unwrap()
         );
 
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_1/contribution_1.unverified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_0/contribution_1_00000000000000000000000000000001.unverified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 1, false)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                    false
+                )))
                 .unwrap()
         );
         assert_eq!(
-            LocatorPath::from("./transcript/test/round_1/chunk_1/contribution_1.verified"),
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_0/contribution_1_00000000000000000000000000000001.verified"
+            ),
             locator
-                .to_path(&Locator::ContributionFile(ContributionLocator::new(1, 1, 1, true)))
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                    true
+                )))
+                .unwrap()
+        );
+
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_1/contribution_0_00000000000000000000000000000001.unverified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                    false
+                )))
+                .unwrap()
+        );
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_1/contribution_0_00000000000000000000000000000001.verified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                    true
+                )))
+                .unwrap()
+        );
+
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_0/contribution_1_00000000000000000000000000000001.unverified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                    false
+                )))
+                .unwrap()
+        );
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_0/contribution_1_00000000000000000000000000000001.verified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                    true
+                )))
+                .unwrap()
+        );
+
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_1/contribution_1_00000000000000000000000000000001.unverified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                    false
+                )))
+                .unwrap()
+        );
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_0/chunk_1/contribution_1_936DA01F9ABD4d9d80C702AF85C822A8.verified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    0,
+                    Task::new(Uuid::from_str("936DA01F9ABD4d9d80C702AF85C822A8").unwrap(), 1, 1),
+                    true
+                )))
+                .unwrap()
+        );
+
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_1/contribution_1_00000000000000000000000000000001.unverified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                    false
+                )))
+                .unwrap()
+        );
+        assert_eq!(
+            LocatorPath::from(
+                "./transcript/test/round_1/chunk_1/contribution_1_00000000000000000000000000000001.verified"
+            ),
+            locator
+                .to_path(&Locator::ContributionFile(ContributionLocator::new(
+                    1,
+                    Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                    true
+                )))
                 .unwrap()
         );
     }
@@ -1361,106 +1461,182 @@ mod tests {
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0.unverified".into())
+                .to_locator(
+                    &"./transcript/test/round_0/chunk_0/contribution_0_00000000000000000000000000000001.unverified"
+                        .into()
+                )
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 0, 0, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                false
+            ))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0.verified".into())
+                .to_locator(
+                    &"./transcript/test/round_0/chunk_0/contribution_0_936DA01F9ABD4d9d80C702AF85C822A8.verified"
+                        .into()
+                )
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 0, 0, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("936DA01F9ABD4d9d80C702AF85C822A8").unwrap(), 0, 0),
+                true
+            ))
         );
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0.unverified".into())
+                .to_locator(
+                    &"./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.unverified"
+                        .into()
+                )
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 0, 0, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                false
+            ))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0.verified".into())
+                .to_locator(
+                    &"./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.verified"
+                        .into()
+                )
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 0, 0, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 1, 0, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 1, 0, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 0, 1, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 0, 1, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 1, 0, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 1, 0, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 0, 1, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 0, 1, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 1, 1, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(0, 1, 1, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                0,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                true
+            ))
         );
 
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1.unverified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 1, 1, false))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                false
+            ))
         );
         assert_eq!(
             locator
                 .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1.verified".into())
                 .unwrap(),
-            Locator::ContributionFile(ContributionLocator::new(1, 1, 1, true))
+            Locator::ContributionFile(ContributionLocator::new(
+                1,
+                Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),
+                true
+            ))
         );
     }
 
@@ -1470,106 +1646,106 @@ mod tests {
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0.unverified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0_00000000000000000000000000000001.unverified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 0, 0, false))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0), false))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0.verified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_0_00000000000000000000000000000001.verified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 0, 0, true))
-        );
-
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0.unverified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 0, 0, false))
-        );
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0.verified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 0, 0, true))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0), true))
         );
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0.unverified.signature".into())
+                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.unverified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 1, 0, false))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0), false))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0.verified.signature".into())
+                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_0_00000000000000000000000000000001.verified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 1, 0, true))
-        );
-
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1.unverified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 0, 1, false))
-        );
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1.verified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 0, 1, true))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 0), true))
         );
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0.unverified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0_00000000000000000000000000000001.unverified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 1, 0, false))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0), false))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0.verified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_0_00000000000000000000000000000001.verified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 1, 0, true))
-        );
-
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1.unverified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 0, 1, false))
-        );
-        assert_eq!(
-            locator
-                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1.verified.signature".into())
-                .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 0, 1, true))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0), true))
         );
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1.unverified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1_00000000000000000000000000000001.unverified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 1, 1, false))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1), false))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1.verified.signature".into())
+                .to_locator(&"./transcript/test/round_0/chunk_0/contribution_1_00000000000000000000000000000001.verified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0, 1, 1, true))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1), true))
         );
 
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1.unverified.signature".into())
+                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0_00000000000000000000000000000001.unverified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 1, 1, false))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0), false))
         );
         assert_eq!(
             locator
-                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1.verified.signature".into())
+                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_0_00000000000000000000000000000001.verified.signature".into())
                 .unwrap(),
-            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1, 1, 1, true))
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 0), true))
+        );
+
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1_00000000000000000000000000000001.unverified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1), false))
+        );
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_1/chunk_0/contribution_1_00000000000000000000000000000001.verified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 0, 1), true))
+        );
+
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1_00000000000000000000000000000001.unverified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1),  false))
+        );
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_0/chunk_1/contribution_1_00000000000000000000000000000001.verified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(0,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1), true))
+        );
+
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1_00000000000000000000000000000001.unverified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1), false))
+        );
+        assert_eq!(
+            locator
+                .to_locator(&"./transcript/test/round_1/chunk_1/contribution_1_00000000000000000000000000000001.verified.signature".into())
+                .unwrap(),
+            Locator::ContributionFileSignature(ContributionSignatureLocator::new(1,  Task::new(Uuid::from_str("00000000000000000000000000000001").unwrap(), 1, 1), true))
         );
     }
 }

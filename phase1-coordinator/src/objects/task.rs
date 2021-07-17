@@ -1,13 +1,9 @@
-use std::{collections::LinkedList, fmt::Debug, str::FromStr};
+use std::{collections::LinkedList, fmt::Debug};
 
-use serde::{
-    de::{self, Error},
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
+use serde::{Deserialize, Serialize};
+
 use thiserror::Error;
+use uuid::Uuid;
 
 /// The identity/position of a task to be performed by a ceremony
 /// participant at a given contribution level, for a given chunk.
@@ -29,16 +25,21 @@ use thiserror::Error;
 ///                  | Chunk 0 | Chunk 1 | ...     | Chunk ID
 ///                  +---------+---------+---------+
 /// ```
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Task {
+    /// Unique identifier for this task.
+    id: Uuid,
+    /// The chunk this task is associated with.
     chunk_id: u64,
+    /// The contribution level that this task is associated with.
     contribution_id: u64,
 }
 
 impl Task {
     #[inline]
-    pub fn new(chunk_id: u64, contribution_id: u64) -> Self {
+    pub fn new(id: Uuid, chunk_id: u64, contribution_id: u64) -> Self {
         Self {
+            id,
             chunk_id,
             contribution_id,
         }
@@ -63,31 +64,17 @@ impl Task {
     pub fn to_tuple(&self) -> (u64, u64) {
         (self.chunk_id, self.contribution_id)
     }
+
+    /// Clones this task, while specifying a new id for the cloned
+    /// task.
+    pub fn clone_with_new_id(&self, id: Uuid) -> Self {
+        Self { id, ..self.clone() }
+    }
 }
 
 impl std::fmt::Display for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.to_tuple().fmt(f)
-    }
-}
-
-impl Serialize for Task {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!("{}/{}", self.chunk_id, self.contribution_id))
-    }
-}
-
-impl<'de> Deserialize<'de> for Task {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
-        let s = String::deserialize(deserializer)?;
-
-        let mut task = s.split("/");
-        let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;
-        let contribution_id = task.next().ok_or(D::Error::custom("invalid contribution ID"))?;
-        Ok(Task::new(
-            u64::from_str(&chunk_id).map_err(de::Error::custom)?,
-            u64::from_str(&contribution_id).map_err(de::Error::custom)?,
-        ))
     }
 }
 
@@ -216,7 +203,8 @@ pub fn initialize_tasks(
 
     // Add the tasks in FIFO ordering.
     let mut tasks = LinkedList::new();
-    tasks.push_back(Task::new(start % number_of_chunks, 1));
+
+    tasks.push_back(Task::new(Uuid::new_v4(), start % number_of_chunks, 1));
 
     // Skip one from the start index and calculate the chunk ID and contribution ID to the end.
     for current_index in start + 1..end {
@@ -242,7 +230,7 @@ pub fn initialize_tasks(
         let steps = (initial_steps + final_steps) % number_of_contributors;
         let contribution_id = steps + 1;
 
-        tasks.push_back(Task::new(chunk_id, contribution_id as u64));
+        tasks.push_back(Task::new(Uuid::new_v4(), chunk_id, contribution_id as u64));
     }
 
     assert!(tasks.len() == number_of_chunks as usize);
@@ -252,16 +240,11 @@ pub fn initialize_tasks(
 
 #[cfg(test)]
 mod test {
+    use uuid::Uuid;
+
     use super::{initialize_tasks, Task, TaskInitializationError};
     use crate::testing::prelude::test_logger;
-    use std::collections::HashSet;
-
-    #[test]
-    fn test_task() {
-        let task = Task::new(0, 1);
-        assert_eq!("\"0/1\"", serde_json::to_string(&task).unwrap());
-        assert_eq!(task, serde_json::from_str("\"0/1\"").unwrap());
-    }
+    use std::{collections::HashSet, str::FromStr};
 
     #[test]
     fn test_initialize_tasks_2_chunks_1_contributor() {
@@ -272,8 +255,22 @@ mod test {
         let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
             .unwrap()
             .into_iter();
-        assert_eq!(Some(Task::new(0, 1)), tasks.next());
-        assert_eq!(Some(Task::new(1, 1)), tasks.next());
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000001").unwrap(),
+                0,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000002").unwrap(),
+                1,
+                1
+            )),
+            tasks.next()
+        );
         assert!(tasks.next().is_none());
 
         let bucket_id = 1;
@@ -316,16 +313,44 @@ mod test {
         let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
             .unwrap()
             .into_iter();
-        assert_eq!(Some(Task::new(0, 1)), tasks.next());
-        assert_eq!(Some(Task::new(1, 2)), tasks.next());
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000001").unwrap(),
+                0,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000002").unwrap(),
+                1,
+                2
+            )),
+            tasks.next()
+        );
         assert!(tasks.next().is_none());
 
         let bucket_id = 1;
         let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
             .unwrap()
             .into_iter();
-        assert_eq!(Some(Task::new(1, 1)), tasks.next());
-        assert_eq!(Some(Task::new(0, 2)), tasks.next());
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000003").unwrap(),
+                1,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000004").unwrap(),
+                0,
+                2
+            )),
+            tasks.next()
+        );
         assert!(tasks.next().is_none());
 
         let bucket_id = 2;
@@ -350,18 +375,60 @@ mod test {
         let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
             .unwrap()
             .into_iter();
-        assert_eq!(Some(Task::new(0, 1)), tasks.next());
-        assert_eq!(Some(Task::new(1, 2)), tasks.next());
-        assert_eq!(Some(Task::new(2, 2)), tasks.next());
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000001").unwrap(),
+                0,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000002").unwrap(),
+                1,
+                2
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000003").unwrap(),
+                2,
+                2
+            )),
+            tasks.next()
+        );
         assert!(tasks.next().is_none());
 
         let bucket_id = 1;
         let mut tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors)
             .unwrap()
             .into_iter();
-        assert_eq!(Some(Task::new(1, 1)), tasks.next());
-        assert_eq!(Some(Task::new(2, 1)), tasks.next());
-        assert_eq!(Some(Task::new(0, 2)), tasks.next());
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000004").unwrap(),
+                1,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000005").unwrap(),
+                2,
+                1
+            )),
+            tasks.next()
+        );
+        assert_eq!(
+            Some(Task::new(
+                Uuid::from_str("00000000000000000000000000000006").unwrap(),
+                0,
+                2
+            )),
+            tasks.next()
+        );
         assert!(tasks.next().is_none());
     }
 
