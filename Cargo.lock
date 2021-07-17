@@ -1494,7 +1494,7 @@ dependencies = [
  "http",
  "indexmap",
  "slab",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tokio-util 0.6.7",
  "tracing",
 ]
@@ -1662,7 +1662,7 @@ dependencies = [
  "itoa",
  "pin-project 1.0.2",
  "socket2 0.4.0",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tower-service",
  "tracing",
  "want",
@@ -1695,7 +1695,7 @@ dependencies = [
  "bytes 1.0.1",
  "hyper 0.14.7",
  "native-tls",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tokio-native-tls",
 ]
 
@@ -2519,7 +2519,7 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "thiserror",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3008,7 +3008,7 @@ dependencies = [
  "pin-project-lite 0.2.6",
  "serde",
  "serde_urlencoded",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tokio-native-tls",
  "url",
  "wasm-bindgen",
@@ -3554,7 +3554,7 @@ dependencies = [
  "snarkos-toolkit",
  "structopt",
  "thiserror",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tokio-tungstenite",
  "tracing",
  "tracing-appender",
@@ -3568,7 +3568,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "tokio 1.7.0",
+ "tokio 1.8.1",
 ]
 
 [[package]]
@@ -3598,7 +3598,7 @@ dependencies = [
  "snarkos-toolkit",
  "structopt",
  "thiserror",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -4447,9 +4447,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.7.0"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c79ba603c337335df6ba6dd6afc38c38a7d5e1b0c871678439ea973cd62a118e"
+checksum = "98c8b05dc14c75ea83d63dd391100353789f5f24b8b3866542a5e85c8be8e985"
 dependencies = [
  "autocfg",
  "bytes 1.0.1",
@@ -4482,7 +4482,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.7.0",
+ "tokio 1.8.1",
 ]
 
 [[package]]
@@ -4506,7 +4506,7 @@ dependencies = [
  "futures-util",
  "log",
  "pin-project 1.0.2",
- "tokio 1.7.0",
+ "tokio 1.8.1",
  "tungstenite",
 ]
 
@@ -4535,7 +4535,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite 0.2.6",
- "tokio 1.7.0",
+ "tokio 1.8.1",
 ]
 
 [[package]]
