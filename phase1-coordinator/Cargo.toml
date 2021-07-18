@@ -33,7 +33,7 @@ serde-diff = { version = "0.4" }
 serde_json = { version = "1.0" }
 serde_with = { version = "1.8", features = ["chrono", "macros"] }
 thiserror = { version = "1.0" }
-tokio = { version = "1.7", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.8", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.2", optional = true }
 
