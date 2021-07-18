@@ -399,7 +399,7 @@ where
 
                 // Initialize the coordinator state to round 0.
                 self.state.initialize(round_height);
-                self.state.save(&mut self.storage)?;
+                self.save_state()?;
             }
         }
 
@@ -414,11 +414,15 @@ where
         Ok(())
     }
 
+    /// Save the current state of the coordinator to storage.
+    pub fn save_state(&mut self) -> Result<(), CoordinatorError> {
+        self.state.save(&mut self.storage)
+    }
+
     ///
     /// Runs a set of operations to update the coordinator state to reflect
     /// newly finished, dropped, or banned participants.
     ///
-    #[inline]
     pub fn update(&mut self) -> Result<(), CoordinatorError> {
         // Process ceremony updates for the current round and queue.
         let (is_current_round_finished, is_current_round_aggregated) = {
@@ -427,30 +431,30 @@ where
 
             // Update the metrics for the current round and participants.
             self.state.update_round_metrics();
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Update the state of the queue.
             self.state.update_queue()?;
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Update the state of current round contributors.
             self.state.update_current_contributors(self.time.as_ref())?;
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Update the state of current round verifiers.
             self.state.update_current_verifiers(self.time.as_ref())?;
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Drop disconnected participants from the current round.
             for drop in self.state.update_dropped_participants(self.time.as_ref())? {
                 // Update the round to reflect the coordinator state changes.
                 self.drop_participant_from_storage(&drop)?;
             }
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Ban any participants who meet the coordinator criteria.
             self.state.update_banned_participants()?;
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             // Check if the current round is finished and if the current round is aggregated.
             (
@@ -469,7 +473,7 @@ where
 
                 // Update the metrics for the current round and participants.
                 self.state.update_round_metrics();
-                self.state.save(&mut self.storage)?;
+                self.save_state()?;
             }
 
             // Check if the current round is aggregated, and if the precommit for
@@ -510,22 +514,18 @@ where
     ///
     /// Initializes a listener to handle the shutdown signal.
     ///
-    #[inline]
-    pub fn shutdown_listener(mut self) -> anyhow::Result<()> {
-        ctrlc::set_handler(move || {
-            warn!("\n\nATTENTION - Coordinator is shutting down...\n");
+    pub fn shutdown(&mut self) -> anyhow::Result<()> {
+        warn!("\n\nATTENTION - Coordinator is shutting down...\n");
 
-            // Save the coordinator state to storage.
-            self.state.save(&mut self.storage).unwrap();
-            debug!("Coordinator has safely shutdown storage");
+        // Save the coordinator state to storage.
+        self.save_state().unwrap();
+        debug!("Coordinator has safely shutdown storage");
 
-            // Print the final coordinator self.
-            let final_state = serde_json::to_string_pretty(&self.state).unwrap();
-            info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
+        // Print the final coordinator self.
+        let final_state = serde_json::to_string_pretty(&self.state).unwrap();
+        info!("\n\nCoordinator State at Shutdown\n\n{}\n", final_state);
 
-            info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
-            std::process::exit(0);
-        })?;
+        info!("\n\nCoordinator has safely shutdown.\n\nGoodbye.\n");
 
         Ok(())
     }
@@ -619,7 +619,7 @@ where
         self.state.add_to_queue(participant, reliability_score)?;
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -633,7 +633,7 @@ where
         self.state.remove_from_queue(participant)?;
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -653,7 +653,7 @@ where
         self.drop_participant_from_storage(&drop)?;
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -670,7 +670,7 @@ where
         self.drop_participant_from_storage(&drop)?;
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -684,7 +684,7 @@ where
         self.state.unban_participant(participant);
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -707,7 +707,7 @@ where
         self.state.enable_manual_lock();
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -721,7 +721,7 @@ where
         self.state.disable_manual_lock();
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         Ok(())
     }
@@ -947,7 +947,7 @@ where
                     .acquired_lock(participant, current_task.chunk_id(), self.time.as_ref())?;
 
                 // Save the coordinator state in storage.
-                self.state.save(&mut self.storage)?;
+                self.save_state()?;
 
                 info!("Acquired lock on chunk {} for {}", current_task.chunk_id(), participant);
                 Ok((current_task.chunk_id(), locked_locators))
@@ -961,7 +961,7 @@ where
                     .rollback_pending_task(participant, current_task, self.time.as_ref())?;
 
                 // Save the coordinator state in storage.
-                self.state.save(&mut self.storage)?;
+                self.save_state()?;
 
                 error!("{}", error);
                 return Err(error);
@@ -1038,7 +1038,7 @@ where
             self.storage.remove(&Locator::ContributionFile(response.clone()))?;
 
             // Save the coordinator state in storage.
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             debug!("Removing lock for disposed task {} {}", chunk_id, contribution_id);
 
@@ -1073,7 +1073,7 @@ where
                         .completed_task(participant, completed_task, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
-                    self.state.save(&mut self.storage)?;
+                    self.save_state()?;
 
                     info!("Added contribution");
                     return Ok(locator);
@@ -1150,7 +1150,7 @@ where
             self.state.disposed_task(participant, &task, self.time.as_ref())?;
 
             // Save the coordinator state in storage.
-            self.state.save(&mut self.storage)?;
+            self.save_state()?;
 
             debug!(
                 "Removing lock for verifier {} disposed task {} {}",
@@ -1210,7 +1210,7 @@ where
                         .completed_task(participant, completed_task, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
-                    self.state.save(&mut self.storage)?;
+                    self.save_state()?;
 
                     info!("Added verification from {} for chunk {}", participant, chunk_id);
                     return Ok(());
@@ -1406,7 +1406,7 @@ where
         };
 
         // Save the coordinator state in storage.
-        self.state.save(&mut self.storage)?;
+        self.save_state()?;
 
         result
     }
