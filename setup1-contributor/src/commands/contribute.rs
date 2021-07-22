@@ -484,8 +484,13 @@ impl Contribute {
             remove_file_if_exists(&self.challenge_filename)?;
             remove_file_if_exists(&self.challenge_hash_filename)?;
             let download_url = &lock_response.challenge_locator;
-            self.download_challenge(&download_url, &self.challenge_filename, auth_rng)
-                .await?;
+            self.download_challenge(
+                chunk_id,
+                lock_response.contribution_id,
+                &self.challenge_filename,
+                auth_rng,
+            )
+            .await?;
 
             // Wait for the process pipeline to open up
             self.wait_and_move_task_from_lane_to_lane(&PipelineLane::Download, &PipelineLane::Process, &lock_response)
@@ -573,18 +578,33 @@ impl Contribute {
                         #[cfg(feature = "azure")]
                         upload_file_to_azure_async(&self.response_filename, &upload_url).await?;
                         #[cfg(not(feature = "azure"))]
-                        self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                            .await?;
+                        self.upload_response(
+                            lock_response.response_chunk_id,
+                            lock_response.response_contribution_id,
+                            signature_and_response_file_bytes,
+                            auth_rng,
+                        )
+                        .await?;
                     } else {
-                        self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                            .await?;
+                        self.upload_response(
+                            lock_response.response_chunk_id,
+                            lock_response.response_contribution_id,
+                            signature_and_response_file_bytes,
+                            auth_rng,
+                        )
+                        .await?;
                     }
                 }
                 #[cfg(feature = "azure")]
                 UploadMode::Azure => upload_file_to_azure_async(&self.response_filename, &upload_url).await?,
                 UploadMode::Direct => {
-                    self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                        .await?
+                    self.upload_response(
+                        lock_response.response_chunk_id,
+                        lock_response.response_contribution_id,
+                        signature_and_response_file_bytes,
+                        auth_rng,
+                    )
+                    .await?
                 }
             }
 
@@ -764,13 +784,12 @@ impl Contribute {
 
     async fn download_challenge<R: Rng + CryptoRng>(
         &self,
-        challenge_locator: &str,
+        chunk_id: u64,
+        contribution_id: u64,
         file_path: &str,
         auth_rng: &mut R,
     ) -> Result<()> {
-        let sanitized_challenge_locator = challenge_locator.replace("./", "");
-
-        let download_path = format!("/v1/download/challenge/{}", sanitized_challenge_locator);
+        let download_path = format!("/v1/download/challenge/{}/{}", chunk_id, contribution_id);
         let download_path_url = self.server_url.join(&download_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "GET", &download_path, auth_rng)?;
@@ -792,13 +811,12 @@ impl Contribute {
 
     async fn upload_response<R: Rng + CryptoRng>(
         &self,
-        response_locator: &str,
+        chunk_id: u64,
+        contribution_id: u64,
         contents: Vec<u8>,
         auth_rng: &mut R,
     ) -> Result<()> {
-        let sanitized_response_locator = response_locator.replace("./", "");
-
-        let upload_path = format!("/v1/upload/response/{}", sanitized_response_locator);
+        let upload_path = format!("/v1/upload/response/{}/{}", chunk_id, contribution_id);
         let upload_path_url = self.server_url.join(&upload_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
