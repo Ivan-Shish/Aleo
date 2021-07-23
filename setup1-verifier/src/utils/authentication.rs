@@ -84,7 +84,7 @@ impl AleoAuthentication {
         let signature = view_key.sign(&parameters.account_encryption, &message.into_bytes(), rng)?;
 
         let mut output: Vec<u8> = Vec::new();
-        signature.write(&mut output)?;
+        signature.write_le(&mut output)?;
 
         // Construct the authentication header.
         Ok(hex::encode(output))
@@ -96,7 +96,7 @@ impl AleoAuthentication {
     pub fn verify(address: &str, signature: &str, message: String) -> Result<bool, VerifierError> {
         let aleo_address: Address<Components> = Address::from_str(&address)?;
         let decoded = hex::decode(signature).unwrap();
-        let view_key_signature = SchnorrSignature::read(decoded.as_slice())?;
+        let view_key_signature = SchnorrSignature::read_le(decoded.as_slice())?;
 
         // Check that the message verifies
         let parameters = SystemParameters::<Components>::load()?;
