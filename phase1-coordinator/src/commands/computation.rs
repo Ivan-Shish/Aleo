@@ -27,7 +27,6 @@ impl Computation {
     /// and response file have been initialized, typically as part of a call to
     /// `Coordinator::try_lock` to lock the contribution chunk.
     ///
-    #[inline]
     pub(crate) fn run(
         environment: &Environment,
         storage: &mut impl Storage,
@@ -81,6 +80,7 @@ impl Computation {
         // Load a contribution response reader.
         let reader = storage.reader(response_locator)?;
         let contribution_hash = calculate_hash(reader.as_ref());
+        drop(reader);
         debug!("Response hash is {}", pretty_hash!(&contribution_hash));
 
         debug!(
