@@ -181,9 +181,14 @@ impl Verifier {
     /// Downloads the challenge file from the coordinator and stores it to the verifier filesystem.
     /// Returns the hash of the downloaded response file. Otherwise, returns a `VerifierError`
     ///
-    pub async fn process_challenge_file(&self, challenge_locator: &str) -> Result<Vec<u8>, VerifierError> {
+    pub async fn process_challenge_file(
+        &self,
+        chunk_id: u64,
+        contribution_id: u64,
+        challenge_locator: &str,
+    ) -> Result<Vec<u8>, VerifierError> {
         // Download the challenge file from the coordinator.
-        let challenge_file = self.download_challenge_file(&challenge_locator).await?;
+        let challenge_file = self.download_challenge_file(chunk_id, contribution_id).await?;
 
         // Compute the challenge hash using the challenge file.
         let challenge_hash = calculate_hash(&challenge_file);
@@ -206,9 +211,14 @@ impl Verifier {
     /// Downloads the response file from the coordinator and stores it to the verifier filesystem.
     /// Returns the hash of the downloaded response file. Otherwise, returns a `VerifierError`
     ///
-    pub async fn process_response_file(&self, response_locator: &str) -> Result<Vec<u8>, VerifierError> {
+    pub async fn process_response_file(
+        &self,
+        chunk_id: u64,
+        contribution_id: u64,
+        response_locator: &str,
+    ) -> Result<Vec<u8>, VerifierError> {
         // Download the response file from the coordinator.
-        let response_file = self.download_response_file(&response_locator).await?;
+        let response_file = self.download_response_file(chunk_id, contribution_id).await?;
 
         // Compute the response hash using the response file.
         let response_hash = calculate_hash(&response_file);
@@ -455,18 +465,27 @@ impl Verifier {
         // Deserialize the lock response.
         let LockResponse {
             chunk_id,
+            contribution_id,
             locked: _,
             participant_id: _,
             challenge_locator,
+            challenge_chunk_id,
+            challenge_contribution_id,
             response_locator,
             next_challenge_locator,
+            next_challenge_chunk_id,
+            next_challenge_contribution_id,
         } = &lock_response;
 
         // Download and process the challenge file.
-        let challenge_hash = self.process_challenge_file(&challenge_locator).await?;
+        let challenge_hash = self
+            .process_challenge_file(*challenge_chunk_id, *challenge_contribution_id, &challenge_locator)
+            .await?;
 
         // Download and process the response file.
-        let response_hash = self.process_response_file(&response_locator).await?;
+        let response_hash = self
+            .process_response_file(*chunk_id, *contribution_id, &response_locator)
+            .await?;
 
         // Run verification on a chunk with the given locators.
         let _duration = self.run_verification(
@@ -491,8 +510,12 @@ impl Verifier {
         )?;
 
         // Upload the signature and new challenge file to `next_challenge_locator`.
-        self.upload_next_challenge_locator_file(&next_challenge_locator, signature_and_next_challenge_bytes)
-            .await?;
+        self.upload_next_challenge_locator_file(
+            *next_challenge_chunk_id,
+            *next_challenge_contribution_id,
+            signature_and_next_challenge_bytes,
+        )
+        .await?;
         // Attempt to perform the verification with the uploaded challenge file at `next_challenge_locator`.
         self.verify_contribution(*chunk_id).await?;
 

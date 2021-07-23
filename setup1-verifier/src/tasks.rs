@@ -110,27 +110,42 @@ mod tests {
     lazy_static! {
         pub static ref TASK_1: LockResponse = LockResponse {
             chunk_id: 1,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_1".to_string(),
             challenge_locator: "test_challenge_locator_1".to_string(),
+            challenge_chunk_id: 0,
+            challenge_contribution_id: 0,
             response_locator: "test_response_locator_1".to_string(),
             next_challenge_locator: "test_next_challenge_locator_1".to_string(),
+            next_challenge_chunk_id: 2,
+            next_challenge_contribution_id: 0,
         };
         pub static ref TASK_2: LockResponse = LockResponse {
             chunk_id: 2,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_2".to_string(),
             challenge_locator: "test_challenge_locator_2".to_string(),
+            challenge_chunk_id: 1,
+            challenge_contribution_id: 0,
             response_locator: "test_response_locator_2".to_string(),
             next_challenge_locator: "test_next_challenge_locator_2".to_string(),
+            next_challenge_chunk_id: 3,
+            next_challenge_contribution_id: 0,
         };
         pub static ref TASK_3: LockResponse = LockResponse {
             chunk_id: 3,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_3".to_string(),
             challenge_locator: "test_challenge_locator_3".to_string(),
+            challenge_chunk_id: 2,
+            challenge_contribution_id: 0,
             response_locator: "test_response_locator_3".to_string(),
             next_challenge_locator: "test_next_challenge_locator_3".to_string(),
+            next_challenge_chunk_id: 4,
+            next_challenge_contribution_id: 0,
         };
     }
 

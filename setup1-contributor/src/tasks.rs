@@ -107,27 +107,36 @@ mod tests {
     lazy_static! {
         pub static ref TASK_1: LockResponse = LockResponse {
             chunk_id: 1,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_1".to_string(),
             previous_response_locator: "test_previous_response_locator_1".to_string(),
             challenge_locator: "test_challenge_locator_1".to_string(),
             response_locator: "test_response_locator_1".to_string(),
+            response_chunk_id: 1,
+            response_contribution_id: 1,
         };
         pub static ref TASK_2: LockResponse = LockResponse {
             chunk_id: 2,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_2".to_string(),
             previous_response_locator: "test_previous_response_locator_2".to_string(),
             challenge_locator: "test_challenge_locator_2".to_string(),
             response_locator: "test_response_locator_2".to_string(),
+            response_chunk_id: 2,
+            response_contribution_id: 1,
         };
         pub static ref TASK_3: LockResponse = LockResponse {
             chunk_id: 3,
+            contribution_id: 0,
             locked: true,
             participant_id: "test_participant_3".to_string(),
             previous_response_locator: "test_previous_response_locator_3".to_string(),
             challenge_locator: "test_challenge_locator_3".to_string(),
             response_locator: "test_response_locator_3".to_string(),
+            response_chunk_id: 3,
+            response_contribution_id: 1,
         };
     }
 

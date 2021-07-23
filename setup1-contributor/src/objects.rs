@@ -21,6 +21,10 @@ pub struct LockResponse {
     #[serde(alias = "chunkId")]
     pub chunk_id: u64,
 
+    /// The contribution id
+    #[serde(alias = "contributionId")]
+    pub contribution_id: u64,
+
     /// Indicator if the chunk was locked
     pub locked: bool,
 
@@ -39,6 +43,12 @@ pub struct LockResponse {
     /// The locator where the participant will upload their completed contribution.
     #[serde(alias = "responseLocator")]
     pub response_locator: String,
+
+    #[serde(alias = "responseChunkId")]
+    pub response_chunk_id: u64,
+
+    #[serde(alias = "responseContributionId")]
+    pub response_contribution_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
