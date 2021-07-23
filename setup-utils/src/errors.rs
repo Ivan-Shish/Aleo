@@ -36,7 +36,9 @@ pub enum Error {
 }
 
 impl From<SerializationError> for self::Error {
-    fn from(_: SerializationError) -> Error { Error::SerializationError }
+    fn from(_: SerializationError) -> Error {
+        Error::SerializationError
+    }
 }
 
 impl From<Box<dyn std::any::Any + Send>> for Error {

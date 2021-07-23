@@ -5,18 +5,13 @@ use phase1::{
     Phase1Parameters,
     ProvingSystem,
 };
-use setup_utils::{
-    calculate_hash,
-    derive_rng_from_seed,
-    get_rng,
-    user_system_randomness,
-    CheckForCorrectness,
-    UseCompression,
-};
+use setup_utils::{calculate_hash, derive_rng_from_seed, get_rng, user_system_randomness, CheckForCorrectness, UseCompression, from_slice};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
 use rand::Rng;
 use wasm_bindgen::prelude::*;
+use rand_chacha::ChaChaRng;
+use rand_chacha::rand_core::SeedableRng;
 
 pub(crate) const COMPRESSED_INPUT: UseCompression = UseCompression::No;
 pub(crate) const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
@@ -54,6 +49,12 @@ fn convert_contribution_result_to_wasm(result: &Result<ContributionResponse, Str
     }
 }
 
+/// Interpret the first 32 bytes of the digest as 8 32-bit words
+pub fn get_my_rng(digest: &[u8]) -> impl Rng {
+    let seed = from_slice(digest);
+    ChaChaRng::from_seed(seed)
+}
+
 #[wasm_bindgen]
 impl Phase1WASM {
     #[wasm_bindgen]
@@ -64,7 +65,7 @@ impl Phase1WASM {
         power: usize,
         challenge: &[u8],
     ) -> Result<JsValue, JsValue> {
-        let rng = get_rng(&user_system_randomness());
+        let rng = get_my_rng(&user_system_randomness());
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
         let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(

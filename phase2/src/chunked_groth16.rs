@@ -9,19 +9,17 @@ use crate::{
 };
 use setup_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
 
-
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::Rng;
+use snarkvm_algorithms::snark::groth16::VerifyingKey;
+use snarkvm_curves::{AffineCurve, PairingEngine};
+use snarkvm_fields::Field;
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, ConstantSerializedSize};
 use std::{
     io::{Read, Seek, SeekFrom, Write},
-    ops::Neg,
+    ops::{Mul, Neg},
 };
 use tracing::{debug, info, info_span, trace};
-use snarkvm_curves::{PairingEngine, AffineCurve};
-use snarkvm_algorithms::snark::groth16::VerifyingKey;
-use snarkvm_utilities::{ConstantSerializedSize, CanonicalDeserialize, CanonicalSerialize};
-use snarkvm_fields::Field;
-use std::ops::Mul;
 
 /// Given two serialized contributions to the ceremony, this will check that `after`
 /// has been correctly calculated from `before`. Large vectors will be read in

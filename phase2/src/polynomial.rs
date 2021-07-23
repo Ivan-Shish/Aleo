@@ -1,10 +1,8 @@
-
 use rayon::prelude::*;
 use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
-use snarkvm_r1cs::Index;
 use snarkvm_fields::Zero;
+use snarkvm_r1cs::Index;
 use std::ops::AddAssign;
-
 
 /// Evaluates and returns the provided QAP Polynomial vectors at the provided coefficients.
 /// Format: [a_g1, b_g1, b_g2, gamma_abc_g1, l_g1]
@@ -107,20 +105,25 @@ fn dot_product<C: AffineCurve>(input: &[(C::ScalarField, Index)], coeffs: &[C], 
         )
         .reduce(
             || C::Projective::zero(),
-            | mut sum, elem | { sum.add_assign(elem); sum }
+            |mut sum, elem| {
+                sum.add_assign(elem);
+                sum
+            },
         )
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::polynomial::{dot_product, dot_product_ext, dot_product_vec};
     use phase1::helpers::testing::random_point_vec;
     use rand::{thread_rng, Rng};
-    use snarkvm_curves::bls12_377::{Fr, G1Affine, Bls12_377};
+    use snarkvm_curves::{
+        bls12_377::{Bls12_377, Fr, G1Affine},
+        ProjectiveCurve,
+    };
     use snarkvm_r1cs::Index;
-    use crate::polynomial::{dot_product, dot_product_vec, dot_product_ext};
     use snarkvm_utilities::UniformRand;
     use std::ops::Mul;
-    use snarkvm_curves::ProjectiveCurve;
 
     fn gen_input(rng: &mut impl Rng) -> Vec<(Fr, Index)> {
         let scalar = (0..6).map(|_| Fr::rand(rng)).collect::<Vec<_>>();

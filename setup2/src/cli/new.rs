@@ -1,7 +1,7 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
 use snarkvm_algorithms::{MerkleParameters, CRH, SNARK};
-use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as AleoPairingengine};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::testnet1::{
     inner_circuit::InnerCircuit,
     instantiated::{
@@ -19,7 +19,7 @@ use snarkvm_dpc::testnet1::{
     NoopCircuit,
 };
 use snarkvm_fields::Field;
-use snarkvm_parameters::{LedgerMerkleTreeParameters, Parameters};
+use snarkvm_parameters::{LedgerMerkleTreeParameters};
 use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
 use snarkvm_utilities::{
     bytes::{FromBytes, ToBytes},
@@ -29,8 +29,9 @@ use snarkvm_utilities::{
 use gumdrop::Options;
 use memmap::MmapOptions;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
+use rand_chacha::ChaChaRng;
 use std::fs::OpenOptions;
+use snarkvm_parameters::Parameter;
 
 type AleoInner = InnerPairing;
 type AleoOuter = OuterPairing;
@@ -86,14 +87,14 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
 
     if opt.is_inner {
         let circuit = InnerCircuit::blank(&circuit_parameters, &merkle_params);
-        generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
+        generate_params::<AleoInner, _>(opt, circuit)
     } else {
-        let rng = &mut XorShiftRng::from_seed([0u8; 16]);
+        let rng = &mut ChaChaRng::from_seed([0u8; 32]);
         let noop_program_snark_parameters =
             InstantiatedDPC::generate_noop_program_snark_parameters(&circuit_parameters, rng)?;
         let program_snark_proof = <Components as BaseDPCComponents>::NoopProgramSNARK::prove(
             &noop_program_snark_parameters.proving_key,
-            NoopCircuit::<Components>::blank(&circuit_parameters),
+            &NoopCircuit::<Components>::blank(&circuit_parameters),
             rng,
         )?;
 
@@ -103,7 +104,7 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         };
 
         let inner_snark_parameters = <Components as BaseDPCComponents>::InnerSNARK::setup(
-            InnerCircuit::blank(&circuit_parameters, &merkle_params),
+            &InnerCircuit::blank(&circuit_parameters, &merkle_params),
             rng,
         )?;
 
@@ -111,18 +112,18 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
             inner_snark_parameters.1.clone().into();
         let inner_snark_proof = <Components as BaseDPCComponents>::InnerSNARK::prove(
             &inner_snark_parameters.0,
-            InnerCircuit::blank(&circuit_parameters, &merkle_params),
+            &InnerCircuit::blank(&circuit_parameters, &merkle_params),
             rng,
         )?;
 
         let circuit = OuterCircuit::blank(
-            &circuit_parameters,
-            &merkle_params,
+            circuit_parameters,
+            merkle_params,
             &inner_snark_vk,
-            &inner_snark_proof,
-            &private_program_input,
+            inner_snark_proof,
+            private_program_input,
         );
-        generate_params::<AleoOuter, ZexeOuter, _>(opt, circuit)
+        generate_params::<AleoOuter, _>(opt, circuit)
     }
 }
 
@@ -145,7 +146,7 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
     }
 }
 
-pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + ConstraintSynthesizer<Aleo::Fr>>(
+pub fn generate_params<E: PairingEngine, C: Clone + ConstraintSynthesizer<E::Fr>>(
     opt: &NewOpts,
     circuit: C,
 ) -> anyhow::Result<()> {
@@ -167,11 +168,11 @@ pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + 
         .expect("could not open file for writing the MPC parameters ");
 
     let phase2_size = ceremony_size(&circuit);
-    let keypair = circuit_to_qap::<Aleo, Zexe, _>(circuit)?;
+    let keypair = circuit_to_qap::<E, _>(circuit)?;
 
     // Read `num_constraints` Lagrange coefficients from the Phase1 Powers of Tau which were
     // prepared for this step. This will fail if Phase 1 was too small.
-    let phase1 = Groth16Params::<Zexe>::read(
+    let phase1 = Groth16Params::<E>::read(
         &mut phase1_transcript,
         COMPRESSION,
         CheckForCorrectness::No, // No need to check for correctness, since this has been processed by the coordinator.

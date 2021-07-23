@@ -6,14 +6,13 @@ use setup_utils::{hash_to_g2, CheckForCorrectness, Deserializer, HashWriter, Res
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::Rng;
+use snarkvm_curves::{PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::{CanonicalSerialize, ConstantSerializedSize, UniformRand};
 use std::{
     fmt,
     io::{self, Read, Write},
+    ops::Mul,
 };
-use snarkvm_curves::{PairingEngine, ProjectiveCurve};
-use snarkvm_utilities::{ConstantSerializedSize, CanonicalSerialize, UniformRand};
-use std::ops::Mul;
-
 
 /// This needs to be destroyed by at least one participant
 /// for the final parameters to be secure.
@@ -205,8 +204,7 @@ impl<E: PairingEngine> PartialEq for PublicKey<E> {
 mod tests {
     use super::*;
     use rand::thread_rng;
-    use snarkvm_curves::bls12_377::Bls12_377;
-    use snarkvm_curves::AffineCurve;
+    use snarkvm_curves::{bls12_377::Bls12_377, AffineCurve};
 
     #[test]
     fn serialization() {

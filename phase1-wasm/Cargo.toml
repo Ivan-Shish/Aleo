@@ -17,7 +17,7 @@ setup-utils = { path = "../setup-utils", default-features = false }
 snarkvm-curves = { version = "0.6" }
 snarkvm-fields = { version = "0.6" }
 
-rand = { version = "0.7" }
+rand = { version = "0.8" }
 serde = { version = "1.0.114" }
 serde_derive = { version = "1.0.114" }
 tracing = { version = "0.1.21" }

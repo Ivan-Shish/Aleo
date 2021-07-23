@@ -7,6 +7,7 @@ use snarkvm_fields::{batch_inversion, Field};
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use wasm_bindgen_test::*;
+use std::ops::Mul;
 
 fn generate_input<E: PairingEngine>(
     parameters: &Phase1Parameters<E>,
@@ -91,7 +92,7 @@ fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Paramet
                 Some(&privkey.beta),
             )
             .unwrap();
-            before.beta_g2 = before.beta_g2.mul(privkey.beta).into_affine();
+            before.beta_g2 = before.beta_g2.mul(privkey.beta);
         }
         ProvingSystem::Marlin => {
             let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, min, max);

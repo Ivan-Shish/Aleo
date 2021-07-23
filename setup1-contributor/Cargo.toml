@@ -18,7 +18,7 @@ phase1-coordinator = { path = "../phase1-coordinator", features = ["operator"]}
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
 setup-utils = { path = "../setup-utils" }
 
-snarkvm-dpc = { git = "https://github.com/emmorais/snarkVM", rev = "5321751" }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "5321751" }
 snarkvm-curves = { version = "0.6" }
 
 age = { version = "0.5", features = [ "cli-common", "armor" ] }

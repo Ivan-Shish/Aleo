@@ -1,13 +1,16 @@
 use snarkvm_curves::PairingEngine;
-use snarkvm_r1cs::{ConstraintSynthesizer, SynthesisError, ConstraintSystem};
 use snarkvm_fields::Field;
+use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 
 // circuit proving knowledge of a square root
 // when generating the Setup, the element inside is None
 #[derive(Clone, Debug)]
 pub struct TestCircuit<E: PairingEngine>(pub Option<E::Fr>);
 impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
-    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(&self, cs: &mut CS) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(
+        &self,
+        cs: &mut CS,
+    ) -> std::result::Result<(), SynthesisError> {
         // allocate a private input `x`
         // this can be made public with `alloc_input`, which would then require
         // that the verifier provides it

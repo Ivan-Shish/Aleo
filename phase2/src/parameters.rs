@@ -1,5 +1,5 @@
 use cfg_if::cfg_if;
-use snarkvm_r1cs::{SynthesisError, ConstraintSynthesizer, Variable, ConstraintSystem};
+use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError, Variable};
 
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
@@ -11,21 +11,19 @@ use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
 
 use setup_utils::*;
 
-use snarkvm_algorithms::snark::groth16::{KeypairAssembly, VerifyingKey, ProvingKey};
+use snarkvm_algorithms::snark::groth16::{KeypairAssembly, ProvingKey, VerifyingKey};
 use snarkvm_curves::{AffineCurve, PairingEngine};
 use snarkvm_r1cs::Index;
 
 use rand::Rng;
+use snarkvm_curves::ProjectiveCurve;
+use snarkvm_fields::{Field, One, Zero};
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize};
 use std::{
     fmt,
     io::{self, Read, Write},
+    ops::Mul,
 };
-use snarkvm_fields::{One, Field};
-use std::ops::Mul;
-use snarkvm_curves::ProjectiveCurve;
-use snarkvm_fields::Zero;
-use snarkvm_utilities::CanonicalSerialize;
-use snarkvm_utilities::CanonicalDeserialize;
 
 /// MPC parameters are just like Zexe's `Parameters` except, when serialized,
 /// they contain a transcript of contributions at the end, which can be verified.
@@ -84,7 +82,10 @@ impl<E: PairingEngine> MPCParameters<E> {
     /// given QAP which has been produced from a circuit. The resulting parameters
     /// are unsafe to use until there are contributions (see `contribute()`).
     #[cfg(not(feature = "wasm"))]
-    pub fn new(assembly: snarkvm_algorithms::snark::groth16::KeypairAssembly<E>, params: Groth16Params<E>) -> Result<MPCParameters<E>> {
+    pub fn new(
+        assembly: snarkvm_algorithms::snark::groth16::KeypairAssembly<E>,
+        params: Groth16Params<E>,
+    ) -> Result<MPCParameters<E>> {
         // Evaluate the QAP against the coefficients created from phase 1
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
             // Lagrange coeffs for Tau, read in from Phase 1
@@ -382,9 +383,7 @@ fn hash_params<E: PairingEngine>(params: &ProvingKey<E>) -> Result<[u8; 64]> {
 }
 
 /// Converts an R1CS circuit to QAP form
-pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(
-    circuit: C,
-) -> Result<KeypairAssembly<E>> {
+pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(circuit: C) -> Result<KeypairAssembly<E>> {
     // This is a snarkVM keypair assembly
     let mut assembly = KeypairAssembly::<E> {
         num_public_variables: 0,
@@ -437,8 +436,8 @@ mod tests {
     use setup_utils::{Groth16Params, UseCompression};
 
     use rand::thread_rng;
-    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
     use snarkvm_curves::bls12_377::Bls12_377;
+    use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
 
     #[test]
     fn serialize_ceremony() {
