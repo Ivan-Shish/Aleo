@@ -904,7 +904,12 @@ where
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
-    #[tracing::instrument(skip(self, participant), err)]
+    #[tracing::instrument(
+        level = "error",
+        skip(self),
+        fields(participant = %participant),
+        err
+    )]
     pub fn try_lock(&mut self, participant: &Participant) -> Result<(u64, LockedLocators), CoordinatorError> {
         // Check that the participant is in the current round, and has not been dropped or finished.
         if !self.state.is_current_contributor(participant) && !self.state.is_current_verifier(participant) {
@@ -985,7 +990,8 @@ where
     #[tracing::instrument(
         level = "error",
         skip(self, participant, chunk_id),
-        fields(chunk = chunk_id)
+        fields(participant = %participant, chunk = chunk_id),
+        err
     )]
     pub fn try_contribute(
         &mut self,
@@ -1110,7 +1116,12 @@ where
     ///
     /// On failure, it returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        level = "error",
+        skip(self, chunk_id),
+        fields(participant = %participant, chunk = chunk_id),
+        err
+    )]
     pub fn try_verify(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -1447,7 +1458,6 @@ where
     ///
     /// On failure, this function returns a `CoordinatorError`.
     ///
-    #[inline]
     pub(crate) fn try_lock_chunk(
         &mut self,
         chunk_id: u64,
