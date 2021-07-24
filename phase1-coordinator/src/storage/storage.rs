@@ -10,7 +10,6 @@ use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
-    ops::{Deref, DerefMut},
     path::Path,
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
@@ -185,31 +184,6 @@ impl Object {
         match verified {
             true => 628,  // Json object with signature + challenge_hash + response hash + next challenge hash
             false => 471, // Json object with signature + challenge_hash + response hash
-        }
-    }
-}
-
-pub(crate) enum Lock<'a, T> {
-    Read(RwLockReadGuard<'a, T>),
-    Write(RwLockWriteGuard<'a, T>),
-}
-
-impl<'a, T> Deref for Lock<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Lock::Read(read_guard) => read_guard.deref(),
-            Lock::Write(write_guard) => write_guard.deref(),
-        }
-    }
-}
-
-impl<'a, T> DerefMut for Lock<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Lock::Read(_) => panic!("Cannot mutably dereference a read-only lock"),
-            Lock::Write(write_guard) => write_guard,
         }
     }
 }
