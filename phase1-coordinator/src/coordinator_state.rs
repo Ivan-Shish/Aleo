@@ -2747,16 +2747,26 @@ impl CoordinatorState {
             .iter()
             .chain(self.current_verifiers.clone().iter())
             .filter_map(|(participant, participant_info)| {
-                if !self.is_coordinator_contributor(&participant)
-                    && participant_info
-                        .locked_chunks
-                        .values()
-                        .find(|lock| {
-                            let elapsed = now - lock.lock_time;
-                            elapsed > participant_lock_timeout
-                        })
-                        .is_some()
-                {
+                let exceeded_chunk_names: Vec<String> = participant_info
+                    .locked_chunks
+                    .values()
+                    .filter(|lock| {
+                        let elapsed = now - lock.lock_time;
+                        elapsed > participant_lock_timeout
+                    })
+                    .map(|lock| lock.chunk_id.to_string())
+                    .collect();
+
+                if !self.is_coordinator_contributor(&participant) && !exceeded_chunk_names.is_empty() {
+                    let exceeded_chunks_string: String = exceeded_chunk_names.join(", ");
+
+                    tracing::warn!(
+                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
+                        it is allowed to hold a lock (on chunks {}).",
+                        participant,
+                        chrono_humanize::HumanTime::from(participant_lock_timeout),
+                        exceeded_chunks_string,
+                    );
                     Some(self.drop_participant(participant, time))
                 } else {
                     None
@@ -2787,12 +2797,12 @@ impl CoordinatorState {
 
                 // Check if the participant is still live and not a coordinator contributor.
                 if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
-                    tracing::info!(
-                        "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
-                        since it was last seen by the coordinator (last seen {} minutes ago).",
+                    tracing::warn!(
+                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
+                        since it was last seen by the coordinator (last seen {} ago).",
                         participant,
-                        contributor_seen_timeout,
-                        elapsed.num_minutes()
+                        chrono_humanize::HumanTime::from(contributor_seen_timeout),
+                        chrono_humanize::HumanTime::from(elapsed)
                     );
                     // Drop the participant.
                     Some(self.drop_participant(participant, time))

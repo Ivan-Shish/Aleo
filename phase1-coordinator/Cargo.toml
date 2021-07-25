@@ -20,6 +20,7 @@ zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", pac
 
 anyhow = { version = "1.0.37" }
 chrono = { version = "0.4", features = ["serde"] }
+chrono-humanize = { version = "0.2" }
 itertools = { version = "0.9.0" }
 futures = { version = "0.3" }
 hex = { version = "0.4.2" }
