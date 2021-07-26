@@ -1,7 +1,7 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
 use snarkvm_algorithms::{MerkleParameters, CRH, SNARK};
-use snarkvm_curves::{PairingEngine};
+use snarkvm_curves::PairingEngine;
 use snarkvm_dpc::testnet1::{
     inner_circuit::InnerCircuit,
     instantiated::{
@@ -30,8 +30,7 @@ use gumdrop::Options;
 use memmap::MmapOptions;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
-use std::fs::OpenOptions;
-use std::sync::Arc;
+use std::{fs::OpenOptions, sync::Arc};
 
 type AleoInner = InnerPairing;
 type AleoOuter = OuterPairing;
@@ -128,7 +127,7 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
 /// Returns the number of powers required for the Phase 2 ceremony
 /// = log2(aux + inputs + constraints)
 fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> usize {
-    let mut counter = ConstraintCounter{
+    let mut counter = ConstraintCounter {
         num_constraints: 0,
         num_private_variables: 0,
         num_public_variables: 0,
@@ -137,7 +136,10 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
         .clone()
         .generate_constraints(&mut counter)
         .expect("could not calculate number of required constraints");
-    let phase2_size = std::cmp::max(counter.num_constraints, counter.num_private_variables + counter.num_public_variables + 1);
+    let phase2_size = std::cmp::max(
+        counter.num_constraints,
+        counter.num_private_variables + counter.num_public_variables + 1,
+    );
     let power = log_2(phase2_size) as u32;
 
     // get the nearest power of 2

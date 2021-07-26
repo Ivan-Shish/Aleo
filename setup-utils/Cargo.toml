@@ -28,7 +28,7 @@ num_cpus = { version = "1.12.0" }
 rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }
 rayon = { version = "1.4.1" }
-rust-crypto = { version = "0.2" }
+rust-crypto = { version = "0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = { version = "1.0.22" }
 tracing = { version = "0.1.21" }
@@ -41,8 +41,8 @@ criterion = { version = "0.3.1" }
 rusty-hook = { version = "0.11.2" }
 
 [features]
-default = ["parallel"]
-cli = ["parallel"]
+default = ["parallel", "rust-crypto"]
+cli = ["parallel", "rust-crypto"]
 wasm = []
 
-parallel = ["snarkvm-algorithms/parallel"]
+parallel = ["snarkvm-algorithms/parallel", "rust-crypto"]

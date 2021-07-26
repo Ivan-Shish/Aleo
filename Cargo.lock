@@ -112,39 +112,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "algebra"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra-core",
-]
-
-[[package]]
-name = "algebra-core"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra-core-derive",
- "derivative",
- "field-assembly",
- "num-traits",
- "rand 0.7.3",
- "rayon",
- "rustc_version 0.2.3",
- "unroll",
-]
-
-[[package]]
-name = "algebra-core-derive"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
-]
-
-[[package]]
 name = "ansi_term"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,7 +175,7 @@ dependencies = [
  "bytes 0.5.6",
  "chrono",
  "failure",
- "futures 0.3.15",
+ "futures",
  "http",
  "hyper 0.13.10",
  "hyper-rustls",
@@ -233,7 +200,7 @@ dependencies = [
  "azure_sdk_storage_core",
  "base64 0.12.3",
  "chrono",
- "futures 0.3.15",
+ "futures",
  "http",
  "hyper 0.13.10",
  "log",
@@ -255,7 +222,7 @@ dependencies = [
  "base64 0.12.3",
  "bytes 0.5.6",
  "chrono",
- "futures 0.3.15",
+ "futures",
  "http",
  "hyper 0.13.10",
  "hyper-rustls",
@@ -320,12 +287,6 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "bech32"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58946044516aa9dc922182e0d6e9d124a31aafe6b421614654eb27cf90cec09c"
-
-[[package]]
-name = "bech32"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dabbe35f96fb9507f7330793dc490461b2962659ac5d427181e451a623751d1"
@@ -335,11 +296,6 @@ name = "bech32"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf9ff0bbfd639f15c74af777d81383cf53efb7c93613f6cab67c6c11e05bbf8b"
-
-[[package]]
-name = "bench-utils"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
 
 [[package]]
 name = "bincode"
@@ -358,14 +314,26 @@ checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
 name = "bitvec"
+version = "0.19.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7ba35e9565969edb811639dbebfe34edc0368e472c5018474c8eb2543397f81"
+dependencies = [
+ "funty",
+ "radium 0.5.3",
+ "tap",
+ "wyz 0.2.0",
+]
+
+[[package]]
+name = "bitvec"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5237f00a8c86130a0cc317830e558b966dd7850d48a953d998c813f01a41b527"
 dependencies = [
  "funty",
- "radium",
+ "radium 0.6.2",
  "tap",
- "wyz",
+ "wyz 0.4.0",
 ]
 
 [[package]]
@@ -907,10 +875,10 @@ checksum = "f0c960ae2da4de88a91b2d920c2a7233b400bc33cb28453a2987822d8392519b"
 dependencies = [
  "fnv",
  "ident_case",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "strsim 0.9.3",
- "syn 1.0.73",
+ "syn",
 ]
 
 [[package]]
@@ -921,10 +889,10 @@ checksum = "2c34d8efb62d0c2d7f60ece80f75e5c63c1588ba68032740494b0b9a996466e3"
 dependencies = [
  "fnv",
  "ident_case",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "strsim 0.10.0",
- "syn 1.0.73",
+ "syn",
 ]
 
 [[package]]
@@ -934,8 +902,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9b5a2f4ac4969822c62224815d069952656cadc7084fdca9751e6d959189b72"
 dependencies = [
  "darling_core 0.10.2",
- "quote 1.0.9",
- "syn 1.0.73",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -945,8 +913,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ade7bff147130fe5e6d39f089c6bd49ec0250f35d70b2eebf72afdfc919f15cc"
 dependencies = [
  "darling_core 0.13.0",
- "quote 1.0.9",
- "syn 1.0.73",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -965,9 +933,9 @@ version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1041,28 +1009,10 @@ version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
  "synstructure",
-]
-
-[[package]]
-name = "ff-fft"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra-core",
- "rand 0.7.3",
- "rayon",
-]
-
-[[package]]
-name = "field-assembly"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "mince",
 ]
 
 [[package]]
@@ -1182,12 +1132,6 @@ checksum = "1847abb9cb65d566acd5942e94aea9c8f547ad02c98e1649326fc0e8910b8b1e"
 
 [[package]]
 name = "futures"
-version = "0.1.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a471a38ef8ed83cd6e40aa59c1ffe17db6855c18e3604d9c4ed8c08ebc28678"
-
-[[package]]
-name = "futures"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7e43a803dae2fa37c1f6a8fe121e1f7bf9548b4dfc0522a42f34145dadfc27"
@@ -1242,9 +1186,9 @@ checksum = "a4c40298486cdf52cc00cd6d6987892ba502c7656a16a4192a9992b1ccedd121"
 dependencies = [
  "autocfg",
  "proc-macro-hack",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1330,10 +1274,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fc3cb4d91f53b50155bdcfd23f6a4c39ae1969c2ae85982b135750cccaf5fce"
 dependencies = [
  "cfg-if 1.0.0",
- "js-sys",
  "libc",
  "wasi 0.9.0+wasi-snapshot-preview1",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1343,8 +1285,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
  "libc",
  "wasi 0.10.2+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1352,19 +1296,6 @@ name = "gimli"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
-
-[[package]]
-name = "groth16"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra-core",
- "bench-utils",
- "ff-fft",
- "r1cs-core",
- "rand 0.7.3",
- "rayon",
-]
 
 [[package]]
 name = "gumdrop"
@@ -1381,9 +1312,9 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "915ef07c710d84733522461de2a734d4d62a3fd39a4d4f404c2f385ef8618d05"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1430,12 +1361,6 @@ name = "half"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62aca2aba2d62b4a7f5b33f3712cb1b0692779a56fb510499d5c0aa594daeaf3"
-
-[[package]]
-name = "hashbrown"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
 
 [[package]]
 name = "hashbrown"
@@ -1687,10 +1612,10 @@ dependencies = [
  "i18n-embed 0.10.2",
  "lazy_static",
  "proc-macro-error",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "strsim 0.10.0",
- "syn 1.0.73",
+ "syn",
  "unic-langid",
 ]
 
@@ -1702,9 +1627,9 @@ checksum = "ea4dbd191f5a08e7f8dd3331c0a43340508a31e07b3c562151722e6eb65f9f86"
 dependencies = [
  "find-crate",
  "i18n-config",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1726,12 +1651,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.6.2"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824845a0bf897a9042383849b02c1bc219c2383772efcd5c6f9766fa4b81aef3"
+checksum = "bc633605454125dec4b66843673f01c7df2b89479b32e0ed634e43a91cff62a5"
 dependencies = [
  "autocfg",
- "hashbrown 0.9.1",
+ "hashbrown",
 ]
 
 [[package]]
@@ -1830,19 +1755,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83bdfbace3a0e81a4253f73b49e960b053e396a11012cbd49b9b74d6a2b67062"
 dependencies = [
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonrpc-core"
-version = "14.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0747307121ffb9703afd93afbd0fb4f854c38fb873f2c8b90e0e902f27c7b62"
-dependencies = [
- "futures 0.1.31",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
 ]
 
 [[package]]
@@ -1983,15 +1895,6 @@ name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
-
-[[package]]
-name = "mince"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "quote 1.0.9",
- "syn 1.0.73",
-]
 
 [[package]]
 name = "miniz_oxide"
@@ -2282,9 +2185,9 @@ checksum = "129943a960e6a08c7e70ca5a09f113c273fe7f10ae8420992c78293e3dffdf65"
 dependencies = [
  "Inflector",
  "proc-macro-error",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2359,14 +2262,14 @@ dependencies = [
  "rusty-hook",
  "serde",
  "setup-utils",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-marlin",
- "snarkvm-polycommit",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-marlin 0.6.0",
+ "snarkvm-polycommit 0.6.0",
  "snarkvm-posw",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "tracing",
 ]
 
@@ -2382,7 +2285,7 @@ dependencies = [
  "rand_xorshift 0.2.0",
  "rustc_version 0.3.3",
  "setup-utils",
- "snarkvm-curves",
+ "snarkvm-curves 0.6.0",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
@@ -2409,7 +2312,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
- "snarkvm-curves",
+ "snarkvm-curves 0.6.0",
  "thiserror",
  "tokio 1.7.1",
  "tracing",
@@ -2421,15 +2324,18 @@ name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
  "console_error_panic_hook",
+ "getrandom 0.2.3",
  "phase1",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.3",
+ "rand_xorshift 0.3.0",
  "rustc_version 0.3.3",
  "serde",
  "serde_derive",
  "setup-utils",
- "snarkvm-curves",
- "snarkvm-fields",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2440,27 +2346,25 @@ dependencies = [
 name = "phase2"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "byteorder",
  "cfg-if 0.1.10",
  "console_error_panic_hook",
  "crossbeam",
- "groth16",
  "itertools 0.9.0",
  "num_cpus",
  "phase1",
  "phase2",
- "r1cs-core",
- "r1cs-std",
- "rand 0.7.3",
+ "rand 0.8.4",
  "rayon",
  "rusty-hook",
  "setup-utils",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-gadgets 0.6.0",
+ "snarkvm-parameters 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2483,9 +2387,9 @@ version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c950132583b500556b1efd71d45b319029f2b71518d979fcc208e16b42426f"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2586,9 +2490,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
 dependencies = [
  "proc-macro-error-attr",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
  "version_check",
 ]
 
@@ -2598,8 +2502,8 @@ version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "version_check",
 ]
 
@@ -2617,20 +2521,11 @@ checksum = "bc881b2c22681370c6a780e47af9840ef841837bc98118431d4e1868bd0c1086"
 
 [[package]]
 name = "proc-macro2"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf3d2011ab5c909338f7887f4fc896d35932e29146c12c8d01da6b22a80ba759"
-dependencies = [
- "unicode-xid 0.1.0",
-]
-
-[[package]]
-name = "proc-macro2"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0d8caf72986c1a598726adc988bb5984792ef84f5ee5aa50209145ee8077038"
 dependencies = [
- "unicode-xid 0.2.2",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -2641,40 +2536,18 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "0.6.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ce23b6b870e8f94f81fb0a363d65d86675884b34a09043c81e5562f11c1f8e1"
-dependencies = [
- "proc-macro2 0.4.30",
-]
-
-[[package]]
-name = "quote"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
 dependencies = [
- "proc-macro2 1.0.27",
+ "proc-macro2",
 ]
 
 [[package]]
-name = "r1cs-core"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra-core",
- "smallvec",
-]
-
-[[package]]
-name = "r1cs-std"
-version = "0.1.0"
-source = "git+https://github.com/scipr-lab/zexe?rev=b24eda5#b24eda5b750d47c7f751f9d3c97671bfe9540bf8"
-dependencies = [
- "algebra",
- "derivative",
- "r1cs-core",
-]
+name = "radium"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941ba9d78d8e2f7ce474c015eea4d9c6d25b6a3327f9832ee29a4de27f91bbb8"
 
 [[package]]
 name = "radium"
@@ -2986,10 +2859,10 @@ version = "5.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ed91c41c42ef7bf687384439c312e75e0da9c149b0390889b94de3c7d9d9e66"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "rust-embed-utils",
- "syn 1.0.73",
+ "syn",
  "walkdir",
 ]
 
@@ -3036,6 +2909,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0dfe2087c51c460008730de8b57e6a320782fbfb312e1f4d520e6c6fae155ee"
 dependencies = [
  "semver 0.11.0",
+]
+
+[[package]]
+name = "rustc_version"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
+dependencies = [
+ "semver 1.0.3",
 ]
 
 [[package]]
@@ -3223,6 +3105,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "semver"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f3aac57ee7f3272d8395c6e4f502f434f0e289fcd62876f70daa008c20dcabe"
+
+[[package]]
 name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3276,9 +3164,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "692563b61324ae1568e2884c7a6385ab4b95f13063fd31a6b702d5cbc5c456df"
 dependencies = [
  "darling 0.10.2",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3309,9 +3197,9 @@ version = "1.0.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "963a7dbc9895aeac7ac90e74f34a5d5261828f79df35cbed41e10189d3804d43"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3356,9 +3244,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1569374bd54623ec8bd592cf22ba6e03c0f177ff55fbc8c29a49e296e7adecf"
 dependencies = [
  "darling 0.13.0",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3378,9 +3266,9 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2acd6defeddb41eb60bb468f8825d0cfd0c2a76bc03bfd235b6a1dc4f6a1ad5"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3400,11 +3288,11 @@ dependencies = [
  "rust-crypto",
  "rusty-hook",
  "serde",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "thiserror",
  "tracing",
  "typenum",
@@ -3417,11 +3305,11 @@ dependencies = [
  "age",
  "anyhow",
  "hex",
- "rand 0.7.3",
+ "rand 0.8.4",
  "secrecy",
  "serde",
  "serde_json",
- "snarkos-toolkit",
+ "snarkvm-dpc 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
  "structopt",
  "unic-langid",
 ]
@@ -3438,7 +3326,7 @@ dependencies = [
  "byteorder",
  "chrono",
  "clap",
- "futures 0.3.15",
+ "futures",
  "futures-util",
  "hex",
  "http",
@@ -3449,7 +3337,7 @@ dependencies = [
  "phase1",
  "phase1-cli",
  "phase1-coordinator",
- "rand 0.7.3",
+ "rand 0.8.4",
  "reqwest",
  "secrecy",
  "serde",
@@ -3458,8 +3346,8 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
- "snarkos-toolkit",
- "snarkvm-curves",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-dpc 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
  "structopt",
  "thiserror",
  "tokio 1.7.1",
@@ -3483,6 +3371,7 @@ name = "setup1-verifier"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "base64 0.13.0",
  "chrono",
  "ctrlc",
  "futures-util",
@@ -3492,7 +3381,7 @@ dependencies = [
  "phase1",
  "phase1-cli",
  "phase1-coordinator",
- "rand 0.7.3",
+ "rand 0.8.4",
  "rand_xorshift 0.2.0",
  "reqwest",
  "serde",
@@ -3501,8 +3390,10 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
- "snarkos-toolkit",
- "snarkvm-curves",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-dpc 0.7.3",
+ "snarkvm-utilities 0.7.5",
  "structopt",
  "thiserror",
  "tokio 1.7.1",
@@ -3522,16 +3413,17 @@ dependencies = [
  "hex-literal",
  "memmap",
  "phase2",
- "rand 0.7.3",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
  "rand_xorshift 0.2.0",
  "setup-utils",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-dpc",
- "snarkvm-fields",
- "snarkvm-parameters",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-dpc 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-parameters 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "thiserror",
  "tracing-subscriber",
 ]
@@ -3602,270 +3494,49 @@ dependencies = [
 ]
 
 [[package]]
-name = "snarkos-algorithms"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
+name = "snarkvm-algorithms"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
 dependencies = [
- "blake2 0.8.1",
+ "bitvec 0.22.3",
+ "blake2 0.9.1",
  "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
  "rayon",
  "sha2",
  "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
+ "snarkvm-curves 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-profiler 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
 ]
 
 [[package]]
-name = "snarkos-algorithms"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
+name = "snarkvm-algorithms"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
 dependencies = [
- "blake2 0.8.1",
+ "bitvec 0.22.3",
+ "blake2 0.9.1",
  "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
  "rayon",
  "sha2",
  "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-curves"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "derivative",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "rustc_version 0.2.3",
- "serde",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-curves"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "derivative",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "rustc_version 0.2.3",
- "serde",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-derives"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
-]
-
-[[package]]
-name = "snarkos-derives"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
-]
-
-[[package]]
-name = "snarkos-dpc"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "blake2 0.8.1",
- "derivative",
- "hex",
- "itertools 0.9.0",
- "rand 0.7.3",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-gadgets",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-objects",
- "snarkos-parameters",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-errors"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "bincode",
- "hex",
- "jsonrpc-core",
+ "snarkvm-curves 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-profiler 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
  "thiserror",
- "toml",
-]
-
-[[package]]
-name = "snarkos-errors"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "bincode",
- "hex",
- "jsonrpc-core",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "snarkos-gadgets"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "derivative",
- "digest 0.8.1",
- "itertools 0.9.0",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-models"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "bincode",
- "derivative",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "serde",
- "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-models"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "bincode",
- "derivative",
- "itertools 0.9.0",
- "rand 0.7.3",
- "rand_xorshift 0.2.0",
- "serde",
- "smallvec",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
-]
-
-[[package]]
-name = "snarkos-objects"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "base58",
- "bech32 0.6.0",
- "chrono",
- "derivative",
- "hex",
- "once_cell",
- "rand 0.7.3",
- "serde",
- "sha2",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-parameters"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "hex",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-profiler"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-
-[[package]]
-name = "snarkos-profiler"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-
-[[package]]
-name = "snarkos-toolkit"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "hex",
- "rand 0.7.3",
- "snarkos-dpc",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-objects",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "thiserror",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "snarkos-utilities"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
-dependencies = [
- "bincode",
- "rand 0.7.3",
- "snarkos-derives 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
-]
-
-[[package]]
-name = "snarkos-utilities"
-version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
-dependencies = [
- "bincode",
- "rand 0.7.3",
- "snarkos-derives 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
 ]
 
 [[package]]
@@ -3874,7 +3545,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba6482ab4ec9170c9b8ce6c1ac9689d02aba1e112b474fa10cb72e8dda6ae0bd"
 dependencies = [
- "bitvec",
+ "bitvec 0.22.3",
  "blake2 0.9.1",
  "crossbeam-channel",
  "derivative",
@@ -3887,11 +3558,69 @@ dependencies = [
  "rayon",
  "sha2",
  "smallvec",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-profiler",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-profiler 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-algorithms"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd8bbefe6252ed85bb073f8ecbc402830e3d119b1aaadcea5a9c9e7a21a99cd2"
+dependencies = [
+ "anyhow",
+ "bitvec 0.19.4",
+ "blake2 0.9.1",
+ "crossbeam-channel",
+ "derivative",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "lazy_static",
+ "once_cell",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "sha2",
+ "smallvec",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-profiler 0.7.5",
+ "snarkvm-r1cs 0.7.5",
+ "snarkvm-utilities 0.7.5",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-curves"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "rustc_version 0.4.0",
+ "serde",
+ "snarkvm-fields 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-curves"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "rustc_version 0.4.0",
+ "serde",
+ "snarkvm-fields 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
  "thiserror",
 ]
 
@@ -3906,9 +3635,49 @@ dependencies = [
  "rand_xorshift 0.3.0",
  "rustc_version 0.3.3",
  "serde",
- "snarkvm-fields",
- "snarkvm-utilities",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "thiserror",
+]
+
+[[package]]
+name = "snarkvm-curves"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62fdf07998a6e88fce7a8139e8282fb6b2702e49624b6d7e10a5cc1c9f014264"
+dependencies = [
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "rustc_version 0.3.3",
+ "serde",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-utilities 0.7.5",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-derives"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "snarkvm-derives"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3919,9 +3688,80 @@ checksum = "45886a0c7a81323c267a4c2cfab1de7f0621a8f03a04fb78e2ea4f3ae5e26066"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "snarkvm-derives"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d42f4d5abda149130149ce3865aef23d380dfcdd97fea7f75fd79b0aee369b29"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "snarkvm-dpc"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "anyhow",
+ "base58",
+ "bech32 0.8.1",
+ "bincode",
+ "blake2 0.9.1",
+ "chrono",
+ "derivative",
+ "hex",
+ "itertools 0.10.1",
+ "once_cell",
+ "rand 0.8.4",
+ "serde",
+ "sha2",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-curves 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-gadgets 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-parameters 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-profiler 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-dpc"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "anyhow",
+ "base58",
+ "bech32 0.8.1",
+ "bincode",
+ "blake2 0.9.1",
+ "chrono",
+ "derivative",
+ "hex",
+ "itertools 0.10.1",
+ "once_cell",
+ "rand 0.8.4",
+ "serde",
+ "sha2",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-curves 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-gadgets 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-parameters 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-profiler 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "thiserror",
 ]
 
 [[package]]
@@ -3943,14 +3783,74 @@ dependencies = [
  "rand 0.8.4",
  "serde",
  "sha2",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-gadgets",
- "snarkvm-parameters",
- "snarkvm-profiler",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-gadgets 0.6.0",
+ "snarkvm-parameters 0.6.0",
+ "snarkvm-profiler 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-dpc"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e868e6cb208d3dd3dfa097a8816b8667963d320f75e5ba79901e803fbb9ea5a"
+dependencies = [
+ "anyhow",
+ "base58",
+ "bech32 0.8.1",
+ "bincode",
+ "blake2 0.9.1",
+ "chrono",
+ "derivative",
+ "hex",
+ "itertools 0.10.1",
+ "once_cell",
+ "rand 0.8.4",
+ "serde",
+ "sha2",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-gadgets 0.7.5",
+ "snarkvm-marlin 0.7.5",
+ "snarkvm-parameters 0.7.5",
+ "snarkvm-polycommit 0.7.5",
+ "snarkvm-profiler 0.7.5",
+ "snarkvm-r1cs 0.7.5",
+ "snarkvm-utilities 0.7.5",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-fields"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "bincode",
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "serde",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-fields"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "bincode",
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "serde",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
  "thiserror",
 ]
 
@@ -3965,7 +3865,61 @@ dependencies = [
  "rand 0.8.4",
  "rand_xorshift 0.3.0",
  "serde",
- "snarkvm-utilities",
+ "snarkvm-utilities 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-fields"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ecd058b3608140610276be1eb1139a032a1bb171969b3ad70550c471d3ae503"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "derivative",
+ "rand 0.8.4",
+ "rand_xorshift 0.3.0",
+ "serde",
+ "snarkvm-utilities 0.7.5",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-gadgets"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "derivative",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-curves 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-gadgets"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "derivative",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-curves 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-r1cs 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
  "thiserror",
 ]
 
@@ -3981,11 +3935,31 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-gadgets"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b462bb5e5ac219eafd1a828c73c181e7b23692ade5c49fd72d71bfe4250a6b1"
+dependencies = [
+ "derivative",
+ "digest 0.9.0",
+ "itertools 0.10.1",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-r1cs 0.7.5",
+ "snarkvm-utilities 0.7.5",
  "thiserror",
 ]
 
@@ -3998,19 +3972,67 @@ dependencies = [
  "blake2 0.9.1",
  "derivative",
  "digest 0.9.0",
- "hashbrown 0.11.2",
+ "hashbrown",
  "rand 0.8.4",
  "rand_chacha 0.3.1",
  "rand_core 0.6.3",
  "rayon",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-gadgets",
- "snarkvm-polycommit",
- "snarkvm-profiler",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-gadgets 0.6.0",
+ "snarkvm-polycommit 0.6.0",
+ "snarkvm-profiler 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
+]
+
+[[package]]
+name = "snarkvm-marlin"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5b1bb7923a757053c0a544072ec6b298585f83c9f4a3ae777ca048bb6e5589"
+dependencies = [
+ "blake2 0.9.1",
+ "derivative",
+ "digest 0.9.0",
+ "hashbrown",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.3",
+ "rayon",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-gadgets 0.7.5",
+ "snarkvm-polycommit 0.7.5",
+ "snarkvm-profiler 0.7.5",
+ "snarkvm-r1cs 0.7.5",
+ "snarkvm-utilities 0.7.5",
+]
+
+[[package]]
+name = "snarkvm-parameters"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "curl",
+ "hex",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-parameters"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "curl",
+ "hex",
+ "snarkvm-algorithms 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "thiserror",
 ]
 
 [[package]]
@@ -4021,8 +4043,21 @@ checksum = "f8591a36b0a21f24394ec6a592ac3e6d669694156094771bd0a58c0c113b2d25"
 dependencies = [
  "curl",
  "hex",
- "snarkvm-algorithms",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-utilities 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-parameters"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14356edda788a3e52ac6e809e6fdbfd5cf7558249bf6051525843b045a73d12a"
+dependencies = [
+ "curl",
+ "hex",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-utilities 0.7.5",
  "thiserror",
 ]
 
@@ -4034,15 +4069,34 @@ checksum = "8a3aeb9bbb5b4af050ee506e934d38f47d6216eb8c7c69b24f1c566aa7f5493c"
 dependencies = [
  "derivative",
  "digest 0.9.0",
- "hashbrown 0.11.2",
+ "hashbrown",
  "rand_core 0.6.3",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-gadgets",
- "snarkvm-profiler",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-gadgets 0.6.0",
+ "snarkvm-profiler 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
+]
+
+[[package]]
+name = "snarkvm-polycommit"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28fac50de72680316fe57fbbbde2874ae28de7191a3f23ff9e541119951ddaa8"
+dependencies = [
+ "derivative",
+ "digest 0.9.0",
+ "hashbrown",
+ "rand_core 0.6.3",
+ "snarkvm-algorithms 0.7.5",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-gadgets 0.7.5",
+ "snarkvm-profiler 0.7.5",
+ "snarkvm-r1cs 0.7.5",
+ "snarkvm-utilities 0.7.5",
 ]
 
 [[package]]
@@ -4053,25 +4107,69 @@ checksum = "bf5d55735fcefc0bdcce28f71270ba2f63ab2605610dce794f74bbba5e9b6629"
 dependencies = [
  "blake2 0.9.1",
  "rand 0.8.4",
- "snarkvm-algorithms",
- "snarkvm-curves",
- "snarkvm-dpc",
- "snarkvm-fields",
- "snarkvm-gadgets",
- "snarkvm-marlin",
- "snarkvm-parameters",
- "snarkvm-polycommit",
- "snarkvm-profiler",
- "snarkvm-r1cs",
- "snarkvm-utilities",
+ "snarkvm-algorithms 0.6.0",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-dpc 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-gadgets 0.6.0",
+ "snarkvm-marlin 0.6.0",
+ "snarkvm-parameters 0.6.0",
+ "snarkvm-polycommit 0.6.0",
+ "snarkvm-profiler 0.6.0",
+ "snarkvm-r1cs 0.6.0",
+ "snarkvm-utilities 0.6.0",
  "thiserror",
 ]
+
+[[package]]
+name = "snarkvm-profiler"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+
+[[package]]
+name = "snarkvm-profiler"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
 
 [[package]]
 name = "snarkvm-profiler"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8892a13630b65576cd983bc69fa89bdff3f568e56466cc523a1cee783ec1513"
+
+[[package]]
+name = "snarkvm-profiler"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ebfa546f0376a1348b857a9defdb3f4505a0420d82f8caa2b0cebbe197245fa"
+
+[[package]]
+name = "snarkvm-r1cs"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "cfg-if 1.0.0",
+ "fxhash",
+ "indexmap",
+ "itertools 0.10.1",
+ "snarkvm-curves 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+]
+
+[[package]]
+name = "snarkvm-r1cs"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "cfg-if 1.0.0",
+ "fxhash",
+ "indexmap",
+ "itertools 0.10.1",
+ "snarkvm-curves 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-fields 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "snarkvm-utilities 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+]
 
 [[package]]
 name = "snarkvm-r1cs"
@@ -4083,9 +4181,46 @@ dependencies = [
  "fxhash",
  "indexmap",
  "itertools 0.10.1",
- "snarkvm-curves",
- "snarkvm-fields",
- "snarkvm-utilities",
+ "snarkvm-curves 0.6.0",
+ "snarkvm-fields 0.6.0",
+ "snarkvm-utilities 0.6.0",
+]
+
+[[package]]
+name = "snarkvm-r1cs"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aca9bb7105244ebc91f964b11a1ae63f173a77181307d1fa94f04e15dbde137"
+dependencies = [
+ "cfg-if 1.0.0",
+ "fxhash",
+ "indexmap",
+ "itertools 0.10.1",
+ "snarkvm-curves 0.7.5",
+ "snarkvm-fields 0.7.5",
+ "snarkvm-utilities 0.7.5",
+]
+
+[[package]]
+name = "snarkvm-utilities"
+version = "0.5.4"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=5321751#53217515b701180874fc18957effc0bbbefe6c86"
+dependencies = [
+ "bincode",
+ "rand 0.8.4",
+ "snarkvm-derives 0.5.4 (git+https://github.com/AleoHQ/snarkVM?rev=5321751)",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-utilities"
+version = "0.5.4"
+source = "git+https://github.com/emmorais/snarkVM?rev=6a409e3#6a409e33b0a6e3569320043f93967da70652f988"
+dependencies = [
+ "bincode",
+ "rand 0.8.4",
+ "snarkvm-derives 0.5.4 (git+https://github.com/emmorais/snarkVM?rev=6a409e3)",
+ "thiserror",
 ]
 
 [[package]]
@@ -4096,7 +4231,21 @@ checksum = "1f6dcdbf85edf6a03157aef21608e3c44835eeff97d0c2d0b3c90b3bcb869e82"
 dependencies = [
  "bincode",
  "rand 0.8.4",
- "snarkvm-derives",
+ "snarkvm-derives 0.6.0",
+ "thiserror",
+]
+
+[[package]]
+name = "snarkvm-utilities"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b7ecf6a7afdd60a45cbd5ffab75185c296d8a4bf5eb20f3912384b1d4027c2"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "num-bigint",
+ "rand 0.8.4",
+ "snarkvm-derives 0.7.5",
  "thiserror",
 ]
 
@@ -4168,11 +4317,11 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c87a60a40fccc84bef0652345bbbbbe20a605bf5d0ce81719fc476f5c03b50ef"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "serde",
  "serde_derive",
- "syn 1.0.73",
+ "syn",
 ]
 
 [[package]]
@@ -4182,13 +4331,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58fa5ff6ad0d98d1ffa8cb115892b6e69d67799f6763e162a1c9db421dc22e11"
 dependencies = [
  "base-x",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "serde",
  "serde_derive",
  "serde_json",
  "sha1",
- "syn 1.0.73",
+ "syn",
 ]
 
 [[package]]
@@ -4234,9 +4383,9 @@ checksum = "5ba9cdfda491b814720b6b06e0cac513d922fc407582032e8706e9f137976f90"
 dependencies = [
  "heck",
  "proc-macro-error",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4253,24 +4402,13 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 
 [[package]]
 name = "syn"
-version = "0.15.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
-dependencies = [
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "unicode-xid 0.1.0",
-]
-
-[[package]]
-name = "syn"
 version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f71489ff30030d2ae598524f61326b902466f72a0fb1a8564c001cc63425bcc7"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "unicode-xid 0.2.2",
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -4279,10 +4417,10 @@ version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b834f2d66f734cb897113e34aaff2f1ab4719ca946f9a7358dba8f8064148701"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
- "unicode-xid 0.2.2",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -4339,9 +4477,9 @@ version = "1.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a36768c0fbf1bb15eca10defa29526bda730a2376c2ab4393ccfa16fb1a318d"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4395,10 +4533,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3c141a1b43194f3f56a1411225df8646c55781d5f26db825b3d98507eb482f"
 dependencies = [
  "proc-macro-hack",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
  "standback",
- "syn 1.0.73",
+ "syn",
 ]
 
 [[package]]
@@ -4474,9 +4612,9 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c49e3df43841dafb86046472506755d8501c5615673955f6aa17181125d13c37"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4587,9 +4725,9 @@ version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c42e6fa53307c8a17e4ccd4dc81cf5ec38db9209f59b222210375b54ee40d1e2"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4752,12 +4890,6 @@ checksum = "9337591893a19b88d8d87f2cec1e73fad5cdfd10e5a6f349f498ad6ea2ffb1e3"
 
 [[package]]
 name = "unicode-xid"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
-
-[[package]]
-name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
@@ -4770,16 +4902,6 @@ checksum = "8326b2c654932e3e4f9196e69d08fdf7cfd718e1dc6f66b347e6024a0c961402"
 dependencies = [
  "generic-array 0.14.4",
  "subtle 2.4.0",
-]
-
-[[package]]
-name = "unroll"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85890b49d9724df33edc575c4bacd5b0081977da22c4c4984d0c62ec44ed6e09"
-dependencies = [
- "quote 0.6.13",
- "syn 0.15.44",
 ]
 
 [[package]]
@@ -4887,9 +5009,9 @@ dependencies = [
  "bumpalo",
  "lazy_static",
  "log",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
  "wasm-bindgen-shared",
 ]
 
@@ -4911,7 +5033,7 @@ version = "0.2.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "088169ca61430fe1e58b8096c24975251700e7b1f6fd91cc9d59b04fb9b18bd4"
 dependencies = [
- "quote 1.0.9",
+ "quote",
  "wasm-bindgen-macro-support",
 ]
 
@@ -4921,9 +5043,9 @@ version = "0.2.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be2241542ff3d9f241f5e2cb6dd09b37efe786df8851c54957683a49f0987a97"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -4954,8 +5076,8 @@ version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd4543fc6cf3541ef0d98bf720104cc6bd856d7eba449fd2aa365ef4fed0e782"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]
@@ -5052,6 +5174,12 @@ dependencies = [
 
 [[package]]
 name = "wyz"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
+
+[[package]]
+name = "wyz"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "129e027ad65ce1453680623c3fb5163cbf7107bfe1aa32257e7d0e63f9ced188"
@@ -5091,8 +5219,8 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c1e130bebaeab2f23886bf9acbaca14b092408c452543c857f66399cd6dab1"
 dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.73",
+ "proc-macro2",
+ "quote",
+ "syn",
  "synstructure",
 ]

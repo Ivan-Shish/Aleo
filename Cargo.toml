@@ -4,6 +4,7 @@ members = [
     "phase1",
     "phase1-cli",
     "phase1-coordinator",
+    "phase1-wasm",
     "phase2",
     "setup1-cli-tools",
     "setup1-contributor",

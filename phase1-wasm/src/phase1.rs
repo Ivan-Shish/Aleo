@@ -5,13 +5,20 @@ use phase1::{
     Phase1Parameters,
     ProvingSystem,
 };
-use setup_utils::{calculate_hash, derive_rng_from_seed, get_rng, user_system_randomness, CheckForCorrectness, UseCompression, from_slice};
+use setup_utils::{
+    calculate_hash,
+    derive_rng_from_seed,
+    from_slice,
+    get_rng,
+    user_system_randomness,
+    CheckForCorrectness,
+    UseCompression,
+};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
 use rand::Rng;
+use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use wasm_bindgen::prelude::*;
-use rand_chacha::ChaChaRng;
-use rand_chacha::rand_core::SeedableRng;
 
 pub(crate) const COMPRESSED_INPUT: UseCompression = UseCompression::No;
 pub(crate) const COMPRESSED_OUTPUT: UseCompression = UseCompression::Yes;
