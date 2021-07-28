@@ -1,6 +1,6 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
-use snarkvm_algorithms::{MerkleParameters, CRH, SNARK, SRS};
+use snarkvm_algorithms::{SNARK, SRS};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{
     prelude::*,
@@ -8,7 +8,6 @@ use snarkvm_dpc::{
 };
 use snarkvm_fields::Field;
 use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
-use snarkvm_utilities::{to_bytes_le, FromBytes, ToBytes};
 
 use gumdrop::Options;
 use memmap::MmapOptions;

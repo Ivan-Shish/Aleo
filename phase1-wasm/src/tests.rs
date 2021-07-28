@@ -1,7 +1,7 @@
 use crate::phase1::*;
 use phase1::{ContributionMode, Phase1, Phase1Parameters, ProvingSystem};
 use setup_utils::{batch_exp, blank_hash, generate_powers_of_tau, UseCompression};
-use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_fields::{batch_inversion, Field};
 
 use rand::SeedableRng;

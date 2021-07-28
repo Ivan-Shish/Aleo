@@ -88,7 +88,7 @@ fn benchmark_multiexp(c: &mut Criterion) {
 }
 
 fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInt> {
-    (0..v.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect()
+    (0..v.len()).map(|_| G::ScalarField::rand(rng).to_repr()).collect()
 }
 
 criterion_group!(benches, benchmark_phase1, benchmark_batchexp, benchmark_multiexp);

@@ -8,7 +8,6 @@ use phase1::{
 use setup_utils::{
     calculate_hash,
     derive_rng_from_seed,
-    from_slice,
     get_rng,
     user_system_randomness,
     CheckForCorrectness,
@@ -16,8 +15,7 @@ use setup_utils::{
 };
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
-use rand::{CryptoRng, Rng, SeedableRng};
-use rand_chacha::ChaChaRng;
+use rand::{CryptoRng, Rng};
 use wasm_bindgen::prelude::*;
 
 pub(crate) const COMPRESSED_INPUT: UseCompression = UseCompression::No;
