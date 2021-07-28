@@ -77,7 +77,7 @@ mod test {
         let elapsed = now.elapsed();
         println!("Proof of Work took: {:.2?}", elapsed);
         assert_eq!(output.len(), OUTPUT_LENGTH);
-        let expected = [12, 53, 232, 21, 121, 10, 125, 129];
+        let expected = [53, 123, 154, 189, 96, 121, 231, 0];
         assert_eq!(output[OUTPUT_LENGTH - expected.len()..], expected);
     }
 }
