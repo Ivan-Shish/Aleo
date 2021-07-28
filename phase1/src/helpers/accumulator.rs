@@ -5,13 +5,13 @@ use cfg_if::cfg_if;
 use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
 use snarkvm_curves::{AffineCurve, PairingEngine};
-use snarkvm_fields::Zero;
-use snarkvm_utilities::BitIteratorBE;
 
 #[cfg(not(feature = "wasm"))]
 use crate::ContributionMode;
 #[cfg(not(feature = "wasm"))]
-use snarkvm_fields::{FieldParameters, PrimeField};
+use snarkvm_fields::{FieldParameters, PrimeField, Zero};
+#[cfg(not(feature = "wasm"))]
+use snarkvm_utilities::BitIteratorBE;
 
 #[allow(type_alias_bounds)]
 type AccumulatorElements<E: PairingEngine> = (
