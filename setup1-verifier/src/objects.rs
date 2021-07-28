@@ -8,6 +8,10 @@ pub struct LockResponse {
     #[serde(alias = "chunkId")]
     pub chunk_id: u64,
 
+    /// The contribution id
+    #[serde(alias = "contributionId")]
+    pub contribution_id: u64,
+
     /// Indicator if the chunk was locked
     pub locked: bool,
 
@@ -18,9 +22,21 @@ pub struct LockResponse {
     #[serde(alias = "challengeLocator")]
     pub challenge_locator: String,
 
+    #[serde(alias = "challengeChunkId")]
+    pub challenge_chunk_id: u64,
+
+    #[serde(alias = "challengeContributionId")]
+    pub challenge_contribution_id: u64,
+
     #[serde(alias = "responseLocator")]
     pub response_locator: String,
 
     #[serde(alias = "nextChallengeLocator")]
     pub next_challenge_locator: String,
+
+    #[serde(alias = "nextChallengeChunkId")]
+    pub next_challenge_chunk_id: u64,
+
+    #[serde(alias = "nextChallengeContributionId")]
+    pub next_challenge_contribution_id: u64,
 }

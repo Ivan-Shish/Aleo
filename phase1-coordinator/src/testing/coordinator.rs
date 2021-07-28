@@ -2,7 +2,7 @@ use crate::{
     authentication::Dummy,
     environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
-    storage::{Storage, StorageLock},
+    storage::{Disk, Storage},
     Coordinator,
     CoordinatorError,
 };
@@ -12,10 +12,7 @@ use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 #[cfg(test)]
 use serial_test::serial;
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{path::Path, sync::Arc};
 use tracing::*;
 
 use once_cell::sync::OnceCell;
@@ -50,15 +47,19 @@ pub static TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_v
 pub static TEST_VERIFIER_ID_2: Lazy<Participant> =
     Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-2")));
 
+/// Verifier ID 2 for testing purposes only.
+pub static TEST_VERIFIER_ID_3: Lazy<Participant> =
+    Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-3")));
+
 /// Contributor IDs for testing purposes only.
 pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
 
 /// Verifier IDs for testing purposes only.
 pub static TEST_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 
-pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
+pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator<Disk>> {
     info!("Starting coordinator");
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
     info!("Coordinator is ready");
     Ok(coordinator)
 }
@@ -109,8 +110,8 @@ fn clear_test_storage(environment: &Environment) {
 }
 
 /// Initializes a test storage object.
-pub fn test_storage(environment: &Environment) -> Arc<RwLock<Box<dyn Storage>>> {
-    Arc::new(RwLock::new(environment.storage().unwrap()))
+pub fn test_storage(environment: &Environment) -> impl Storage {
+    environment.storage().unwrap()
 }
 
 /// Loads the reference JSON object with a serialized round for testing purposes only.
@@ -125,15 +126,21 @@ pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
     ))?)
 }
 
+/// Loads the reference JSON object with a serialized round for testing purposes only.
+pub fn test_round_1_partial_json() -> anyhow::Result<Round> {
+    Ok(serde_json::from_str(include_str!(
+        "resources/test_round_1_partial.json"
+    ))?)
+}
+
 /// Creates the initial round for testing purposes only.
 pub fn test_round_0() -> anyhow::Result<Round> {
     // Define test storage.
-    let test_storage = test_storage(&TEST_ENVIRONMENT);
-    let storage = StorageLock::Write(test_storage.write().unwrap());
+    let mut test_storage = test_storage(&TEST_ENVIRONMENT);
 
     Ok(Round::new(
         &TEST_ENVIRONMENT,
-        &storage,
+        &mut test_storage,
         0, /* height */
         *TEST_STARTED_AT,
         vec![],

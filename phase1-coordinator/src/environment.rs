@@ -124,7 +124,7 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::Bls12_377,
-            Power::from(20_usize),
+            Power::from(19_usize),
             BatchSize::from(4096_usize),
             ChunkSize::from(32768_usize),
         )
@@ -458,8 +458,8 @@ impl Environment {
     }
 
     /// Returns the storage system of the coordinator.
-    pub(crate) fn storage(&self) -> anyhow::Result<Box<dyn Storage>> {
-        Ok(Box::new(Disk::load(self)?))
+    pub(crate) fn storage(&self) -> anyhow::Result<Disk> {
+        Ok(Disk::load(self)?)
     }
 }
 
@@ -672,7 +672,7 @@ impl std::default::Default for Development {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_seen_timeout: chrono::Duration::minutes(5),
+                contributor_seen_timeout: chrono::Duration::minutes(1),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
                 participant_ban_threshold: 5,
@@ -768,7 +768,7 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_seen_timeout: chrono::Duration::minutes(5),
+                contributor_seen_timeout: chrono::Duration::minutes(1),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
                 participant_ban_threshold: 5,

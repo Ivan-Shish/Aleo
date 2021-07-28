@@ -67,7 +67,6 @@ lazy_static! {
         map.insert(PipelineLane::Upload, VecDeque::new());
         RwLock::new(map)
     };
-    static ref SEED: RwLock<Option<Arc<SecretVec<u8>>>> = RwLock::new(None);
     static ref TASKS: RwLock<Tasks> = RwLock::new(Tasks::default());
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -90,6 +89,7 @@ pub struct Contribute {
     /// `aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a`
     pub participant_id: String,
     pub private_key: String,
+    seed: Arc<SecretVec<u8>>,
     pub upload_mode: UploadMode,
     pub environment: Environment,
 
@@ -107,7 +107,12 @@ pub struct Contribute {
 }
 
 impl Contribute {
-    pub fn new(opts: &ContributeOptions, environment: &Environment, private_key: &[u8]) -> Result<Self> {
+    pub fn new(
+        opts: &ContributeOptions,
+        environment: &Environment,
+        private_key: &[u8],
+        seed: Arc<SecretVec<u8>>,
+    ) -> Result<Self> {
         let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
@@ -116,6 +121,7 @@ impl Contribute {
             server_url: opts.api_url.clone(),
             participant_id: Address::from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
+            seed,
             upload_mode: opts.upload_mode.clone(),
             environment: environment.clone(),
 
@@ -162,7 +168,7 @@ impl Contribute {
         }
 
         // Get total number of tokio tasks to generate.
-        let total_tasks = match self.disable_pipelining {
+        let n_concurrent_tasks = match self.disable_pipelining {
             true => 1,
             false => self.max_in_download_lane + self.max_in_process_lane + self.max_in_upload_lane,
         };
@@ -184,14 +190,14 @@ impl Contribute {
 
         let mut futures = vec![];
 
-        for i in 0..total_tasks {
+        for i in 0..n_concurrent_tasks {
             let delay_duration = Duration::seconds(DELAY_AFTER_ERROR_DURATION_SECS).to_std()?;
-            let mut cloned = self.clone_with_new_filenames(i);
+            let mut cloned_contribute = self.clone_with_new_filenames(i);
 
             let join_handle = tokio::task::spawn(async move {
                 // Run contributor loop.
                 loop {
-                    let result = cloned.run::<E>().await;
+                    let result = cloned_contribute.run::<E>().await;
                     match result {
                         Ok(_) => {
                             info!(
@@ -200,21 +206,23 @@ impl Contribute {
                         }
                         Err(err) => {
                             println!("Got error from run: {}, retrying...", err);
+                            tracing::error!("Error from contribution run: {}", err);
 
-                            if let Some(lock_response) = cloned.current_task.as_ref() {
-                                cloned
+                            if let Some(lock_response) = cloned_contribute.current_task.as_ref() {
+                                tracing::warn!("Retrying task {:?}", lock_response);
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Download, &lock_response)
                                     .expect("Should have removed task from download lane");
 
-                                cloned
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Upload, &lock_response)
                                     .expect("Should have removed task from upload lane");
 
-                                cloned
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Process, &lock_response)
                                     .expect("Should have removed task from process lane");
 
-                                cloned.add_task_to_queue(lock_response.clone());
+                                cloned_contribute.add_task_to_queue(lock_response.clone());
                             }
                         }
                     }
@@ -478,22 +486,19 @@ impl Contribute {
             remove_file_if_exists(&self.challenge_filename)?;
             remove_file_if_exists(&self.challenge_hash_filename)?;
             let download_url = &lock_response.challenge_locator;
-            self.download_challenge(&download_url, &self.challenge_filename, auth_rng)
-                .await?;
+            self.download_challenge(
+                chunk_id,
+                lock_response.contribution_id,
+                &self.challenge_filename,
+                auth_rng,
+            )
+            .await?;
 
             // Wait for the process pipeline to open up
             self.wait_and_move_task_from_lane_to_lane(&PipelineLane::Download, &PipelineLane::Process, &lock_response)
                 .await?;
 
-            // let seed = seed.read().expect("Should have been able to read seed");
-            let seed = SEED
-                .read()
-                .expect("Should have been able to read seed")
-                .as_ref()
-                .ok_or(ContributeError::SeedWasNoneError)
-                .expect("Seed should not have been none")
-                .clone();
-            let exposed_seed = seed.expose_secret();
+            let exposed_seed = self.seed.expose_secret();
             let seeded_rng = derive_rng_from_seed(&exposed_seed[..]);
             let start = Instant::now();
             remove_file_if_exists(&self.response_filename)?;
@@ -575,18 +580,33 @@ impl Contribute {
                         #[cfg(feature = "azure")]
                         upload_file_to_azure_async(&self.response_filename, &upload_url).await?;
                         #[cfg(not(feature = "azure"))]
-                        self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                            .await?;
+                        self.upload_response(
+                            lock_response.response_chunk_id,
+                            lock_response.response_contribution_id,
+                            signature_and_response_file_bytes,
+                            auth_rng,
+                        )
+                        .await?;
                     } else {
-                        self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                            .await?;
+                        self.upload_response(
+                            lock_response.response_chunk_id,
+                            lock_response.response_contribution_id,
+                            signature_and_response_file_bytes,
+                            auth_rng,
+                        )
+                        .await?;
                     }
                 }
                 #[cfg(feature = "azure")]
                 UploadMode::Azure => upload_file_to_azure_async(&self.response_filename, &upload_url).await?,
                 UploadMode::Direct => {
-                    self.upload_response(&upload_url, signature_and_response_file_bytes, auth_rng)
-                        .await?
+                    self.upload_response(
+                        lock_response.response_chunk_id,
+                        lock_response.response_contribution_id,
+                        signature_and_response_file_bytes,
+                        auth_rng,
+                    )
+                    .await?
                 }
             }
 
@@ -766,13 +786,12 @@ impl Contribute {
 
     async fn download_challenge<R: Rng + CryptoRng>(
         &self,
-        challenge_locator: &str,
+        chunk_id: u64,
+        contribution_id: u64,
         file_path: &str,
         auth_rng: &mut R,
     ) -> Result<()> {
-        let sanitized_challenge_locator = challenge_locator.replace("./", "");
-
-        let download_path = format!("/v1/download/challenge/{}", sanitized_challenge_locator);
+        let download_path = format!("/v1/download/challenge/{}/{}", chunk_id, contribution_id);
         let download_path_url = self.server_url.join(&download_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "GET", &download_path, auth_rng)?;
@@ -794,13 +813,12 @@ impl Contribute {
 
     async fn upload_response<R: Rng + CryptoRng>(
         &self,
-        response_locator: &str,
+        chunk_id: u64,
+        contribution_id: u64,
         contents: Vec<u8>,
         auth_rng: &mut R,
     ) -> Result<()> {
-        let sanitized_response_locator = response_locator.replace("./", "");
-
-        let upload_path = format!("/v1/upload/response/{}", sanitized_response_locator);
+        let upload_path = format!("/v1/upload/response/{}/{}", chunk_id, contribution_id);
         let upload_path_url = self.server_url.join(&upload_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
@@ -920,13 +938,11 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     let (seed, private_key) =
         read_keys(&opts.keys_path, opts.passphrase.clone()).expect("Unable to load Aleo setup keys");
 
-    *SEED.write().expect("Should have been able to write seed") = Some(Arc::new(seed));
-
     let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
-    let contribute =
-        Contribute::new(opts, &environment, private_key.expose_secret()).expect("Unable to initialize a contributor");
+    let contribute = Contribute::new(opts, &environment, private_key.expose_secret(), Arc::new(seed))
+        .expect("Unable to initialize a contributor");
 
     if public_settings.check_reliability {
         tracing::info!("Checking reliability score before joining the queue");

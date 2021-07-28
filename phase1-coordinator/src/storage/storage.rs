@@ -11,7 +11,6 @@ use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
-    ops::{Deref, DerefMut},
     path::Path,
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
@@ -189,35 +188,6 @@ impl Object {
     }
 }
 
-pub(crate) enum Lock<'a, T> {
-    Read(RwLockReadGuard<'a, T>),
-    Write(RwLockWriteGuard<'a, T>),
-}
-
-impl<'a, T> Deref for Lock<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Lock::Read(read_guard) => read_guard.deref(),
-            Lock::Write(write_guard) => write_guard.deref(),
-        }
-    }
-}
-
-impl<'a, T> DerefMut for Lock<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Lock::Read(_) => panic!("Cannot mutably dereference a read-only lock"),
-            Lock::Write(write_guard) => write_guard,
-        }
-    }
-}
-
-pub(crate) type StorageLock<'a> = Lock<'a, Box<dyn Storage>>;
-
-// pub type StorageWrite<'a> = RwLockWriteGuard<'a, Box<dyn Storage>>;
-
 // TODO (howardwu): Genericize this if necessary for remote objects.
 //  Alternatively, usage of temporary memory-backed local files can also work.
 pub type ObjectReader<'a> = RwLockReadGuard<'a, MmapMut>;
@@ -256,6 +226,9 @@ pub trait Storage: Send + Sync + StorageLocator + StorageObject {
 
     /// Returns the size of the object stored at the given locator.
     fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
+
+    /// Process a [StorageAction] which mutates the storage.
+    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError>;
 }
 
 /// The path to a resource defined by a [Locator].
@@ -310,6 +283,89 @@ impl TryFrom<&Path> for LocatorPath {
             .ok_or(CoordinatorError::StorageLocatorFormatIncorrect)
             .map(|s| Self::new(s.to_owned()))
     }
+}
+
+/// An enum containing a [Locator] or [LocatorPath].
+///
+/// **Note:** This can probably be refactored out in the future so
+/// that we only use [Locator].
+#[derive(Clone, PartialEq, Debug)]
+pub enum LocatorOrPath {
+    Path(LocatorPath),
+    Locator(Locator),
+}
+
+impl LocatorOrPath {
+    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+        match self {
+            LocatorOrPath::Path(path) => storage.to_locator(&path),
+            LocatorOrPath::Locator(locator) => Ok(locator),
+        }
+    }
+
+    pub fn try_into_path(self, storage: &impl Storage) -> Result<LocatorPath, CoordinatorError> {
+        match self {
+            LocatorOrPath::Path(path) => Ok(path),
+            LocatorOrPath::Locator(locator) => storage.to_path(&locator),
+        }
+    }
+}
+
+impl From<LocatorPath> for LocatorOrPath {
+    fn from(path: LocatorPath) -> Self {
+        Self::Path(path)
+    }
+}
+
+impl From<Locator> for LocatorOrPath {
+    fn from(locator: Locator) -> Self {
+        Self::Locator(locator)
+    }
+}
+
+/// An action to remove an item from [Storage].
+#[derive(Clone, PartialEq, Debug)]
+pub struct RemoveAction {
+    locator_or_path: LocatorOrPath,
+}
+
+impl RemoveAction {
+    /// Create a new [RemoveAction]
+    pub fn new(locator: impl Into<LocatorOrPath>) -> Self {
+        Self {
+            locator_or_path: locator.into(),
+        }
+    }
+
+    /// Obtain the location of the item to be removed from [Storage]
+    /// as a [LocatorOrPath].
+    pub fn locator_or_path(&self) -> &LocatorOrPath {
+        &self.locator_or_path
+    }
+
+    /// Obtain the location of the item to be removed from [Storage]
+    /// as a [Locator].
+    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+        self.locator_or_path.try_into_locator(storage)
+    }
+
+    pub fn try_into_path(self, storage: &impl Storage) -> Result<LocatorPath, CoordinatorError> {
+        self.locator_or_path.try_into_path(storage)
+    }
+}
+
+/// An action to update an item in [Storage].
+pub struct UpdateAction {
+    pub locator: Locator,
+    pub object: Object,
+}
+
+/// An action taken to mutate [Storage], which can be processed by
+/// [Storage::process()].
+#[non_exhaustive]
+pub enum StorageAction {
+    Remove(RemoveAction),
+    Update(UpdateAction),
 }
 
 pub trait StorageLocator {
