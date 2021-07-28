@@ -101,6 +101,7 @@ mod tests {
 
     use lazy_static::lazy_static;
     use std::path::Path;
+    use serial_test::serial;
 
     const TEST_TASK_FILE: &str = "TEST.tasks";
 
@@ -141,6 +142,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     pub fn test_assign_tasks() {
         let mut tasks = Tasks::default();
         assert_eq!(0, tasks.get_tasks().len());
@@ -159,6 +161,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     pub fn test_next_tasks() {
         let mut tasks = Tasks::default();
 
@@ -175,6 +178,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     pub fn test_remove_tasks() {
         let mut tasks = Tasks::default();
 
@@ -196,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     pub fn test_store_tasks() {
         remove_file_if_exists(TEST_TASK_FILE).unwrap();
         let mut tasks = Tasks::default();
@@ -214,6 +219,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     pub fn test_load_tasks() {
         let mut tasks = Tasks::default();
 
