@@ -2333,6 +2333,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "phase2"
+version = "0.3.0"
+dependencies = [
+ "byteorder",
+ "cfg-if 0.1.10",
+ "console_error_panic_hook",
+ "crossbeam",
+ "itertools 0.9.0",
+ "num_cpus",
+ "phase1",
+ "phase2",
+ "rand 0.8.4",
+ "rayon",
+ "rusty-hook",
+ "setup-utils",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

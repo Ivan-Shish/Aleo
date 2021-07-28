@@ -1,15 +1,16 @@
-use snarkos_errors::gadgets::SynthesisError;
-use snarkos_models::{
-    curves::{Field, PairingEngine},
-    gadgets::r1cs::{ConstraintSynthesizer, ConstraintSystem},
-};
+use snarkvm_curves::PairingEngine;
+use snarkvm_fields::Field;
+use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 
 // circuit proving knowledge of a square root
 // when generating the Setup, the element inside is None
 #[derive(Clone, Debug)]
 pub struct TestCircuit<E: PairingEngine>(pub Option<E::Fr>);
 impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
-    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(self, cs: &mut CS) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints<CS: ConstraintSystem<E::Fr>>(
+        &self,
+        cs: &mut CS,
+    ) -> std::result::Result<(), SynthesisError> {
         // allocate a private input `x`
         // this can be made public with `alloc_input`, which would then require
         // that the verifier provides it
@@ -43,13 +44,13 @@ impl<E: PairingEngine> ConstraintSynthesizer<E::Fr> for TestCircuit<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snarkos_algorithms::snark::groth16::{
+    use snarkvm_algorithms::snark::groth16::{
         create_random_proof,
         generate_random_parameters,
         prepare_verifying_key,
         verify_proof,
     };
-    use snarkos_curves::bls12_377::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     // no need to run these tests, they're just added as a guideline for how to
     // consume the circuit
@@ -65,18 +66,18 @@ mod tests {
         // Create parameters for our circuit
         let params = {
             let c = TestCircuit::<E>(None);
-            generate_random_parameters::<E, _, _>(c, rng).unwrap()
+            generate_random_parameters::<E, _, _>(&c, rng).unwrap()
         };
-        let pvk = prepare_verifying_key(&params.vk);
+        let pvk = prepare_verifying_key(params.vk.clone());
 
         // we know the square root of 25 -> 5
-        let out = E::Fr::from(25);
-        let input = E::Fr::from(5);
+        let out = E::Fr::from(25u8);
+        let input = E::Fr::from(5u8);
 
         // Prover instantiates the circuit and creates a proof
         // with his RNG
         let c = TestCircuit::<E>(Some(input));
-        let proof = create_random_proof(c, &params, rng).unwrap();
+        let proof = create_random_proof(&c, &params, rng).unwrap();
 
         // Verifier only needs to know 25 (the output, aka public input),
         // the vk and the proof!

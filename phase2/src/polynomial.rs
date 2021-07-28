@@ -1,5 +1,6 @@
-use zexe_algebra::{AffineCurve, PairingEngine, ProjectiveCurve, Zero};
-use zexe_r1cs_core::Index;
+use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::Zero;
+use snarkvm_r1cs::Index;
 
 use rayon::prelude::*;
 
@@ -95,48 +96,49 @@ fn dot_product<C: AffineCurve>(input: &[(C::ScalarField, Index)], coeffs: &[C], 
             || C::Projective::zero(),
             |mut sum, &(coeff, lag)| {
                 let ind = match lag {
-                    Index::Input(i) => i,
-                    Index::Aux(i) => num_inputs + i,
+                    Index::Public(i) => i,
+                    Index::Private(i) => num_inputs + i,
                 };
-                sum += &coeffs[ind].mul(coeff);
+                sum += coeffs[ind].mul(coeff).into_projective();
                 sum
             },
         )
-        .sum()
+        .reduce(|| C::Projective::zero(), |a, b| a + b)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use phase1::helpers::testing::random_point_vec;
+    use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G1Projective};
+    use snarkvm_utilities::UniformRand;
+
     use rand::{thread_rng, Rng};
-    use zexe_algebra::{
-        bls12_377::{Bls12_377, Fr, G1Affine, G1Projective},
-        UniformRand,
-    };
+    use std::ops::Mul;
 
     fn gen_input(rng: &mut impl Rng) -> Vec<(Fr, Index)> {
         let scalar = (0..6).map(|_| Fr::rand(rng)).collect::<Vec<_>>();
         vec![
-            (scalar[0], Index::Input(0)),
-            (scalar[1], Index::Input(1)),
-            (scalar[2], Index::Aux(0)),
-            (scalar[3], Index::Aux(2)), // can they ever be out of order in reality?
-            (scalar[4], Index::Aux(1)),
-            (scalar[5], Index::Input(2)),
+            (scalar[0], Index::Public(0)),
+            (scalar[1], Index::Public(1)),
+            (scalar[2], Index::Private(0)),
+            (scalar[3], Index::Private(2)), // can they ever be out of order in reality?
+            (scalar[4], Index::Private(1)),
+            (scalar[5], Index::Public(2)),
         ]
     }
 
     fn get_expected(elements: &[G1Affine], scalar: &[Fr]) -> G1Projective {
         let num_inputs = 3;
-        elements[0].mul(scalar[0])
+        let output = elements[0].mul(scalar[0])
             + elements[1].mul(scalar[1])
             + elements[2].mul(scalar[5])
             // Auxiliary inputs be multiplied with the coeffs
             // offset by the number of inputs
             + elements[num_inputs].mul(scalar[2])
             + elements[num_inputs + 2].mul(scalar[3])
-            + elements[num_inputs + 1].mul(scalar[4])
+            + elements[num_inputs + 1].mul(scalar[4]);
+        output.into_projective()
     }
 
     #[test]
