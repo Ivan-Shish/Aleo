@@ -28,7 +28,7 @@ pub fn generate_powers_of_tau_crossbeam<E: PairingEngine>(tau: &E::Fr, start: us
 
                 for t in taupowers {
                     *t = acc;
-                    acc.mul_assign(&tau);
+                    acc.mul_assign(tau);
                 }
             });
         }
@@ -87,7 +87,7 @@ fn benchmark_multiexp(c: &mut Criterion) {
     }
 }
 
-fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInt> {
+fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInteger> {
     (0..v.len()).map(|_| G::ScalarField::rand(rng).to_repr()).collect()
 }
 
