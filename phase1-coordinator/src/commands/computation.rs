@@ -8,10 +8,11 @@ use crate::{
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, derive_rng_from_seed, UseCompression};
 
-use rand::Rng;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as Engine};
+
+use rand::{CryptoRng, Rng};
 use std::{io::Write, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace};
-use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
 
 pub const SEED_LENGTH: usize = 32;
 pub type Seed = [u8; SEED_LENGTH];
@@ -119,7 +120,7 @@ impl Computation {
         challenge_reader: &[u8],
         mut response_writer: &mut [u8],
         parameters: &Phase1Parameters<T>,
-        mut rng: impl Rng,
+        mut rng: impl Rng + CryptoRng,
     ) -> Result<(), CoordinatorError> {
         // Fetch the environment settings.
         let compressed_inputs = environment.compressed_inputs();

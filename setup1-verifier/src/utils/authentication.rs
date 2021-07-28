@@ -1,9 +1,8 @@
 use crate::errors::VerifierError;
 
-use snarkos_toolkit::account::{
-    view_key::{Signature, ViewKey},
-    Address,
-};
+use snarkvm_algorithms::SignatureScheme;
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, Parameters, ViewKey};
+use snarkvm_utilities::{FromBytes, ToBytes};
 
 use rand::thread_rng;
 use std::{fmt, str::FromStr};
@@ -39,7 +38,11 @@ pub struct AleoAuthentication {}
 impl AleoAuthentication {
     /// Generate the authentication header with the request method, request path, and view key.
     /// Returns the authorization header "Aleo <address>:<signature>"
-    pub fn authenticate(view_key: &ViewKey, method: &str, path: &str) -> Result<AuthenticationHeader, VerifierError> {
+    pub fn authenticate(
+        view_key: &ViewKey<Testnet2Parameters>,
+        method: &str,
+        path: &str,
+    ) -> Result<AuthenticationHeader, VerifierError> {
         // Derive the Aleo address used to verify the signature.
         let address = Address::from_view_key(&view_key)?;
 
@@ -67,27 +70,30 @@ impl AleoAuthentication {
     /// Returns a signature created by signing a message with an Aleo view key. Otherwise,
     /// returns a `VerifierError`.
     ///
-    pub fn sign(view_key: &ViewKey, message: String) -> Result<String, VerifierError> {
+    pub fn sign(view_key: &ViewKey<Testnet2Parameters>, message: String) -> Result<String, VerifierError> {
         let rng = &mut thread_rng();
 
         trace!("Signing message - (message: {})", message);
 
         // Construct the authentication signature.
-        let signature = view_key.sign(&message.into_bytes(), rng)?;
+        let signature = hex::encode(view_key.sign(&message.into_bytes(), rng)?.to_bytes_le()?);
 
         // Construct the authentication header.
-        Ok(signature.to_string())
+        Ok(signature)
     }
 
     ///
     /// Returns `true` if the signature verifies for a given address and message.
     ///
-    pub fn verify(address: &str, signature: &str, message: String) -> Result<bool, VerifierError> {
-        let aleo_address = Address::from_str(&address)?;
-        let view_key_signature = Signature::from_str(&signature)?;
+    pub fn verify(
+        address: &Address<Testnet2Parameters>,
+        signature: &str,
+        message: String,
+    ) -> Result<bool, VerifierError> {
+        let view_key_signature = FromBytes::from_bytes_le(&hex::decode(signature)?)?;
 
         // Check that the message verifies
-        Ok(aleo_address.verify(&message.to_string().into_bytes(), &view_key_signature)?)
+        Ok(address.verify_signature(&message.into_bytes(), &view_key_signature)?)
     }
 
     /// Verify a request is authenticated by
@@ -107,7 +113,9 @@ impl AleoAuthentication {
 
         trace!("Authentication for address {} message is: {:?}", address, message);
 
-        AleoAuthentication::verify(address, signature, message)
+        let aleo_address = &Address::<Testnet2Parameters>::from_str(&address)?;
+
+        AleoAuthentication::verify(aleo_address, signature, message)
     }
 }
 
@@ -115,11 +123,36 @@ impl AleoAuthentication {
 mod authentication_tests {
     use super::*;
 
+    use std::convert::TryInto;
+
     // Example API request path
     const PATH: &str = "/v1/queue/verifier/join";
 
     // Example view key.
-    const TEST_VIEW_KEY: &str = "AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3";
+    const TEST_VIEW_KEY: &str = "AViewKey1cWY7CaSDuwAEXoFki7Z1JELj7ksum8JxfZGpsPLHJACx";
+    const TEST_ADDRESS: &str = "aleo1en3lu60j0gcetvnpscvzwcxgujj069tlr3qlrm7y5kcrncxu3y8qva8p7k";
+
+    #[test]
+    fn test_aleo_account_signature_sanity_check() {
+        // Start by confirming the account derivation in snarkVM has not changed.
+        let view_key = ViewKey::<Testnet2Parameters>::from_str(&TEST_VIEW_KEY).unwrap();
+        let address = Address::from_view_key(&view_key).unwrap();
+        assert_eq!(TEST_ADDRESS, address.to_string());
+
+        let message = "hello world".to_string();
+        let rng = &mut thread_rng();
+
+        // Check that the account signature scheme works correctly in snarkVM.
+        let expected_signature = view_key.sign(&message.clone().into_bytes(), rng).unwrap();
+        let signature_string = hex::encode(expected_signature.to_bytes_le().unwrap());
+        let candidate_signature = FromBytes::from_bytes_le(&hex::decode(signature_string).unwrap()).unwrap();
+        assert_eq!(expected_signature, candidate_signature);
+
+        // Check that AleoAuthentication uses the account signature scheme from snarkVM correctly.
+        let signature_string = AleoAuthentication::sign(&view_key, message.clone()).unwrap();
+        let is_valid_signature = AleoAuthentication::verify(&address, &signature_string, message.clone()).unwrap();
+        assert!(is_valid_signature);
+    }
 
     #[test]
     fn test_request_authentication() {

@@ -1,8 +1,9 @@
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey};
+
 use age::Decryptor;
 use anyhow::{anyhow, Result};
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use serde::Deserialize;
-use snarkos_toolkit::account::{Address, PrivateKey};
 use std::{fs, io::Read, str::FromStr};
 use structopt::StructOpt;
 use unic_langid::LanguageIdentifier;
@@ -39,7 +40,7 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<SecretVec<u8>> 
     }
 }
 
-fn read_private_key(keys_path: &str) -> Result<PrivateKey> {
+fn read_private_key(keys_path: &str) -> Result<PrivateKey<Testnet2Parameters>> {
     let file_contents = fs::read(&keys_path)?;
     let keys: AleoSetupKeys = serde_json::from_slice(&file_contents)?;
     let passphrase = age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
@@ -58,7 +59,7 @@ fn main() {
 
     let private_key = read_private_key(&options.path).expect("Should read a private key");
 
-    let address = Address::from(&private_key)
+    let address = Address::from_private_key(&private_key)
         .expect("Should produce a public key out of a private key")
         .to_string();
     println!("{}", address);

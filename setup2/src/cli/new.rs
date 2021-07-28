@@ -1,44 +1,22 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
-
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
+use snarkvm_algorithms::{SNARK, SRS};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use snarkvm_dpc::{
+    prelude::*,
+    testnet2::parameters::{Testnet2DPC, Testnet2Parameters},
+};
+use snarkvm_fields::Field;
+use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
 
 use gumdrop::Options;
-
-use snarkos_dpc::base_dpc::{
-    inner_circuit::InnerCircuit,
-    instantiated::{
-        CommitmentMerkleParameters,
-        Components,
-        InnerPairing,
-        InstantiatedDPC,
-        MerkleTreeCRH,
-        OuterPairing,
-    },
-    outer_circuit::OuterCircuit,
-    parameters::SystemParameters,
-};
-use snarkos_models::{
-    algorithms::{MerkleParameters, CRH},
-    curves::{Field, PairingEngine as AleoPairingengine},
-    gadgets::r1cs::{ConstraintCounter, ConstraintSynthesizer},
-    parameters::Parameters,
-};
-use snarkos_parameters::LedgerMerkleTreeParameters;
-use snarkos_utilities::{
-    bytes::{FromBytes, ToBytes},
-    to_bytes,
-};
-
 use memmap::MmapOptions;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
-use snarkos_dpc::base_dpc::{program::PrivateProgramInput, BaseDPCComponents, NoopCircuit};
-use snarkos_models::algorithms::SNARK;
+use rand_chacha::ChaChaRng;
 use std::fs::OpenOptions;
 
-type AleoInner = InnerPairing;
-type AleoOuter = OuterPairing;
+type AleoInner = <Testnet2Parameters as Parameters>::InnerCurve;
+type AleoOuter = <Testnet2Parameters as Parameters>::OuterCurve;
 type ZexeInner = Bls12_377;
 type ZexeOuter = BW6_761;
 
@@ -81,52 +59,39 @@ pub struct NewOpts {
 }
 
 pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
-    let circuit_parameters = SystemParameters::<Components>::load()?;
-
-    // Load the inner circuit & merkle params
-    let params_bytes = LedgerMerkleTreeParameters::load_bytes()?;
-    let params = <MerkleTreeCRH as CRH>::Parameters::read(&params_bytes[..])?;
-    let merkle_tree_hash_parameters = <CommitmentMerkleParameters as MerkleParameters>::H::from(params);
-    let merkle_params = From::from(merkle_tree_hash_parameters);
-
     if opt.is_inner {
-        let circuit = InnerCircuit::blank(&circuit_parameters, &merkle_params);
+        let circuit = InnerCircuit::<Testnet2Parameters>::blank();
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
-        let rng = &mut XorShiftRng::from_seed([0u8; 16]);
-        let noop_program_snark_parameters =
-            InstantiatedDPC::generate_noop_program_snark_parameters(&circuit_parameters, rng)?;
-        let program_snark_proof = <Components as BaseDPCComponents>::NoopProgramSNARK::prove(
-            &noop_program_snark_parameters.proving_key,
-            NoopCircuit::<Components>::blank(&circuit_parameters),
+        let rng = &mut ChaChaRng::from_seed([0u8; 32]); // TODO (howardwu): CRITICAL - Someone put this here. This is not safe!
+        let dpc = Testnet2DPC::load(false)?;
+        let noop_program_snark_parameters = dpc.noop_program.to_snark_parameters();
+        let program_snark_proof = <Testnet2Parameters as Parameters>::ProgramSNARK::prove(
+            &noop_program_snark_parameters.0,
+            &NoopCircuit::<Testnet2Parameters>::blank(),
             rng,
         )?;
 
-        let private_program_input = PrivateProgramInput {
-            verification_key: to_bytes![noop_program_snark_parameters.verification_key.clone()]?,
-            proof: to_bytes![program_snark_proof]?,
+        let private_program_input = Execution::<<Testnet2Parameters as Parameters>::ProgramSNARK> {
+            verifying_key: noop_program_snark_parameters.1.clone(),
+            proof: program_snark_proof,
         };
 
-        let inner_snark_parameters = <Components as BaseDPCComponents>::InnerSNARK::setup(
-            InnerCircuit::blank(&circuit_parameters, &merkle_params),
-            rng,
+        let inner_snark_parameters = <Testnet2Parameters as Parameters>::InnerSNARK::setup(
+            &InnerCircuit::<Testnet2Parameters>::blank(),
+            &mut SRS::CircuitSpecific(rng),
         )?;
 
-        let inner_snark_vk: <<Components as BaseDPCComponents>::InnerSNARK as SNARK>::VerificationParameters =
+        let inner_snark_vk: <<Testnet2Parameters as Parameters>::InnerSNARK as SNARK>::VerifyingKey =
             inner_snark_parameters.1.clone().into();
-        let inner_snark_proof = <Components as BaseDPCComponents>::InnerSNARK::prove(
+        let inner_snark_proof = <Testnet2Parameters as Parameters>::InnerSNARK::prove(
             &inner_snark_parameters.0,
-            InnerCircuit::blank(&circuit_parameters, &merkle_params),
+            &InnerCircuit::<Testnet2Parameters>::blank(),
             rng,
         )?;
 
-        let circuit = OuterCircuit::blank(
-            &circuit_parameters,
-            &merkle_params,
-            &inner_snark_vk,
-            &inner_snark_proof,
-            &private_program_input,
-        );
+        let circuit =
+            OuterCircuit::<Testnet2Parameters>::blank(inner_snark_vk, inner_snark_proof, private_program_input);
         generate_params::<AleoOuter, ZexeOuter, _>(opt, circuit)
     }
 }
@@ -134,12 +99,19 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
 /// Returns the number of powers required for the Phase 2 ceremony
 /// = log2(aux + inputs + constraints)
 fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> usize {
-    let mut counter = ConstraintCounter::new();
+    let mut counter = ConstraintCounter {
+        num_public_variables: 0,
+        num_private_variables: 0,
+        num_constraints: 0,
+    };
     circuit
         .clone()
         .generate_constraints(&mut counter)
         .expect("could not calculate number of required constraints");
-    let phase2_size = std::cmp::max(counter.num_constraints, counter.num_aux + counter.num_inputs + 1);
+    let phase2_size = std::cmp::max(
+        counter.num_constraints,
+        counter.num_private_variables + counter.num_public_variables + 1,
+    );
     let power = log_2(phase2_size) as u32;
 
     // get the nearest power of 2
@@ -150,7 +122,7 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
     }
 }
 
-pub fn generate_params<Aleo: AleoPairingengine, Zexe: PairingEngine, C: Clone + ConstraintSynthesizer<Aleo::Fr>>(
+pub fn generate_params<Aleo: PairingEngine, Zexe: PairingEngine, C: Clone + ConstraintSynthesizer<Aleo::Fr>>(
     opt: &NewOpts,
     circuit: C,
 ) -> anyhow::Result<()> {

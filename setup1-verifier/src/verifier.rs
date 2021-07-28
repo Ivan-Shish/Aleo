@@ -14,8 +14,8 @@ use phase1_coordinator::{
     Participant,
 };
 use setup_utils::calculate_hash;
-use snarkos_toolkit::account::{Address, ViewKey};
-use zexe_algebra::{Bls12_377, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, ViewKey};
 
 use chrono::Utc;
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
@@ -51,7 +51,7 @@ pub struct Verifier {
     pub(crate) coordinator_api_url: Url,
 
     /// The view key that will be used for server authentication
-    pub(crate) view_key: ViewKey,
+    pub(crate) view_key: ViewKey<Testnet2Parameters>,
 
     /// The identity of the verifier
     pub(crate) verifier: Participant,
@@ -87,8 +87,8 @@ impl Verifier {
     ///
     pub fn new(
         coordinator_api_url: Url,
-        view_key: ViewKey,
-        address: Address,
+        view_key: ViewKey<Testnet2Parameters>,
+        address: Address<Testnet2Parameters>,
         environment: Environment,
         tasks_storage_path: String,
     ) -> Result<Self, VerifierError> {
@@ -535,7 +535,7 @@ mod tests {
     use rand_xorshift::XorShiftRng;
     use std::str::FromStr;
 
-    const TEST_VIEW_KEY: &str = "AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3";
+    const TEST_VIEW_KEY: &str = "AViewKey1cWY7CaSDuwAEXoFki7Z1JELj7ksum8JxfZGpsPLHJACx";
 
     pub fn test_verifier() -> Verifier {
         let environment: Testing = Testing::from(Parameters::TestCustom {
@@ -617,7 +617,7 @@ mod tests {
         let address = Address::from_view_key(&verifier.view_key).unwrap();
 
         // Check that the signature verifies
-        assert!(AleoAuthentication::verify(&address.to_string(), signature, message).unwrap())
+        assert!(AleoAuthentication::verify(&address, signature, message).unwrap())
     }
 
     #[test]

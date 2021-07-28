@@ -3,21 +3,15 @@
 //! A Groth16 keypair. Generate one with the Keypair::new method.
 //! Dispose of the private key ASAP once it's been used.
 use setup_utils::{hash_to_g2, CheckForCorrectness, Deserializer, HashWriter, Result, Serializer, UseCompression};
-
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    PairingEngine,
-    ProjectiveCurve,
-    UniformRand,
-};
+use snarkvm_curves::{PairingEngine, ProjectiveCurve};
+use snarkvm_utilities::{CanonicalSerialize, ConstantSerializedSize, UniformRand};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::Rng;
 use std::{
     fmt,
     io::{self, Read, Write},
+    ops::Mul,
 };
 
 /// This needs to be destroyed by at least one participant
@@ -128,17 +122,17 @@ impl<E: PairingEngine> Keypair<E> {
     pub fn new(delta_g1: E::G1Affine, cs_hash: [u8; 64], contributions: &[PublicKey<E>], rng: &mut impl Rng) -> Self {
         // Sample random delta -- THIS MUST BE DESTROYED
         let delta: E::Fr = E::Fr::rand(rng);
-        let delta_after = delta_g1.mul(delta).into_affine();
+        let delta_after = delta_g1.mul(delta);
 
         // Compute delta s-pair in G1
         let s = E::G1Projective::rand(rng).into_affine();
-        let s_delta = s.mul(delta).into_affine();
+        let s_delta = s.mul(delta);
 
         // Get the transcript
         let transcript = hash_cs_pubkeys(cs_hash, contributions, s, s_delta);
         // Compute delta s-pair in G2 by hashing the transcript and multiplying it by delta
         let r = hash_to_g2::<E>(&transcript[..]).into_affine();
-        let r_delta = r.mul(delta).into_affine();
+        let r_delta = r.mul(delta);
 
         Self {
             public_key: PublicKey {
@@ -209,8 +203,9 @@ impl<E: PairingEngine> PartialEq for PublicKey<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use snarkvm_curves::{bls12_377::Bls12_377, AffineCurve};
+
     use rand::thread_rng;
-    use zexe_algebra::Bls12_377;
 
     #[test]
     fn serialization() {

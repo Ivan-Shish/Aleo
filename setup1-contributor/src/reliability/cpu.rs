@@ -1,12 +1,13 @@
+use phase1::{Phase1, Phase1Parameters, ProvingSystem};
+use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
+use setup_utils::{blank_hash, derive_rng_from_seed, CheckForCorrectness, UseCompression};
+use snarkvm_curves::{bls12_377::Bls12_377, PairingEngine};
+
 use std::fmt::Debug;
 
 use anyhow::{anyhow, Result};
 use futures::{Sink, SinkExt};
-use phase1::{Phase1, Phase1Parameters, ProvingSystem};
-use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
-use setup_utils::{blank_hash, derive_rng_from_seed, CheckForCorrectness, UseCompression};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use zexe_algebra::{Bls12_377, PairingEngine};
 
 const TOTAL_SIZE: usize = 14; // Proof of Work takes roughly 20 seconds if TOTAL_SIZE=14
 const BATCH_SIZE: usize = 2;
@@ -61,8 +62,9 @@ where
 #[cfg(test)]
 mod test {
     use crate::reliability::cpu::calculate_powers_of_tau;
+    use snarkvm_curves::bls12_377::Bls12_377;
+
     use std::time::Instant;
-    use zexe_algebra::Bls12_377;
 
     const DATA_LENGTH: usize = 64;
     const OUTPUT_LENGTH: usize = 790192;
@@ -75,7 +77,7 @@ mod test {
         let elapsed = now.elapsed();
         println!("Proof of Work took: {:.2?}", elapsed);
         assert_eq!(output.len(), OUTPUT_LENGTH);
-        let expected = [12, 53, 232, 21, 121, 10, 125, 129];
+        let expected = [53, 123, 154, 189, 96, 121, 231, 0];
         assert_eq!(output[OUTPUT_LENGTH - expected.len()..], expected);
     }
 }

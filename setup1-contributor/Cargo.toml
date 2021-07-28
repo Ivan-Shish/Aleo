@@ -14,8 +14,9 @@ phase1-coordinator = { path = "../phase1-coordinator", features = ["operator"]}
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
 setup-utils = { path = "../setup-utils" }
 
-snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "707b06f" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
 
 age = { version = "0.5", features = [ "cli-common", "armor" ] }
 azure_sdk_core = { version = "0.43.7", optional = true }
@@ -33,11 +34,12 @@ i18n-embed = { version = "0.9", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
 lazy_static = { version = "1.4.0" }
 panic-control = {version = "0.1.4" }
-rand = { version = "0.7" }
+rand = { version = "0.8" }
 reqwest = "0.11"
 secrecy = { version = "0.7" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
+serial_test = { version = "0.5.1" }
 structopt = { version = "0.3" }
 thiserror = { version = "1.0" }
 tokio = { version = "1.7", features = [ "macros", "rt-multi-thread" ] }

@@ -1,6 +1,6 @@
 use crate::{cli::commands::generate::GenerateOptions, objects::AleoSetupKeys};
 
-use snarkos_toolkit::account::{Address, PrivateKey};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey};
 
 use age::{
     armor::{ArmoredWriter, Format},
@@ -11,7 +11,7 @@ use age::{
 use anyhow::Result;
 use rand::{rngs::OsRng, RngCore};
 use secrecy::{ExposeSecret, SecretVec};
-use std::io::Write;
+use std::{convert::TryFrom, io::Write};
 
 fn encrypt(encryptor: Encryptor, secret: &[u8]) -> Result<String> {
     let mut encrypted_output = vec![];
@@ -56,8 +56,9 @@ pub fn generate_keys(opts: GenerateOptions) {
     let mut aleo_seed = vec![0u8; 64];
     rng.fill_bytes(&mut aleo_seed[..]);
     let aleo_seed = SecretVec::new(aleo_seed);
-    let private_key = PrivateKey::new(&mut rng).expect("Should have generated an Aleo private key");
-    let address = Address::from(&private_key).expect("Should have derived an Aleo address");
+    let private_key =
+        PrivateKey::<Testnet2Parameters>::new(&mut rng).expect("Should have generated an Aleo private key");
+    let address = Address::try_from(&private_key).expect("Should have derived an Aleo address");
     let private_key = private_key.to_string();
 
     let encrypted_aleo_seed =

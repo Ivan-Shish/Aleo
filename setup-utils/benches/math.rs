@@ -1,15 +1,13 @@
 use phase1::helpers::testing::random_point_vec;
 use setup_utils::{batch_exp, dense_multiexp, generate_powers_of_tau};
 
-use zexe_algebra::{
+use snarkvm_curves::{
     bls12_377::{Bls12_377, G1Affine},
     AffineCurve,
-    Field,
     PairingEngine,
-    PrimeField,
-    UniformRand,
-    Zero,
 };
+use snarkvm_fields::{Field, PrimeField, Zero};
+use snarkvm_utilities::UniformRand;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rand::Rng;
@@ -30,7 +28,7 @@ pub fn generate_powers_of_tau_crossbeam<E: PairingEngine>(tau: &E::Fr, start: us
 
                 for t in taupowers {
                     *t = acc;
-                    acc.mul_assign(&tau);
+                    acc.mul_assign(tau);
                 }
             });
         }
@@ -89,8 +87,8 @@ fn benchmark_multiexp(c: &mut Criterion) {
     }
 }
 
-fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInt> {
-    (0..v.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect()
+fn randomness<G: AffineCurve>(v: &[G], rng: &mut impl Rng) -> Vec<<G::ScalarField as PrimeField>::BigInteger> {
+    (0..v.len()).map(|_| G::ScalarField::rand(rng).to_repr()).collect()
 }
 
 criterion_group!(benches, benchmark_phase1, benchmark_batchexp, benchmark_multiexp);

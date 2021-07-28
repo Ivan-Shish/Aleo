@@ -1,8 +1,8 @@
-use std::fmt::Debug;
+use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
 
 use anyhow::{anyhow, Result};
 use futures::{Sink, SinkExt};
-use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
+use std::fmt::Debug;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub(super) async fn check<W>(write_half: &mut W, data: Vec<u8>) -> Result<()>

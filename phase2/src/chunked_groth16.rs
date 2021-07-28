@@ -8,23 +8,16 @@ use crate::{
     parameters::*,
 };
 use setup_utils::{batch_mul, check_same_ratio, merge_pairs, InvariantKind, Phase2Error, Result};
-
-use zexe_algebra::{
-    AffineCurve,
-    CanonicalDeserialize,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    Field,
-    PairingEngine,
-    ProjectiveCurve,
-};
-use zexe_groth16::VerifyingKey;
+use snarkvm_algorithms::snark::groth16::VerifyingKey;
+use snarkvm_curves::{AffineCurve, PairingEngine};
+use snarkvm_fields::Field;
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, ConstantSerializedSize};
 
 use byteorder::{BigEndian, WriteBytesExt};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use std::{
     io::{Read, Seek, SeekFrom, Write},
-    ops::Neg,
+    ops::{Mul, Neg},
 };
 use tracing::{debug, info, info_span, trace};
 
@@ -211,7 +204,11 @@ pub fn verify<E: PairingEngine>(before: &mut [u8], after: &mut [u8], batch_size:
 /// followed by the contributions array and the contributions hash), this will modify the
 /// Delta_g1, the VK's Delta_g2 and will update the H and L queries in place while leaving
 /// everything else unchanged
-pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batch_size: usize) -> Result<[u8; 64]> {
+pub fn contribute<E: PairingEngine, R: Rng + CryptoRng>(
+    buffer: &mut [u8],
+    rng: &mut R,
+    batch_size: usize,
+) -> Result<[u8; 64]> {
     let span = info_span!("phase2-contribute");
     let _enter = span.enter();
 
@@ -248,8 +245,8 @@ pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batc
     let delta_inv = private_key.delta.inverse().expect("nonzero");
 
     // update the values
-    delta_g1 = delta_g1.mul(delta).into_affine();
-    vk.delta_g2 = vk.delta_g2.mul(delta).into_affine();
+    delta_g1 = delta_g1.mul(delta);
+    vk.delta_g2 = vk.delta_g2.mul(delta);
 
     // go back to the start of the buffer to write the updated vk and delta_g1
     buffer.seek(SeekFrom::Start(0))?;

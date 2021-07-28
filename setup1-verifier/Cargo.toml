@@ -19,8 +19,10 @@ phase1-coordinator = { path = "../phase1-coordinator", features= ["operator"] }
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761"] }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM", rev = "707b06f" }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "707b06f" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM", rev = "707b06f" }
 
 anyhow = { version = "1.0.32" }
 chrono = { version = "0.4", features = ["serde"] }
@@ -28,7 +30,7 @@ ctrlc = { version = "3.1.7" }
 futures-util = { version = "0.3.5" }
 hex = { version = "0.4.2" }
 http = "0.2"
-rand = { version = "0.7.3" }
+rand = { version = "0.8" }
 reqwest = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
@@ -42,5 +44,5 @@ url = "2.2.2"
 
 [dev-dependencies]
 lazy_static = { version = "1.4.0" }
-rand_xorshift = { version = "0.2" }
+rand_xorshift = { version = "0.3" }
 serial_test = { version = "0.5" }

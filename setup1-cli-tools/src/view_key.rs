@@ -1,8 +1,8 @@
-use snarkos_toolkit::account::{PrivateKey, ViewKey};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, PrivateKey, ViewKey};
 
 fn main() {
     let mut rng = rand::thread_rng();
-    let private_key = PrivateKey::new(&mut rng).expect("Should generate a random PrivateKey struct");
-    let view_key = ViewKey::from(&private_key).expect("Should create a ViewKey from a PrivateKey");
+    let private_key = PrivateKey::<Testnet2Parameters>::new(&mut rng).expect("Unable to generate a random private key");
+    let view_key = ViewKey::from_private_key(&private_key).expect("Unable to derive the view key from private key");
     print!("{}", view_key);
 }

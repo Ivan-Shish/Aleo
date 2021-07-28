@@ -1,11 +1,11 @@
 use phase2::{chunked_groth16::contribute as chunked_contribute, keypair::PublicKey};
 use setup_utils::Result;
 
-use zexe_algebra::{Bls12_377, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use gumdrop::Options;
 use memmap::MmapOptions;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use std::fs::OpenOptions;
 
 #[derive(Debug, Options, Clone)]
@@ -28,7 +28,7 @@ pub struct ContributeOpts {
     pub is_inner: bool,
 }
 
-pub fn contribute<R: Rng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
+pub fn contribute<R: Rng + CryptoRng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)

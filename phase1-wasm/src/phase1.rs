@@ -13,10 +13,9 @@ use setup_utils::{
     CheckForCorrectness,
     UseCompression,
 };
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
-
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use wasm_bindgen::prelude::*;
 
 pub(crate) const COMPRESSED_INPUT: UseCompression = UseCompression::No;
@@ -139,7 +138,7 @@ pub fn get_parameters_chunked<E: PairingEngine>(
 pub fn contribute_challenge<E: PairingEngine + Sync>(
     challenge: &[u8],
     parameters: &Phase1Parameters<E>,
-    mut rng: impl Rng,
+    mut rng: impl Rng + CryptoRng,
 ) -> Result<ContributionResponse, String> {
     let expected_challenge_length = match COMPRESSED_INPUT {
         UseCompression::Yes => parameters.contribution_size,
