@@ -1393,6 +1393,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hex-literal"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21e4590e13640f19f249fe3e4eca5113bc4289f2497710378190e7f4bd96f45b"
+
+[[package]]
 name = "hkdf"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3372,6 +3378,31 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "setup2"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "cfg-if 0.1.10",
+ "gumdrop",
+ "hex",
+ "hex-literal",
+ "memmap",
+ "phase2",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
+ "setup-utils",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-fields",
+ "snarkvm-parameters",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
+ "thiserror",
+ "tracing-subscriber",
 ]
 
 [[package]]

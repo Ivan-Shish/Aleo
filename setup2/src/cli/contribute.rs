@@ -5,7 +5,7 @@ use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use gumdrop::Options;
 use memmap::MmapOptions;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use std::fs::OpenOptions;
 
 #[derive(Debug, Options, Clone)]

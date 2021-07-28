@@ -10,7 +10,7 @@ members = [
     "setup1-contributor",
     "setup1-shared",
     "setup1-verifier",
-#    "setup2",
+    "setup2",
     "setup-utils",
 ]
 
