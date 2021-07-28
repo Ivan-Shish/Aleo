@@ -535,7 +535,7 @@ mod tests {
     use rand_xorshift::XorShiftRng;
     use std::str::FromStr;
 
-    const TEST_VIEW_KEY: &str = "AViewKey1cWNDyYMjc9p78PnCderRx37b9pJr4myQqmmPeCfeiLf3";
+    const TEST_VIEW_KEY: &str = "AViewKey1cWY7CaSDuwAEXoFki7Z1JELj7ksum8JxfZGpsPLHJACx";
 
     pub fn test_verifier() -> Verifier {
         let environment: Testing = Testing::from(Parameters::TestCustom {
@@ -617,7 +617,7 @@ mod tests {
         let address = Address::from_view_key(&verifier.view_key).unwrap();
 
         // Check that the signature verifies
-        assert!(AleoAuthentication::verify(&address.to_string(), signature, message).unwrap())
+        assert!(AleoAuthentication::verify(&address, signature, message).unwrap())
     }
 
     #[test]

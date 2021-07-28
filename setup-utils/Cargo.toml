@@ -14,11 +14,11 @@ name = "math"
 harness = false
 
 [dependencies]
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
 
 blake2 = { version = "0.8.1" }
 blake2s_simd = { version = "0.5.11" }

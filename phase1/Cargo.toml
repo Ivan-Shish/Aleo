@@ -15,10 +15,10 @@ required-features = ["benchmark"]
 
 [dependencies]
 setup-utils = { path = "../setup-utils", default-features = false }
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2", default-features = false }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f", default-features = false }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
 
 cfg-if = { version = "0.1.10" }
 criterion = { version = "0.3", optional = true }
@@ -31,10 +31,10 @@ serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 phase1 = { path = "./", features = ["testing"] }
-snarkvm-marlin = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-polycommit = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-posw = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-marlin = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-polycommit = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-posw = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
 
 anyhow = { version = "1.0.37" }
 blake2 = { version = "0.8", default-features = false }

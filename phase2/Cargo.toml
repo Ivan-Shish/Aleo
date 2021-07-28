@@ -19,11 +19,11 @@ required-features = ["phase2/testing"]
 [dependencies]
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
-snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "707b06f" }
 
 byteorder = { version = "1.3.4" }
 cfg-if = { version = "0.1.10" }
