@@ -100,8 +100,8 @@ mod tests {
     use crate::utils::remove_file_if_exists;
 
     use lazy_static::lazy_static;
-    use std::path::Path;
     use serial_test::serial;
+    use std::path::Path;
 
     const TEST_TASK_FILE: &str = "TEST.tasks";
 
