@@ -211,7 +211,7 @@ pub fn verify<E: PairingEngine>(before: &mut [u8], after: &mut [u8], batch_size:
 /// followed by the contributions array and the contributions hash), this will modify the
 /// Delta_g1, the VK's Delta_g2 and will update the H and L queries in place while leaving
 /// everything else unchanged
-pub fn contribute<E: PairingEngine, R: Rng>(buffer: &mut [u8], rng: &mut R, batch_size: usize) -> Result<[u8; 64]> {
+pub fn contribute<E: PairingEngine, R: Rng + CryptoRng>(buffer: &mut [u8], rng: &mut R, batch_size: usize) -> Result<[u8; 64]> {
     let span = info_span!("phase2-contribute");
     let _enter = span.enter();
 

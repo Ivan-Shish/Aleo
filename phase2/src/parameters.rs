@@ -152,7 +152,7 @@ impl<E: PairingEngine> MPCParameters<E> {
     /// sure their contribution is in the final parameters, by
     /// checking to see if it appears in the output of
     /// `MPCParameters::verify`.
-    pub fn contribute<R: Rng>(&mut self, rng: &mut R) -> Result<[u8; 64]> {
+    pub fn contribute<R: Rng + CryptoRng>(&mut self, rng: &mut R) -> Result<[u8; 64]> {
         // Generate a keypair
         let Keypair {
             public_key,

@@ -28,7 +28,7 @@ use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_utilities::rand::UniformRand;
 
 use core::ops::Mul;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use tracing::{debug, info, info_span, trace};
 
 /// `Phase1` is an object that participants of the ceremony contribute

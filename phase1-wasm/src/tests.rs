@@ -4,8 +4,8 @@ use setup_utils::{batch_exp, blank_hash, generate_powers_of_tau, UseCompression}
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, AffineCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{batch_inversion, Field};
 
-use rand_core::SeedableRng;
-use rand_xorshift::XorShiftRng;
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
 use std::ops::Mul;
 use wasm_bindgen_test::*;
 
@@ -29,14 +29,14 @@ fn contribute_challenge_test<E: PairingEngine + Sync>(parameters: &Phase1Paramet
     // Get a non-mutable copy of the initial accumulator state.
     let (input, mut before) = generate_input(&parameters, COMPRESSED_INPUT);
 
-    let mut rng = XorShiftRng::seed_from_u64(0);
+    let mut rng = ChaChaRng::seed_from_u64(0);
     // Construct our keypair using the RNG we created above
     let current_accumulator_hash = blank_hash();
 
     let (_, privkey): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
         Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
-    let output = contribute_challenge(&input, parameters, XorShiftRng::seed_from_u64(0))
+    let output = contribute_challenge(&input, parameters, ChaChaRng::seed_from_u64(0))
         .unwrap()
         .response;
 

@@ -28,7 +28,7 @@ pub struct ContributeOpts {
     pub is_inner: bool,
 }
 
-pub fn contribute<R: Rng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
+pub fn contribute<R: Rng + CryptoRng>(opts: &ContributeOpts, rng: &mut R) -> Result<()> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)

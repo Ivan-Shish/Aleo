@@ -4,7 +4,7 @@ use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompressio
 use snarkvm_curves::PairingEngine as Engine;
 
 use memmap::*;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use std::{
     fs::OpenOptions,
     io::{Read, Write},
@@ -17,7 +17,7 @@ pub fn contribute<T: Engine + Sync>(
     response_filename: &str,
     check_input_correctness: CheckForCorrectness,
     parameters: &Phase1Parameters<T>,
-    mut rng: impl Rng,
+    mut rng: impl Rng + CryptoRng,
 ) {
     // Try to load challenge file from disk.
     let reader = OpenOptions::new()

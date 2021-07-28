@@ -9,7 +9,7 @@ use snarkvm_fields::{Field, One, PrimeField, Zero};
 use snarkvm_utilities::{biginteger::BigInteger, rand::UniformRand, CanonicalSerialize, ConstantSerializedSize};
 
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
-use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
+use rand::{rngs::OsRng, thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::{
     convert::TryInto,
@@ -155,7 +155,7 @@ pub fn beacon_randomness(mut beacon_hash: [u8; 32]) -> [u8; 32] {
 }
 
 /// Interpret the first 32 bytes of the digest as 8 32-bit words
-pub fn get_rng(digest: &[u8]) -> impl Rng {
+pub fn get_rng(digest: &[u8]) -> impl Rng + CryptoRng {
     let seed = from_slice(digest);
     ChaChaRng::from_seed(seed)
 }

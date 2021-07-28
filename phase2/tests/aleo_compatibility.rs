@@ -20,7 +20,7 @@ use snarkos_utilities::serialize::CanonicalDeserialize;
 
 use rand::{thread_rng, Rng};
 
-fn generate_mpc_parameters<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine, C, R: Rng>(
+fn generate_mpc_parameters<Aleo: AleoPairingEngine, Zexe: ZexePairingEngine, C, R: Rng + CryptoRng>(
     proving_system: ProvingSystem,
     c: C,
     rng: &mut R,
