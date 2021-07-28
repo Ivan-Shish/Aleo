@@ -87,7 +87,7 @@ mod test {
             prepared_beta_h: beta_h.prepare(),
         };
 
-        let posw = PoswMarlin::index(universal_params).unwrap();
+        let posw = PoswMarlin::index::<_, rand_chacha::ChaChaRng>(universal_params).unwrap();
 
         // super low difficulty so we find a solution immediately
         let difficulty_target = 0xFFFF_FFFF_FFFF_FFFF_u64;
@@ -102,7 +102,7 @@ mod test {
 
         assert_eq!(proof.len(), 972); // NOTE: Marlin proofs use compressed serialization
 
-        let proof = <Marlin<Bls12_377> as SNARK>::Proof::read(&proof[..]).unwrap();
+        let proof = <Marlin<Bls12_377> as SNARK>::Proof::read_le(&proof[..]).unwrap();
         posw.verify(nonce, &proof, &pedersen_merkle_root).unwrap();
     }
 

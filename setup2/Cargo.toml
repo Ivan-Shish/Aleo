@@ -12,13 +12,13 @@ edition = "2018"
 phase2 = { path = "../phase2", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkvm-algorithms = { version = "0.6", default-features = false }
-snarkvm-curves = { version = "0.6" }
-snarkvm-dpc = { version = "0.6" }
-snarkvm-fields = { version = "0.6" }
-snarkvm-parameters = { version = "0.6" }
-snarkvm-r1cs = { version = "0.6" }
-snarkvm-utilities = { version = "0.6" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2", default-features = false }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-parameters = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
 
 anyhow = { version = "1.0.37" }
 cfg-if = { version = "0.1.10" }

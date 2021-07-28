@@ -15,30 +15,31 @@ required-features = ["benchmark"]
 
 [dependencies]
 setup-utils = { path = "../setup-utils", default-features = false }
-snarkvm-algorithms = { version = "0.6", default-features = false }
-snarkvm-curves = { version = "0.6" }
-snarkvm-fields = { version = "0.6" }
-snarkvm-utilities = { version = "0.6" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2", default-features = false }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
 
 cfg-if = { version = "0.1.10" }
 criterion = { version = "0.3", optional = true }
+derivative = { version = "2", features = [ "use_core" ] }
 itertools = { version = "0.9.0" }
 rand = { version = "0.8" }
 rayon = { version = "1.4.1", optional = true }
 tracing = { version = "0.1.21" }
-derivative = { version = "2", features = [ "use_core" ] }
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 phase1 = { path = "./", features = ["testing"] }
-snarkvm-marlin = { version = "0.6" }
-snarkvm-polycommit = { version = "0.6" }
-snarkvm-posw = { version = "0.6" }
-snarkvm-r1cs = { version = "0.6" }
+snarkvm-marlin = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-polycommit = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-posw = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
 
 anyhow = { version = "1.0.37" }
 blake2 = { version = "0.8", default-features = false }
 num-traits = { version = "0.2.12" }
+rand_chacha = { version = "0.3" }
 rusty-hook = { version = "0.11.2" }
 
 [features]

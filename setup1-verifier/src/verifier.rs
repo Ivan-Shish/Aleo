@@ -14,8 +14,8 @@ use phase1_coordinator::{
     Participant,
 };
 use setup_utils::calculate_hash;
-use snarkos_toolkit::account::{Address, ViewKey};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, ViewKey};
 
 use chrono::Utc;
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
@@ -51,7 +51,7 @@ pub struct Verifier {
     pub(crate) coordinator_api_url: Url,
 
     /// The view key that will be used for server authentication
-    pub(crate) view_key: ViewKey,
+    pub(crate) view_key: ViewKey<Testnet2Parameters>,
 
     /// The identity of the verifier
     pub(crate) verifier: Participant,
@@ -87,8 +87,8 @@ impl Verifier {
     ///
     pub fn new(
         coordinator_api_url: Url,
-        view_key: ViewKey,
-        address: Address,
+        view_key: ViewKey<Testnet2Parameters>,
+        address: Address<Testnet2Parameters>,
         environment: Environment,
         tasks_storage_path: String,
     ) -> Result<Self, VerifierError> {

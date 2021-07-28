@@ -72,14 +72,8 @@ impl From<serde_json::Error> for VerifierError {
     }
 }
 
-impl From<snarkos_toolkit::errors::AddressError> for VerifierError {
-    fn from(error: snarkos_toolkit::errors::AddressError) -> Self {
-        VerifierError::Crate("snarkos", format!("{:?}", error))
-    }
-}
-
-impl From<snarkos_toolkit::errors::ViewKeyError> for VerifierError {
-    fn from(error: snarkos_toolkit::errors::ViewKeyError) -> Self {
-        VerifierError::Crate("snarkos", format!("{:?}", error))
+impl From<snarkvm_dpc::AccountError> for VerifierError {
+    fn from(error: snarkvm_dpc::AccountError) -> Self {
+        VerifierError::Crate("snarkvm_dpc", format!("{:?}", error))
     }
 }

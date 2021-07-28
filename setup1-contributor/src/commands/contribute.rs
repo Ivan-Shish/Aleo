@@ -16,7 +16,6 @@ use crate::{
 #[cfg(feature = "azure")]
 use crate::utils::upload_file_to_azure_async;
 
-use age::DecryptError;
 use phase1::helpers::converters::CurveKind;
 use phase1_cli::contribute;
 use phase1_coordinator::{
@@ -25,9 +24,10 @@ use phase1_coordinator::{
 };
 use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
-use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey, ViewKey};
 
+use age::DecryptError;
 use anyhow::{Context, Result};
 use chrono::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -38,6 +38,7 @@ use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    convert::TryFrom,
     fs::File,
     io::{Read, Write},
     ops::Deref,
@@ -113,13 +114,13 @@ impl Contribute {
         private_key: &[u8],
         seed: Arc<SecretVec<u8>>,
     ) -> Result<Self> {
-        let private_key = PrivateKey::from_str(std::str::from_utf8(&private_key)?)?;
+        let private_key = PrivateKey::<Testnet2Parameters>::from_str(std::str::from_utf8(&private_key)?)?;
 
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
         let contribute = Self {
             server_url: opts.api_url.clone(),
-            participant_id: Address::from(&private_key)?.to_string(),
+            participant_id: Address::try_from(&private_key)?.to_string(),
             private_key: private_key.to_string(),
             seed,
             upload_mode: opts.upload_mode.clone(),
@@ -545,7 +546,7 @@ impl Contribute {
             let response_hash = calculate_hash(&response_file).to_vec();
 
             // Sign the contribution state.
-            let view_key = ViewKey::from(&PrivateKey::from_str(&self.private_key)?)?;
+            let view_key = ViewKey::<Testnet2Parameters>::try_from(&PrivateKey::from_str(&self.private_key)?)?;
             let signed_contribution_state =
                 sign_contribution_state(&view_key.to_string(), &challenge_hash, &response_hash, None, auth_rng)?;
 

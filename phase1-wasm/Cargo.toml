@@ -14,10 +14,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 phase1 = { path = "../phase1", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
-snarkvm-curves = { version = "0.6" }
-snarkvm-fields = { version = "0.6" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "testnet2" }
 
-rand = { version = "0.7" }
+getrandom = { version = "0.2" }
+rand = { version = "0.8" }
+rand_chacha = { version = "0.3" }
 serde = { version = "1.0.114" }
 serde_derive = { version = "1.0.114" }
 tracing = { version = "0.1.21" }
@@ -31,15 +33,16 @@ wasm-bindgen = { version = "0.2.69", features=["serde-serialize"] }
 console_error_panic_hook = { version = "0.1.6", optional = true }
 
 [dev-dependencies]
-rand_xorshift = { version = "0.2" }
+rand_core = { version = "0.6" }
+rand_xorshift = { version = "0.3" }
 wasm-bindgen-test = { version = "0.3.18" }
 
 [build-dependencies]
 rustc_version = { version = "0.3" }
 
 [features]
-default = []
-wasm = ["console_error_panic_hook", "phase1/wasm", "rand/wasm-bindgen", "setup-utils/wasm"]
+default = ["setup-utils/default"]
+wasm = ["console_error_panic_hook", "getrandom/js", "getrandom/wasm-bindgen", "phase1/wasm", "setup-utils/wasm"]
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm

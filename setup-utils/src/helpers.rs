@@ -332,7 +332,7 @@ pub fn merge_pairs<G: AffineCurve>(v1: &[G], v2: &[G]) -> (G, G) {
     let rng = &mut thread_rng();
 
     let randomness: Vec<<G::ScalarField as PrimeField>::BigInteger> =
-        (0..v1.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect();
+        (0..v1.len()).map(|_| G::ScalarField::rand(rng).to_repr()).collect();
 
     let s = dense_multiexp(&v1, &randomness[..]).into_affine();
     let sx = dense_multiexp(&v2, &randomness[..]).into_affine();
@@ -436,8 +436,8 @@ fn dense_multiexp_inner<G: AffineCurve>(
                     let mut buckets = vec![<G as AffineCurve>::Projective::zero(); (1 << c) - 1];
                     // Accumulate the result
                     let mut acc = G::Projective::zero();
-                    let zero = G::ScalarField::zero().into_repr();
-                    let one = G::ScalarField::one().into_repr();
+                    let zero = G::ScalarField::zero().to_repr();
+                    let one = G::ScalarField::one().to_repr();
 
                     for (base, &exp) in base.iter().zip(exp.iter()) {
                         // let index = (exp.as_ref()[0] & mask) as usize;

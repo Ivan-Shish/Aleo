@@ -1,13 +1,12 @@
-use setup1_verifier::{utils::init_logger, verifier::Verifier};
-
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use setup1_shared::structures::{PublicSettings, SetupKind};
-use snarkos_toolkit::account::{Address, ViewKey};
-use structopt::StructOpt;
-use url::Url;
+use setup1_verifier::{utils::init_logger, verifier::Verifier};
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, ViewKey};
 
 use std::{path::PathBuf, str::FromStr};
+use structopt::StructOpt;
 use tracing::info;
+use url::Url;
 
 fn development() -> Environment {
     Development::from(Parameters::TestCustom {
@@ -74,7 +73,7 @@ async fn main() {
     let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
 
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
-    let view_key = ViewKey::from_str(&raw_view_key).expect("Invalid view key");
+    let view_key = ViewKey::<Testnet2Parameters>::from_str(&raw_view_key).expect("Invalid view key");
     let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 
     // Initialize the verifier

@@ -5,12 +5,12 @@ members = [
     "phase1-cli",
     "phase1-coordinator",
     "phase1-wasm",
-    "phase2",
+#    "phase2",
     "setup1-cli-tools",
     "setup1-contributor",
     "setup1-shared",
     "setup1-verifier",
-    "setup2",
+#    "setup2",
     "setup-utils",
 ]
 

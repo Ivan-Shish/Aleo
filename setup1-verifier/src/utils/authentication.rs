@@ -1,9 +1,8 @@
 use crate::errors::VerifierError;
 
-use snarkos_toolkit::account::{
-    view_key::{Signature, ViewKey},
-    Address,
-};
+use snarkvm_algorithms::SignatureScheme;
+use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, Parameters, ViewKey};
+use snarkvm_utilities::{FromBytes, ToBytes};
 
 use rand::thread_rng;
 use std::{fmt, str::FromStr};
@@ -39,7 +38,11 @@ pub struct AleoAuthentication {}
 impl AleoAuthentication {
     /// Generate the authentication header with the request method, request path, and view key.
     /// Returns the authorization header "Aleo <address>:<signature>"
-    pub fn authenticate(view_key: &ViewKey, method: &str, path: &str) -> Result<AuthenticationHeader, VerifierError> {
+    pub fn authenticate(
+        view_key: &ViewKey<Testnet2Parameters>,
+        method: &str,
+        path: &str,
+    ) -> Result<AuthenticationHeader, VerifierError> {
         // Derive the Aleo address used to verify the signature.
         let address = Address::from_view_key(&view_key)?;
 
@@ -67,27 +70,27 @@ impl AleoAuthentication {
     /// Returns a signature created by signing a message with an Aleo view key. Otherwise,
     /// returns a `VerifierError`.
     ///
-    pub fn sign(view_key: &ViewKey, message: String) -> Result<String, VerifierError> {
+    pub fn sign(view_key: &ViewKey<Testnet2Parameters>, message: String) -> Result<String, VerifierError> {
         let rng = &mut thread_rng();
 
         trace!("Signing message - (message: {})", message);
 
         // Construct the authentication signature.
-        let signature = view_key.sign(&message.into_bytes(), rng)?;
+        let signature = hex::encode(view_key.sign(&message.into_bytes(), rng)?.to_bytes_le()?);
 
         // Construct the authentication header.
-        Ok(signature.to_string())
+        Ok(signature)
     }
 
     ///
     /// Returns `true` if the signature verifies for a given address and message.
     ///
     pub fn verify(address: &str, signature: &str, message: String) -> Result<bool, VerifierError> {
-        let aleo_address = Address::from_str(&address)?;
-        let view_key_signature = Signature::from_str(&signature)?;
+        let aleo_address = Address::<Testnet2Parameters>::from_str(&address)?;
+        let view_key_signature: <<Testnet2Parameters as Parameters>::AccountSignatureScheme as SignatureScheme>::Signature = FromBytes::from_bytes_le(&hex::decode(signature)?)?;
 
         // Check that the message verifies
-        Ok(aleo_address.verify(&message.to_string().into_bytes(), &view_key_signature)?)
+        Ok(aleo_address.verify_signature(&message.to_string().into_bytes(), &view_key_signature)?)
     }
 
     /// Verify a request is authenticated by

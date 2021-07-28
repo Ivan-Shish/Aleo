@@ -1,12 +1,13 @@
+use phase1::{Phase1, Phase1Parameters, ProvingSystem};
+use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
+use setup_utils::{blank_hash, derive_rng_from_seed, CheckForCorrectness, UseCompression};
+use snarkvm_curves::{bls12_377::Bls12_377, PairingEngine};
+
 use std::fmt::Debug;
 
 use anyhow::{anyhow, Result};
 use futures::{Sink, SinkExt};
-use phase1::{Phase1, Phase1Parameters, ProvingSystem};
-use setup1_shared::reliability::{ContributorMessage, ContributorMessageName};
-use setup_utils::{blank_hash, derive_rng_from_seed, CheckForCorrectness, UseCompression};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use zexe_algebra::{Bls12_377, PairingEngine};
 
 const TOTAL_SIZE: usize = 14; // Proof of Work takes roughly 20 seconds if TOTAL_SIZE=14
 const BATCH_SIZE: usize = 2;
@@ -61,8 +62,9 @@ where
 #[cfg(test)]
 mod test {
     use crate::reliability::cpu::calculate_powers_of_tau;
+    use snarkvm_curves::bls12_377::Bls12_377;
+
     use std::time::Instant;
-    use zexe_algebra::Bls12_377;
 
     const DATA_LENGTH: usize = 64;
     const OUTPUT_LENGTH: usize = 790192;
