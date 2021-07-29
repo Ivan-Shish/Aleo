@@ -1,11 +1,12 @@
-use crate::{
-    objects::LockResponse,
-    utils::{read_from_file, write_to_file},
-};
-
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+
+#[cfg(test)]
 use tracing::warn;
+
+use crate::objects::LockResponse;
+#[cfg(test)]
+use crate::utils::{read_from_file, write_to_file};
 
 ///
 /// The list of chunks that the verifier needs to verify.
@@ -20,6 +21,7 @@ impl Tasks {
     ///
     /// Returns the list of pending tasks.
     ///
+    #[cfg(test)]
     pub fn get_tasks(&self) -> &VecDeque<LockResponse> {
         &self.queue
     }
@@ -28,6 +30,7 @@ impl Tasks {
     /// Returns `true` if there are no tasks in the queue.
     /// Otherwise, return `false`
     ///
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
@@ -60,6 +63,7 @@ impl Tasks {
     /// Read tasks from a stored file. Returns a list of empty tasks if
     /// the file could not be read.
     ///
+    #[cfg(test)]
     pub fn load(file_path: &str) -> Self {
         // Read tasks from a file
         match read_from_file(file_path) {
@@ -77,6 +81,7 @@ impl Tasks {
     ///
     /// Writes the current tasks to disk if there are tasks in the queue.
     ///
+    #[cfg(test)]
     pub fn store(&self, file_path: &str) -> anyhow::Result<()> {
         if !self.is_empty() {
             // Write tasks to disk.

@@ -486,7 +486,6 @@ impl Contribute {
 
             remove_file_if_exists(&self.challenge_filename)?;
             remove_file_if_exists(&self.challenge_hash_filename)?;
-            let download_url = &lock_response.challenge_locator;
             self.download_challenge(
                 chunk_id,
                 lock_response.contribution_id,
