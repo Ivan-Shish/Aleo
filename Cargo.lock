@@ -3321,6 +3321,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "serial_test",
  "setup-utils",
  "setup1-shared",
  "snarkvm-curves",

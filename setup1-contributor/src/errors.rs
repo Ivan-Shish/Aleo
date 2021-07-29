@@ -2,16 +2,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ContributeError {
-    #[error("Could not choose random chunk")]
-    CouldNotChooseChunkError,
-    #[error("Could not find chunk with ID: {0}")]
-    CouldNotFindChunkWithIDError(String),
-    #[error("Could not find chunk with ID {0} in the ceremony locked by participant {1}")]
-    CouldNotFindChunkWithIDLockedByParticipantError(u64, String),
     #[error("Could not read passphrase")]
     CouldNotReadPassphraseError,
-    #[error("Contributions list was empty for chunk with ID: {0}")]
-    ContributionListWasEmptyForChunkID(String),
     #[error("Lane {0} did not contain chunk with ID: {1}")]
     LaneDidNotContainChunkWithIDError(String, String),
     #[error("Lane {0} already contains chunk with ID: {1}")]
@@ -40,10 +32,6 @@ pub enum HttpError {
 pub enum UtilsError {
     #[error("Unknown upload mode: {0}")]
     UnknownUploadModeError(String),
-    #[error("Unsupported proving system: {0}")]
-    UnsupportedProvingSystemError(String),
-    #[error("Option was none")]
-    MissingOptionErr,
 }
 
 #[derive(Debug, Error)]
@@ -53,9 +41,6 @@ pub enum CLIError {
 
     #[error("{}", _0)]
     GenerateError(GenerateError),
-
-    #[error("Missing contribution parameters")]
-    MissingContributionParameters,
 }
 
 impl From<ContributeError> for CLIError {

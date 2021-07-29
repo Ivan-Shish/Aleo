@@ -2,7 +2,7 @@
 use crate::blobstore::upload_sas;
 
 use crate::errors::UtilsError;
-use phase1::{ContributionMode, Phase1Parameters, ProvingSystem};
+use phase1::{ContributionMode, Phase1Parameters};
 use phase1_coordinator::{
     environment::{Development, Environment, Parameters, Production},
     objects::{ContributionFileSignature, ContributionState},
@@ -14,49 +14,17 @@ use snarkvm_utilities::ToBytes;
 
 use anyhow::Result;
 use rand::{CryptoRng, Rng};
-use reqwest::header::AUTHORIZATION;
+#[cfg(test)]
+use std::fs::{create_dir_all, write};
 use std::{
     convert::TryFrom,
-    fs::{copy, create_dir_all, remove_file, write, File},
-    io::{Read, Write},
+    fs::{remove_file, File},
+    io::Read,
     path::Path,
     str::FromStr,
 };
+#[cfg(test)]
 use tracing::error;
-
-pub fn copy_file_if_exists(file_path: &str, dest_path: &str) -> Result<()> {
-    if Path::new(file_path).exists() {
-        copy(file_path, dest_path)?;
-    }
-    Ok(())
-}
-
-pub async fn download_file_async(url: &str, file_path: &str) -> Result<()> {
-    remove_file_if_exists(file_path)?;
-    let mut resp = reqwest::get(url).await?.error_for_status()?;
-    let mut out = File::create(file_path)?;
-    while let Some(chunk) = resp.chunk().await? {
-        out.write_all(&chunk)?;
-    }
-    Ok(())
-}
-
-pub async fn upload_file_direct_async(authorization: &str, file_path: &str, url: &str) -> Result<()> {
-    let mut file = File::open(file_path)?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
-
-    let client = reqwest::Client::new();
-    client
-        .post(url)
-        .header(AUTHORIZATION, authorization)
-        .header(http::header::CONTENT_LENGTH, contents.len())
-        .body(contents)
-        .send()
-        .await?
-        .error_for_status()?;
-    Ok(())
-}
 
 #[cfg(feature = "azure")]
 pub async fn upload_file_to_azure_async(file_path: &str, url: &str) -> Result<()> {
@@ -81,6 +49,7 @@ pub fn read_from_file(file_name: &str) -> Result<Vec<u8>> {
 /// This function creates the `file_path`'s parent directories if it
 /// does not already exists.
 ///
+#[cfg(test)]
 pub fn create_parent_directory(file_path: &str) {
     let file_path = Path::new(&file_path);
     if let Some(file_path_parent) = file_path.parent() {
@@ -99,6 +68,7 @@ pub fn create_parent_directory(file_path: &str) {
 /// If a parent directory doesn't already exists, this function will
 /// automatically generate one.
 ///
+#[cfg(test)]
 pub fn write_to_file(file_path: &str, file_bytes: Vec<u8>) -> Result<()> {
     create_parent_directory(file_path);
     remove_file_if_exists(file_path)?;
@@ -108,17 +78,6 @@ pub fn write_to_file(file_path: &str, file_bytes: Vec<u8>) -> Result<()> {
     }
 
     Ok(())
-}
-
-pub fn proving_system_from_str(proving_system_str: &str) -> Result<ProvingSystem> {
-    let proving_system = match proving_system_str {
-        "groth16" => ProvingSystem::Groth16,
-        "marlin" => ProvingSystem::Marlin,
-        _ => {
-            return Err(UtilsError::UnsupportedProvingSystemError(proving_system_str.to_string()).into());
-        }
-    };
-    Ok(proving_system)
 }
 
 pub fn create_parameters_for_chunk<E: PairingEngine>(
