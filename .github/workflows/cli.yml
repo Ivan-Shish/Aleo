@@ -16,8 +16,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.53.0
-#          - nightly
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -40,4 +39,3 @@ jobs:
 
       - name: Run phase1 full marlin
         run: cd phase1-cli && ./scripts/phase1_full.sh marlin
-
