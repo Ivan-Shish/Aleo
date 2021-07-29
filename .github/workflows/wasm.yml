@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.53.0
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
 
       - name: Install WASM
         run: |
-          rustup target add wasm32-unknown-unknown --toolchain 1.53.0
+          rustup target add wasm32-unknown-unknown --toolchain stable
           cargo install wasm-bindgen-cli
           cargo update -p wasm-bindgen
 

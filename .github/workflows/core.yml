@@ -39,8 +39,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.53.0
-#          - nightly
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -65,7 +64,7 @@ jobs:
         with:
           command: check
           args: --examples --all-features --all
-        if: matrix.rust == '1.53.0'
+        if: matrix.rust == 'stable'
 
       - name: Test
         uses: actions-rs/cargo@v1

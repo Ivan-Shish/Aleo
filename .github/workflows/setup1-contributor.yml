@@ -16,8 +16,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.53.0
-    #          - nightly
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -40,8 +39,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.53.0
-    #          - nightly
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
