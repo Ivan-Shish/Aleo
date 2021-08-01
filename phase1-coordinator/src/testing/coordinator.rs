@@ -34,22 +34,22 @@ pub static TEST_CONTRIBUTOR_ID: Lazy<Participant> =
 
 /// Contributor ID 2 for testing purposes only.
 pub static TEST_CONTRIBUTOR_ID_2: Lazy<Participant> =
-    Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-2")));
+    Lazy::new(|| Participant::Contributor("testing-coordinator-contributor-2".to_string()));
 
 /// Contributor ID 3 for testing purposes only.
 pub static TEST_CONTRIBUTOR_ID_3: Lazy<Participant> =
-    Lazy::new(|| Participant::Contributor(format!("testing-coordinator-contributor-3")));
+    Lazy::new(|| Participant::Contributor("testing-coordinator-contributor-3".to_string()));
 
 /// Verifier ID for testing purposes only.
 pub static TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_verifier(&TEST_ENVIRONMENT).unwrap());
 
 /// Verifier ID 2 for testing purposes only.
 pub static TEST_VERIFIER_ID_2: Lazy<Participant> =
-    Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-2")));
+    Lazy::new(|| Participant::Verifier("testing-coordinator-verifier-2".to_string()));
 
 /// Verifier ID 2 for testing purposes only.
 pub static TEST_VERIFIER_ID_3: Lazy<Participant> =
-    Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-3")));
+    Lazy::new(|| Participant::Verifier("testing-coordinator-verifier-3".to_string()));
 
 /// Contributor IDs for testing purposes only.
 pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
