@@ -631,12 +631,13 @@ impl Contribute {
 
         let address = self.participant_id.to_string();
         let confirmation_key = ConfirmationKey::for_current_round(address)?;
+        let bytes = serde_json::to_vec(&confirmation_key)?;
 
         let response = client
             .post(join_queue_path_url.as_str())
             .header(http::header::AUTHORIZATION, authorization)
-            .header(http::header::CONTENT_LENGTH, 0)
-            .body(confirmation_key)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
             .send()
             .await?
             .error_for_status()?;
