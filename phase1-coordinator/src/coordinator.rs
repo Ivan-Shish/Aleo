@@ -1604,8 +1604,15 @@ where
                 serde_json::from_slice(&*self.storage.reader(&contribution_file_signature_locator)?)?;
 
             // Check that the contribution file signature is valid.
+            let address = &participant.to_string();
+
+            let address = address
+                .split(".")
+                .next()
+                .expect("splitting a string should yield at least one item");
+
             if !self.signature.verify(
-                &participant.to_string(),
+                &address,
                 &serde_json::to_string(&contribution_file_signature.get_state())?,
                 contribution_file_signature.get_signature(),
             ) {
@@ -1828,8 +1835,15 @@ where
                 serde_json::from_slice(&*self.storage.reader(&contribution_file_signature_locator)?)?;
 
             // Check that the contribution file signature is valid.
+            let address = &participant.to_string();
+
+            let address = address
+                .split(".")
+                .next()
+                .expect("splitting a string should yield at least one item");
+
             if !self.signature.verify(
-                &participant.to_string(),
+                &address,
                 &serde_json::to_string(&contribution_file_signature.get_state())?,
                 contribution_file_signature.get_signature(),
             ) {
