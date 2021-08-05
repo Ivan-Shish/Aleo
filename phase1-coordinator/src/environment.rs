@@ -135,7 +135,7 @@ impl Parameters {
             ContributionMode::Chunked,
             ProvingSystem::Groth16,
             CurveKind::BW6,
-            Power::from(21_usize),
+            Power::from(20_usize),
             BatchSize::from(4096_usize),
             ChunkSize::from(65536_usize),
         )
