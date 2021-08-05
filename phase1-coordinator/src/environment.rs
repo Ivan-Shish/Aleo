@@ -488,18 +488,24 @@ pub struct Testing {
 }
 
 impl Testing {
-    #[inline]
-    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.minimum_contributors_per_round = minimum;
-        deployment
+    pub fn minimum_contributors_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_contributors_per_round = minimum;
+        self
     }
 
-    #[inline]
-    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.maximum_contributors_per_round = maximum;
-        deployment
+    pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_contributors_per_round = maximum;
+        self
+    }
+
+    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_verifiers_per_round = minimum;
+        self
+    }
+
+    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_verifiers_per_round = maximum;
+        self
     }
 
     #[inline]
@@ -596,18 +602,24 @@ pub struct Development {
 }
 
 impl Development {
-    #[inline]
-    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.minimum_contributors_per_round = minimum;
-        deployment
+    pub fn minimum_contributors_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_contributors_per_round = minimum;
+        self
     }
 
-    #[inline]
-    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.maximum_contributors_per_round = maximum;
-        deployment
+    pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_contributors_per_round = maximum;
+        self
+    }
+
+    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_verifiers_per_round = minimum;
+        self
+    }
+
+    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_verifiers_per_round = maximum;
+        self
     }
 
     #[inline]
@@ -698,18 +710,24 @@ pub struct Production {
 }
 
 impl Production {
-    #[inline]
-    pub fn minimum_contributors_per_round(&self, minimum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.minimum_contributors_per_round = minimum;
-        deployment
+    pub fn minimum_contributors_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_contributors_per_round = minimum;
+        self
     }
 
-    #[inline]
-    pub fn maximum_contributors_per_round(&self, maximum: usize) -> Self {
-        let mut deployment = self.clone();
-        deployment.environment.maximum_contributors_per_round = maximum;
-        deployment
+    pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_contributors_per_round = maximum;
+        self
+    }
+
+    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
+        self.environment.minimum_verifiers_per_round = minimum;
+        self
+    }
+
+    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
+        self.environment.maximum_verifiers_per_round = maximum;
+        self
     }
 
     #[inline]
