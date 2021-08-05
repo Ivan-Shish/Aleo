@@ -29,7 +29,6 @@ use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey,
 
 use age::DecryptError;
 use anyhow::{Context, Result};
-use chrono::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
@@ -45,6 +44,7 @@ use std::{
     path::Path,
     str::FromStr,
     sync::{Arc, RwLock},
+    time::Duration,
 };
 use tokio::time::{sleep, Instant};
 use tracing::{debug, error, info, warn};
@@ -55,10 +55,10 @@ const CHALLENGE_HASH_FILENAME: &str = "challenge.hash";
 const RESPONSE_FILENAME: &str = "response";
 const RESPONSE_HASH_FILENAME: &str = "response.hash";
 
-const DELAY_AFTER_ERROR_DURATION_SECS: i64 = 60;
-const DELAY_WAIT_FOR_PIPELINE_SECS: i64 = 5;
-const DELAY_POLL_CEREMONY_SECS: i64 = 5;
-const HEARTBEAT_POLL_SECS: i64 = 30;
+const DELAY_AFTER_ERROR: Duration = Duration::from_secs(60);
+const DELAY_WAIT_FOR_PIPELINE: Duration = Duration::from_secs(5);
+const DELAY_POLL_CEREMONY: Duration = Duration::from_secs(5);
+const HEARTBEAT_POLL: Duration = Duration::from_secs(30);
 
 lazy_static! {
     static ref PIPELINE: RwLock<HashMap<PipelineLane, VecDeque<LockResponse>>> = {
@@ -152,9 +152,6 @@ impl Contribute {
     }
 
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
-        let delay_poll_ceremony_duration = Duration::seconds(DELAY_POLL_CEREMONY_SECS).to_std()?;
-        let heartbeat_poll_duration = Duration::seconds(HEARTBEAT_POLL_SECS).to_std()?;
-
         let progress_bar = ProgressBar::new(0);
         let progress_style =
             ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
@@ -185,14 +182,13 @@ impl Contribute {
                         progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
                     }
                 }
-                sleep(delay_poll_ceremony_duration).await;
+                sleep(DELAY_POLL_CEREMONY).await;
             }
         });
 
         let mut futures = vec![];
 
         for i in 0..n_concurrent_tasks {
-            let delay_duration = Duration::seconds(DELAY_AFTER_ERROR_DURATION_SECS).to_std()?;
             let mut cloned_contribute = self.clone_with_new_filenames(i);
 
             let join_handle = tokio::task::spawn(async move {
@@ -228,11 +224,11 @@ impl Contribute {
                         }
                     }
 
-                    sleep(delay_duration).await;
+                    sleep(DELAY_AFTER_ERROR).await;
                 }
             });
             futures.push(join_handle);
-            sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
+            sleep(DELAY_WAIT_FOR_PIPELINE).await;
         }
 
         let cloned = self.clone();
@@ -247,7 +243,7 @@ impl Contribute {
                 if let Err(error) = runtime.block_on(cloned.heartbeat(auth_rng)) {
                     tracing::error!("Error performing heartbeat: {}", error);
                 }
-                std::thread::sleep(heartbeat_poll_duration);
+                std::thread::sleep(HEARTBEAT_POLL);
             }
         });
 
@@ -320,7 +316,7 @@ impl Contribute {
                     return Ok(());
                 }
             }
-            sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await;
+            sleep(DELAY_WAIT_FOR_PIPELINE).await;
         }
     }
 
@@ -394,7 +390,7 @@ impl Contribute {
         loop {
             match self.move_task_from_lane_to_lane(from, to, task)? {
                 true => return Ok(()),
-                false => sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
+                false => sleep(DELAY_WAIT_FOR_PIPELINE).await,
             }
         }
     }
@@ -403,7 +399,7 @@ impl Contribute {
         loop {
             match self.add_task_to_download_lane(task)? {
                 true => return Ok(()),
-                false => sleep(Duration::seconds(DELAY_WAIT_FOR_PIPELINE_SECS).to_std()?).await,
+                false => sleep(DELAY_WAIT_FOR_PIPELINE).await,
             }
         }
     }
@@ -467,7 +463,7 @@ impl Contribute {
                     remove_file_if_exists(&self.response_hash_filename)?;
                     return Ok(());
                 } else {
-                    tokio::time::sleep(Duration::seconds(DELAY_POLL_CEREMONY_SECS).to_std()?).await;
+                    tokio::time::sleep(DELAY_POLL_CEREMONY).await;
                     continue;
                 }
             }
