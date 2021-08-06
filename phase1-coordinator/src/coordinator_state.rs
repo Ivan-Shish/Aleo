@@ -94,6 +94,12 @@ pub struct ParticipantInfo {
     disposed_tasks: LinkedList<Task>,
 }
 
+impl PartialEq for ParticipantInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.id().to_string() == other.id().to_string()
+    }
+}
+
 impl ParticipantInfo {
     #[inline]
     fn new(
@@ -1228,6 +1234,25 @@ impl CoordinatorState {
     #[inline]
     pub fn is_current_verifier(&self, participant: &Participant) -> bool {
         self.is_authorized_verifier(participant) && self.current_verifiers.contains_key(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is banned.
+    ///
+    pub fn is_banned_participant(&self, participant: &Participant) -> bool {
+        self.banned.contains(participant)
+    }
+
+    ///
+    /// Returns `true` if the given participant is dropped.
+    ///
+    pub fn is_dropped_participant(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
+        let participant_info = match self.current_participant_info(participant) {
+            Some(p) => p,
+            None => return Err(CoordinatorError::ParticipantMissing),
+        };
+
+        Ok(self.dropped_participants().contains(participant_info))
     }
 
     ///
