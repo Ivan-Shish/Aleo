@@ -1124,23 +1124,25 @@ impl Round {
                     // but have not yet had the contirbution/verification uploaded.
                     let remove_initialized_files: Vec<RemoveAction> = match chunk.lock_holder() {
                         Some(participant) => {
-                            let (contribution_id, is_verified) = match participant {
-                                Participant::Contributor(_) => (chunk.current_contribution_id() + 1, false),
+                            let (adjusted_round_height, contribution_id, is_verified) = match participant {
+                                Participant::Contributor(_) => {
+                                    (round_height, chunk.current_contribution_id() + 1, false)
+                                }
                                 Participant::Verifier(_) => {
-                                    let contribution_id =
+                                    let (adjusted_round_height, contribution_id) =
                                         if chunk.current_contribution_id() == expected_number_of_contributions - 1 {
                                             // handle the case where the final verification becomes
                                             // the first verification for the next round.
-                                            0
+                                            (round_height + 1, 0)
                                         } else {
-                                            chunk.current_contribution_id()
+                                            (round_height, chunk.current_contribution_id())
                                         };
-                                    (contribution_id, true)
+                                    (adjusted_round_height, contribution_id, true)
                                 }
                             };
 
                             let contribution_locator = Locator::ContributionFile(ContributionLocator::new(
-                                round_height,
+                                adjusted_round_height,
                                 chunk_id,
                                 contribution_id,
                                 is_verified,
