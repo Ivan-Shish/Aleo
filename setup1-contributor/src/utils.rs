@@ -98,14 +98,13 @@ pub fn create_parameters_for_chunk<E: PairingEngine>(
 }
 
 pub fn get_authorization_value<R: Rng + CryptoRng>(
-    private_key: &str,
+    private_key: &PrivateKey<Testnet2Parameters>,
     method: &str,
     path: &str,
     rng: &mut R,
 ) -> Result<String> {
-    let private_key = PrivateKey::<Testnet2Parameters>::from_str(private_key)?;
-    let view_key = ViewKey::try_from(&private_key)?;
-    let address = Address::try_from(&private_key)?.to_string();
+    let view_key = ViewKey::try_from(private_key)?;
+    let address = Address::try_from(private_key)?.to_string();
 
     let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());
     let signature = hex::encode(&view_key.sign(message.as_bytes(), rng)?.to_bytes_le()?);

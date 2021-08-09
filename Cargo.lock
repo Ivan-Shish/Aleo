@@ -3302,6 +3302,7 @@ dependencies = [
  "azure_sdk_core",
  "azure_sdk_storage_blob",
  "azure_sdk_storage_core",
+ "blake2 0.9.1",
  "byteorder",
  "clap",
  "futures",
