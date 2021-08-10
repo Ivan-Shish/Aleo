@@ -19,15 +19,6 @@ pub enum ContributeError {
 #[derive(Debug, Error)]
 pub enum GenerateError {}
 
-#[cfg(feature = "azure")]
-#[derive(Debug, Error)]
-pub enum HttpError {
-    #[error("Could not upload to azure, status was: {0}")]
-    CouldNotUploadToAzureError(String),
-    #[error("Could not parse SAS: {0}")]
-    CouldNotParseSAS(String),
-}
-
 #[derive(Debug, Error)]
 pub enum UtilsError {
     #[error("Unknown upload mode: {0}")]
