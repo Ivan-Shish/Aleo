@@ -1,7 +1,11 @@
 use crate::{
     cli::commands::contribute::ContributeOptions,
     errors::ContributeError,
-    objects::{AleoSetupKeys, LockResponse},
+    objects::LockResponse,
+    setup_keys::{
+        confirmation_key::{print_key_and_remove_the_file, ConfirmationKey},
+        AleoSetupKeys,
+    },
     tasks::Tasks,
     utils::{
         create_parameters_for_chunk,
@@ -55,7 +59,7 @@ const RESPONSE_HASH_FILENAME: &str = "response.hash";
 const DELAY_AFTER_ERROR: Duration = Duration::from_secs(60);
 const DELAY_WAIT_FOR_PIPELINE: Duration = Duration::from_secs(5);
 const DELAY_POLL_CEREMONY: Duration = Duration::from_secs(5);
-const HEARTBEAT_POLL: Duration = Duration::from_secs(30);
+const HEARTBEAT_POLL_DELAY: Duration = Duration::from_secs(30);
 
 lazy_static! {
     static ref PIPELINE: RwLock<HashMap<PipelineLane, VecDeque<LockResponse>>> = {
@@ -85,8 +89,8 @@ pub struct Contribute {
     pub server_url: Url,
     /// Public key id for this contributor: e.g.
     /// `aleo1h7pwa3dh2egahqj7yvq7f7e533lr0ueysaxde2ktmtu2pxdjvqfqsj607a`
-    pub participant_id: String,
-    pub private_key: String,
+    pub participant_id: Address<Testnet2Parameters>,
+    pub private_key: PrivateKey<Testnet2Parameters>,
     seed: Arc<SecretVec<u8>>,
     pub upload_mode: UploadMode,
     pub environment: Environment,
@@ -108,18 +112,16 @@ impl Contribute {
     pub fn new(
         opts: &ContributeOptions,
         environment: &Environment,
-        private_key: &[u8],
-        seed: Arc<SecretVec<u8>>,
-    ) -> Result<Self> {
-        let private_key = PrivateKey::<Testnet2Parameters>::from_str(std::str::from_utf8(&private_key)?)?;
-
+        private_key: PrivateKey<Testnet2Parameters>,
+        seed: SecretVec<u8>,
+    ) -> Self {
         // TODO (raychu86): Pass in pipelining options from the CLI.
 
-        let contribute = Self {
+        Self {
             server_url: opts.api_url.clone(),
-            participant_id: Address::try_from(&private_key)?.to_string(),
-            private_key: private_key.to_string(),
-            seed,
+            participant_id: Address::try_from(&private_key).expect("Should have derived an Aleo address"),
+            private_key,
+            seed: Arc::new(seed),
             upload_mode: opts.upload_mode.clone(),
             environment: environment.clone(),
 
@@ -134,9 +136,7 @@ impl Contribute {
             disable_pipelining: false,
 
             current_task: None,
-        };
-
-        Ok(contribute)
+        }
     }
 
     pub fn clone_with_new_filenames(&self, index: usize) -> Self {
@@ -156,10 +156,22 @@ impl Contribute {
         progress_bar.set_style(progress_style);
         progress_bar.set_message("Getting initial data from the server...");
 
-        // Attempt to join the queue.
-        match self.join_queue(&mut rand::thread_rng()).await {
-            Ok(joined) => info!("Attempting to join the queue with response: {}", joined),
-            Err(err) => warn!("Failed to join the queue (error {})", err),
+        let join_result = self.join_queue(&mut rand::thread_rng()).await;
+        match join_result {
+            Ok(joined) => {
+                info!("Attempting to join the queue with response: {}", joined);
+                if !joined {
+                    // it means contributor either already contributed,
+                    // or has a low reliability score, or unable to
+                    // join the queue
+                    return Err(anyhow::anyhow!("Queue join returned false"));
+                }
+            }
+            Err(err) => {
+                let text = format!("Failed to join the queue, error: {}", err);
+                error!("{}", text);
+                return Err(anyhow::anyhow!("{}", text));
+            }
         }
 
         // Get total number of tokio tasks to generate.
@@ -169,19 +181,11 @@ impl Contribute {
         };
 
         // Run status bar updater.
-        let updater = self.clone();
-        tokio::task::spawn(async move {
-            loop {
-                match updater.status_updater(progress_bar.clone()).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        warn!("Got error from updater: {}", e);
-                        progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
-                    }
-                }
-                sleep(DELAY_POLL_CEREMONY).await;
-            }
-        });
+        let updater = StatusUpdater {
+            server_url: self.server_url.clone(),
+            participant_id: self.participant_id.to_string(),
+        };
+        update_progress_bar(updater, progress_bar.clone());
 
         let mut futures = vec![];
 
@@ -194,9 +198,9 @@ impl Contribute {
                     let result = cloned_contribute.run::<E>().await;
                     match result {
                         Ok(_) => {
-                            info!(
-                                "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!"
-                            );
+                            print_key_and_remove_the_file().expect("Error finalizing the participation");
+                            info!("Successfully contributed, thank you for participation!");
+                            break;
                         }
                         Err(err) => {
                             println!("Got error from run: {}, retrying...", err);
@@ -228,21 +232,10 @@ impl Contribute {
             sleep(DELAY_WAIT_FOR_PIPELINE).await;
         }
 
-        let cloned = self.clone();
         // NOTE: Attempted to use a task, however this did not work as
         // epected. It seems likely there is some blocking code in one
         // of the other tasks.
-        std::thread::spawn(move || {
-            let auth_rng = &mut rand::rngs::OsRng;
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            loop {
-                tracing::info!("Performing heartbeat.");
-                if let Err(error) = runtime.block_on(cloned.heartbeat(auth_rng)) {
-                    tracing::error!("Error performing heartbeat: {}", error);
-                }
-                std::thread::sleep(HEARTBEAT_POLL);
-            }
-        });
+        initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
 
         futures::future::try_join_all(futures).await?;
 
@@ -447,7 +440,7 @@ impl Contribute {
             let auth_rng = &mut rand::rngs::OsRng;
 
             let ceremony = self.get_ceremony().await?;
-            let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony);
+            let non_contributed_chunks = get_non_contributed_chunks(&ceremony, &self.participant_id.to_string());
             let incomplete_chunks = self.get_non_contributed_and_available_chunks(&ceremony);
 
             // Check if the contributor is finished or needs to wait for an available lock
@@ -538,7 +531,7 @@ impl Contribute {
             let response_hash = calculate_hash(&response_file).to_vec();
 
             // Sign the contribution state.
-            let view_key = ViewKey::<Testnet2Parameters>::try_from(&PrivateKey::from_str(&self.private_key)?)?;
+            let view_key = ViewKey::try_from(&self.private_key)?;
             let signed_contribution_state =
                 sign_contribution_state(&view_key.to_string(), &challenge_hash, &response_hash, None, auth_rng)?;
 
@@ -610,81 +603,6 @@ impl Contribute {
         }
     }
 
-    async fn status_updater(&self, progress_bar: ProgressBar) -> Result<()> {
-        let ceremony = self.get_ceremony().await?;
-        let number_of_chunks = ceremony.chunks().len();
-
-        progress_bar.set_length(number_of_chunks as u64);
-        let non_contributed_chunks = self.get_non_contributed_chunks(&ceremony);
-
-        let participant_locked_chunks = self.get_participant_locked_chunks_display(&ceremony)?;
-        if participant_locked_chunks.len() > 0 {
-            progress_bar.set_message(&format!(
-                "Contributing to {} {}...",
-                if participant_locked_chunks.len() > 1 {
-                    "chunks"
-                } else {
-                    "chunk"
-                },
-                participant_locked_chunks.join(", "),
-            ));
-            progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
-        } else if non_contributed_chunks.len() == 0 {
-            let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
-
-            info!(completed_message);
-
-            progress_bar.set_position(number_of_chunks as u64);
-            progress_bar.set_message(completed_message);
-        } else {
-            progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
-            progress_bar.set_message(&format!("Waiting for an available chunk...",));
-        }
-
-        Ok(())
-    }
-
-    fn get_participant_locked_chunks_display(&self, ceremony: &Round) -> Result<Vec<String>> {
-        let mut chunk_ids = vec![];
-
-        for chunk in ceremony.chunks().iter() {
-            let chunk_id = chunk.chunk_id();
-            let chunk_lock_holder = chunk.lock_holder();
-
-            if chunk_lock_holder.is_some()
-                && chunk_lock_holder
-                    .as_ref()
-                    .map(|c| c.to_string().split('.').collect::<Vec<_>>()[0].to_string())
-                    == Some(self.participant_id.clone())
-            {
-                chunk_ids.push(format!("{}", chunk_id));
-            }
-        }
-
-        Ok(chunk_ids)
-    }
-
-    /// Get references to the chunks which have been completely
-    /// verified, and do not yet contain a contribution from this
-    /// contributor.
-    fn get_non_contributed_chunks<'r>(&self, ceremony: &'r Round) -> Vec<&'r Chunk> {
-        ceremony
-            .chunks()
-            .iter()
-            .filter_map(|chunk| {
-                if !chunk_all_verified(chunk) {
-                    return None;
-                }
-
-                if !contributor_ids_in_chunk(chunk).contains(&self.participant_id) {
-                    Some(chunk)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     /// Returns `true` if the participant currently holds the lock on the chunk.
     fn is_pending_task(&self, task: &LockResponse, ceremony: &Round) -> Result<bool> {
         if let Some(chunk) = ceremony.chunks().get(task.chunk_id as usize) {
@@ -700,7 +618,7 @@ impl Contribute {
     /// completely verified, and do not yet contain a contribution
     /// from this contributor.
     fn get_non_contributed_and_available_chunks<'r>(&self, ceremony: &'r Round) -> Vec<&'r Chunk> {
-        self.get_non_contributed_chunks(ceremony)
+        get_non_contributed_chunks(ceremony, &self.participant_id.to_string())
             .into_iter()
             .filter(|chunk| chunk.lock_holder().is_none())
             .collect()
@@ -711,10 +629,16 @@ impl Contribute {
         let join_queue_path_url = self.server_url.join(&join_queue_path)?;
         let client = reqwest::Client::new();
         let authorization = get_authorization_value(&self.private_key, "POST", &join_queue_path, auth_rng)?;
+
+        let address = self.participant_id.to_string();
+        let confirmation_key = ConfirmationKey::for_current_round(address)?;
+        let bytes = serde_json::to_vec(&confirmation_key)?;
+
         let response = client
             .post(join_queue_path_url.as_str())
             .header(http::header::AUTHORIZATION, authorization)
-            .header(http::header::CONTENT_LENGTH, 0)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
             .send()
             .await?
             .error_for_status()?;
@@ -752,24 +676,6 @@ impl Contribute {
         let lock_response = serde_json::from_slice::<LockResponse>(&*data)?;
 
         Ok(lock_response)
-    }
-
-    async fn heartbeat<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
-        let heartbeat_path = "/v1/contributor/heartbeat";
-        let url = self.server_url.join(&heartbeat_path)?;
-        let client = reqwest::Client::new();
-        let authorization = get_authorization_value(&self.private_key, "POST", &heartbeat_path, auth_rng)?;
-        let response = client
-            .post(url.as_str())
-            .header(http::header::AUTHORIZATION, authorization)
-            .header(http::header::CONTENT_LENGTH, 0)
-            .send()
-            .await?
-            .error_for_status()?;
-
-        response.error_for_status()?;
-
-        Ok(())
     }
 
     async fn download_challenge<R: Rng + CryptoRng>(
@@ -846,6 +752,159 @@ impl Contribute {
     }
 }
 
+fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+    tokio::task::spawn(async move {
+        loop {
+            match updater.status_updater(progress_bar.clone()).await {
+                Ok(_) => {}
+                Err(e) => {
+                    warn!("Got error from updater: {}", e);
+                    progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
+                }
+            }
+            sleep(DELAY_POLL_CEREMONY).await;
+        }
+    });
+}
+
+/// Utility structure to provide updates about the round progress
+struct StatusUpdater {
+    server_url: Url,
+    participant_id: String,
+}
+
+impl StatusUpdater {
+    async fn status_updater(&self, progress_bar: ProgressBar) -> Result<()> {
+        let ceremony = get_ceremony(&self.server_url).await?;
+        let number_of_chunks = ceremony.chunks().len();
+
+        progress_bar.set_length(number_of_chunks as u64);
+        let non_contributed_chunks = get_non_contributed_chunks(&ceremony, &self.participant_id);
+
+        let participant_locked_chunks = get_participant_locked_chunks_display(&ceremony, &self.participant_id)?;
+        if participant_locked_chunks.len() > 0 {
+            progress_bar.set_message(&format!(
+                "Contributing to {} {}...",
+                if participant_locked_chunks.len() > 1 {
+                    "chunks"
+                } else {
+                    "chunk"
+                },
+                participant_locked_chunks.join(", "),
+            ));
+            progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
+        } else if non_contributed_chunks.len() == 0 {
+            let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
+
+            info!(completed_message);
+
+            progress_bar.set_position(number_of_chunks as u64);
+            progress_bar.set_message(completed_message);
+        } else {
+            progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
+            progress_bar.set_message(&format!("Waiting for an available chunk..."));
+        }
+
+        Ok(())
+    }
+}
+
+async fn get_ceremony(server_url: &Url) -> Result<Round> {
+    let ceremony_url = server_url.join("/v1/round/current")?;
+    let response = reqwest::get(ceremony_url.as_str()).await?.error_for_status()?;
+
+    let data = response.bytes().await?;
+    let ceremony: Round = serde_json::from_slice(&*data)?;
+
+    Ok(ceremony)
+}
+
+/// Get references to the chunks which have been completely
+/// verified, and do not yet contain a contribution from this
+/// contributor.
+fn get_non_contributed_chunks<'r>(ceremony: &'r Round, participant_id: &String) -> Vec<&'r Chunk> {
+    ceremony
+        .chunks()
+        .iter()
+        .filter_map(|chunk| {
+            if !chunk_all_verified(chunk) {
+                return None;
+            }
+
+            if !contributor_ids_in_chunk(chunk).contains(participant_id) {
+                Some(chunk)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn get_participant_locked_chunks_display(ceremony: &Round, participant_id: &String) -> Result<Vec<String>> {
+    let mut chunk_ids = vec![];
+
+    for chunk in ceremony.chunks().iter() {
+        let chunk_id = chunk.chunk_id();
+        let chunk_lock_holder = chunk.lock_holder();
+
+        if chunk_lock_holder.is_some()
+            && chunk_lock_holder
+                .as_ref()
+                .map(|c| c.to_string().split('.').collect::<Vec<_>>()[0].to_string())
+                == Some(participant_id.clone())
+        {
+            chunk_ids.push(format!("{}", chunk_id));
+        }
+    }
+
+    Ok(chunk_ids)
+}
+
+struct HeartbeatData {
+    server_url: Url,
+    private_key: PrivateKey<Testnet2Parameters>,
+}
+
+impl HeartbeatData {
+    async fn heartbeat<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
+        let heartbeat_path = "/v1/contributor/heartbeat";
+        let url = self.server_url.join(&heartbeat_path)?;
+        let client = reqwest::Client::new();
+        let authorization = get_authorization_value(&self.private_key, "POST", &heartbeat_path, auth_rng)?;
+        let response = client
+            .post(url.as_str())
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        response.error_for_status()?;
+
+        Ok(())
+    }
+}
+
+fn initiate_heartbeat(server_url: Url, private_key: PrivateKey<Testnet2Parameters>) {
+    let private_key = private_key.to_string();
+    std::thread::spawn(move || {
+        let heartbeat_data = HeartbeatData {
+            server_url,
+            private_key: PrivateKey::from_str(&private_key).expect("Failed to create PrivateKey from String"),
+        };
+
+        let auth_rng = &mut rand::rngs::OsRng;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        loop {
+            tracing::info!("Performing heartbeat.");
+            if let Err(error) = runtime.block_on(heartbeat_data.heartbeat(auth_rng)) {
+                tracing::error!("Error performing heartbeat: {}", error);
+            }
+            std::thread::sleep(HEARTBEAT_POLL_DELAY);
+        }
+    });
+}
+
 fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
     let decoded = SecretVec::new(hex::decode(encrypted)?);
     let decryptor = age::Decryptor::new(decoded.expose_secret().as_slice())?;
@@ -869,23 +928,20 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
 }
 
 /// Decrypts and reads the private key from the specified `keys_path`,
-/// decrypting using the specified `passphrase`. If `passphrase` is
-/// `None`, will request passphrase via pinentry or tty.
-fn read_keys<P: AsRef<Path>>(keys_path: P, passphrase: Option<SecretString>) -> Result<(SecretVec<u8>, SecretVec<u8>)> {
+/// decrypting using the specified `passphrase`
+fn read_keys<P: AsRef<Path>>(
+    keys_path: P,
+    passphrase: &SecretString,
+) -> Result<(SecretVec<u8>, PrivateKey<Testnet2Parameters>)> {
     let mut contents = String::new();
     std::fs::File::open(keys_path)?.read_to_string(&mut contents)?;
     let keys: AleoSetupKeys = serde_json::from_str(&contents)?;
-    let passphrase = if let Some(passphrase) = passphrase {
-        passphrase
-    } else {
-        age::cli_common::read_secret("Enter your Aleo setup passphrase", "Passphrase", None)
-            .map_err(|_| ContributeError::CouldNotReadPassphraseError)?
-    };
 
-    let aleo_seed = SecretVec::new(decrypt(&passphrase, &keys.encrypted_seed)?);
-    let aleo_private_key = SecretVec::new(decrypt(&passphrase, &keys.encrypted_private_key)?);
+    let seed = SecretVec::new(decrypt(passphrase, &keys.encrypted_seed)?);
+    let decrypted_private_key = SecretVec::new(decrypt(passphrase, &keys.encrypted_private_key)?);
+    let private_key = PrivateKey::from_str(std::str::from_utf8(decrypted_private_key.expose_secret())?)?;
 
-    Ok((aleo_seed, aleo_private_key))
+    Ok((seed, private_key))
 }
 
 async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::Result<PublicSettings> {
@@ -922,15 +978,15 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
     tracing_subscriber::fmt().with_writer(non_blocking).init();
 
+    let passphrase = crate::setup_keys::read_passphrase(opts.passphrase.clone())?;
+
     // Read the stored contribution seed and Aleo private key.
-    let (seed, private_key) =
-        read_keys(&opts.keys_path, opts.passphrase.clone()).expect("Unable to load Aleo setup keys");
+    let (seed, private_key) = read_keys(&opts.keys_path, &passphrase).expect("Unable to load Aleo setup keys");
 
     let curve_kind = environment.parameters().curve();
 
     // Initialize the contributor.
-    let contribute = Contribute::new(opts, &environment, private_key.expose_secret(), Arc::new(seed))
-        .expect("Unable to initialize a contributor");
+    let contribute = Contribute::new(opts, &environment, private_key, seed);
 
     if public_settings.check_reliability {
         tracing::info!("Checking reliability score before joining the queue");

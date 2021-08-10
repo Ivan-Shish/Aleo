@@ -332,6 +332,8 @@ pub struct Coordinator<S: Storage> {
     state: CoordinatorState,
     /// The source of time, allows mocking system time for testing.
     time: Arc<dyn TimeSource>,
+    /// Callback to call after aggregation is done
+    aggregation_callback: Arc<dyn Fn(Vec<Participant>) -> () + Send + Sync>,
 }
 
 impl Coordinator<Disk> {
@@ -368,7 +370,17 @@ impl Coordinator<Disk> {
             storage,
             state,
             time,
+            aggregation_callback: Arc::new(|_| ()),
         })
+    }
+
+    ///
+    /// Set a callback which will be called after the round is aggregated.
+    /// Current round finished contributors will be passed to a callback
+    /// as an argument
+    ///
+    pub fn set_aggregation_callback(&mut self, callback: Arc<dyn Fn(Vec<Participant>) -> () + Send + Sync>) {
+        self.aggregation_callback = callback;
     }
 }
 
@@ -474,6 +486,15 @@ where
                 // Update the metrics for the current round and participants.
                 self.state.update_round_metrics();
                 self.save_state()?;
+
+                match self.state.current_round_finished_contributors() {
+                    Ok(contributors) => {
+                        (self.aggregation_callback)(contributors);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to get current round finished contributors: {}", e);
+                    }
+                }
             }
 
             // Check if the current round is aggregated, and if the precommit for
