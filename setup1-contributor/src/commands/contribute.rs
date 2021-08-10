@@ -30,6 +30,7 @@ use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey,
 
 use age::DecryptError;
 use anyhow::{Context, Result};
+use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
@@ -193,6 +194,9 @@ impl Contribute {
             let mut cloned_contribute = self.clone_with_new_filenames(i);
 
             let join_handle = tokio::task::spawn(async move {
+                // Keeping track of whether we've already added the ETH address.
+                let mut added_eth_address = false;
+
                 // Run contributor loop.
                 loop {
                     let result = cloned_contribute.run::<E>().await;
@@ -223,6 +227,14 @@ impl Contribute {
                                 cloned_contribute.add_task_to_queue(lock_response.clone());
                             }
                         }
+                    }
+
+                    if !added_eth_address {
+                        // Prompt the user if they want to save an ETH address to receive an NFT on.
+                        match cloned_contribute.prompt_eth_address(&mut rand::rngs::OsRng).await {
+                            Ok(()) => added_eth_address = true,
+                            Err(e) => tracing::error!("Error while prompting for ETH address - {}", e),
+                        };
                     }
 
                     sleep(DELAY_AFTER_ERROR).await;
@@ -744,6 +756,49 @@ impl Contribute {
             .post(contribute_chunk_url.as_str())
             .header(http::header::AUTHORIZATION, authorization)
             .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    async fn prompt_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
+        println!(
+            "As a token of our appreciation, we would like to send an NFT to all participants, which shows you've participated in the Aleo setup ceremony. If you would like to receive such an NFT, please enter your ETH address! If not, just hit enter."
+        );
+
+        let address: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Your ETH address")
+            .validate_with({
+                move |input: &String| -> Result<(), &str> {
+                    if ((input.contains("0x") || input.contains("0X")) && input.len() == 42) || input.len() == 0 {
+                        Ok(())
+                    } else {
+                        Err("This is not a valid Ethereum address.")
+                    }
+                }
+            })
+            .interact_text()
+            .unwrap();
+
+        if address.len() != 0 {
+            self.upload_eth_address(auth_rng, address).await
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn upload_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R, address: String) -> Result<()> {
+        let upload_endpoint_url = self.server_url.join("/v1/contributor/add_eth_address")?;
+        let authorization =
+            get_authorization_value(&self.private_key, "POST", &upload_endpoint_url.as_str(), auth_rng)?;
+        let client = reqwest::Client::new();
+        let bytes = serde_json::to_vec(&address)?;
+        client
+            .post(upload_endpoint_url)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, address.len())
             .body(bytes)
             .send()
             .await?
