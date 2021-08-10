@@ -13,9 +13,6 @@ use crate::{
     },
 };
 
-#[cfg(feature = "azure")]
-use crate::utils::upload_file_to_azure_async;
-
 use phase1::helpers::converters::CurveKind;
 use phase1_cli::contribute;
 use phase1_coordinator::{
@@ -573,9 +570,6 @@ impl Contribute {
             match self.upload_mode {
                 UploadMode::Auto => {
                     if upload_url.contains("blob.core.windows.net") {
-                        #[cfg(feature = "azure")]
-                        upload_file_to_azure_async(&self.response_filename, &upload_url).await?;
-                        #[cfg(not(feature = "azure"))]
                         self.upload_response(
                             lock_response.response_chunk_id,
                             lock_response.response_contribution_id,
@@ -593,8 +587,6 @@ impl Contribute {
                         .await?;
                     }
                 }
-                #[cfg(feature = "azure")]
-                UploadMode::Azure => upload_file_to_azure_async(&self.response_filename, &upload_url).await?,
                 UploadMode::Direct => {
                     self.upload_response(
                         lock_response.response_chunk_id,
