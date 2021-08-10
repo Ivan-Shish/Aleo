@@ -1,6 +1,3 @@
-#[cfg(feature = "azure")]
-mod blobstore;
-
 use i18n_embed::{DesktopLanguageRequester, LanguageRequester};
 use structopt::StructOpt;
 

@@ -1,6 +1,3 @@
-#[cfg(feature = "azure")]
-use crate::blobstore::upload_sas;
-
 use crate::errors::UtilsError;
 use phase1::{ContributionMode, Phase1Parameters};
 use phase1_coordinator::{
@@ -25,12 +22,6 @@ use std::{
 };
 #[cfg(test)]
 use tracing::error;
-
-#[cfg(feature = "azure")]
-pub async fn upload_file_to_azure_async(file_path: &str, url: &str) -> Result<()> {
-    upload_sas(file_path, url).await?;
-    Ok(())
-}
 
 pub fn remove_file_if_exists(file_path: &str) -> Result<()> {
     if Path::new(file_path).exists() {
@@ -173,19 +164,12 @@ pub fn environment_by_setup_kind(kind: &SetupKind) -> Environment {
 #[derive(Debug, Clone)]
 pub enum UploadMode {
     Auto,
-    #[cfg(feature = "azure")]
-    Azure,
     Direct,
 }
 
 impl UploadMode {
     pub fn variants() -> &'static [&'static str] {
-        &[
-            "auto",
-            #[cfg(feature = "azure")]
-            "azure",
-            "direct",
-        ]
+        &["auto", "direct"]
     }
 }
 
@@ -195,8 +179,6 @@ impl FromStr for UploadMode {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "auto" => Ok(Self::Auto),
-            #[cfg(feature = "azure")]
-            "azure" => Ok(Self::Azure),
             "direct" => Ok(Self::Direct),
             unexpected => Err(UtilsError::UnknownUploadModeError(unexpected.to_string())),
         }
