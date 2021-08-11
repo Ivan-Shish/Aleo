@@ -1247,7 +1247,7 @@ impl CoordinatorState {
     /// Returns `true` if the given participant is dropped.
     ///
     pub fn is_dropped_participant(&self, participant: &Participant) -> Result<bool, CoordinatorError> {
-        let participant_info = match self.current_participant_info(participant) {
+        let participant_info = match self.dropped.iter().find(|p| p.id == *participant) {
             Some(p) => p,
             None => return Err(CoordinatorError::ParticipantMissing),
         };
