@@ -105,7 +105,7 @@ pub fn user_system_randomness() -> Vec<u8> {
     // Gather 1024 bytes of entropy from the system
     for _ in 0..1024 {
         let r: u8 = system_rng.gen();
-        h.input(&[r]);
+        h.update(&[r]);
     }
 
     // Ask the user to provide some information for additional entropy
@@ -116,8 +116,8 @@ pub fn user_system_randomness() -> Vec<u8> {
         .expect("expected to read some random text from the user");
 
     // Hash it all up to make a seed
-    h.input(&user_input.as_bytes());
-    let arr: GenericArray<u8, U64> = h.result();
+    h.update(&user_input.as_bytes());
+    let arr: GenericArray<u8, U64> = h.finalize();
     arr.to_vec()
 }
 
@@ -196,7 +196,7 @@ impl<W: Write> HashWriter<W> {
 
     /// Destroy this writer and return the hash of what was written.
     pub fn into_hash(self) -> GenericArray<u8, U64> {
-        self.hasher.result()
+        self.hasher.finalize()
     }
 }
 
@@ -205,7 +205,7 @@ impl<W: Write> Write for HashWriter<W> {
         let bytes = self.writer.write(buf)?;
 
         if bytes > 0 {
-            self.hasher.input(&buf[0..bytes]);
+            self.hasher.update(&buf[0..bytes]);
         }
 
         Ok(bytes)
@@ -224,9 +224,9 @@ pub fn calculate_hash(input_map: &[u8]) -> GenericArray<u8, U64> {
     let chunk_size = 1 << 30; // read by 1GB from map
     let mut hasher = Blake2b::default();
     for chunk in input_map.chunks(chunk_size) {
-        hasher.input(&chunk);
+        hasher.update(&chunk);
     }
-    hasher.result()
+    hasher.finalize()
 }
 
 /// Hashes to G2 using the first 32 bytes of `digest`. Panics if `digest` is less
@@ -348,13 +348,13 @@ pub fn power_pairs<G: AffineCurve>(v: &[G]) -> (G, G) {
 
 /// Compute BLAKE2b("")
 pub fn blank_hash() -> GenericArray<u8, U64> {
-    Blake2b::new().result()
+    Blake2b::new().finalize()
 }
 
 pub fn reduced_hash(old_power: u8, new_power: u8) -> GenericArray<u8, U64> {
     let mut hasher = Blake2b::new();
-    hasher.input(&[old_power, new_power]);
-    hasher.result()
+    hasher.update(&[old_power, new_power]);
+    hasher.finalize()
 }
 
 /// Checks if pairs have the same ratio.
@@ -384,14 +384,14 @@ pub fn compute_g2_s<E: PairingEngine>(
     personalization: u8,
 ) -> Result<E::G2Affine> {
     let mut h = Blake2b::default();
-    h.input(&[personalization]);
-    h.input(digest);
+    h.update(&[personalization]);
+    h.update(digest);
     let size = E::G1Affine::SERIALIZED_SIZE;
     let mut data = vec![0; 2 * size];
     g1_s.serialize(&mut &mut data[..size])?;
     g1_s_x.serialize(&mut &mut data[size..])?;
-    h.input(&data);
-    Ok(hash_to_g2::<E>(h.result().as_ref()).into_affine())
+    h.update(&data);
+    Ok(hash_to_g2::<E>(h.finalize().as_ref()).into_affine())
 }
 
 /// Perform multi-exponentiation. The caller is responsible for ensuring that

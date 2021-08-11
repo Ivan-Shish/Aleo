@@ -16,7 +16,7 @@ path = "src/view_key.rs"
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 
 anyhow = "1.0.38"
-age = { version = "0.5.0", features = ["cli-common", "armor"] }
+age = { version = "0.6", features = ["cli-common", "armor"] }
 hex = "0.4"
 rand = "0.8"
 secrecy = "0.7"
