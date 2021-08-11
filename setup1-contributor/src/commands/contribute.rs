@@ -30,10 +30,12 @@ use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey,
 
 use age::DecryptError;
 use anyhow::{Context, Result};
+use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
 use rand::{CryptoRng, Rng};
+use regex::Regex;
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
 use std::{
@@ -185,9 +187,11 @@ impl Contribute {
             server_url: self.server_url.clone(),
             participant_id: self.participant_id.to_string(),
         };
-        update_progress_bar(updater, progress_bar.clone());
+        let update_handle = update_progress_bar(updater, progress_bar.clone());
 
-        let mut futures = vec![];
+        // Push the handle for the progress bar here, so it fully exits before
+        // we start printing stuff at the end of the round.
+        let mut futures = vec![update_handle];
 
         for i in 0..n_concurrent_tasks {
             let mut cloned_contribute = self.clone_with_new_filenames(i);
@@ -198,7 +202,6 @@ impl Contribute {
                     let result = cloned_contribute.run::<E>().await;
                     match result {
                         Ok(_) => {
-                            print_key_and_remove_the_file().expect("Error finalizing the participation");
                             info!("Successfully contributed, thank you for participation!");
                             break;
                         }
@@ -238,6 +241,13 @@ impl Contribute {
         initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
 
         futures::future::try_join_all(futures).await?;
+
+        print_key_and_remove_the_file().expect("Error finalizing the participation");
+
+        // Let's see if the contributor wants to log an ETH address for their NFT
+        if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
+            tracing::error!("Error while prompting for ETH address - {}", e);
+        }
 
         Ok(())
     }
@@ -750,13 +760,72 @@ impl Contribute {
             .error_for_status()?;
         Ok(())
     }
+
+    async fn prompt_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
+        println!(
+            "Thank you for participating in Aleo Setup. As a token of appreciation, we would like to send you a commemorative NFT. This NFT is procedurally generated, but represents your unique contribution. We hope it serves as a reminder of the important role that YOU played in bringing Aleo to life.\n\nPlease enter the Ethereum address where you would like to receive the NFT:"
+        );
+
+        // Validate address
+        // NOTE: this only checks that the inputted string conforms to the same structure
+        // as ETH addresses - it does not actually perform a checksum validation.
+        // https://ethereum.stackexchange.com/a/40670
+        let re = Regex::new(r"^(0x|0X){1}[0-9a-fA-F]{40}$").unwrap();
+
+        let address: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Your ETH address")
+            .allow_empty(true)
+            .validate_with({
+                let mut opt_out = false;
+                move |input: &String| -> Result<(), &str> {
+                    if re.is_match(input) || (opt_out && input.len() == 0) {
+                        Ok(())
+                    } else if input.len() == 0 {
+                        opt_out = true;
+                        Err("Leaving this field blank will prevent you from receiving your NFT. Are you sure?")
+                    } else {
+                        opt_out = false;
+                        Err("This is not a valid Ethereum address.")
+                    }
+                }
+            })
+            .interact_text()
+            .unwrap();
+
+        if address.len() > 0 {
+            self.upload_eth_address(auth_rng, address).await
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn upload_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R, address: String) -> Result<()> {
+        let upload_path = "/v1/contributor/add_eth_address";
+        let upload_endpoint_url = self.server_url.join(&upload_path)?;
+        let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
+        let client = reqwest::Client::new();
+        let bytes = serde_json::to_string(&address)?;
+        client
+            .post(upload_endpoint_url)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
 }
 
-fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
             match updater.status_updater(progress_bar.clone()).await {
-                Ok(_) => {}
+                Ok(_) => {
+                    if progress_bar.is_finished() {
+                        return;
+                    }
+                }
                 Err(e) => {
                     warn!("Got error from updater: {}", e);
                     progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
@@ -764,7 +833,7 @@ fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
             }
             sleep(DELAY_POLL_CEREMONY).await;
         }
-    });
+    })
 }
 
 /// Utility structure to provide updates about the round progress
@@ -796,10 +865,8 @@ impl StatusUpdater {
         } else if non_contributed_chunks.len() == 0 {
             let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
 
+            progress_bar.finish_with_message(completed_message);
             info!(completed_message);
-
-            progress_bar.set_position(number_of_chunks as u64);
-            progress_bar.set_message(completed_message);
         } else {
             progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
             progress_bar.set_message(&format!("Waiting for an available chunk..."));
