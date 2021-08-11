@@ -12,6 +12,17 @@ pub enum SetupKind {
     Universal,
 }
 
+impl SetupKind {
+    pub fn as_string(&self) -> String {
+        match self {
+            SetupKind::Development => "Development".to_owned(),
+            SetupKind::Inner => "Inner".to_owned(),
+            SetupKind::Outer => "Outer".to_owned(),
+            SetupKind::Universal => "Universal".to_owned(),
+        }
+    }
+}
+
 /// The public settings of a setup to let the contributors know
 /// what kind of a setup is running at the moment and some
 /// other details
