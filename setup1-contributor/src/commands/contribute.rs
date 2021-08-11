@@ -800,15 +800,15 @@ impl Contribute {
     }
 
     async fn upload_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R, address: String) -> Result<()> {
-        let upload_endpoint_url = self.server_url.join("/v1/contributor/add_eth_address")?;
-        let authorization =
-            get_authorization_value(&self.private_key, "POST", &upload_endpoint_url.as_str(), auth_rng)?;
+        let upload_path = "/v1/contributor/add_eth_address";
+        let upload_endpoint_url = self.server_url.join(&upload_path)?;
+        let authorization = get_authorization_value(&self.private_key, "POST", &upload_path, auth_rng)?;
         let client = reqwest::Client::new();
-        let bytes = serde_json::to_vec(&address)?;
+        let bytes = serde_json::to_string(&address)?;
         client
             .post(upload_endpoint_url)
             .header(http::header::AUTHORIZATION, authorization)
-            .header(http::header::CONTENT_LENGTH, address.len())
+            .header(http::header::CONTENT_LENGTH, bytes.len())
             .body(bytes)
             .send()
             .await?
