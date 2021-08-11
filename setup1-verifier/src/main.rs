@@ -1,7 +1,7 @@
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use setup1_shared::structures::{PublicSettings, SetupKind};
 use setup1_verifier::{utils::init_logger, verifier::Verifier};
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, ViewKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
 
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;

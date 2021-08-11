@@ -6,7 +6,7 @@ use phase1_coordinator::{
 };
 use setup1_shared::structures::SetupKind;
 use snarkvm_curves::PairingEngine;
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey, ViewKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
 use snarkvm_utilities::ToBytes;
 
 use anyhow::Result;

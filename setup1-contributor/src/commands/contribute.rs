@@ -26,7 +26,7 @@ use phase1_coordinator::{
 use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey, ViewKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
 
 use age::DecryptError;
 use anyhow::{Context, Result};

@@ -1,4 +1,4 @@
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey};
 
 use age::Decryptor;
 use anyhow::{anyhow, Result};

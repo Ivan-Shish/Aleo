@@ -10,7 +10,7 @@ use setup1_shared::reliability::{
     CoordinatorMessageName,
     MAXIMUM_MESSAGE_SIZE,
 };
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 use tokio_tungstenite::{
     connect_async_with_config,
     tungstenite::protocol::{Message, WebSocketConfig},

@@ -1,7 +1,6 @@
 use crate::errors::VerifierError;
 
-use snarkvm_algorithms::SignatureScheme;
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, Parameters, ViewKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
 use snarkvm_utilities::{FromBytes, ToBytes};
 
 use rand::thread_rng;
@@ -122,8 +121,6 @@ impl AleoAuthentication {
 #[cfg(test)]
 mod authentication_tests {
     use super::*;
-
-    use std::convert::TryInto;
 
     // Example API request path
     const PATH: &str = "/v1/queue/verifier/join";

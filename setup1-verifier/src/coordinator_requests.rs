@@ -1,5 +1,5 @@
 use crate::{errors::VerifierError, objects::LockResponse, utils::AleoAuthentication, verifier::Verifier};
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address};
 
 use reqwest::Client;
 use tracing::{debug, error, info};

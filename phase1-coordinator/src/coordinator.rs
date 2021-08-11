@@ -3254,7 +3254,7 @@ mod tests {
                             serde_json::to_string_pretty(&coordinator_clone.read().unwrap().current_round().unwrap())
                                 .unwrap()
                         );
-                        panic!(format!("{:?}", try_lock.unwrap()))
+                        panic!("{:?}", try_lock.unwrap())
                     }
                 }
                 {
@@ -3288,7 +3288,7 @@ mod tests {
                             serde_json::to_string_pretty(&coordinator_clone.read().unwrap().current_round().unwrap())
                                 .unwrap()
                         );
-                        panic!(format!("{:?}", verify.unwrap()))
+                        panic!("{:?}", verify.unwrap())
                     }
                 }
             });
