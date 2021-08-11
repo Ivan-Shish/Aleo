@@ -15,7 +15,7 @@ use phase1_coordinator::{
 };
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, Address, ViewKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
 
 use chrono::Utc;
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
@@ -651,7 +651,7 @@ mod tests {
 
         // Deserialize the contribution
         let declared_verifier_flag = serialized_contribution.drain(0..1).collect::<Vec<u8>>();
-        let declared_signature = serialized_contribution.drain(0..signature_length).collect::<Vec<u8>>();
+        let _declared_signature = serialized_contribution.drain(0..signature_length).collect::<Vec<u8>>();
         let declared_challenge_hash = serialized_contribution
             .drain(0..challenge_hash.len())
             .collect::<Vec<u8>>();

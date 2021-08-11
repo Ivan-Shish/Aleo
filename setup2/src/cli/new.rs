@@ -3,8 +3,8 @@ use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
 use snarkvm_algorithms::{SNARK, SRS};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{
+    parameters::testnet2::{Testnet2DPC, Testnet2Parameters},
     prelude::*,
-    testnet2::parameters::{Testnet2DPC, Testnet2Parameters},
 };
 use snarkvm_fields::Field;
 use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
@@ -65,17 +65,12 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
     } else {
         let rng = &mut ChaChaRng::from_seed([0u8; 32]); // TODO (howardwu): CRITICAL - Someone put this here. This is not safe!
         let dpc = Testnet2DPC::load(false)?;
-        let noop_program_snark_parameters = dpc.noop_program.to_snark_parameters();
-        let program_snark_proof = <Testnet2Parameters as Parameters>::ProgramSNARK::prove(
-            &noop_program_snark_parameters.0,
-            &NoopCircuit::<Testnet2Parameters>::blank(),
-            rng,
-        )?;
 
-        let private_program_input = Execution::<<Testnet2Parameters as Parameters>::ProgramSNARK> {
-            verifying_key: noop_program_snark_parameters.1.clone(),
-            proof: program_snark_proof,
-        };
+        let noop_circuit = dpc
+            .noop_program
+            .find_circuit_by_index(0)
+            .ok_or(DPCError::MissingNoopCircuit)?;
+        let private_program_input = dpc.noop_program.execute_blank(noop_circuit.circuit_id())?;
 
         let inner_snark_parameters = <Testnet2Parameters as Parameters>::InnerSNARK::setup(
             &InnerCircuit::<Testnet2Parameters>::blank(),

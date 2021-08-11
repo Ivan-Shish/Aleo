@@ -8,19 +8,23 @@ mod test {
     use snarkvm_curves::{
         bls12_377::{Bls12_377, Fr},
         PairingCurve,
+        PairingEngine,
     };
     use snarkvm_fields::Field;
+    use snarkvm_ledger::posw::{txids_to_roots, Marlin, PoswMarlin};
     use snarkvm_polycommit::kzg10::UniversalParams;
-    use snarkvm_posw::{txids_to_roots, Marlin, PoswMarlin};
     use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
     use snarkvm_utilities::{serialize::*, UniformRand};
 
+    use blake2::Blake2s;
     use itertools::Itertools;
+    use snarkvm_marlin::FiatShamirChaChaRng;
+    use snarkvm_polycommit::sonic_pc::SonicKZG10;
     use std::{collections::BTreeMap, ops::MulAssign};
 
     #[test]
     fn test_marlin_posw_bls12_377() {
-        let powers = 19usize;
+        let powers = 18usize;
         let batch = 1usize << 16;
         let parameters = Phase1Parameters::<Bls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
@@ -69,9 +73,16 @@ mod test {
                 alpha_tau_powers_g1.insert(parameters.powers_length - 1 - (1 << i) + 4, *c[2]);
             });
 
-        let mut prepared_neg_powers_of_h = BTreeMap::new();
-        tau_powers_g2[2..].iter().enumerate().for_each(|(i, p)| {
-            prepared_neg_powers_of_h.insert(parameters.powers_length - 1 - (1 << i) + 2, p.prepare());
+        let mut shift_powers_of_g = BTreeMap::new();
+        let mut neg_shift_powers_of_h = BTreeMap::new();
+        let mut degree_bounds = vec![];
+        tau_powers_g2[2..].iter().enumerate().skip(1).for_each(|(i, p)| {
+            degree_bounds.push((1 << i) - 2);
+            neg_shift_powers_of_h.insert((1 << i) - 2, (*p).clone());
+            shift_powers_of_g.insert(
+                (1 << i) - 2,
+                tau_powers_g1[parameters.powers_length - 1 - (1 << i) + 2].clone(),
+            );
         });
 
         let h = tau_powers_g2[0].clone();
@@ -82,12 +93,14 @@ mod test {
             powers_of_gamma_g: alpha_tau_powers_g1,
             h: h.clone(),
             beta_h: beta_h.clone(),
-            prepared_neg_powers_of_h,
+            supported_degree_bounds: degree_bounds,
+            inverse_powers_of_g: shift_powers_of_g,
+            inverse_neg_powers_of_h: neg_shift_powers_of_h,
             prepared_h: h.prepare(),
             prepared_beta_h: beta_h.prepare(),
         };
 
-        let posw = PoswMarlin::index::<_, rand_chacha::ChaChaRng>(universal_params).unwrap();
+        let posw = PoswMarlin::index::<_, rand_chacha::ChaChaRng>(&universal_params).unwrap();
 
         // super low difficulty so we find a solution immediately
         let difficulty_target = 0xFFFF_FFFF_FFFF_FFFF_u64;
@@ -100,7 +113,7 @@ mod test {
             .mine(&subroots, difficulty_target, &mut rand::thread_rng(), std::u32::MAX)
             .unwrap();
 
-        assert_eq!(proof.len(), 972); // NOTE: Marlin proofs use compressed serialization
+        assert_eq!(proof.len(), 771); // NOTE: Marlin proofs use compressed serialization
 
         let proof = <Marlin<Bls12_377> as SNARK>::Proof::read_le(&proof[..]).unwrap();
         posw.verify(nonce, &proof, &pedersen_merkle_root).unwrap();
@@ -143,11 +156,17 @@ mod test {
         }
     }
 
-    type MarlinInst = snarkvm_marlin::MarlinTestnet1<Bls12_377>;
+    type MarlinInst = snarkvm_marlin::marlin::MarlinSNARK<
+        <Bls12_377 as PairingEngine>::Fr,
+        <Bls12_377 as PairingEngine>::Fq,
+        SonicKZG10<Bls12_377>,
+        FiatShamirChaChaRng<<Bls12_377 as PairingEngine>::Fr, <Bls12_377 as PairingEngine>::Fq, Blake2s>,
+        snarkvm_marlin::marlin::MarlinTestnet1Mode,
+    >;
 
     #[test]
     fn test_marlin_sonic_pc() {
-        let powers = 16usize;
+        let powers = 15usize;
         let batch = 1usize << 12;
         let parameters = Phase1Parameters::<Bls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
@@ -196,10 +215,18 @@ mod test {
                 alpha_tau_powers_g1.insert(parameters.powers_length - 1 - (1 << i) + 4, *c[2]);
             });
 
-        let mut prepared_neg_powers_of_h = BTreeMap::new();
-        tau_powers_g2[2..].iter().enumerate().for_each(|(i, p)| {
-            prepared_neg_powers_of_h.insert(parameters.powers_length - 1 - (1 << i) + 2, p.prepare());
+        let mut shift_powers_of_g = BTreeMap::new();
+        let mut neg_shift_powers_of_h = BTreeMap::new();
+        let mut degree_bounds = vec![];
+        tau_powers_g2[2..].iter().enumerate().skip(1).for_each(|(i, p)| {
+            degree_bounds.push((1 << i) - 2);
+            neg_shift_powers_of_h.insert((1 << i) - 2, (*p).clone());
+            shift_powers_of_g.insert(
+                (1 << i) - 2,
+                tau_powers_g1[parameters.powers_length - 1 - (1 << i) + 2].clone(),
+            );
         });
+
         let h = tau_powers_g2[0].clone();
         let beta_h = tau_powers_g2[1].clone();
         let universal_params = UniversalParams::<Bls12_377> {
@@ -207,7 +234,9 @@ mod test {
             powers_of_gamma_g: alpha_tau_powers_g1,
             h: h.clone(),
             beta_h: beta_h.clone(),
-            prepared_neg_powers_of_h,
+            supported_degree_bounds: degree_bounds,
+            inverse_powers_of_g: shift_powers_of_g,
+            inverse_neg_powers_of_h: neg_shift_powers_of_h,
             prepared_h: h.prepare(),
             prepared_beta_h: beta_h.prepare(),
         };

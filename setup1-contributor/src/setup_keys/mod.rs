@@ -10,7 +10,7 @@ use anyhow::Result;
 use rand::{rngs::OsRng, RngCore};
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use serde::{Deserialize, Serialize};
-use snarkvm_dpc::{testnet2::parameters::Testnet2Parameters, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 
 use crate::errors::ContributeError;
 
@@ -59,7 +59,7 @@ fn generate_unencrypted() -> UnencryptedKeys {
     let mut seed_bytes = vec![0u8; 64];
     rng.fill_bytes(&mut seed_bytes[..]);
     let seed = SecretVec::new(seed_bytes);
-    let private_key = PrivateKey::new(&mut rng).expect("Should have generated an Aleo private key");
+    let private_key = PrivateKey::new(&mut rng);
     UnencryptedKeys { seed, private_key }
 }
 
