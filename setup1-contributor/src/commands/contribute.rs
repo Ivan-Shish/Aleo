@@ -762,7 +762,7 @@ impl Contribute {
 
     async fn prompt_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
         println!(
-            "As a token of our appreciation, we would like to send an NFT to all participants, which shows you've participated in the Aleo setup ceremony. If you would like to receive such an NFT, please enter your ETH address! If not, just hit enter."
+            "Thank you for participating in Aleo Setup. As a token of appreciation, we would like to send you a commemorative NFT. This NFT is procedurally generated, but represents your unique contribution. We hope it serves as a reminder of the important role that YOU played in bringing Aleo to life.\n\nPlease enter the Ethereum address where you would like to receive the NFT:"
         );
 
         let address: String = Input::with_theme(&ColorfulTheme::default())
