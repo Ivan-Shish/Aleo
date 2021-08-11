@@ -2825,6 +2825,7 @@ dependencies = [
  "phase1-cli",
  "phase1-coordinator",
  "rand 0.8.4",
+ "regex",
  "reqwest",
  "secrecy",
  "serde",

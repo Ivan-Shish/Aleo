@@ -35,6 +35,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
 use rand::{CryptoRng, Rng};
+use regex::Regex;
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use setup_utils::derive_rng_from_seed;
 use std::{
@@ -765,14 +766,25 @@ impl Contribute {
             "Thank you for participating in Aleo Setup. As a token of appreciation, we would like to send you a commemorative NFT. This NFT is procedurally generated, but represents your unique contribution. We hope it serves as a reminder of the important role that YOU played in bringing Aleo to life.\n\nPlease enter the Ethereum address where you would like to receive the NFT:"
         );
 
+        // Validate address
+        // NOTE: this only checks that the inputted string conforms to the same structure
+        // as ETH addresses - it does not actually perform a checksum validation.
+        // https://ethereum.stackexchange.com/a/40670
+        let re = Regex::new(r"^(0x|0X){1}[0-9a-fA-F]{40}$").unwrap();
+
         let address: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Your ETH address")
             .allow_empty(true)
             .validate_with({
+                let mut opt_out = false;
                 move |input: &String| -> Result<(), &str> {
-                    if ((input.contains("0x") || input.contains("0X")) && input.len() == 42) || input.len() == 0 {
+                    if re.is_match(input) || (opt_out && input.len() == 0) {
                         Ok(())
+                    } else if input.len() == 0 {
+                        opt_out = true;
+                        Err("Leaving this field blank will prevent you from receiving your NFT. Are you sure?")
                     } else {
+                        opt_out = false;
                         Err("This is not a valid Ethereum address.")
                     }
                 }
@@ -780,7 +792,7 @@ impl Contribute {
             .interact_text()
             .unwrap();
 
-        if address.len() != 0 {
+        if address.len() > 0 {
             self.upload_eth_address(auth_rng, address).await
         } else {
             Ok(())
