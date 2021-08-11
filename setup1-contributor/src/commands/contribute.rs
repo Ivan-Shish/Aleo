@@ -186,23 +186,21 @@ impl Contribute {
             server_url: self.server_url.clone(),
             participant_id: self.participant_id.to_string(),
         };
-        update_progress_bar(updater, progress_bar.clone());
+        let update_handle = update_progress_bar(updater, progress_bar.clone());
 
-        let mut futures = vec![];
+        // Push the handle for the progress bar here, so it fully exits before
+        // we start printing stuff at the end of the round.
+        let mut futures = vec![update_handle];
 
         for i in 0..n_concurrent_tasks {
             let mut cloned_contribute = self.clone_with_new_filenames(i);
 
             let join_handle = tokio::task::spawn(async move {
-                // Keeping track of whether we've already added the ETH address.
-                let mut added_eth_address = false;
-
                 // Run contributor loop.
                 loop {
                     let result = cloned_contribute.run::<E>().await;
                     match result {
                         Ok(_) => {
-                            print_key_and_remove_the_file().expect("Error finalizing the participation");
                             info!("Successfully contributed, thank you for participation!");
                             break;
                         }
@@ -229,14 +227,6 @@ impl Contribute {
                         }
                     }
 
-                    if !added_eth_address {
-                        // Prompt the user if they want to save an ETH address to receive an NFT on.
-                        match cloned_contribute.prompt_eth_address(&mut rand::rngs::OsRng).await {
-                            Ok(()) => added_eth_address = true,
-                            Err(e) => tracing::error!("Error while prompting for ETH address - {}", e),
-                        };
-                    }
-
                     sleep(DELAY_AFTER_ERROR).await;
                 }
             });
@@ -250,6 +240,13 @@ impl Contribute {
         initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
 
         futures::future::try_join_all(futures).await?;
+
+        print_key_and_remove_the_file().expect("Error finalizing the participation");
+
+        // Let's see if the contributor wants to log an ETH address for their NFT
+        if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
+            tracing::error!("Error while prompting for ETH address - {}", e);
+        }
 
         Ok(())
     }
@@ -770,6 +767,7 @@ impl Contribute {
 
         let address: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Your ETH address")
+            .allow_empty(true)
             .validate_with({
                 move |input: &String| -> Result<(), &str> {
                     if ((input.contains("0x") || input.contains("0X")) && input.len() == 42) || input.len() == 0 {
@@ -807,11 +805,15 @@ impl Contribute {
     }
 }
 
-fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
             match updater.status_updater(progress_bar.clone()).await {
-                Ok(_) => {}
+                Ok(_) => {
+                    if progress_bar.is_finished() {
+                        return;
+                    }
+                }
                 Err(e) => {
                     warn!("Got error from updater: {}", e);
                     progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
@@ -819,7 +821,7 @@ fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
             }
             sleep(DELAY_POLL_CEREMONY).await;
         }
-    });
+    })
 }
 
 /// Utility structure to provide updates about the round progress
@@ -851,10 +853,8 @@ impl StatusUpdater {
         } else if non_contributed_chunks.len() == 0 {
             let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
 
+            progress_bar.finish_with_message(completed_message);
             info!(completed_message);
-
-            progress_bar.set_position(number_of_chunks as u64);
-            progress_bar.set_message(completed_message);
         } else {
             progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
             progress_bar.set_message(&format!("Waiting for an available chunk..."));
