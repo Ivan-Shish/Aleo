@@ -15,10 +15,10 @@ pub enum SetupKind {
 impl SetupKind {
     pub fn as_string(&self) -> String {
         match self {
-            SetupKind::Development => "Development".to_owned(),
-            SetupKind::Inner => "Inner".to_owned(),
-            SetupKind::Outer => "Outer".to_owned(),
-            SetupKind::Universal => "Universal".to_owned(),
+            SetupKind::Development => "development".to_owned(),
+            SetupKind::Inner => "inner".to_owned(),
+            SetupKind::Outer => "outer".to_owned(),
+            SetupKind::Universal => "universal".to_owned(),
         }
     }
 }
