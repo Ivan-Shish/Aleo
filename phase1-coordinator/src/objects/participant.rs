@@ -48,6 +48,14 @@ impl Participant {
     pub fn is_verifier(&self) -> bool {
         !self.is_contributor()
     }
+
+    /// Retrieve the address of the participant.
+    pub fn address(&self) -> String {
+        match self {
+            Participant::Contributor(a) => a.to_string(),
+            Participant::Verifier(a) => a.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Participant {
