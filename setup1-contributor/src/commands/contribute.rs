@@ -23,14 +23,14 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Participant, Round},
 };
-use setup1_shared::structures::PublicSettings;
+use setup1_shared::structures::{PublicSettings, TwitterInfo};
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
 
 use age::DecryptError;
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Input};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
@@ -248,6 +248,17 @@ impl Contribute {
         if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
             tracing::error!("Error while prompting for ETH address - {}", e);
         }
+
+        match self.prompt_tweet(&mut rand::rngs::OsRng).await {
+            Ok(s) => {
+                if s.is_some() {
+                    println!("Thanks for making an attestation! Your tweet: {}", s.unwrap());
+                }
+            }
+            Err(e) => {
+                tracing::error!("Error while prompting for an attestation tweet - {}", e);
+            }
+        };
 
         Ok(())
     }
@@ -761,6 +772,51 @@ impl Contribute {
         Ok(())
     }
 
+    async fn prompt_tweet<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<Option<String>> {
+        if Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Would you like to tweet an attestation to your contribution?")
+            .interact()
+            .unwrap()
+        {
+            let request_token = self.get_twitter_request_token(auth_rng).await?;
+            let auth_url = egg_mode::auth::authorize_url(&request_token);
+
+            println!(
+                "Please visit this URL and authorize the Aleo Setup application to tweet on your behalf - {}\n\nWhen you're finished, the website will give you a PIN code. Please enter it in the input below.",
+                auth_url
+            );
+
+            loop {
+                let re = Regex::new(r"^[0-9]{6}$").unwrap();
+                let pin: String = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Enter PIN")
+                    .validate_with({
+                        move |input: &String| -> Result<(), &str> {
+                            if re.is_match(input) {
+                                Ok(())
+                            } else {
+                                Err("The PIN should be 6 digits.")
+                            }
+                        }
+                    })
+                    .interact_text()
+                    .unwrap();
+
+                let info = TwitterInfo {
+                    request_token: request_token.clone(),
+                    pin,
+                };
+
+                match self.post_tweet(auth_rng, info).await {
+                    Ok(link) => return Ok(Some(link)),
+                    Err(e) => println!("Could not post tweet - {}\n\n Please try again", e),
+                };
+            }
+        }
+
+        Ok(None)
+    }
+
     async fn prompt_eth_address<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<()> {
         println!(
             "Thank you for participating in Aleo Setup. As a token of appreciation, we would like to send you a commemorative NFT. This NFT is procedurally generated, but represents your unique contribution. We hope it serves as a reminder of the important role that YOU played in bringing Aleo to life.\n\nPlease enter the Ethereum address where you would like to receive the NFT:"
@@ -814,6 +870,46 @@ impl Contribute {
             .await?
             .error_for_status()?;
         Ok(())
+    }
+
+    async fn get_twitter_request_token<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<egg_mode::KeyPair> {
+        let get_path = "/v1/contributor/get_twitter_request_token";
+        let get_endpoint_url = self.server_url.join(&get_path)?;
+        let authorization = get_authorization_value(&self.private_key, "GET", &get_path, auth_rng)?;
+        let client = reqwest::Client::new();
+        let response = client
+            .get(get_endpoint_url)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, 0)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let data = response.bytes().await?;
+        let request_token = serde_json::from_slice::<egg_mode::KeyPair>(&*data)?;
+
+        Ok(request_token)
+    }
+
+    async fn post_tweet<R: Rng + CryptoRng>(&self, auth_rng: &mut R, info: TwitterInfo) -> Result<String> {
+        let post_path = "/v1/contributor/post_tweet";
+        let post_endpoint_url = self.server_url.join(&post_path)?;
+        let authorization = get_authorization_value(&self.private_key, "GET", &post_path, auth_rng)?;
+        let client = reqwest::Client::new();
+        let bytes = serde_json::to_vec(&info)?;
+        let response = client
+            .post(post_endpoint_url)
+            .header(http::header::AUTHORIZATION, authorization)
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let data = response.bytes().await?;
+        let request_token = serde_json::from_slice::<String>(&*data)?;
+
+        Ok(request_token)
     }
 }
 
