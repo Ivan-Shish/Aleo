@@ -20,7 +20,7 @@ snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c"
 anyhow = { version = "1.0.37" }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-humanize = { version = "0.2" }
-itertools = { version = "0.9.0" }
+itertools = "0.10"
 futures = { version = "0.3" }
 hex = { version = "0.4.2" }
 memmap = { version = "0.7.0" }
@@ -33,7 +33,7 @@ serde-diff = { version = "0.4" }
 serde_json = { version = "1.0" }
 serde_with = { version = "1.8", features = ["chrono", "macros"] }
 thiserror = { version = "1.0" }
-tokio = { version = "1.8", features = ["macros", "rt-multi-thread", "time", "sync", "signal"] }
+tokio = { version = "1.9", features = ["macros", "rt-multi-thread", "time", "sync", "signal"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.2" }
 

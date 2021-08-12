@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.2.3" }
 wasm-bindgen-test = { version = "0.3.18" }
 
 [build-dependencies]
-rustc_version = { version = "0.3" }
+rustc_version = "0.4.0"
 
 [features]
 default = ["cli"]

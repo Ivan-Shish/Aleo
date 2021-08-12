@@ -20,9 +20,9 @@ snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c"
 snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
-blake2 = { version = "0.8.1" }
+blake2 = "0.9"
 blake2s_simd = { version = "0.5.11" }
-cfg-if = { version = "0.1.10" }
+cfg-if = "1.0"
 crossbeam = { version = "0.8.0" }
 num_cpus = { version = "1.12.0" }
 rand = { version = "0.8" }
