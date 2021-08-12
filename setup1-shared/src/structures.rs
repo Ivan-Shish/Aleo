@@ -44,3 +44,12 @@ impl PublicSettings {
         serde_json::from_slice(bytes)
     }
 }
+
+/// The combination of request token and PIN, used to tweet
+/// on a contributor's behalf by the coordinator.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwitterInfo {
+    pub request_token: egg_mode::KeyPair,
+    pub pin: String,
+}
