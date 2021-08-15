@@ -147,7 +147,7 @@ impl Parameters {
             ProvingSystem::Marlin,
             CurveKind::Bls12_377,
             Power::from(28_usize),
-            BatchSize::from(4096_usize),
+            BatchSize::from(2097152_usize),
             ChunkSize::from(65536_usize),
         )
     }
