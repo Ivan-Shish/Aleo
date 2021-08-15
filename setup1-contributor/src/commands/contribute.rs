@@ -778,16 +778,16 @@ impl Contribute {
             .interact()
             .unwrap()
         {
-            let request_token = self.get_twitter_request_token(auth_rng).await?;
-            let auth_url = egg_mode::auth::authorize_url(&request_token);
-
-            println!(
-                "Please visit this URL and authorize the Aleo Setup application to tweet on your behalf - {}\n\nWhen you're finished, the website will give you a PIN code. Please enter it in the input below.",
-                auth_url
-            );
-
             loop {
-                let re = Regex::new(r"^[0-9]{6}$").unwrap();
+                let request_token = self.get_twitter_access_token(auth_rng).await?;
+                let auth_url = egg_mode::auth::authorize_url(&request_token);
+
+                println!(
+                    "Please visit this URL and authorize the Aleo Setup application to tweet on your behalf - {}\n\nWhen you're finished, the website will give you a PIN code. Please enter it in the input below.",
+                    auth_url
+                );
+
+                let re = Regex::new(r"^[0-9]{7}$").unwrap();
                 let pin: String = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Enter PIN")
                     .validate_with({
@@ -795,7 +795,7 @@ impl Contribute {
                             if re.is_match(input) {
                                 Ok(())
                             } else {
-                                Err("The PIN should be 6 digits.")
+                                Err("The PIN should be 7 digits.")
                             }
                         }
                     })
@@ -809,7 +809,7 @@ impl Contribute {
 
                 match self.post_tweet(auth_rng, info).await {
                     Ok(link) => return Ok(Some(link)),
-                    Err(e) => println!("Could not post tweet - {}\n\n Please try again", e),
+                    Err(e) => println!("Could not post tweet - {}\n\nPlease try again", e),
                 };
             }
         }
@@ -872,15 +872,14 @@ impl Contribute {
         Ok(())
     }
 
-    async fn get_twitter_request_token<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<egg_mode::KeyPair> {
-        let get_path = "/v1/contributor/get_twitter_request_token";
+    async fn get_twitter_access_token<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<egg_mode::KeyPair> {
+        let get_path = "/v1/contributor/get_twitter_access_token";
         let get_endpoint_url = self.server_url.join(&get_path)?;
         let authorization = get_authorization_value(&self.private_key, "GET", &get_path, auth_rng)?;
         let client = reqwest::Client::new();
         let response = client
             .get(get_endpoint_url)
             .header(http::header::AUTHORIZATION, authorization)
-            .header(http::header::CONTENT_LENGTH, 0)
             .send()
             .await?
             .error_for_status()?;
@@ -894,7 +893,7 @@ impl Contribute {
     async fn post_tweet<R: Rng + CryptoRng>(&self, auth_rng: &mut R, info: TwitterInfo) -> Result<String> {
         let post_path = "/v1/contributor/post_tweet";
         let post_endpoint_url = self.server_url.join(&post_path)?;
-        let authorization = get_authorization_value(&self.private_key, "GET", &post_path, auth_rng)?;
+        let authorization = get_authorization_value(&self.private_key, "POST", &post_path, auth_rng)?;
         let client = reqwest::Client::new();
         let bytes = serde_json::to_vec(&info)?;
         let response = client
