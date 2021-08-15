@@ -17,7 +17,7 @@ path = "tests/aleo_compatibility.rs"
 required-features = ["phase2/testing"]
 
 [dependencies]
-setup-utils = { path = "../setup-utils", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = true }
 
 snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
