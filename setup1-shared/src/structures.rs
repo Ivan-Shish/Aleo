@@ -53,3 +53,11 @@ pub struct TwitterInfo {
     pub request_token: egg_mode::KeyPair,
     pub pin: String,
 }
+
+/// The status of the contributor related to the current round
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ContributorStatus {
+    Queue,
+    Round,
+    Other,
+}

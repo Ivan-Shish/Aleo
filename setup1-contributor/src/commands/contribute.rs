@@ -23,7 +23,7 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Participant, Round},
 };
-use setup1_shared::structures::{PublicSettings, TwitterInfo};
+use setup1_shared::structures::{ContributorStatus, PublicSettings, TwitterInfo};
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
@@ -185,6 +185,7 @@ impl Contribute {
         // Run status bar updater.
         let updater = StatusUpdater {
             server_url: self.server_url.clone(),
+            private_key: self.private_key.clone(),
             participant_id: self.participant_id.to_string(),
         };
         let update_handle = update_progress_bar(updater, progress_bar.clone());
@@ -934,11 +935,29 @@ fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) -> tok
 /// Utility structure to provide updates about the round progress
 struct StatusUpdater {
     server_url: Url,
+    private_key: PrivateKey<Testnet2Parameters>,
     participant_id: String,
 }
 
 impl StatusUpdater {
     async fn status_updater(&self, progress_bar: ProgressBar) -> Result<()> {
+        let status = get_contributor_status(&self.server_url, &self.private_key).await?;
+        match status {
+            ContributorStatus::Queue => {
+                progress_bar.set_message(&"In queue for one of the future rounds");
+            }
+            ContributorStatus::Round => {
+                self.update_position_in_round(&progress_bar).await?;
+            }
+            ContributorStatus::Other => {
+                progress_bar.set_message(&"Neither in queue nor in the current round");
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn update_position_in_round(&self, progress_bar: &ProgressBar) -> Result<()> {
         let ceremony = get_ceremony(&self.server_url).await?;
         let number_of_chunks = ceremony.chunks().len();
 
@@ -971,12 +990,37 @@ impl StatusUpdater {
     }
 }
 
+async fn get_contributor_status(
+    server_url: &Url,
+    private_key: &PrivateKey<Testnet2Parameters>,
+) -> Result<ContributorStatus> {
+    let endpoint = "/v1/contributor/status";
+    let ceremony_url = server_url.join(endpoint)?;
+
+    let auth_rng = &mut rand::rngs::OsRng;
+    let authorization = get_authorization_value(private_key, "POST", &endpoint, auth_rng)?;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(ceremony_url)
+        .header(http::header::AUTHORIZATION, authorization)
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let data = response.bytes().await?;
+    let status = serde_json::from_slice(&*data)?;
+
+    Ok(status)
+}
+
 async fn get_ceremony(server_url: &Url) -> Result<Round> {
     let ceremony_url = server_url.join("/v1/round/current")?;
     let response = reqwest::get(ceremony_url.as_str()).await?.error_for_status()?;
 
     let data = response.bytes().await?;
-    let ceremony: Round = serde_json::from_slice(&*data)?;
+    let ceremony = serde_json::from_slice(&*data)?;
 
     Ok(ceremony)
 }
