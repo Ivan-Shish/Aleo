@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 phase1 = { path = "../phase1" }
-setup-utils = { path = "../setup-utils", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = true }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
 anyhow = { version = "1.0.37" }

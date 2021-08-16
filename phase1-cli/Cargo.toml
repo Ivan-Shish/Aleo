@@ -9,8 +9,8 @@ license = "MIT/Apache-2.0"
 edition = "2018"
 
 [dependencies]
-phase1 = { path = "../phase1", default-features = false }
-setup-utils = { path = "../setup-utils", default-features = false }
+phase1 = { path = "../phase1", default-features = true }
+setup-utils = { path = "../setup-utils", default-features = true }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
 gumdrop = { version = "0.8.0" }
