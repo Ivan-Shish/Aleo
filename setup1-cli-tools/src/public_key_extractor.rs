@@ -23,7 +23,6 @@ struct Options {
 pub struct AleoSetupKeys {
     pub encrypted_seed: String,
     pub encrypted_private_key: String,
-    pub address: String,
 }
 
 fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<SecretVec<u8>> {

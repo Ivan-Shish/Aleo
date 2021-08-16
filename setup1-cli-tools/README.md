@@ -4,14 +4,11 @@ Some handy utilities for testing purposes
 
 ## Build Guide
 
+Use stable Rust to build (at the moment of writing 1.54)
+
 ```bash
-# Requires specific rustc version
-rustup default 1.48
-# After setting the toolchain, you can build with:
 cargo build --release
 ```
-
-~~Works on stable and nightly! (tested on 1.50 stable and 1.52 nightly)~~
 
 Alternatively, to add the binaries to the PATH run:
 
