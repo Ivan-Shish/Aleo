@@ -10,7 +10,7 @@ use anyhow::Result;
 use rand::{rngs::OsRng, RngCore};
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use serde::{Deserialize, Serialize};
-use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey};
 
 use crate::errors::ContributeError;
 
@@ -21,6 +21,7 @@ pub mod confirmation_key;
 pub struct AleoSetupKeys {
     pub encrypted_seed: String,
     pub encrypted_private_key: String,
+    pub address: String,
 }
 
 struct UnencryptedKeys {
@@ -43,6 +44,9 @@ fn encrypt(passphrase: SecretString, secret: &[u8]) -> Result<String> {
 }
 
 fn encrypt_keys(unencrypted: &UnencryptedKeys, passphrase: SecretString) -> AleoSetupKeys {
+    let address = Address::from_private_key(&unencrypted.private_key)
+        .expect("Should have derived an Aleo address")
+        .to_string();
     let encrypted_seed =
         encrypt(passphrase.clone(), unencrypted.seed.expose_secret()).expect("Should have encrypted Aleo seed");
     let encrypted_private_key =
@@ -51,6 +55,7 @@ fn encrypt_keys(unencrypted: &UnencryptedKeys, passphrase: SecretString) -> Aleo
     AleoSetupKeys {
         encrypted_seed,
         encrypted_private_key,
+        address,
     }
 }
 

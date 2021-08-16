@@ -18,6 +18,7 @@ pub struct GenerateOptions {
     #[structopt(long)]
     pub passphrase: Option<SecretString>,
     /// Store the seed and private key at the given path.
-    #[structopt(long, help = "Store the seed and private key at the given path")]
+    /// For example: --keys-path keys.json
+    #[structopt(long)]
     pub keys_path: PathBuf,
 }
