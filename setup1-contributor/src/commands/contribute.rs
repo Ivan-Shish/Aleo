@@ -944,13 +944,20 @@ impl StatusUpdater {
         let status = get_contributor_status(&self.server_url, &self.private_key).await?;
         match status {
             ContributorStatus::Queue => {
-                progress_bar.set_message(&"In queue for one of the future rounds");
+                progress_bar.set_message(
+                    &"You are in the queue for an upcoming round of the ceremony. \
+                    Please wait for the prior round to finish, and please stay \
+                    connected for the duration of your contribution.",
+                );
             }
             ContributorStatus::Round => {
                 self.update_position_in_round(&progress_bar).await?;
             }
             ContributorStatus::Other => {
-                progress_bar.set_message(&"Neither in queue nor in the current round");
+                progress_bar.set_message(
+                    &"Not in the queue for Aleo Setup ceremony. Please double check the address \
+                    you are connecting, then disconnect and try again",
+                );
             }
         }
 
