@@ -9,7 +9,7 @@ CURVE="bw6"
 SEED=`tr -dc 'A-F0-9' < /dev/urandom | head -c32`
 echo $SEED > seed1
 
-phase1="cargo run --release --bin phase1 -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode full --power $POWER --seed seed1 --proving-system $PROVING_SYSTEM"
+phase1="cargo run --release --bin phase1 --features cli -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode full --power $POWER --seed seed1 --proving-system $PROVING_SYSTEM"
 
 ####### Phase 1
 
