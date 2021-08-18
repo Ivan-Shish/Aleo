@@ -876,74 +876,119 @@ impl Round {
             // Fetch the chunk corresponding to the given chunk ID.
             let chunk = self.chunk_mut(*chunk_id)?;
 
-            if participant.is_contributor() {
-                // Fetch the next contribution ID and remove the response locator.
-                let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
-                let response_locator = Locator::ContributionFile(ContributionLocator::new(
-                    current_round_height,
-                    *chunk_id,
-                    next_contribution_id,
-                    false,
-                ));
-                if storage.exists(&response_locator) {
-                    storage.remove(&response_locator)?;
-                }
+            match participant {
+                Participant::Contributor(_) => {
+                    // Fetch the next contribution ID and remove the response locator.
+                    let next_contribution_id = chunk.next_contribution_id(expected_number_of_contributions)?;
+                    let response_locator = Locator::ContributionFile(ContributionLocator::new(
+                        current_round_height,
+                        *chunk_id,
+                        next_contribution_id,
+                        false,
+                    ));
+                    if storage.exists(&response_locator) {
+                        storage.remove(&response_locator)?;
+                    }
 
-                // Removing contribution file signature for pending task
-                let response_signature_locator = Locator::ContributionFileSignature(ContributionSignatureLocator::new(
-                    current_round_height,
-                    *chunk_id,
-                    next_contribution_id,
-                    false,
-                ));
-                if storage.exists(&response_signature_locator) {
-                    storage.remove(&response_signature_locator)?;
-                }
+                    // Removing contribution file signature for pending task
+                    let response_signature_locator = Locator::ContributionFileSignature(
+                        ContributionSignatureLocator::new(current_round_height, *chunk_id, next_contribution_id, false),
+                    );
+                    if storage.exists(&response_signature_locator) {
+                        storage.remove(&response_signature_locator)?;
+                    }
 
-                // Removing contribution file signature for verified task
-                let response_signature_locator = Locator::ContributionFileSignature(ContributionSignatureLocator::new(
-                    current_round_height,
-                    *chunk_id,
-                    next_contribution_id,
-                    true,
-                ));
-                if storage.exists(&response_signature_locator) {
-                    storage.remove(&response_signature_locator)?;
-                }
+                    // Removing contribution file signature for verified task
+                    let response_signature_locator = Locator::ContributionFileSignature(
+                        ContributionSignatureLocator::new(current_round_height, *chunk_id, next_contribution_id, true),
+                    );
+                    if storage.exists(&response_signature_locator) {
+                        storage.remove(&response_signature_locator)?;
+                    }
 
-                // TODO: revisit the logic of removing challenges
-                //       https://github.com/AleoHQ/aleo-setup/issues/250
-                // Remove the next challenge locator if the current response has been verified.
-                //
-                // TODO: check why is this calculating the locators again when
-                // we already have them in strings in Contribution?
-                if chunk.current_contribution()?.is_verified() {
-                    // Fetch whether this is the final contribution of the specified chunk.
+                    // TODO: revisit the logic of removing challenges
+                    //       https://github.com/AleoHQ/aleo-setup/issues/250
+                    // Remove the next challenge locator if the current response has been verified.
+                    //
+                    // TODO: check why is this calculating the locators again when
+                    // we already have them in strings in Contribution?
+                    if chunk.current_contribution()?.is_verified() {
+                        // Fetch whether this is the final contribution of the specified chunk.
+                        let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
+                        // Remove the next challenge locator.
+                        let contribution_file = if is_final_contribution {
+                            // This is the final contribution in the chunk.
+                            Locator::ContributionFile(ContributionLocator::new(
+                                current_round_height + 1,
+                                *chunk_id,
+                                0,
+                                true,
+                            ))
+                        } else {
+                            // This is a typical contribution in the chunk.
+                            Locator::ContributionFile(ContributionLocator::new(
+                                current_round_height,
+                                *chunk_id,
+                                chunk.current_contribution_id(),
+                                true,
+                            ))
+                        };
+                        // Don't remove initial challenge
+                        if storage.exists(&contribution_file)
+                            && chunk.current_contribution()?.get_contributor().is_some()
+                        {
+                            storage.remove(&contribution_file)?;
+                        }
+                    }
+                }
+                Participant::Verifier(_) => {
+                    // Get the response locator
+                    let current_contribution_id = chunk.current_contribution_id();
+                    if current_contribution_id == 0 {
+                        return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id: *chunk_id });
+                    }
+
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
-                    // Remove the next challenge locator.
-                    let contribution_file = if is_final_contribution {
-                        // This is the final contribution in the chunk.
-                        Locator::ContributionFile(ContributionLocator::new(
+
+                    let response_locator = match is_final_contribution {
+                        true => Locator::ContributionFile(ContributionLocator::new(
                             current_round_height + 1,
                             *chunk_id,
                             0,
                             true,
-                        ))
-                    } else {
-                        // This is a typical contribution in the chunk.
-                        Locator::ContributionFile(ContributionLocator::new(
+                        )),
+                        false => Locator::ContributionFile(ContributionLocator::new(
                             current_round_height,
                             *chunk_id,
                             chunk.current_contribution_id(),
                             true,
-                        ))
+                        )),
                     };
-                    // Don't remove initial challenge
-                    if storage.exists(&contribution_file) && chunk.current_contribution()?.get_contributor().is_some() {
-                        storage.remove(&contribution_file)?;
+
+                    if storage.exists(&response_locator) {
+                        storage.remove(&response_locator)?;
+                    }
+
+                    let response_locator_signature = match is_final_contribution {
+                        true => Locator::ContributionFileSignature(ContributionSignatureLocator::new(
+                            current_round_height + 1,
+                            *chunk_id,
+                            0,
+                            true,
+                        )),
+                        false => Locator::ContributionFileSignature(ContributionSignatureLocator::new(
+                            current_round_height,
+                            *chunk_id,
+                            chunk.current_contribution_id(),
+                            true,
+                        )),
+                    };
+
+                    if storage.exists(&response_locator_signature) {
+                        storage.remove(&response_locator_signature)?;
                     }
                 }
-            }
+            };
 
             warn!("Removing the lock for chunk {} from {}", chunk_id, participant);
 
