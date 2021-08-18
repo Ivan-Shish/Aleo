@@ -32,7 +32,7 @@ thiserror = { version = "1.0.22" }
 tracing-subscriber = { version = "0.2.3" }
 
 [features]
-default = []
+default = ["cli"]
 parallel = ["phase2/parallel", "setup-utils/parallel"]
 cli = ["gumdrop", "hex-literal", "memmap", "parallel", "phase2/cli", "setup-utils/cli"]
 wasm = ["phase2/wasm", "setup-utils/wasm"]
