@@ -12,8 +12,8 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-phase1 = { path = "../phase1", default-features = true }
-setup-utils = { path = "../setup-utils", default-features = true }
+phase1 = { path = "../phase1", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = false }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 

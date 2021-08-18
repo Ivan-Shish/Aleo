@@ -9,10 +9,10 @@ license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
-phase2 = { path = "../phase2", default-features = true }
-setup-utils = { path = "../setup-utils", default-features = true }
+phase2 = { path = "../phase2" }
+setup-utils = { path = "../setup-utils" }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = true }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }

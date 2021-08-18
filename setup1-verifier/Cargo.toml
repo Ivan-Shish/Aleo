@@ -17,7 +17,7 @@ phase1 = { path = "../phase1" }
 phase1-cli = { path = "../phase1-cli" }
 phase1-coordinator = { path = "../phase1-coordinator", features= ["operator"] }
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
-setup-utils = { path = "../setup-utils", default-features = true }
+setup-utils = { path = "../setup-utils" }
 
 snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
