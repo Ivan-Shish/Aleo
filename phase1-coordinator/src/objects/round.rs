@@ -944,9 +944,6 @@ impl Round {
                 Participant::Verifier(_) => {
                     // Get the response locator
                     let current_contribution_id = chunk.current_contribution_id();
-                    if current_contribution_id == 0 {
-                        return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id: *chunk_id });
-                    }
 
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
 
