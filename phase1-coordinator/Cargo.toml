@@ -44,4 +44,5 @@ tracing-subscriber = { version = "0.2" }
 [features]
 default = []
 operator = ["testing"]
+parallel = ["phase1/parallel", "setup-utils/parallel"]
 testing = []
