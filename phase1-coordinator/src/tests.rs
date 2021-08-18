@@ -1964,6 +1964,109 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// This test assures that, when a verifier is dropped while holding a lock,
+/// the verification can still be safely passed over to another verifier.
+#[test]
+#[serial]
+fn drop_verifier() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+    let environment = initialize_test_environment(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+    assert_eq!(0, coordinator.current_round_height()?);
+
+    // Add a contributor and verifier to the queue.
+    let (contributor, contributor_signing_key, seed1) = create_contributor("1");
+    let (verifier1, verifier_signing_key1) = create_verifier("1");
+    let (verifier2, verifier_signing_key2) = create_verifier("2");
+    coordinator.add_to_queue(contributor.clone(), 10)?;
+    coordinator.add_to_queue(verifier1.clone(), 10)?;
+    coordinator.add_to_queue(verifier2.clone(), 9)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    for _ in 0..number_of_chunks {
+        coordinator.contribute(&contributor, &contributor_signing_key, &seed1)?;
+    }
+
+    // Assigning verification tasks is random, so we need to see who got them.
+    let (verifier1_assigned_num, verifier2_assigned_num) = {
+        let mut verifier1_assigned_num = 0;
+        let mut verifier2_assigned_num = 0;
+        for (participant, contributor_info) in coordinator.current_verifiers() {
+            match participant == verifier1 {
+                true => verifier1_assigned_num += contributor_info.assigned_tasks().len(),
+                false => verifier2_assigned_num += contributor_info.assigned_tasks().len(),
+            };
+        }
+
+        (verifier1_assigned_num, verifier2_assigned_num)
+    };
+
+    // Drop the contributor from the current round.
+    let (drop_verifier, stay_verifier, stay_verifier_signing_key) =
+        match verifier1_assigned_num >= verifier2_assigned_num {
+            true => (verifier1, verifier2, verifier_signing_key2),
+            false => (verifier2, verifier1, verifier_signing_key1),
+        };
+
+    coordinator.try_lock(&drop_verifier)?;
+
+    coordinator.drop_participant(&drop_verifier)?;
+    assert_eq!(false, coordinator.is_queue_contributor(&contributor));
+    assert_eq!(false, coordinator.is_queue_verifier(&drop_verifier));
+    assert_eq!(false, coordinator.is_queue_verifier(&stay_verifier));
+    assert_eq!(true, coordinator.is_current_contributor(&contributor));
+    assert_eq!(false, coordinator.is_current_verifier(&drop_verifier));
+    assert_eq!(true, coordinator.is_current_verifier(&stay_verifier));
+    assert_eq!(false, coordinator.is_finished_contributor(&contributor));
+    assert_eq!(false, coordinator.is_finished_verifier(&drop_verifier));
+    assert_eq!(false, coordinator.is_finished_verifier(&stay_verifier));
+
+    for (participant, contributor_info) in coordinator.current_verifiers() {
+        if participant == stay_verifier {
+            assert_eq!(contributor_info.completed_tasks().len(), 0);
+            assert_eq!(contributor_info.assigned_tasks().len(), 8);
+            assert_eq!(contributor_info.disposing_tasks().len(), 0);
+            assert_eq!(contributor_info.disposed_tasks().len(), 0);
+        }
+    }
+
+    for _ in 0..number_of_chunks {
+        coordinator.verify(&stay_verifier, &stay_verifier_signing_key)?;
+    }
+
+    // Add some more participants to proceed to the next round
+    let test_contributor_3 = create_contributor_test_details("3");
+    let test_contributor_4 = create_contributor_test_details("4");
+    let verifier_2 = create_verifier_test_details("2");
+    coordinator
+        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .unwrap();
+    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
+
+    // Update the ceremony to round 2.
+    coordinator.update().unwrap();
+
+    Ok(())
+}
+
 /// Test that participants who have not been seen for longer than the
 /// [Environment::contributor_timeout_in_minutes] will be dropped.
 #[test]
