@@ -13,13 +13,13 @@ name = "setup1-verifier"
 path = "src/main.rs"
 
 [dependencies]
-phase1 = { path = "../phase1" }
-phase1-cli = { path = "../phase1-cli" }
-phase1-coordinator = { path = "../phase1-coordinator", features= ["operator"] }
+phase1 = { path = "../phase1", features = ["parallel"] }
+phase1-cli = { path = "../phase1-cli", features = ["parallel"] }
+phase1-coordinator = { path = "../phase1-coordinator", features= ["operator", "parallel"] }
 setup1-shared = { version = "0.1", path = "../setup1-shared" }
-setup-utils = { path = "../setup-utils", default-features = false }
+setup-utils = { path = "../setup-utils", features = ["parallel"] }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c", features = ["parallel"] }
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }

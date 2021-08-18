@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 phase1 = { path = "../phase1" }
-setup-utils = { path = "../setup-utils", default-features = false }
+setup-utils = { path = "../setup-utils" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
 anyhow = { version = "1.0.37" }
@@ -44,4 +44,5 @@ tracing-subscriber = { version = "0.2" }
 [features]
 default = []
 operator = ["testing"]
+parallel = ["phase1/parallel", "setup-utils/parallel"]
 testing = []

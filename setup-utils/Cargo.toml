@@ -14,11 +14,11 @@ name = "math"
 harness = false
 
 [dependencies]
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false, features = ["fft"] }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 
 blake2 = "0.9"
 blake2s_simd = { version = "0.5.11" }
@@ -41,8 +41,7 @@ criterion = { version = "0.3.1" }
 rusty-hook = { version = "0.11.2" }
 
 [features]
-default = ["parallel"]
+default = []
 cli = ["parallel", "rust-crypto"]
-wasm = []
-
+wasm = ["snarkvm-algorithms/wasm"]
 parallel = ["rayon", "snarkvm-algorithms/parallel", "rust-crypto"]

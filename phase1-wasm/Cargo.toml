@@ -12,8 +12,8 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-phase1 = { path = "../phase1", default-features = false }
-setup-utils = { path = "../setup-utils", default-features = false }
+phase1 = { path = "../phase1" }
+setup-utils = { path = "../setup-utils" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
@@ -40,7 +40,7 @@ wasm-bindgen-test = { version = "0.3.18" }
 rustc_version = { version = "0.3" }
 
 [features]
-default = ["setup-utils/default"]
+default = []
 wasm = ["console_error_panic_hook", "getrandom/js", "getrandom/wasm-bindgen", "phase1/wasm", "setup-utils/wasm"]
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm

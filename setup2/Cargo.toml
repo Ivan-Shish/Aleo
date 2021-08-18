@@ -9,10 +9,10 @@ license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
-phase2 = { path = "../phase2", default-features = false }
-setup-utils = { path = "../setup-utils", default-features = false }
+phase2 = { path = "../phase2" }
+setup-utils = { path = "../setup-utils" }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
@@ -34,6 +34,5 @@ tracing-subscriber = { version = "0.2.3" }
 [features]
 default = ["cli"]
 parallel = ["phase2/parallel", "setup-utils/parallel"]
-
 cli = ["gumdrop", "hex-literal", "memmap", "parallel", "phase2/cli", "setup-utils/cli"]
 wasm = ["phase2/wasm", "setup-utils/wasm"]

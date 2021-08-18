@@ -17,9 +17,9 @@ path = "tests/aleo_compatibility.rs"
 required-features = ["phase2/testing"]
 
 [dependencies]
-setup-utils = { path = "../setup-utils", default-features = false }
+setup-utils = { path = "../setup-utils" }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
@@ -54,7 +54,6 @@ tracing-subscriber = { version = "0.2.3" }
 [features]
 default = []
 testing = ["parallel"]
-parallel = ["rayon", "setup-utils/parallel"]
-
+parallel = ["rayon", "setup-utils/parallel", "snarkvm-algorithms/parallel"]
 cli = ["setup-utils/cli"]
 wasm = ["console_error_panic_hook", "itertools", "web-sys", "setup-utils/wasm"]

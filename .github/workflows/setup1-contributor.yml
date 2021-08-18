@@ -31,4 +31,4 @@ jobs:
       - name: Test setup1-contributor
         run: |
           cd setup1-contributor
-          cargo test --examples --all --benches --no-fail-fast
+          cargo test --examples --workspace --benches --no-fail-fast

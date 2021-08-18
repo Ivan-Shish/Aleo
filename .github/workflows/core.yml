@@ -57,20 +57,20 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
         with:
           command: check
-          args: --examples --all
+          args: --examples --workspace
 
       - name: Check examples with all features on stable
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --examples --all-features --all
+          args: --examples --all-features --workspace
         if: matrix.rust == 'stable'
 
       - name: Test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --all --no-fail-fast
+          args: --release --workspace --no-fail-fast
 
 # Code coverage action currently disabled due to #180
   # codecov:
