@@ -29,7 +29,7 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
         with:
           command: fmt
-          args: --workspace -- --check
+          args: --all -- --check
 
   test:
     name: Test
