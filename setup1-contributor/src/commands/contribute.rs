@@ -153,7 +153,7 @@ impl Contribute {
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
         let progress_bar = ProgressBar::new(0);
         let progress_style =
-            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {wide_msg}");
+            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
         progress_bar.enable_steady_tick(1000);
         progress_bar.set_style(progress_style);
         progress_bar.set_message("Getting initial data from the server...");
@@ -197,7 +197,6 @@ impl Contribute {
                             break;
                         }
                         Err(err) => {
-                            println!("Got error from run: {}, retrying...", err);
                             tracing::error!("Error from contribution run: {}", err);
 
                             if let Some(lock_response) = cloned_contribute.current_task.as_ref() {
@@ -243,6 +242,8 @@ impl Contribute {
         update_progress_bar(updater, progress_bar.clone()).await;
 
         futures::future::try_join_all(futures).await?;
+
+        println!("You have completed your contribution! Thank you!");
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
 
@@ -469,7 +470,6 @@ impl Contribute {
             // Check if the contributor is finished or needs to wait for an available lock
             if incomplete_chunks.len() == 0 {
                 if non_contributed_chunks.len() == 0 {
-                    println!("You have completed your contribution! Thank you!");
                     remove_file_if_exists(&self.challenge_filename)?;
                     remove_file_if_exists(&self.challenge_hash_filename)?;
                     remove_file_if_exists(&self.response_filename)?;
@@ -915,6 +915,14 @@ impl Contribute {
 }
 
 async fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+    // This function will only be called if the contributor is already
+    // in the queue. So, we can just print it here and leave it.
+    println!(
+        "You are in the queue for an upcoming round of the ceremony. \
+        Please wait for the prior round to finish, and please stay \
+        connected for the duration of your contribution.\n",
+    );
+
     loop {
         match updater.status_updater(progress_bar.clone()).await {
             Ok(_) => {
@@ -943,11 +951,7 @@ impl StatusUpdater {
         let status = get_contributor_status(&self.server_url, &self.private_key).await?;
         match status {
             ContributorStatus::Queue => {
-                progress_bar.set_message(
-                    "You are in the queue for an upcoming round of the ceremony. \
-                    Please wait for the prior round to finish, and please stay \
-                    connected for the duration of your contribution.",
-                );
+                progress_bar.set_message("In the queue...");
             }
             ContributorStatus::Round => {
                 self.update_position_in_round(&progress_bar).await?;
