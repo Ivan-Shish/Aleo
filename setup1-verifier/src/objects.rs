@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 ///
 /// This lock response bundles the data required for the verifier
 /// to perform a valid verification.

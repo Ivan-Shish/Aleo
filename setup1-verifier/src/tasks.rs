@@ -1,10 +1,12 @@
+use std::collections::VecDeque;
+
+use serde::{Deserialize, Serialize};
+use tracing::warn;
+
 use crate::{
     objects::LockResponse,
     utils::{read_from_file, write_to_file},
 };
-
-use std::collections::VecDeque;
-use tracing::warn;
 
 ///
 /// The list of chunks that the verifier needs to verify.
@@ -99,11 +101,13 @@ impl std::default::Default for Tasks {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use lazy_static::lazy_static;
+    use serial_test::serial;
+
     use super::*;
     use crate::utils::remove_file_if_exists;
-
-    use serial_test::serial;
-    use std::path::Path;
 
     const TEST_TASK_FILE: &str = "TEST.tasks";
 

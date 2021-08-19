@@ -1,12 +1,20 @@
+use std::{path::PathBuf, str::FromStr};
+
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use setup1_shared::structures::{PublicSettings, SetupKind};
-use setup1_verifier::{utils::init_logger, verifier::Verifier};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
-
-use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use tracing::info;
 use url::Url;
+
+mod coordinator_requests;
+mod errors;
+mod objects;
+mod tasks;
+mod utils;
+mod verifier;
+
+use crate::verifier::Verifier;
 
 fn development() -> Environment {
     Development::from(Parameters::TestCustom {
@@ -56,7 +64,7 @@ async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::R
 async fn main() {
     let options = Options::from_args();
 
-    init_logger();
+    crate::utils::init_logger();
 
     let public_settings = request_coordinator_public_settings(&options.api_url)
         .await

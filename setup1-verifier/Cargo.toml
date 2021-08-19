@@ -8,10 +8,6 @@ repository = "https://github.com/AleoHQ/aleo-setup"
 license = "MIT/Apache-2.0"
 edition = "2018"
 
-[[bin]]
-name = "setup1-verifier"
-path = "src/main.rs"
-
 [dependencies]
 phase1 = { path = "../phase1", features = ["parallel"] }
 phase1-cli = { path = "../phase1-cli", features = ["parallel"] }
@@ -34,7 +30,6 @@ rand = { version = "0.8" }
 reqwest = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
-serde_derive = { version = "1.0" }
 structopt = "0.3.21"
 thiserror = { version = "1.0" }
 tokio = { version = "1.9", features = ["macros", "rt-multi-thread", "signal"] }
