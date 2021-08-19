@@ -151,12 +151,7 @@ impl Contribute {
     }
 
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
-        let progress_bar = ProgressBar::new(0);
-        let progress_style =
-            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
-        progress_bar.enable_steady_tick(1000);
-        progress_bar.set_style(progress_style);
-        progress_bar.set_message("Getting initial data from the server...");
+        println!("Getting initial data from the server...");
 
         let join_result = self.join_queue(&mut rand::thread_rng()).await;
         match join_result {
@@ -239,7 +234,7 @@ impl Contribute {
 
         // This will only return once the contributor has completed all
         // of the work.
-        update_progress_bar(updater, progress_bar.clone()).await;
+        update_progress_bar(updater).await;
 
         futures::future::try_join_all(futures).await?;
 
@@ -914,15 +909,21 @@ impl Contribute {
     }
 }
 
-async fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+async fn update_progress_bar(updater: StatusUpdater) {
     // This function will only be called if the contributor is already
     // in the queue. So, we can just print it here and leave it.
     println!(
         "You are in the queue for an upcoming round of the ceremony. \
         Please wait for the prior round to finish, and please stay \
-        connected for the duration of your contribution.\n",
+        connected for the duration of your contribution.",
     );
 
+    let progress_bar = ProgressBar::new(0);
+    let progress_style =
+        ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
+    progress_bar.enable_steady_tick(1000);
+    progress_bar.set_style(progress_style);
+    progress_bar.set_message("Getting initial data from the server...");
     loop {
         match updater.status_updater(progress_bar.clone()).await {
             Ok(_) => {
