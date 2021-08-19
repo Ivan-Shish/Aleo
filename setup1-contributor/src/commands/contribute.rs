@@ -958,7 +958,7 @@ impl StatusUpdater {
                 self.update_position_in_round(&progress_bar).await?;
             }
             ContributorStatus::Finished => {
-                let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
+                let completed_message = "Finished!";
 
                 progress_bar.finish_with_message(completed_message);
                 info!(completed_message);
@@ -994,7 +994,7 @@ impl StatusUpdater {
             ));
             progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
         } else if non_contributed_chunks.len() == 0 {
-            let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
+            let completed_message = "Finished!";
 
             progress_bar.finish_with_message(completed_message);
             info!(completed_message);
