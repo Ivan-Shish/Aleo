@@ -1,11 +1,16 @@
-use crate::errors::VerifierError;
-
-use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
-use snarkvm_utilities::{FromBytes, ToBytes};
+use std::fmt;
+#[cfg(test)]
+use std::str::FromStr;
 
 use rand::thread_rng;
-use std::{fmt, str::FromStr};
+use serde::{Deserialize, Serialize};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
+#[cfg(test)]
+use snarkvm_utilities::FromBytes;
+use snarkvm_utilities::ToBytes;
 use tracing::trace;
+
+use crate::errors::VerifierError;
 
 /// The header used for authenticating requests sent to the coordinator
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -84,6 +89,7 @@ impl AleoAuthentication {
     ///
     /// Returns `true` if the signature verifies for a given address and message.
     ///
+    #[cfg(test)]
     pub fn verify(
         address: &Address<Testnet2Parameters>,
         signature: &str,
@@ -97,6 +103,7 @@ impl AleoAuthentication {
 
     /// Verify a request is authenticated by
     /// verifying the signature using the request method, path, and authorization header.
+    #[cfg(test)]
     pub fn verify_auth(header: &AuthenticationHeader, method: String, path: String) -> Result<bool, VerifierError> {
         // Check that the authorization header type is "aleo"
         if header.auth_type.to_lowercase() != "aleo" {

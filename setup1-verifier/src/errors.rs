@@ -1,4 +1,5 @@
 use phase1_coordinator::CoordinatorError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum VerifierError {

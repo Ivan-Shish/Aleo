@@ -942,9 +942,6 @@ impl Round {
                     }
                 }
                 Participant::Verifier(_) => {
-                    // Get the response locator
-                    let current_contribution_id = chunk.current_contribution_id();
-
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
 
                     let response_locator = match is_final_contribution {
