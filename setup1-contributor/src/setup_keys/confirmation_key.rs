@@ -74,12 +74,12 @@ impl ConfirmationKey {
 
 pub fn print_key_and_remove_the_file() -> Result<()> {
     let key_file = ConfirmationKey::read_from_disk()?;
-    println!("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
+    println!("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
     println!("Your address is {}", key_file.address);
     println!("And confirmation key is {}", key_file.private_key);
     println!("Store this information in order to prove your participation in the setup");
     println!("Do not share the confirmation key with others!");
-    println!("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
+    println!("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
     std::fs::remove_file(CONFIRMATION_KEY_FILE)?;
     Ok(())
 }

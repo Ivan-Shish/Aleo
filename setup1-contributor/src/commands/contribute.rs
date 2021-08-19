@@ -23,7 +23,7 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Participant, Round},
 };
-use setup1_shared::structures::{PublicSettings, TwitterInfo};
+use setup1_shared::structures::{ContributorStatus, PublicSettings, TwitterInfo};
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
@@ -151,12 +151,7 @@ impl Contribute {
     }
 
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
-        let progress_bar = ProgressBar::new(0);
-        let progress_style =
-            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
-        progress_bar.enable_steady_tick(1000);
-        progress_bar.set_style(progress_style);
-        progress_bar.set_message("Getting initial data from the server...");
+        println!("Getting initial data from the server...");
 
         let join_result = self.join_queue(&mut rand::thread_rng()).await;
         match join_result {
@@ -182,21 +177,12 @@ impl Contribute {
             false => self.max_in_download_lane + self.max_in_process_lane + self.max_in_upload_lane,
         };
 
-        // Run status bar updater.
-        let updater = StatusUpdater {
-            server_url: self.server_url.clone(),
-            participant_id: self.participant_id.to_string(),
-        };
-        let update_handle = update_progress_bar(updater, progress_bar.clone());
-
-        // Push the handle for the progress bar here, so it fully exits before
-        // we start printing stuff at the end of the round.
-        let mut futures = vec![update_handle];
+        let mut futures = vec![];
 
         for i in 0..n_concurrent_tasks {
             let mut cloned_contribute = self.clone_with_new_filenames(i);
 
-            let join_handle = tokio::task::spawn(async move {
+            let handle = tokio::task::spawn(async move {
                 // Run contributor loop.
                 loop {
                     let result = cloned_contribute.run::<E>().await;
@@ -206,7 +192,6 @@ impl Contribute {
                             break;
                         }
                         Err(err) => {
-                            println!("Got error from run: {}, retrying...", err);
                             tracing::error!("Error from contribution run: {}", err);
 
                             if let Some(lock_response) = cloned_contribute.current_task.as_ref() {
@@ -231,7 +216,7 @@ impl Contribute {
                     sleep(DELAY_AFTER_ERROR).await;
                 }
             });
-            futures.push(join_handle);
+            futures.push(handle);
             sleep(DELAY_WAIT_FOR_PIPELINE).await;
         }
 
@@ -240,7 +225,20 @@ impl Contribute {
         // of the other tasks.
         initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
 
+        // Run status bar updater.
+        let updater = StatusUpdater {
+            server_url: self.server_url.clone(),
+            private_key: self.private_key.clone(),
+            participant_id: self.participant_id.to_string(),
+        };
+
+        // This will only return once the contributor has completed all
+        // of the work.
+        update_progress_bar(updater).await;
+
         futures::future::try_join_all(futures).await?;
+
+        println!("You have completed your contribution! Thank you!");
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
 
@@ -467,7 +465,6 @@ impl Contribute {
             // Check if the contributor is finished or needs to wait for an available lock
             if incomplete_chunks.len() == 0 {
                 if non_contributed_chunks.len() == 0 {
-                    println!("You have completed your contribution! Thank you!");
                     remove_file_if_exists(&self.challenge_filename)?;
                     remove_file_if_exists(&self.challenge_hash_filename)?;
                     remove_file_if_exists(&self.response_filename)?;
@@ -912,33 +909,72 @@ impl Contribute {
     }
 }
 
-fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn(async move {
-        loop {
-            match updater.status_updater(progress_bar.clone()).await {
-                Ok(_) => {
-                    if progress_bar.is_finished() {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    warn!("Got error from updater: {}", e);
-                    progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
+async fn update_progress_bar(updater: StatusUpdater) {
+    // This function will only be called if the contributor is already
+    // in the queue. So, we can just print it here and leave it.
+    println!(
+        "You are in the queue for an upcoming round of the ceremony. \
+        Please wait for the prior round to finish, and please stay \
+        connected for the duration of your contribution.",
+    );
+
+    let progress_bar = ProgressBar::new(0);
+    let progress_style =
+        ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
+    progress_bar.enable_steady_tick(1000);
+    progress_bar.set_style(progress_style);
+    progress_bar.set_message("Getting initial data from the server...");
+    loop {
+        match updater.status_updater(progress_bar.clone()).await {
+            Ok(_) => {
+                if progress_bar.is_finished() {
+                    return;
                 }
             }
-            sleep(DELAY_POLL_CEREMONY).await;
+            Err(e) => {
+                warn!("Got error from updater: {}", e);
+                progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
+            }
         }
-    })
+        sleep(DELAY_POLL_CEREMONY).await;
+    }
 }
 
 /// Utility structure to provide updates about the round progress
 struct StatusUpdater {
     server_url: Url,
+    private_key: PrivateKey<Testnet2Parameters>,
     participant_id: String,
 }
 
 impl StatusUpdater {
     async fn status_updater(&self, progress_bar: ProgressBar) -> Result<()> {
+        let status = get_contributor_status(&self.server_url, &self.private_key).await?;
+        match status {
+            ContributorStatus::Queue => {
+                progress_bar.set_message("In the queue...");
+            }
+            ContributorStatus::Round => {
+                self.update_position_in_round(&progress_bar).await?;
+            }
+            ContributorStatus::Finished => {
+                let completed_message = "Finished!";
+
+                progress_bar.finish_with_message(completed_message);
+                info!(completed_message);
+            }
+            ContributorStatus::Other => {
+                progress_bar.finish_with_message(
+                    "Not in the queue for Aleo Setup ceremony. Please double check the address \
+                    you are connecting to, then disconnect and try again",
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn update_position_in_round(&self, progress_bar: &ProgressBar) -> Result<()> {
         let ceremony = get_ceremony(&self.server_url).await?;
         let number_of_chunks = ceremony.chunks().len();
 
@@ -958,7 +994,7 @@ impl StatusUpdater {
             ));
             progress_bar.set_position((number_of_chunks - non_contributed_chunks.len()) as u64);
         } else if non_contributed_chunks.len() == 0 {
-            let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
+            let completed_message = "Finished!";
 
             progress_bar.finish_with_message(completed_message);
             info!(completed_message);
@@ -971,12 +1007,37 @@ impl StatusUpdater {
     }
 }
 
+async fn get_contributor_status(
+    server_url: &Url,
+    private_key: &PrivateKey<Testnet2Parameters>,
+) -> Result<ContributorStatus> {
+    let endpoint = "/v1/contributor/status";
+    let ceremony_url = server_url.join(endpoint)?;
+
+    let auth_rng = &mut rand::rngs::OsRng;
+    let authorization = get_authorization_value(private_key, "POST", &endpoint, auth_rng)?;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(ceremony_url)
+        .header(http::header::AUTHORIZATION, authorization)
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let data = response.bytes().await?;
+    let status = serde_json::from_slice(&*data)?;
+
+    Ok(status)
+}
+
 async fn get_ceremony(server_url: &Url) -> Result<Round> {
     let ceremony_url = server_url.join("/v1/round/current")?;
     let response = reqwest::get(ceremony_url.as_str()).await?.error_for_status()?;
 
     let data = response.bytes().await?;
-    let ceremony: Round = serde_json::from_slice(&*data)?;
+    let ceremony = serde_json::from_slice(&*data)?;
 
     Ok(ceremony)
 }
