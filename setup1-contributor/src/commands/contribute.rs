@@ -945,7 +945,7 @@ impl StatusUpdater {
         match status {
             ContributorStatus::Queue => {
                 progress_bar.set_message(
-                    &"You are in the queue for an upcoming round of the ceremony. \
+                    "You are in the queue for an upcoming round of the ceremony. \
                     Please wait for the prior round to finish, and please stay \
                     connected for the duration of your contribution.",
                 );
@@ -954,9 +954,9 @@ impl StatusUpdater {
                 self.update_position_in_round(&progress_bar).await?;
             }
             ContributorStatus::Other => {
-                progress_bar.set_message(
-                    &"Not in the queue for Aleo Setup ceremony. Please double check the address \
-                    you are connecting, then disconnect and try again",
+                progress_bar.finish_with_message(
+                    "Not in the queue for Aleo Setup ceremony. Please double check the address \
+                    you are connecting to, then disconnect and try again",
                 );
             }
         }
