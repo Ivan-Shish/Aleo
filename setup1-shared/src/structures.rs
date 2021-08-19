@@ -59,5 +59,6 @@ pub struct TwitterInfo {
 pub enum ContributorStatus {
     Queue,
     Round,
+    Finished,
     Other,
 }
