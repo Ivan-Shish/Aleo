@@ -153,7 +153,7 @@ impl Contribute {
     async fn run_and_catch_errors<E: PairingEngine>(&self) -> Result<()> {
         let progress_bar = ProgressBar::new(0);
         let progress_style =
-            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}");
+            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {wide_msg}");
         progress_bar.enable_steady_tick(1000);
         progress_bar.set_style(progress_style);
         progress_bar.set_message("Getting initial data from the server...");
@@ -182,22 +182,12 @@ impl Contribute {
             false => self.max_in_download_lane + self.max_in_process_lane + self.max_in_upload_lane,
         };
 
-        // Run status bar updater.
-        let updater = StatusUpdater {
-            server_url: self.server_url.clone(),
-            private_key: self.private_key.clone(),
-            participant_id: self.participant_id.to_string(),
-        };
-        let update_handle = update_progress_bar(updater, progress_bar.clone());
-
-        // Push the handle for the progress bar here, so it fully exits before
-        // we start printing stuff at the end of the round.
-        let mut futures = vec![update_handle];
+        let mut futures = vec![];
 
         for i in 0..n_concurrent_tasks {
             let mut cloned_contribute = self.clone_with_new_filenames(i);
 
-            let join_handle = tokio::task::spawn(async move {
+            let handle = tokio::task::spawn(async move {
                 // Run contributor loop.
                 loop {
                     let result = cloned_contribute.run::<E>().await;
@@ -232,7 +222,7 @@ impl Contribute {
                     sleep(DELAY_AFTER_ERROR).await;
                 }
             });
-            futures.push(join_handle);
+            futures.push(handle);
             sleep(DELAY_WAIT_FOR_PIPELINE).await;
         }
 
@@ -240,6 +230,17 @@ impl Contribute {
         // epected. It seems likely there is some blocking code in one
         // of the other tasks.
         initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
+
+        // Run status bar updater.
+        let updater = StatusUpdater {
+            server_url: self.server_url.clone(),
+            private_key: self.private_key.clone(),
+            participant_id: self.participant_id.to_string(),
+        };
+
+        // This will only return once the contributor has completed all
+        // of the work.
+        update_progress_bar(updater, progress_bar.clone()).await;
 
         futures::future::try_join_all(futures).await?;
 
@@ -913,23 +914,21 @@ impl Contribute {
     }
 }
 
-fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn(async move {
-        loop {
-            match updater.status_updater(progress_bar.clone()).await {
-                Ok(_) => {
-                    if progress_bar.is_finished() {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    warn!("Got error from updater: {}", e);
-                    progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
+async fn update_progress_bar(updater: StatusUpdater, progress_bar: ProgressBar) {
+    loop {
+        match updater.status_updater(progress_bar.clone()).await {
+            Ok(_) => {
+                if progress_bar.is_finished() {
+                    return;
                 }
             }
-            sleep(DELAY_POLL_CEREMONY).await;
+            Err(e) => {
+                warn!("Got error from updater: {}", e);
+                progress_bar.set_message(&format!("Could not update status: {}", e.to_string().trim()));
+            }
         }
-    })
+        sleep(DELAY_POLL_CEREMONY).await;
+    }
 }
 
 /// Utility structure to provide updates about the round progress
@@ -952,6 +951,12 @@ impl StatusUpdater {
             }
             ContributorStatus::Round => {
                 self.update_position_in_round(&progress_bar).await?;
+            }
+            ContributorStatus::Finished => {
+                let completed_message = "Successfully contributed, thank you for participation! Waiting to see if you're still needed... Don't turn this off!";
+
+                progress_bar.finish_with_message(completed_message);
+                info!(completed_message);
             }
             ContributorStatus::Other => {
                 progress_bar.finish_with_message(
