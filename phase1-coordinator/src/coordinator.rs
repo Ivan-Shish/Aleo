@@ -15,7 +15,16 @@ use crate::{
     },
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
-    storage::{ContributionLocator, ContributionSignatureLocator, Disk, Locator, LocatorPath, Object, Storage},
+    storage::{
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Disk,
+        Locator,
+        LocatorPath,
+        Object,
+        Storage,
+        StorageAction,
+    },
 };
 use setup_utils::calculate_hash;
 
@@ -2449,7 +2458,19 @@ where
         if let Some(error) = round
             .reset(&reset_action.remove_participants)
             .into_iter()
-            .map(|action| self.storage.process(action))
+            .map(|action| match &action {
+                StorageAction::Remove(a) => match a.clone().try_into_locator(&self.storage) {
+                    Ok(locator) => {
+                        if self.storage.exists(&locator) {
+                            return self.storage.process(action);
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    Err(e) => Err(e),
+                },
+                _ => self.storage.process(action),
+            })
             .find_map(Result::err)
         {
             return Err(error);
