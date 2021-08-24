@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{ContributionLocator, Locator, Object, Storage},
+    storage::{ContributionLocator, Disk, Locator, Object, StorageObject},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -23,7 +23,7 @@ impl Initialization {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         round_height: u64,
         chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
@@ -100,7 +100,7 @@ impl Initialization {
     /// Compute both contribution hashes and check for equivalence.
     #[inline]
     fn check_hash(
-        storage: &impl Storage,
+        storage: &Disk,
         contribution_locator: &Locator,
         next_contribution_locator: &Locator,
     ) -> anyhow::Result<Vec<u8>> {

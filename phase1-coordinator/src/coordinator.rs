@@ -22,8 +22,9 @@ use crate::{
         Locator,
         LocatorPath,
         Object,
-        Storage,
         StorageAction,
+        StorageLocator,
+        StorageObject,
     },
 };
 use setup_utils::calculate_hash;
@@ -330,13 +331,13 @@ impl TimeSource for MockTimeSource {
 /// A core structure for operating the Phase 1 ceremony. This struct
 /// is designed to be [Send] + [Sync]. The state of the ceremony is
 /// stored in a [CoordinatorState] object.
-pub struct Coordinator<S: Storage> {
+pub struct Coordinator {
     /// The parameters and settings of this coordinator.
     environment: Environment,
     /// The signature scheme for contributors & verifiers with this coordinator.
     signature: Arc<dyn Signature>,
     /// The storage of contributions and rounds for this coordinator.
-    storage: S,
+    storage: Disk,
     /// The current round and participant self.
     state: CoordinatorState,
     /// The source of time, allows mocking system time for testing.
@@ -345,7 +346,7 @@ pub struct Coordinator<S: Storage> {
     aggregation_callback: Arc<dyn Fn(Vec<Participant>) -> () + Send + Sync>,
 }
 
-impl Coordinator<Disk> {
+impl Coordinator {
     ///
     /// Creates a new instance of the `Coordinator`, for a given environment.
     ///
@@ -393,10 +394,7 @@ impl Coordinator<Disk> {
     }
 }
 
-impl<S> Coordinator<S>
-where
-    S: Storage + 'static,
-{
+impl Coordinator {
     ///
     /// Runs a set of operations to initialize state and start the coordinator.
     ///
@@ -2355,7 +2353,7 @@ where
     }
 
     #[inline]
-    fn load_current_round_height(storage: &S) -> Result<u64, CoordinatorError> {
+    fn load_current_round_height(storage: &Disk) -> Result<u64, CoordinatorError> {
         // Fetch the current round height from storage.
         match storage.get(&Locator::RoundHeight)? {
             // Case 1 - This is a typical round of the ceremony.
@@ -2366,7 +2364,7 @@ where
     }
 
     #[inline]
-    fn load_current_round(storage: &S) -> Result<Round, CoordinatorError> {
+    fn load_current_round(storage: &Disk) -> Result<Round, CoordinatorError> {
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(storage)?;
 
@@ -2375,7 +2373,7 @@ where
     }
 
     #[inline]
-    fn load_round(storage: &S, round_height: u64) -> Result<Round, CoordinatorError> {
+    fn load_round(storage: &Disk, round_height: u64) -> Result<Round, CoordinatorError> {
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(storage)?;
 
@@ -2399,7 +2397,7 @@ where
     ///
     #[cfg(test)]
     #[inline]
-    pub(super) fn storage(&self) -> &S {
+    pub(super) fn storage(&self) -> &Disk {
         &self.storage
     }
 
@@ -2409,7 +2407,7 @@ where
     ///
     #[cfg(test)]
     #[inline]
-    pub(super) fn storage_mut(&mut self) -> &mut S {
+    pub(super) fn storage_mut(&mut self) -> &mut Disk {
         &mut self.storage
     }
 
@@ -2455,26 +2453,10 @@ where
         let mut round = Self::load_round(&mut self.storage, current_round_height)?;
 
         tracing::debug!("Resetting round and applying storage changes");
-        if let Some(error) = round
-            .reset(&reset_action.remove_participants)
-            .into_iter()
-            .map(|action| match &action {
-                StorageAction::Remove(a) => match a.clone().try_into_locator(&self.storage) {
-                    Ok(locator) => {
-                        if self.storage.exists(&locator) {
-                            return self.storage.process(action);
-                        } else {
-                            Ok(())
-                        }
-                    }
-                    Err(e) => Err(e),
-                },
-                _ => self.storage.process(action),
-            })
-            .find_map(Result::err)
-        {
-            return Err(error);
-        }
+        self.storage.process(round.reset(&reset_action.remove_participants))?;
+
+        // Clear all files
+        self.storage.clear_round_files(current_round_height)?;
 
         if reset_action.rollback {
             if current_round_height == 0 {
@@ -2501,10 +2483,7 @@ where
 use crate::commands::{Computation, Seed, SigningKey, Verification};
 
 #[cfg(any(test, feature = "operator"))]
-impl<S> Coordinator<S>
-where
-    S: Storage + 'static,
-{
+impl Coordinator {
     #[tracing::instrument(
         skip(self, contributor, contributor_signing_key, contributor_seed),
         fields(contributor = %contributor),

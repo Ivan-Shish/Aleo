@@ -4,12 +4,13 @@ use crate::{
     storage::{
         ContributionLocator,
         ContributionSignatureLocator,
+        Disk,
         Locator,
         LocatorPath,
         Object,
         RemoveAction,
-        Storage,
         StorageAction,
+        StorageLocator,
         UpdateAction,
     },
     CoordinatorError,
@@ -87,7 +88,7 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
@@ -382,7 +383,7 @@ impl Round {
     )]
     pub(crate) fn current_contribution_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
         verified: bool,
     ) -> Result<ContributionLocator, CoordinatorError> {
@@ -443,7 +444,7 @@ impl Round {
     )]
     pub(crate) fn next_contribution_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
     ) -> Result<ContributionLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -499,7 +500,7 @@ impl Round {
     #[inline]
     pub(crate) fn next_contribution_file_signature_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
     ) -> Result<ContributionSignatureLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -550,7 +551,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<LockedLocators, CoordinatorError> {
@@ -797,7 +798,7 @@ impl Round {
     /// Remove a contributor from the round.
     pub(crate) fn remove_contributor_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         contributor: &Participant,
         locked_chunks: &[u64],
         tasks: &[Task],
@@ -834,7 +835,7 @@ impl Round {
     #[inline]
     pub(crate) fn remove_locks_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         participant: &Participant,
         locked_chunks: &[u64],
     ) -> Result<(), CoordinatorError> {
@@ -1013,7 +1014,7 @@ impl Round {
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         participant: &Participant,
         tasks: &[Task],
     ) -> Result<(), CoordinatorError> {
@@ -1137,82 +1138,14 @@ impl Round {
     /// the [crate::storage::Storage] to reflect the changes to the
     /// round state. `remove_participants` is a list of participants
     /// to remove from the round.
-    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> Vec<StorageAction> {
-        let expected_number_of_contributions = self.expected_number_of_contributions();
-        let round_height = self.round_height();
+    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> StorageAction {
+        self.chunks.iter_mut().for_each(|chunk| {
+            chunk.set_lock_holder_unsafe(None);
 
-        let mut actions: Vec<StorageAction> =
-            self.chunks
-                .iter_mut()
-                .flat_map(|chunk| {
-                    let chunk_id = chunk.chunk_id();
-
-                    let contributions_remove: Vec<(u64, Vec<RemoveAction>)> = chunk.get_contributions()
-                    .iter()
-                    .filter(|(id, _)| **id != 0) // don't remove initial challenge
-                    .map(|(id, contribution)| {
-                        let actions: Vec<RemoveAction> = contribution.get_locators()
-                            .into_iter()
-                            .map(|path| RemoveAction::new(path))
-                            .collect();
-                        (*id, actions)
-                    })
-                    .collect();
-
-                    // Remove files that were initialized when the lock was taken,
-                    // but have not yet had the contirbution/verification uploaded.
-                    let remove_initialized_files: Vec<RemoveAction> = match chunk.lock_holder() {
-                        Some(participant) => {
-                            let (adjusted_round_height, contribution_id, is_verified) = match participant {
-                                Participant::Contributor(_) => {
-                                    (round_height, chunk.current_contribution_id() + 1, false)
-                                }
-                                Participant::Verifier(_) => {
-                                    let (adjusted_round_height, contribution_id) =
-                                        if chunk.current_contribution_id() == expected_number_of_contributions - 1 {
-                                            // handle the case where the final verification becomes
-                                            // the first verification for the next round.
-                                            (round_height + 1, 0)
-                                        } else {
-                                            (round_height, chunk.current_contribution_id())
-                                        };
-                                    (adjusted_round_height, contribution_id, true)
-                                }
-                            };
-
-                            let contribution_locator = Locator::ContributionFile(ContributionLocator::new(
-                                adjusted_round_height,
-                                chunk_id,
-                                contribution_id,
-                                is_verified,
-                            ));
-                            let signature_locator = Locator::ContributionFileSignature(
-                                ContributionSignatureLocator::new(round_height, chunk_id, contribution_id, is_verified),
-                            );
-
-                            vec![
-                                RemoveAction::new(contribution_locator),
-                                RemoveAction::new(signature_locator),
-                            ]
-                        }
-                        None => Vec::new(),
-                    };
-
-                    chunk.set_lock_holder_unsafe(None);
-
-                    let actions: Vec<StorageAction> = contributions_remove
-                        .into_iter()
-                        .flat_map(|(contribution_id, actions)| {
-                            chunk.remove_contribution_unsafe(contribution_id);
-                            actions.into_iter()
-                        })
-                        .map(StorageAction::Remove)
-                        .chain(remove_initialized_files.into_iter().map(StorageAction::Remove))
-                        .collect();
-
-                    actions.into_iter()
-                })
-                .collect();
+            for (id, _) in chunk.clone().get_contributions() {
+                chunk.remove_contribution_unsafe(*id);
+            }
+        });
 
         // Remove the requested participants from the set of contributor IDs.
         self.contributor_ids = self
@@ -1230,14 +1163,12 @@ impl Round {
             .filter(|v| remove_participants.iter().find(|p| p == &v).is_none())
             .collect();
 
-        actions.push(StorageAction::Update(UpdateAction {
+        StorageAction::Update(UpdateAction {
             locator: Locator::RoundState {
                 round_height: self.height,
             },
             object: Object::RoundState(self.clone()), // PERFORMANCE: clone here is not great for performance
-        }));
-
-        actions
+        })
     }
 }
 
