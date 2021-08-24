@@ -1143,7 +1143,9 @@ impl Round {
             chunk.set_lock_holder_unsafe(None);
 
             for (id, _) in chunk.clone().get_contributions() {
-                chunk.remove_contribution_unsafe(*id);
+                if *id != 0 {
+                    chunk.remove_contribution_unsafe(*id);
+                }
             }
         });
 
@@ -1233,10 +1235,8 @@ mod tests {
         let n_verifications = 30;
         let n_locked_chunks = 1;
         let n_files = 2 * n_contributions + 2 * n_verifications + 2 * n_locked_chunks;
-        let n_actions = n_files + 1; // include action to update round
 
-        let actions = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
-        assert_eq!(n_actions, actions.len());
+        let action = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
 
         assert_eq!(64, round_1.chunks().len());
 

@@ -2786,7 +2786,7 @@ mod tests {
     use std::{collections::HashMap, sync::Arc};
 
     fn initialize_to_round_1(
-        coordinator: &mut Coordinator<Disk>,
+        coordinator: &mut Coordinator,
         contributors: &[Participant],
         verifiers: &[Participant],
     ) -> anyhow::Result<()> {
@@ -2838,7 +2838,7 @@ mod tests {
         Ok(())
     }
 
-    fn initialize_coordinator(coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
+    fn initialize_coordinator(coordinator: &mut Coordinator) -> anyhow::Result<()> {
         // Load the contributors and verifiers.
         let contributors = vec![
             Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
@@ -2849,7 +2849,7 @@ mod tests {
         initialize_to_round_1(coordinator, &contributors, &verifiers)
     }
 
-    fn initialize_coordinator_single_contributor(coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
+    fn initialize_coordinator_single_contributor(coordinator: &mut Coordinator) -> anyhow::Result<()> {
         // Load the contributors and verifiers.
         let contributors = vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()];
         let verifiers = vec![Lazy::force(&TEST_VERIFIER_ID).clone()];
