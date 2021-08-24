@@ -1,7 +1,6 @@
 use phase1_coordinator::{
     authentication::{Dummy, Signature},
     environment::{Development, Environment, Parameters},
-    storage::Disk,
     Coordinator,
 };
 use tracing_subscriber;

@@ -42,38 +42,39 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn clear_round_files(&self, current_round_height: u64) -> Result<()> {
+    pub fn clear_round_files(&mut self, current_round_height: u64) -> Result<()> {
         // Let's first fully clear any files in the next round - these will be
         // verifications and represent the initial challenges.
         let next_round_dir = self.resolver.round_directory(current_round_height + 1);
-        clear_dir_files(next_round_dir.into(), &fs::remove_file)?;
+        self.clear_dir_files(next_round_dir.into(), true)?;
 
         // Now, let's clear all the contributions made on this round.
         let round_dir = self.resolver.round_directory(current_round_height);
-        clear_dir_files(round_dir.into(), &remove_round_contribution)
+        self.clear_dir_files(round_dir.into(), false)
     }
-}
 
-fn remove_round_contribution(path: PathBuf) -> io::Result<()> {
-    let file_name = path
-        .to_str()
-        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
-        .to_owned();
+    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) -> Result<()> {
+        Ok(for entry in fs::read_dir(path.as_path())? {
+            let entry = entry?;
+            match entry.path().is_dir() {
+                true => self.clear_dir_files(entry.path(), delete_initial_contribution)?,
+                false => {
+                    let file_path = entry
+                        .path()
+                        .to_str()
+                        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
+                        .to_owned();
 
-    match file_name.contains("contribution_0") {
-        true => Ok(()),
-        false => fs::remove_file(path),
+                    if !delete_initial_contribution && file_path.contains("contribution_0") {
+                        continue;
+                    }
+
+                    let locator = self.resolver.to_locator(&LocatorPath::new(file_path))?;
+                    self.remove(&locator)?;
+                }
+            };
+        })
     }
-}
-
-fn clear_dir_files(path: PathBuf, remove_file: &dyn Fn(PathBuf) -> io::Result<()>) -> Result<()> {
-    Ok(for entry in fs::read_dir(path.as_path())? {
-        let entry = entry?;
-        match entry.path().is_dir() {
-            true => clear_dir_files(entry.path(), remove_file)?,
-            false => remove_file(entry.path())?,
-        }
-    })
 }
 
 impl Disk {
