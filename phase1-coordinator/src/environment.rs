@@ -317,22 +317,6 @@ impl Environment {
     }
 
     ///
-    /// Returns the minimum number of verifiers permitted to
-    /// participate in a round.
-    ///
-    pub const fn minimum_verifiers_per_round(&self) -> usize {
-        self.minimum_verifiers_per_round
-    }
-
-    ///
-    /// Returns the maximum number of verifiers permitted to
-    /// participate in a round.
-    ///
-    pub const fn maximum_verifiers_per_round(&self) -> usize {
-        self.maximum_verifiers_per_round
-    }
-
-    ///
     /// Returns the number of chunks a contributor is
     /// authorized to lock in tandem at any point during a round.
     ///
@@ -498,16 +482,6 @@ impl Testing {
         self
     }
 
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
-        self
-    }
-
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
-        self
-    }
-
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -612,16 +586,6 @@ impl Development {
         self
     }
 
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
-        self
-    }
-
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
-        self
-    }
-
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -717,16 +681,6 @@ impl Production {
 
     pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
         self.environment.maximum_contributors_per_round = maximum;
-        self
-    }
-
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
-        self
-    }
-
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
         self
     }
 

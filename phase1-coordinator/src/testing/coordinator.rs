@@ -144,7 +144,6 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         0, /* height */
         *TEST_STARTED_AT,
         vec![],
-        TEST_VERIFIER_IDS.to_vec(),
     )?)
 }
 

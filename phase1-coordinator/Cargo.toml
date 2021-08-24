@@ -11,6 +11,7 @@ edition = "2018"
 [[bin]]
 name = "phase1-coordinator"
 path = "src/main.rs"
+required-features = ["parallel"]
 
 [dependencies]
 phase1 = { path = "../phase1" }

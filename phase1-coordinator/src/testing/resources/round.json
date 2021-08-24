@@ -7,9 +7,7 @@
         "0xd0FaDc3C5899c28c581c0e06819f4113cb08b0e4",
         "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C"
     ],
-    "verifierIds": [
-        "0xEC60b9a43529c12CA83Af466D8A6F8444392D47C"
-    ],
+    "verifierIds": [],
     "chunks": [
         {
             "chunkId": "0",

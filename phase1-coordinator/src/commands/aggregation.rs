@@ -148,6 +148,7 @@ mod tests {
     use crate::{
         authentication::Dummy,
         commands::{Aggregation, Seed, SigningKey, SEED_LENGTH},
+        objects::Task,
         storage::{Locator, Storage},
         testing::prelude::*,
         Coordinator,
@@ -181,10 +182,7 @@ mod tests {
             assert_eq!(0, round_height);
 
             let contributors = vec![contributor.clone()];
-            let verifiers = vec![verifier.clone()];
-            coordinator
-                .next_round(*TEST_STARTED_AT, contributors, verifiers)
-                .unwrap();
+            coordinator.next_round(*TEST_STARTED_AT, contributors).unwrap();
         }
 
         // Check current round height is now 1.
@@ -241,20 +239,9 @@ mod tests {
                 }
             }
             {
-                // Acquire the lock as the verifier.
-                let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier.clone());
-                if try_lock.is_err() {
-                    error!(
-                        "Failed to acquire lock as verifier {:?}\n{}",
-                        &verifier,
-                        serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
-                    );
-                    try_lock.unwrap();
-                }
-            }
-            {
                 // Run verification as verifier.
-                let verify = coordinator.run_verification(round_height, chunk_id, 1, &verifier, &verifier_signing_key);
+                let task = Task::new(chunk_id, 1);
+                let verify = coordinator.run_verification(round_height, &task, &verifier, &verifier_signing_key);
                 if verify.is_err() {
                     error!(
                         "Failed to run verification as verifier {:?}\n{}",
@@ -265,7 +252,7 @@ mod tests {
                 }
 
                 // Run verification as the verifier.
-                let verify = coordinator.verify_contribution(chunk_id, &verifier.clone());
+                let verify = coordinator.verify_contribution(&task, &verifier.clone());
                 if verify.is_err() {
                     error!(
                         "Failed to run verification as verifier {:?}\n{}",

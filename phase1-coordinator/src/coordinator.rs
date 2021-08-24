@@ -35,6 +35,9 @@ use std::{
 };
 use tracing::*;
 
+#[cfg(any(test, feature = "operator"))]
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub enum CoordinatorError {
     AggregateContributionFileSizeMismatch,
@@ -462,10 +465,6 @@ where
             self.state.update_current_contributors(self.time.as_ref())?;
             self.save_state()?;
 
-            // Update the state of current round verifiers.
-            self.state.update_current_verifiers(self.time.as_ref())?;
-            self.save_state()?;
-
             // Drop disconnected participants from the current round.
             for drop in self.state.update_dropped_participants(self.time.as_ref())? {
                 // Update the round to reflect the coordinator state changes.
@@ -569,27 +568,11 @@ where
     }
 
     ///
-    /// Returns `true` if the given participant is a verifier in the queue.
-    ///
-    #[inline]
-    pub fn is_queue_verifier(&self, participant: &Participant) -> bool {
-        self.state.is_queue_verifier(&participant)
-    }
-
-    ///
     /// Returns the total number of contributors currently in the queue.
     ///  
     #[inline]
     pub fn number_of_queue_contributors(&self) -> usize {
         self.state.number_of_queue_contributors()
-    }
-
-    ///
-    /// Returns the total number of verifiers currently in the queue.
-    ///
-    #[inline]
-    pub fn number_of_queue_verifiers(&self) -> usize {
-        self.state.number_of_queue_verifiers()
     }
 
     ///
@@ -601,27 +584,11 @@ where
     }
 
     ///
-    /// Returns a list of the verifiers currently in the queue.
-    ///
-    #[inline]
-    pub fn queue_verifiers(&self) -> Vec<(Participant, (u8, Option<u64>))> {
-        self.state.queue_verifiers()
-    }
-
-    ///
     /// Returns a list of the contributors currently in the round.
     ///
     #[inline]
     pub fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
         self.state.current_contributors()
-    }
-
-    ///
-    /// Returns a list of the verifiers currently in the round.
-    ///
-    #[inline]
-    pub fn current_verifiers(&self) -> Vec<(Participant, ParticipantInfo)> {
-        self.state.current_verifiers()
     }
 
     ///
@@ -783,32 +750,6 @@ where
     }
 
     ///
-    /// Returns `true` if the given participant is authorized as a
-    /// verifier and listed in the verifier IDs for this round.
-    ///
-    /// If the participant is not a verifier, or if there are
-    /// no prior rounds, returns `false`.
-    ///
-    #[inline]
-    pub fn is_current_verifier(&self, participant: &Participant) -> bool {
-        // Fetch the current round from storage.
-        let round = match Self::load_current_round(&self.storage) {
-            // Case 1 - This is a typical round of the ceremony.
-            Ok(round) => round,
-            // Case 2 - The ceremony has not started or storage has failed.
-            _ => return false,
-        };
-
-        // Check that the participant is a verifier for the given round height.
-        if !round.is_verifier(participant) {
-            return false;
-        }
-
-        // Check that the participant is a current verifier.
-        self.state.is_current_verifier(participant)
-    }
-
-    ///
     /// Returns `true` if the given participant has finished contributing
     /// in the current round.
     ///
@@ -821,21 +762,6 @@ where
 
         // Fetch the state of the current contributor.
         self.state.is_finished_contributor(&participant)
-    }
-
-    ///
-    /// Returns `true` if the given participant has finished verifying
-    /// in the current round.
-    ///
-    #[inline]
-    pub fn is_finished_verifier(&self, participant: &Participant) -> bool {
-        // Check that the participant is a current verifier.
-        if !self.is_current_verifier(participant) {
-            return false;
-        }
-
-        // Fetch the state of the current verifier.
-        self.state.is_finished_verifier(&participant)
     }
 
     ///
@@ -941,8 +867,12 @@ where
         err
     )]
     pub fn try_lock(&mut self, participant: &Participant) -> Result<(u64, LockedLocators), CoordinatorError> {
+        if participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
         // Check that the participant is in the current round, and has not been dropped or finished.
-        if !self.state.is_current_contributor(participant) && !self.state.is_current_verifier(participant) {
+        if !self.state.is_current_contributor(participant) {
             return Err(CoordinatorError::ParticipantUnauthorized);
         }
 
@@ -1106,7 +1036,7 @@ where
                     trace!("Release the lock on chunk");
                     let completed_task = Task::new(chunk_id, contribution_id);
                     self.state
-                        .completed_task(participant, completed_task, self.time.as_ref())?;
+                        .completed_task(participant, &completed_task, self.time.as_ref())?;
 
                     // Save the coordinator state in storage.
                     self.save_state()?;
@@ -1148,24 +1078,19 @@ where
     ///
     #[tracing::instrument(
         level = "error",
-        skip(self, chunk_id),
-        fields(participant = %participant, chunk = chunk_id),
+        skip(self, task),
+        fields(participant = %participant),
         err
     )]
-    pub fn try_verify(&mut self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
+    pub fn try_verify(&mut self, participant: &Participant, task: &Task) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
             return Err(CoordinatorError::ExpectedVerifier);
         }
 
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
-        }
-
-        // Check that the participant is in the current round, and has not been dropped or finished.
-        if !self.state.is_current_verifier(participant) {
-            return Err(CoordinatorError::ParticipantUnauthorized);
         }
 
         // Check that the current round is not yet finished.
@@ -1183,113 +1108,58 @@ where
             return Err(CoordinatorError::CurrentRoundAggregated);
         }
 
-        // Check if the participant should dispose the response being contributed.
-        if let Some(task) = self.state.lookup_disposing_task(participant, chunk_id)?.cloned() {
-            let contribution_id = task.contribution_id();
+        debug!(
+            "Adding verification from {} for chunk {} contribution {}",
+            participant,
+            task.chunk_id(),
+            task.contribution_id()
+        );
 
-            // Move the task to the disposed tasks of the verifier.
-            self.state.disposed_task(participant, &task, self.time.as_ref())?;
-
-            // Save the coordinator state in storage.
-            self.save_state()?;
-
-            debug!(
-                "Removing lock for verifier {} disposed task {} {}",
-                participant, chunk_id, contribution_id
-            );
-
-            // Fetch the current round from storage.
-            let mut round = Self::load_current_round(&self.storage)?;
-
-            // TODO (raychu86): Move this unsafe call out of `try_verify`.
-            // Release the lock on this chunk from the contributor.
-            round.chunk_mut(chunk_id)?.set_lock_holder_unsafe(None);
-
-            // Fetch the next challenge locator.
-            let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
-            let next_challenge = match is_final_contribution {
-                true => {
-                    Locator::ContributionFile(ContributionLocator::new(round.round_height() + 1, chunk_id, 0, true))
+        match self.verify_contribution(task, participant) {
+            // Case 1 - Participant verified contribution, return the response file locator.
+            Ok(contribution_id) => {
+                if contribution_id != task.contribution_id() {
+                    return Err(CoordinatorError::ContributionIdMismatch);
                 }
-                false => Locator::ContributionFile(ContributionLocator::new(
-                    round.round_height(),
-                    chunk_id,
-                    contribution_id,
-                    true,
-                )),
-            };
+                self.state.completed_task(participant, task, self.time.as_ref())?;
 
-            // Save the updated round to storage.
-            self.storage.update(
-                &Locator::RoundState {
-                    round_height: round.round_height(),
-                },
-                Object::RoundState(round),
-            )?;
+                // Save the coordinator state in storage.
+                self.save_state()?;
 
-            // Remove the next challenge file from storage.
-            self.storage.remove(&next_challenge)?;
+                info!("Added verification from {} for chunk {}", participant, task.chunk_id());
+                Ok(())
+            }
+            // Case 2 - Participant failed to add their contribution, remove the contribution file.
+            Err(error) => {
+                info!("Failed to add a verification and removing the contribution file");
 
-            return Ok(());
-        }
+                // Fetch the current round from storage.
+                let round = Self::load_current_round(&self.storage)?;
 
-        // Check if the participant has this chunk ID in a pending task.
-        if let Some(task) = self.state.lookup_pending_task(participant, chunk_id)? {
-            let contribution_id = task.contribution_id();
+                // Fetch the next challenge locator.
+                let is_final_contribution = task.contribution_id() == round.expected_number_of_contributions() - 1;
+                let next_challenge = match is_final_contribution {
+                    true => Locator::ContributionFile(ContributionLocator::new(
+                        round.round_height() + 1,
+                        task.chunk_id(),
+                        0,
+                        true,
+                    )),
+                    false => Locator::ContributionFile(ContributionLocator::new(
+                        round.round_height(),
+                        task.chunk_id(),
+                        task.contribution_id(),
+                        true,
+                    )),
+                };
 
-            debug!(
-                "Adding verification from {} for chunk {} contribution {}",
-                participant, chunk_id, contribution_id
-            );
+                // Remove the invalid next challenge file from storage.
+                self.storage.remove(&next_challenge)?;
 
-            match self.verify_contribution(chunk_id, participant) {
-                // Case 1 - Participant verified contribution, return the response file locator.
-                Ok(contribution_id) => {
-                    trace!("Release the lock on chunk {} from {}", chunk_id, participant);
-                    let completed_task = Task::new(chunk_id, contribution_id);
-                    self.state
-                        .completed_task(participant, completed_task, self.time.as_ref())?;
-
-                    // Save the coordinator state in storage.
-                    self.save_state()?;
-
-                    info!("Added verification from {} for chunk {}", participant, chunk_id);
-                    return Ok(());
-                }
-                // Case 2 - Participant failed to add their contribution, remove the contribution file.
-                Err(error) => {
-                    info!("Failed to add a verification and removing the contribution file");
-
-                    // Fetch the current round from storage.
-                    let round = Self::load_current_round(&self.storage)?;
-
-                    // Fetch the next challenge locator.
-                    let is_final_contribution = contribution_id == round.expected_number_of_contributions() - 1;
-                    let next_challenge = match is_final_contribution {
-                        true => Locator::ContributionFile(ContributionLocator::new(
-                            round.round_height() + 1,
-                            chunk_id,
-                            0,
-                            true,
-                        )),
-                        false => Locator::ContributionFile(ContributionLocator::new(
-                            round.round_height(),
-                            chunk_id,
-                            contribution_id,
-                            true,
-                        )),
-                    };
-
-                    // Remove the invalid next challenge file from storage.
-                    self.storage.remove(&next_challenge)?;
-
-                    error!("{}", error);
-                    return Err(error);
-                }
+                error!("{}", error);
+                Err(error)
             }
         }
-
-        Err(CoordinatorError::VerificationFailed)
     }
 
     ///
@@ -1416,9 +1286,9 @@ where
             .precommit_next_round(current_round_height + 1, self.time.as_ref())
         {
             // Case 1 - Precommit succeed, attempt to advance the round.
-            Ok((contributors, verifiers)) => {
+            Ok(contributors) => {
                 trace!("Trying to add advance to the next round");
-                match self.next_round(started_at, contributors, verifiers) {
+                match self.next_round(started_at, contributors) {
                     // Case 1a - Coordinator advanced the round.
                     Ok(next_round_height) => {
                         // If success, update coordinator state to next round.
@@ -1714,15 +1584,19 @@ where
     /// in the next round's directory as contribution 0.
     ///
     #[tracing::instrument(
-        skip(self, chunk_id, participant),
-        fields(chunk = chunk_id, participant = %participant)
+        skip(self, participant),
+        fields(participant = %participant)
     )]
     pub(crate) fn verify_contribution(
         &mut self,
-        chunk_id: u64,
+        task: &Task,
         participant: &Participant,
     ) -> Result<u64, CoordinatorError> {
+        let chunk_id = task.chunk_id();
         debug!("Attempting to verify a contribution for chunk {}", chunk_id);
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
 
         // Fetch the current round height from storage.
         let current_round_height = Self::load_current_round_height(&self.storage)?;
@@ -1730,24 +1604,14 @@ where
 
         // Fetch the current round from storage.
         let mut round = Self::load_current_round(&self.storage)?;
-        {
-            // Check that the participant is an authorized verifier to the current round.
-            if !round.is_verifier(participant) {
-                error!("{} is unauthorized to verify chunk {})", participant, chunk_id);
-                return Err(CoordinatorError::UnauthorizedChunkContributor);
-            }
-
-            // Check that the chunk lock is currently held by this verifier.
-            if !round.is_chunk_locked_by(chunk_id, participant) {
-                error!("{} should have lock on chunk {} but does not", participant, chunk_id);
-                return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
-            }
-        }
 
         // Fetch the chunk corresponding to the given chunk ID.
         let chunk = round.chunk(chunk_id)?;
         // Fetch the current contribution ID.
         let contribution_id = chunk.current_contribution_id();
+        if contribution_id != task.contribution_id() {
+            return Err(CoordinatorError::ContributionIdMismatch);
+        }
 
         // Fetch the challenge, response, next challenge, and contribution file signature locators.
         let challenge_file_locator = Locator::ContributionFile(ContributionLocator::new(
@@ -2059,15 +1923,10 @@ where
         &mut self,
         started_at: DateTime<Utc>,
         contributors: Vec<Participant>,
-        verifiers: Vec<Participant>,
     ) -> Result<u64, CoordinatorError> {
         // Check that the next round has at least one authorized contributor.
         if contributors.is_empty() {
             return Err(CoordinatorError::ContributorsMissing);
-        }
-        // Check that the next round has at least one authorized verifier.
-        if verifiers.is_empty() {
-            return Err(CoordinatorError::VerifierMissing);
         }
 
         // Fetch the current round height from storage.
@@ -2124,7 +1983,6 @@ where
             new_height,
             started_at,
             contributors,
-            verifiers,
         )?;
 
         #[cfg(test)]
@@ -2182,16 +2040,6 @@ where
             // Initialize the contributors as an empty list as this is for initialization.
             let contributors = vec![];
 
-            // Initialize the verifiers as a list comprising only one coordinator verifier,
-            // as this is for initialization.
-            let verifiers = vec![
-                self.environment
-                    .coordinator_verifiers()
-                    .first()
-                    .ok_or(CoordinatorError::VerifierMissing)?
-                    .clone(),
-            ];
-
             // Create a new round instance.
             Round::new(
                 &self.environment,
@@ -2199,7 +2047,6 @@ where
                 round_height,
                 started_at,
                 contributors,
-                verifiers,
             )?
         };
 
@@ -2308,38 +2155,6 @@ where
                     "Added a replacement contributor {}",
                     replace_action.replacement_contributor
                 );
-
-                // Save the updated round to storage.
-                self.storage.update(
-                    &Locator::RoundState {
-                        round_height: round.round_height(),
-                    },
-                    Object::RoundState(round),
-                )?;
-            }
-            CeremonyStorageAction::RemoveVerifier(remove_action) => {
-                warn!("Removing verifier {}", remove_action.dropped_verifier);
-
-                // Fetch the current round from storage.
-                let mut round = Self::load_current_round(&self.storage)?;
-
-                warn!("Removing locked chunks and all impacted contributions");
-
-                // Remove the lock from the specified chunks.
-                round.remove_locks_unsafe(
-                    &mut self.storage,
-                    &remove_action.dropped_verifier,
-                    &remove_action.locked_chunks,
-                )?;
-                warn!("Removed locked chunks");
-
-                // Remove the contributions from the specified chunks.
-                round.remove_chunk_contributions_unsafe(
-                    &mut self.storage,
-                    &remove_action.dropped_verifier,
-                    &remove_action.tasks,
-                )?;
-                warn!("Removed impacted contributions");
 
                 // Save the updated round to storage.
                 self.storage.update(
@@ -2559,22 +2374,33 @@ where
         Ok(())
     }
 
+    pub fn get_pending_verifications(&self) -> &HashMap<Task, Participant> {
+        self.state.get_pending_verifications()
+    }
+
     #[tracing::instrument(
         skip(self, verifier, verifier_signing_key),
         fields(verifier = %verifier),
     )]
-    pub fn verify(&mut self, verifier: &Participant, verifier_signing_key: &SigningKey) -> anyhow::Result<()> {
-        let (_chunk_id, locked_locators) = self.try_lock(&verifier)?;
-        let response_locator = &locked_locators.current_contribution();
-        let round_height = response_locator.round_height();
-        let chunk_id = response_locator.chunk_id();
-        let contribution_id = response_locator.contribution_id();
-
-        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
-        let _next_challenge =
-            self.run_verification(round_height, chunk_id, contribution_id, &verifier, verifier_signing_key)?;
-        self.try_verify(&verifier, chunk_id)?;
-        debug!("Successful verification for round {} chunk {}", round_height, chunk_id);
+    pub fn verify(
+        &mut self,
+        verifier: &Participant,
+        verifier_signing_key: &SigningKey,
+        task: &Task,
+    ) -> anyhow::Result<()> {
+        let round_height = self.current_round_height()?;
+        debug!(
+            "Running verification for round {} chunk {}",
+            round_height,
+            task.chunk_id()
+        );
+        let _next_challenge = self.run_verification(round_height, task, verifier, verifier_signing_key)?;
+        self.try_verify(verifier, task)?;
+        debug!(
+            "Successful verification for round {} chunk {}",
+            round_height,
+            task.chunk_id()
+        );
         Ok(())
     }
 
@@ -2678,11 +2504,12 @@ where
     pub fn run_verification(
         &mut self,
         round_height: u64,
-        chunk_id: u64,
-        contribution_id: u64,
+        task: &Task,
         participant: &Participant,
         participant_signing_key: &SigningKey,
     ) -> Result<LocatorPath, CoordinatorError> {
+        let chunk_id = task.chunk_id();
+        let contribution_id = task.contribution_id();
         info!(
             "Running verification for round {} chunk {} contribution {} as {}",
             round_height, chunk_id, contribution_id, participant
@@ -2705,12 +2532,6 @@ where
 
         // Fetch the specified round from storage.
         let round = Self::load_round(&self.storage, round_height)?;
-
-        // Check that the chunk lock is currently held by this contributor.
-        if !round.is_chunk_locked_by(chunk_id, &participant) {
-            error!("{} should have lock on chunk {} but does not", &participant, chunk_id);
-            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
-        }
 
         // Check that the contribution locator corresponding to the response file exists.
         let response_locator =
@@ -2795,7 +2616,7 @@ mod tests {
         authentication::Dummy,
         commands::{Seed, SigningKey, SEED_LENGTH},
         environment::*,
-        objects::Participant,
+        objects::{Participant, Task},
         storage::Disk,
         testing::prelude::*,
         Coordinator,
@@ -2806,11 +2627,7 @@ mod tests {
     use rand::RngCore;
     use std::{collections::HashMap, sync::Arc};
 
-    fn initialize_to_round_1(
-        coordinator: &mut Coordinator<Disk>,
-        contributors: &[Participant],
-        verifiers: &[Participant],
-    ) -> anyhow::Result<()> {
+    fn initialize_to_round_1(coordinator: &mut Coordinator<Disk>, contributors: &[Participant]) -> anyhow::Result<()> {
         // Initialize the ceremony and add the contributors and verifiers to the queue.
         {
             // Run initialization.
@@ -2828,9 +2645,6 @@ mod tests {
             // Add the contributor and verifier of the coordinator to execute round 1.
             for contributor in contributors {
                 coordinator.state.add_to_queue(contributor.clone(), 10)?;
-            }
-            for verifier in verifiers {
-                coordinator.state.add_to_queue(verifier.clone(), 10)?;
             }
 
             // Update the queue.
@@ -2865,17 +2679,15 @@ mod tests {
             Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
             Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
         ];
-        let verifiers = vec![Lazy::force(&TEST_VERIFIER_ID).clone()];
 
-        initialize_to_round_1(coordinator, &contributors, &verifiers)
+        initialize_to_round_1(coordinator, &contributors)
     }
 
     fn initialize_coordinator_single_contributor(coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
         // Load the contributors and verifiers.
         let contributors = vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()];
-        let verifiers = vec![Lazy::force(&TEST_VERIFIER_ID).clone()];
 
-        initialize_to_round_1(coordinator, &contributors, &verifiers)
+        initialize_to_round_1(coordinator, &contributors)
     }
 
     #[test]
@@ -2927,12 +2739,9 @@ mod tests {
                 Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
                 Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
             ];
-            let verifiers = vec![Lazy::force(&TEST_VERIFIER_ID).clone()];
 
             // Start round 1.
-            coordinator
-                .next_round(*TEST_STARTED_AT, contributors, verifiers)
-                .unwrap();
+            coordinator.next_round(*TEST_STARTED_AT, contributors).unwrap();
         }
 
         {
@@ -2958,10 +2767,7 @@ mod tests {
             assert!(!current_round.is_contributor(&TEST_VERIFIER_ID));
 
             // Check round 1 verifiers.
-            assert_eq!(1, current_round.number_of_verifiers());
-            assert!(current_round.is_verifier(&TEST_VERIFIER_ID));
-            assert!(!current_round.is_verifier(&TEST_VERIFIER_ID_2));
-            assert!(!current_round.is_verifier(&TEST_CONTRIBUTOR_ID));
+            assert_eq!(0, current_round.number_of_verifiers());
 
             // Check round 1 is NOT complete.
             assert!(!current_round.is_complete());
@@ -3142,41 +2948,17 @@ mod tests {
             assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
         }
 
-        // Acquire lock for round 1 chunk 0 contribution 1.
-        {
-            // Acquire the lock on chunk 0 for the verifier.
-            let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
-            {
-                assert!(coordinator.try_lock_chunk(chunk_id, &verifier).is_ok());
-            }
-
-            // Check that chunk 0 is locked.
-            let round = coordinator.current_round()?;
-            let chunk = round.chunk(chunk_id)?;
-            assert!(chunk.is_locked());
-            assert!(!chunk.is_unlocked());
-
-            // Check that chunk 0 is locked by the verifier.
-            debug!("{:#?}", round);
-            assert!(chunk.is_locked_by(&verifier));
-        }
-
         // Verify round 1 chunk 0 contribution 1.
         {
             let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
             let verifier_signing_key: SigningKey = "secret_key".to_string();
 
             // Run verification.
-            let verify = coordinator.run_verification(
-                round_height,
-                chunk_id,
-                contribution_id,
-                &verifier,
-                &verifier_signing_key,
-            );
+            let task = Task::new(chunk_id, contribution_id);
+            let verify = coordinator.run_verification(round_height, &task, &verifier, &verifier_signing_key);
             assert!(verify.is_ok());
             // Verify contribution 1.
-            coordinator.verify_contribution(chunk_id, &verifier)?;
+            coordinator.verify_contribution(&task, &verifier)?;
         }
 
         Ok(())
@@ -3266,24 +3048,11 @@ mod tests {
                 let verifier_signing_key: SigningKey = "secret_key".to_string();
 
                 {
-                    // Acquire the lock as the verifier.
-                    let try_lock = coordinator_clone.write().unwrap().try_lock_chunk(chunk_id, &verifier);
-                    if try_lock.is_err() {
-                        println!(
-                            "Failed to acquire lock as verifier {:?}\n{}",
-                            verifier.clone(),
-                            serde_json::to_string_pretty(&coordinator_clone.read().unwrap().current_round().unwrap())
-                                .unwrap()
-                        );
-                        panic!("{:?}", try_lock.unwrap())
-                    }
-                }
-                {
                     // Run verification as verifier.
+                    let task = Task::new(chunk_id, contribution_id);
                     let verify = coordinator_clone.write().unwrap().run_verification(
                         round_height,
-                        chunk_id,
-                        contribution_id,
+                        &task,
                         &verifier,
                         &verifier_signing_key,
                     );
@@ -3298,10 +3067,7 @@ mod tests {
                     }
 
                     // Add the verification as the verifier.
-                    let verify = coordinator_clone
-                        .write()
-                        .unwrap()
-                        .verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator_clone.write().unwrap().verify_contribution(&task, &verifier);
                     if verify.is_err() {
                         println!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -3325,14 +3091,14 @@ mod tests {
 
     #[test]
     #[serial]
-    fn coordinator_aggregation() -> anyhow::Result<()> {
+    fn coordinator_aggregation() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let mut coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Arc::new(Dummy))?;
-        initialize_coordinator(&mut coordinator)?;
+        let mut coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Arc::new(Dummy)).unwrap();
+        initialize_coordinator(&mut coordinator).unwrap();
 
         // Check current round height is now 1.
-        let round_height = coordinator.current_round_height()?;
+        let round_height = coordinator.current_round_height().unwrap();
         assert_eq!(1, round_height);
 
         // Run computation and verification on each contribution in each chunk.
@@ -3350,7 +3116,7 @@ mod tests {
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // As contribution ID 0 is initialized by the coordinator, iterate from
             // contribution ID 1 up to the expected number of contributions.
-            for contribution_id in 1..coordinator.current_round()?.expected_number_of_contributions() {
+            for contribution_id in 1..coordinator.current_round().unwrap().expected_number_of_contributions() {
                 let contributor = &contributors[contribution_id as usize - 1].clone();
                 let contributor_signing_key: SigningKey = "secret_key".to_string();
 
@@ -3363,9 +3129,9 @@ mod tests {
                             "Failed to acquire lock for chunk {} as contributor {:?}\n{}",
                             chunk_id,
                             &contributor,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                         );
-                        try_lock?;
+                        try_lock.unwrap();
                     }
                 }
                 {
@@ -3391,9 +3157,9 @@ mod tests {
                         error!(
                             "Failed to run computation as contributor {:?}\n{}",
                             &contributor,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                         );
-                        contribute?;
+                        contribute.unwrap();
                     }
 
                     // Add the contribution as the contributor.
@@ -3402,50 +3168,33 @@ mod tests {
                         error!(
                             "Failed to add contribution as contributor {:?}\n{}",
                             &contributor,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                         );
-                        contribute?;
-                    }
-                }
-                {
-                    // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
-                    if try_lock.is_err() {
-                        error!(
-                            "Failed to acquire lock as verifier {:?}\n{}",
-                            &verifier,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        try_lock?;
+                        contribute.unwrap();
                     }
                 }
                 {
                     // Run verification as verifier.
-                    let verify = coordinator.run_verification(
-                        round_height,
-                        chunk_id,
-                        contribution_id,
-                        &verifier,
-                        &verifier_signing_key,
-                    );
+                    let task = Task::new(chunk_id, contribution_id);
+                    let verify = coordinator.run_verification(round_height, &task, &verifier, &verifier_signing_key);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
                             &verifier,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                         );
-                        verify?;
+                        verify.unwrap();
                     }
 
                     // Add the verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator.verify_contribution(&task, &verifier);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
                             &verifier,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
                         );
-                        verify?;
+                        verify.unwrap();
                     }
                 }
             }
@@ -3453,23 +3202,21 @@ mod tests {
 
         println!(
             "Starting aggregation with this transcript {}",
-            serde_json::to_string_pretty(&coordinator.current_round()?)?
+            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
         );
 
         {
             // Run aggregation for round 1.
-            coordinator.aggregate_contributions()?;
+            coordinator.aggregate_contributions().unwrap();
         }
 
         // Check that the round is still round 1, as try_advance has not been called.
-        assert_eq!(1, coordinator.current_round_height()?);
+        assert_eq!(1, coordinator.current_round_height().unwrap());
 
         println!(
             "Finished aggregation with this transcript {}",
-            serde_json::to_string_pretty(&coordinator.current_round()?)?
+            serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
         );
-
-        Ok(())
     }
 
     #[test]
@@ -3556,26 +3303,9 @@ mod tests {
                     }
                 }
                 {
-                    // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier);
-                    if try_lock.is_err() {
-                        error!(
-                            "Failed to acquire lock as verifier {:?}\n{}",
-                            &verifier,
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        try_lock?;
-                    }
-                }
-                {
                     // Run verification as verifier.
-                    let verify = coordinator.run_verification(
-                        round_height,
-                        chunk_id,
-                        contribution_id,
-                        &verifier,
-                        &verifier_signing_key,
-                    );
+                    let task = Task::new(chunk_id, contribution_id);
+                    let verify = coordinator.run_verification(round_height, &task, &verifier, &verifier_signing_key);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -3586,7 +3316,7 @@ mod tests {
                     }
 
                     // Add the verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, &verifier);
+                    let verify = coordinator.verify_contribution(&task, &verifier);
                     if verify.is_err() {
                         error!(
                             "Failed to run verification as verifier {:?}\n{}",
@@ -3609,7 +3339,7 @@ mod tests {
             coordinator.aggregate_contributions()?;
 
             // Run aggregation and transition from round 1 to round 2.
-            coordinator.next_round(Utc::now(), vec![contributor.clone()], vec![verifier.clone()])?;
+            coordinator.next_round(Utc::now(), vec![contributor.clone()])?;
         }
 
         // Check that the ceremony has advanced to round 2.

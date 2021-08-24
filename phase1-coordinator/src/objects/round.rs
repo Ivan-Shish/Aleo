@@ -91,7 +91,6 @@ impl Round {
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
-        verifier_ids: Vec<Participant>,
     ) -> Result<Self, CoordinatorError> {
         debug!("Starting to create round {}", round_height);
 
@@ -101,7 +100,11 @@ impl Round {
         }
 
         // Fetch the initial verifier.
-        let verifier = verifier_ids.first().ok_or(CoordinatorError::VerifierMissing)?;
+        let verifier = environment
+            .coordinator_verifiers()
+            .first()
+            .ok_or_else(|| CoordinatorError::VerifierMissing)?
+            .clone();
 
         // Check that all contributor IDs are valid.
         {
@@ -122,27 +125,6 @@ impl Round {
             // This check is only enforced if the round height is not 0.
             if round_height != 0 && num_contributors == 0 {
                 return Err(CoordinatorError::RoundContributorsMissing);
-            }
-        }
-
-        // Check that all verifier IDs are valid.
-        {
-            // Check that each verifier ID is unique.
-            if !has_unique_elements(&verifier_ids) {
-                return Err(CoordinatorError::RoundVerifiersNotUnique);
-            }
-            // Check that each verifier ID is a verifier participant type.
-            let num_verifiers = verifier_ids
-                .par_iter()
-                .filter(|id| Participant::is_verifier(id))
-                .count();
-            if num_verifiers != verifier_ids.len() {
-                error!("{} IDs are not verifiers", verifier_ids.len() - num_verifiers);
-                return Err(CoordinatorError::ExpectedVerifier);
-            }
-            // Check that the list of verifier IDs is not empty.
-            if num_verifiers == 0 {
-                return Err(CoordinatorError::RoundVerifiersMissing);
             }
         }
 
@@ -180,7 +162,7 @@ impl Round {
             started_at: Some(started_at),
             finished_at: None,
             contributor_ids,
-            verifier_ids,
+            verifier_ids: vec![],
             chunks,
         })
     }
@@ -235,23 +217,6 @@ impl Round {
             // Check that the participant is a contributor for the given round height.
             Participant::Contributor(_) => self.contributor_ids.contains(participant),
             Participant::Verifier(_) => false,
-        }
-    }
-
-    ///
-    /// Returns `true` if the given participant is authorized as a
-    /// verifier and listed in the verifier IDs for this round.
-    ///
-    /// If the participant is not a verifier, or if there are
-    /// no prior rounds, returns `false`.
-    ///
-    #[inline]
-    pub fn is_verifier(&self, participant: &Participant) -> bool {
-        // Check that the participant is a verifier.
-        match participant {
-            Participant::Contributor(_) => false,
-            // Check that the participant is a verifier for the given round height.
-            Participant::Verifier(_) => self.verifier_ids.contains(participant),
         }
     }
 
@@ -324,12 +289,8 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_verifier(participant) {
-                    error!("{} is not an authorized verifier", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                }
+                // Verifiers don't lock chunks
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -566,10 +527,7 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                if number_of_locks_held >= environment.verifier_lock_chunk_limit() {
-                    trace!("{} chunks are locked by {}", &number_of_locks_held, participant);
-                    return Err(CoordinatorError::ChunkLockLimitReached);
-                }
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -631,62 +589,7 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_verifier(participant) {
-                    error!("{} is not an authorized verifier", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                }
-
-                // Fetch the current round height.
-                let current_round_height = self.round_height();
-                // Fetch the chunk corresponding to the given chunk ID.
-                let chunk = self.chunk(chunk_id)?;
-                // Fetch the current contribution ID.
-                let current_contribution_id = chunk.current_contribution_id();
-
-                if current_contribution_id == 0 {
-                    return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
-                }
-
-                // Fetch the previous contribution locator.
-                let previous_contribution =
-                    ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, true);
-
-                // This call enforces a strict check that the
-                // current contribution locator exist and
-                // has not been verified yet.
-                let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
-
-                tracing::debug!("Obtained response locator {:?}", current_contribution);
-
-                // Fetch whether this is the final contribution of the specified chunk.
-                let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
-                // Fetch the next contribution locator and its contribution file signature locator.
-                let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
-                    // This is the final contribution in the chunk.
-                    true => (
-                        ContributionLocator::new(current_round_height + 1, chunk_id, 0, true),
-                        ContributionSignatureLocator::new(current_round_height + 1, chunk_id, 0, true),
-                    ),
-                    // This is a typical contribution in the chunk.
-                    false => (
-                        ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true),
-                        ContributionSignatureLocator::new(
-                            current_round_height,
-                            chunk_id,
-                            current_contribution_id,
-                            true,
-                        ),
-                    ),
-                };
-
-                LockedLocators {
-                    previous_contribution,
-                    current_contribution,
-                    next_contribution,
-                    next_contribution_file_signature,
-                }
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -864,12 +767,7 @@ impl Round {
                     }
                 }
                 Participant::Verifier(_) => {
-                    // Check that the participant is an *authorized* verifier
-                    // for the current round.
-                    if !self.is_verifier(participant) {
-                        error!("{} is not an authorized verifier", participant);
-                        return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                    }
+                    return Err(CoordinatorError::ExpectedContributor);
                 }
             };
 
@@ -1261,7 +1159,6 @@ mod tests {
             0, /* height */
             *TEST_STARTED_AT,
             vec![],
-            TEST_VERIFIER_IDS.to_vec(),
         )
         .unwrap();
 
@@ -1294,8 +1191,6 @@ mod tests {
         let mut round_1: Round = test_round_1_partial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_2));
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
-        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_2));
-        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_3));
         assert!(round_1.chunks[14].is_locked());
 
         let n_contributions = 89;
@@ -1318,26 +1213,12 @@ mod tests {
 
         assert!(!round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_2));
         assert!(round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_3));
-        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_2));
-        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_3));
     }
 
     #[test]
     #[serial]
     fn test_is_authorized_contributor() {
         initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let round_1 = test_round_1_initial_json().unwrap();
-        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
-    }
-
-    #[test]
-    #[serial]
-    fn test_is_authorized_verifier() {
-        initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_verifier(&TEST_VERIFIER_ID));
 
         let round_1 = test_round_1_initial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
@@ -1371,10 +1252,7 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let candidates = test_round_0().unwrap().verifiers().clone();
-        assert_eq!(TEST_VERIFIER_IDS.len(), candidates.len());
-        for id in TEST_VERIFIER_IDS.iter() {
-            assert!(candidates.contains(id));
-        }
+        assert_eq!(0, candidates.len());
     }
 
     #[test]

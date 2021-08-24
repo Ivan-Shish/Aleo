@@ -360,7 +360,7 @@ mod tests {
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let contributor_signing_key = "secret_key".to_string();
 
-        let verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
+        let _verifier = Lazy::force(&TEST_VERIFIER_ID).clone();
         let verifier_signing_key = "secret_key".to_string();
 
         {
@@ -373,10 +373,7 @@ mod tests {
             assert_eq!(0, round_height);
 
             let contributors = vec![contributor.clone()];
-            let verifiers = vec![verifier.clone()];
-            coordinator
-                .next_round(*TEST_STARTED_AT, contributors, verifiers)
-                .unwrap();
+            coordinator.next_round(*TEST_STARTED_AT, contributors).unwrap();
         }
 
         // Check current round height is now 1.
