@@ -3,13 +3,9 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::{Disk, Storage},
+    storage::{Disk, StorageLocator, StorageObject},
     testing::prelude::*,
-    Coordinator,
-    CoordinatorError,
-    MockTimeSource,
-    Participant,
-    Round,
+    Coordinator, CoordinatorError, MockTimeSource, Participant, Round,
 };
 use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
@@ -53,7 +49,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &mut Coordinator<Disk>) -> Result<(), CoordinatorError> {
+    fn contribute_to(&self, coordinator: &mut Coordinator) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -1275,7 +1271,7 @@ fn coordinator_drop_several_contributors() {
     fn contribute_verify_until_no_tasks(
         contributor: &ContributorTestDetails,
         verifier: &VerifierTestDetails,
-        coordinator: &mut Coordinator<Disk>,
+        coordinator: &mut Coordinator,
     ) -> anyhow::Result<bool> {
         match contributor.contribute_to(coordinator) {
             Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
@@ -1323,7 +1319,7 @@ fn coordinator_drop_several_contributors() {
     assert_eq!(0, coordinator.number_of_queue_contributors());
 }
 
-fn check_round_matches_storage_files(storage: &impl Storage, round: &Round) {
+fn check_round_matches_storage_files(storage: &Disk, round: &Round) {
     debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
         debug!("Checking chunk {}", chunk.chunk_id());
