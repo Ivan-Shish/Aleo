@@ -2,7 +2,7 @@ use crate::{
     authentication::Dummy,
     environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
-    storage::{Disk, Storage},
+    storage::Disk,
     Coordinator,
     CoordinatorError,
 };
@@ -57,7 +57,7 @@ pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy
 /// Verifier IDs for testing purposes only.
 pub static TEST_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 
-pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator<Disk>> {
+pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
     info!("Coordinator is ready");
@@ -110,7 +110,7 @@ fn clear_test_storage(environment: &Environment) {
 }
 
 /// Initializes a test storage object.
-pub fn test_storage(environment: &Environment) -> impl Storage {
+pub fn test_storage(environment: &Environment) -> Disk {
     environment.storage().unwrap()
 }
 

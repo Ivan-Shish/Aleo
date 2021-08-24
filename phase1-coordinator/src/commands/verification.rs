@@ -2,7 +2,15 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage},
+    storage::{
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Disk,
+        Locator,
+        Object,
+        StorageLocator,
+        StorageObject,
+    },
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -23,7 +31,7 @@ impl Verification {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         signature: Arc<dyn Signature>,
         signing_key: &SigningKey,
         round_height: u64,
@@ -148,7 +156,7 @@ impl Verification {
     #[inline]
     fn verification(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         chunk_id: u64,
         challenge_locator: Locator,
         response_locator: Locator,
@@ -341,7 +349,7 @@ mod tests {
     use crate::{
         authentication::Dummy,
         commands::{Computation, Seed, Verification, SEED_LENGTH},
-        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage},
+        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object},
         testing::prelude::*,
         Coordinator,
     };
