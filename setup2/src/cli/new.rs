@@ -11,7 +11,7 @@ use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
 
 use gumdrop::Options;
 use memmap::MmapOptions;
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::fs::OpenOptions;
 
@@ -21,6 +21,9 @@ type ZexeInner = Bls12_377;
 type ZexeOuter = BW6_761;
 
 const COMPRESSION: UseCompression = UseCompression::No;
+
+pub const SEED_LENGTH: usize = 32;
+pub type Seed = [u8; SEED_LENGTH];
 
 #[derive(Debug, Clone)]
 pub enum CurveKind {
@@ -63,7 +66,9 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
         let circuit = InnerCircuit::<Testnet2Parameters>::blank();
         generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
     } else {
-        let rng = &mut ChaChaRng::from_seed([0u8; 32]); // TODO (howardwu): CRITICAL - Someone put this here. This is not safe!
+        let mut seed: Seed = [0; SEED_LENGTH];
+        rand::thread_rng().fill_bytes(&mut seed[..]);
+        let rng = &mut ChaChaRng::from_seed(seed);
         let dpc = Testnet2DPC::load(false)?;
 
         let noop_circuit = dpc

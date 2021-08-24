@@ -2,12 +2,13 @@
 //!
 //! A Groth16 keypair. Generate one with the Keypair::new method.
 //! Dispose of the private key ASAP once it's been used.
-use setup_utils::{hash_to_g2, CheckForCorrectness, Deserializer, HashWriter, Result, Serializer, UseCompression};
+use setup_utils::{CheckForCorrectness, Deserializer, HashWriter, Result, Serializer, UseCompression};
 use snarkvm_curves::{PairingEngine, ProjectiveCurve};
 use snarkvm_utilities::{CanonicalSerialize, ConstantSerializedSize, UniformRand};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::Rng;
+use snarkvm_algorithms::hash_to_curve::hash_to_curve;
 use std::{
     fmt,
     io::{self, Read, Write},
@@ -131,7 +132,7 @@ impl<E: PairingEngine> Keypair<E> {
         // Get the transcript
         let transcript = hash_cs_pubkeys(cs_hash, contributions, s, s_delta);
         // Compute delta s-pair in G2 by hashing the transcript and multiplying it by delta
-        let r = hash_to_g2::<E>(&transcript[..]).into_affine();
+        let r = hash_to_curve::<E::G2Affine>(&hex::encode(transcript[..].as_ref())).0;
         let r_delta = r.mul(delta);
 
         Self {

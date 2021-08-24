@@ -19,7 +19,7 @@ required-features = ["phase2/testing"]
 [dependencies]
 setup-utils = { path = "../setup-utils" }
 
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false, features = ["snark"] }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
@@ -28,6 +28,7 @@ snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc99
 byteorder = { version = "1.3.4" }
 cfg-if = "1.0"
 crossbeam = { version = "0.8" }
+hex = { version = "0.4.3" }
 itertools = { version = "0.10", optional = true }
 num_cpus = { version = "1" }
 rand = { version = "0.8" }
