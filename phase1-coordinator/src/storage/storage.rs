@@ -7,10 +7,10 @@ use crate::{
 use phase1::helpers::CurveKind;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
-use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
@@ -190,10 +190,11 @@ impl Object {
     }
 }
 
-// TODO (howardwu): Genericize this if necessary for remote objects.
-//  Alternatively, usage of temporary memory-backed local files can also work.
-pub type ObjectReader<'a> = RwLockReadGuard<'a, MmapMut>;
-pub type ObjectWriter<'a> = RwLockWriteGuard<'a, MmapMut>;
+pub trait ObjectReader: AsRef<[u8]> + Deref<Target = [u8]> {}
+
+pub trait ObjectWriter: AsMut<[u8]> + DerefMut<Target = [u8]> {
+    fn flush(&self) -> std::io::Result<()>;
+}
 
 /// The path to a resource defined by a [Locator].
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, PartialOrd, Ord)]
@@ -348,9 +349,12 @@ pub trait StorageLocator {
 }
 
 pub trait StorageObject {
+    type Reader: ObjectReader;
+    type Writer: ObjectWriter;
+
     /// Returns an object reader for the given locator.
-    fn reader(&self, locator: &Locator) -> Result<ObjectReader, CoordinatorError>;
+    fn reader(&self, locator: &Locator) -> Result<Self::Reader, CoordinatorError>;
 
     /// Returns an object writer for the given locator.
-    fn writer(&self, locator: &Locator) -> Result<ObjectWriter, CoordinatorError>;
+    fn writer(&self, locator: &Locator) -> Result<Self::Writer, CoordinatorError>;
 }

@@ -18,13 +18,16 @@ use crate::{
 use anyhow::Result;
 use fs_err::{self as fs, File, OpenOptions};
 use itertools::Itertools;
+use memmap::MmapOptions;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     convert::TryFrom,
+    fs::{self, File, OpenOptions},
     io::{self, Error, ErrorKind, Write},
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, RwLock},
@@ -85,7 +88,7 @@ impl Disk {
         let mut manifest = self.manifest.write().unwrap();
 
         // Create the new file.
-        let file = manifest.create_file(&locator, Some(size))?;
+        let _ = manifest.create_file(&locator, Some(size))?;
 
         // Save the manifest update to disk.
         manifest.save()?;
@@ -229,7 +232,7 @@ impl Disk {
         let mut file = OpenOptions::new().write(true).open(path)?;
         file.write_all(&object.to_bytes())?;
         // Sync all in-memory data to disk.
-        file.flush();
+        file.flush()?;
 
         trace!("Updated {}", self.to_path(&locator)?);
         Ok(())
@@ -375,114 +378,171 @@ impl StorageLocator for Disk {
     }
 }
 
+pub struct DiskObjectReader {
+    _file: File,
+    memmap: memmap::Mmap,
+}
+
+impl Deref for DiskObjectReader {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &*self.memmap
+    }
+}
+
+impl AsRef<[u8]> for DiskObjectReader {
+    fn as_ref(&self) -> &[u8] {
+        self.memmap.as_ref()
+    }
+}
+
+impl ObjectReader for DiskObjectReader {}
+
+pub struct DiskObjectWriter {
+    _file: File,
+    memmap: memmap::MmapMut,
+}
+
+impl Deref for DiskObjectWriter {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &*self.memmap
+    }
+}
+
+impl DerefMut for DiskObjectWriter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.memmap
+    }
+}
+
+impl AsMut<[u8]> for DiskObjectWriter {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.memmap.as_mut()
+    }
+}
+
+impl ObjectWriter for DiskObjectWriter {
+    fn flush(&self) -> std::io::Result<()> {
+        self.memmap.flush()
+    }
+}
+
 impl StorageObject for Disk {
+    type Reader = DiskObjectReader;
+    type Writer = DiskObjectWriter;
+
     /// Returns an object reader for the given locator.
     #[inline]
-    fn reader<'a>(&self, locator: &Locator) -> Result<ObjectReader, CoordinatorError> {
+    fn reader<'a>(&self, locator: &Locator) -> Result<Self::Reader, CoordinatorError> {
+        let path = self.to_path(&locator)?;
+
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            let locator = self.to_path(&locator)?;
-            error!("Locator {} missing in call to reader() in storage.", locator);
+            error!("Locator {} missing in call to reader() in storage.", path);
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
-        // Acquire the file read lock.
-        let reader = self
-            .open
-            .get(locator)
-            .ok_or(CoordinatorError::StorageLockFailed)?
-            .read()
-            .unwrap();
+        let file = OpenOptions::new().read(true).open(path)?;
+
+        // Load the file into memory.
+        let memmap = unsafe { MmapOptions::new().map(&file)? };
 
         match locator {
-            Locator::CoordinatorState => Ok(reader),
-            Locator::RoundHeight => Ok(reader),
-            Locator::RoundState { round_height: _ } => Ok(reader),
             Locator::RoundFile { round_height } => {
                 // Check that the round size is correct.
-                let expected = Object::round_file_size(&self.environment);
-                let found = self.size(&locator)?;
-                debug!("Round {} filesize is {}", round_height, found);
-                if found != expected {
-                    error!("Contribution file size should be {} but found {}", expected, found);
+                let expected_size = Object::round_file_size(&self.environment);
+                let found_size = memmap.len() as u64;
+                debug!("Round {} filesize is {}", round_height, found_size);
+                if found_size != expected_size {
+                    error!(
+                        "Contribution file size should be {} but found {}",
+                        expected_size, found_size
+                    );
                     return Err(CoordinatorError::RoundFileSizeMismatch.into());
                 }
-                Ok(reader)
             }
             Locator::ContributionFile(contribution_locator) => {
                 // Check that the contribution size is correct.
-                let expected = Object::contribution_file_size(
+                let expected_size = Object::contribution_file_size(
                     &self.environment,
                     contribution_locator.chunk_id(),
                     contribution_locator.is_verified(),
                 );
-                let found = self.size(&locator)?;
+                let found_size = memmap.len() as u64;
                 debug!(
                     "Round {} chunk {} filesize is {}",
                     contribution_locator.round_height(),
                     contribution_locator.chunk_id(),
-                    found
+                    found_size
                 );
-                if found != expected {
-                    error!("Contribution file size should be {} but found {}", expected, found);
+                if found_size != expected_size {
+                    error!(
+                        "Contribution file size should be {} but found {}",
+                        expected_size, found_size
+                    );
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
                 }
-                Ok(reader)
             }
-            Locator::ContributionFileSignature(_) => Ok(reader),
+            _ => {}
         }
+
+        Ok(DiskObjectReader { _file: file, memmap })
     }
 
     /// Returns an object writer for the given locator.
     #[inline]
-    fn writer(&self, locator: &Locator) -> Result<ObjectWriter, CoordinatorError> {
+    fn writer(&self, locator: &Locator) -> Result<Self::Writer, CoordinatorError> {
+        let path = self.to_path(&locator)?;
+
         // Check that the locator exists in storage.
         if !self.exists(&locator) {
-            let locator = self.to_path(&locator)?;
-            error!("Locator {} missing in call to writer() in storage.", locator);
+            error!("Locator {} missing in call to writer() in storage.", path);
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
-        // Acquire the file write lock.
-        let writer = self
-            .open
-            .get(locator)
-            .ok_or(CoordinatorError::StorageLockFailed)?
-            .write()
-            .unwrap();
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
+
+        // Load the file into memory.
+        let memmap = unsafe { MmapOptions::new().map_mut(&file)? };
 
         match locator {
-            Locator::CoordinatorState => Ok(writer),
-            Locator::RoundHeight => Ok(writer),
-            Locator::RoundState { round_height: _ } => Ok(writer),
             Locator::RoundFile { round_height: _ } => {
                 // Check that the round size is correct.
-                let expected = Object::round_file_size(&self.environment);
-                let found = self.size(&locator)?;
-                debug!("File size of {} is {}", self.to_path(locator)?, found);
-                if found != expected {
-                    error!("Contribution file size should be {} but found {}", expected, found);
+                let expected_size = Object::round_file_size(&self.environment);
+                let found_size = memmap.len() as u64;
+                debug!("File size of {} is {}", self.to_path(locator)?, found_size);
+                if found_size != expected_size {
+                    error!(
+                        "Contribution file size should be {} but found {}",
+                        expected_size, found_size
+                    );
                     return Err(CoordinatorError::RoundFileSizeMismatch.into());
                 }
-                Ok(writer)
             }
             Locator::ContributionFile(contribution_locator) => {
                 // Check that the contribution size is correct.
-                let expected = Object::contribution_file_size(
+                let expected_size = Object::contribution_file_size(
                     &self.environment,
                     contribution_locator.chunk_id(),
                     contribution_locator.is_verified(),
                 );
-                let found = self.size(&locator)?;
-                debug!("File size of {} is {}", self.to_path(locator)?, found);
-                if found != expected {
-                    error!("Contribution file size should be {} but found {}", expected, found);
+                let found_size = memmap.len() as u64;
+                debug!("File size of {} is {}", self.to_path(locator)?, found_size);
+                if found_size != expected_size {
+                    error!(
+                        "Contribution file size should be {} but found {}",
+                        expected_size, found_size
+                    );
                     return Err(CoordinatorError::ContributionFileSizeMismatch.into());
                 }
-                Ok(writer)
             }
-            Locator::ContributionFileSignature(_) => Ok(writer),
+            _ => {}
         }
+
+        Ok(DiskObjectWriter { _file: file, memmap })
     }
 }
 
@@ -520,14 +580,6 @@ impl DiskManifest {
                 // Check that all locator paths exist on disk.
                 let manifest: SerializedDiskManifest = serde_json::from_str(&serialized)?;
                 {
-                    // Check that all `open` locators exist in the set of all `locators`.
-                    for open in &manifest.open {
-                        if !manifest.locators.contains(open) {
-                            error!("{} is opened but missing in the manifest locators", open);
-                            return Err(CoordinatorError::LocatorFileMissing);
-                        }
-                    }
-
                     // Check that all `locators` exist on disk.
                     for locator in &manifest.locators {
                         if !locator.as_path().is_file() {
@@ -536,13 +588,6 @@ impl DiskManifest {
                         }
                     }
                 }
-
-                // Fetch the open locators from the manifest.
-                let open: HashSet<Locator> = manifest
-                    .open
-                    .par_iter()
-                    .map(|path| resolver.to_locator(&path).unwrap())
-                    .collect();
 
                 // Fetch all locators from the manifest.
                 let locators: HashSet<Locator> = manifest
@@ -623,49 +668,6 @@ impl DiskManifest {
 
         // Save the updated state.
         self.save()?;
-
-        Ok(file)
-    }
-
-    #[inline]
-    fn reopen_file(&self, locator: &Locator) -> Result<File, CoordinatorError> {
-        // Check that the file exists.
-        if !self.locators.contains(locator) {
-            error!("Locator missing in call to reopen_file() in storage.");
-            return Err(CoordinatorError::LocatorFileMissing);
-        }
-
-        // TODO: check what needs to go here
-        // // Check that the file is open.
-        // if !self.open.contains(locator) {
-        //     return Err(CoordinatorError::LocatorFileNotOpen);
-        // }
-
-        // Load the file path.
-        let path = self.resolver.to_path(&locator)?;
-
-        // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-
-        Ok(file)
-    }
-
-    #[inline]
-    fn resize_file(&mut self, locator: &Locator, size: u64) -> Result<File, CoordinatorError> {
-        // Check that the file exists.
-        if !self.locators.contains(locator) {
-            error!("Locator missing in call to close_file() in storage.");
-            return Err(CoordinatorError::LocatorFileMissing);
-        }
-
-        // Load the file path.
-        let path = self.resolver.to_path(&locator)?;
-
-        // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-
-        // Resize the file.
-        file.set_len(size)?;
 
         Ok(file)
     }

@@ -55,6 +55,8 @@ pub(crate) fn write_contribution_file_signature(
     next_challenge_locator: Option<&Locator>,
     contribution_file_signature_locator: &Locator,
 ) -> Result<(), CoordinatorError> {
+    use crate::storage::ObjectWriter;
+
     // Calculate the challenge hash.
     let challenge_reader = storage.reader(challenge_locator)?;
     let challenge_hash = calculate_hash(challenge_reader.as_ref()).to_vec();
