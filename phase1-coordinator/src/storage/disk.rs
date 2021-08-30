@@ -440,14 +440,32 @@ impl Disk {
         Ok(size)
     }
 
-    pub fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
+    /// Perform a [StorageAction] to mutate something in storage.
+    pub fn perform_action(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
         match action {
             StorageAction::Remove(remove_action) => {
                 let locator = remove_action.try_into_locator(self)?;
                 self.remove(&locator)
             }
             StorageAction::Update(update_action) => self.update(&update_action.locator, update_action.object),
+            StorageAction::RemoveIfExists(remove_action) => {
+                let locator = remove_action.try_into_locator(self)?;
+                if self.exists(&locator) {
+                    self.remove(&locator)
+                } else {
+                    Ok(())
+                }
+            }
         }
+    }
+
+    /// Convenience method to run [Self::perform_action] over
+    /// something that can provide an [Iterator] of [StorageAction].
+    pub fn perform_actions(
+        &mut self,
+        actions: impl IntoIterator<Item = StorageAction>,
+    ) -> Result<(), CoordinatorError> {
+        actions.into_iter().map(|action| self.perform_action(action)).collect()
     }
 }
 

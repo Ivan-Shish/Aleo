@@ -328,7 +328,12 @@ pub struct UpdateAction {
 /// [Storage::process()].
 #[non_exhaustive]
 pub enum StorageAction {
+    /// Remove an item in storage, will fail if the item does not yet
+    /// exist.
     Remove(RemoveAction),
+    /// Remove an item in storage if it exists.
+    RemoveIfExists(RemoveAction),
+    /// Update an item in storage.
     Update(UpdateAction),
 }
 

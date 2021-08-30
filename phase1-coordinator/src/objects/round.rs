@@ -798,19 +798,18 @@ impl Round {
     /// Remove a contributor from the round.
     pub(crate) fn remove_contributor_unsafe(
         &mut self,
-        storage: &mut Disk,
         contributor: &Participant,
         locked_chunks: &[u64],
         tasks: &[Task],
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Vec<StorageAction>, CoordinatorError> {
         warn!("Removing locked chunks and all impacted contributions");
 
         // Remove the lock from the specified chunks.
-        self.remove_locks_unsafe(storage, contributor, locked_chunks)?;
+        let mut actions = self.remove_locks_unsafe(contributor, locked_chunks)?;
         warn!("Removed locked chunks");
 
         // Remove the contributions from the specified chunks.
-        self.remove_chunk_contributions_unsafe(storage, contributor, tasks)?;
+        actions.append(&mut self.remove_chunk_contributions_unsafe(contributor, tasks)?);
         warn!("Removed impacted contributions");
 
         self.contributor_ids = self
@@ -820,7 +819,7 @@ impl Round {
             .filter(|participant| participant != contributor)
             .collect();
 
-        Ok(())
+        Ok(actions)
     }
 
     ///
@@ -835,10 +834,9 @@ impl Round {
     #[inline]
     pub(crate) fn remove_locks_unsafe(
         &mut self,
-        storage: &mut Disk,
         participant: &Participant,
         locked_chunks: &[u64],
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Vec<StorageAction>, CoordinatorError> {
         // Sanity check that the participant holds the lock for each specified chunk.
         let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
@@ -854,8 +852,9 @@ impl Round {
 
         // Remove the response locator for a contributor, and remove the next challenge locator
         // for both a contributor and verifier.
-        for chunk_id in locked_chunks.into_iter() {
-            match participant {
+        let actions = locked_chunks.into_iter().map(|chunk_id| {
+            let mut actions: Vec<StorageAction> = Vec::new();
+            match &participant {
                 Participant::Contributor(_) => {
                     // Check that the participant is an *authorized* contributor
                     // for the current round.
@@ -887,25 +886,22 @@ impl Round {
                         next_contribution_id,
                         false,
                     ));
-                    if storage.exists(&response_locator) {
-                        storage.remove(&response_locator)?;
-                    }
+
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(response_locator)));
 
                     // Removing contribution file signature for pending task
-                    let response_signature_locator = Locator::ContributionFileSignature(
+                    let unverified_response_signature_locator = Locator::ContributionFileSignature(
                         ContributionSignatureLocator::new(current_round_height, *chunk_id, next_contribution_id, false),
                     );
-                    if storage.exists(&response_signature_locator) {
-                        storage.remove(&response_signature_locator)?;
-                    }
+
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(unverified_response_signature_locator)));
 
                     // Removing contribution file signature for verified task
-                    let response_signature_locator = Locator::ContributionFileSignature(
+                    let verified_response_signature_locator = Locator::ContributionFileSignature(
                         ContributionSignatureLocator::new(current_round_height, *chunk_id, next_contribution_id, true),
                     );
-                    if storage.exists(&response_signature_locator) {
-                        storage.remove(&response_signature_locator)?;
-                    }
+
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(verified_response_signature_locator)));
 
                     // TODO: revisit the logic of removing challenges
                     //       https://github.com/AleoHQ/aleo-setup/issues/250
@@ -934,11 +930,10 @@ impl Round {
                                 true,
                             ))
                         };
+
                         // Don't remove initial challenge
-                        if storage.exists(&contribution_file)
-                            && chunk.current_contribution()?.get_contributor().is_some()
-                        {
-                            storage.remove(&contribution_file)?;
+                        if chunk.current_contribution()?.get_contributor().is_some() {
+                            actions.push(StorageAction::RemoveIfExists(RemoveAction::new(contribution_file)));
                         }
                     }
                 }
@@ -960,9 +955,7 @@ impl Round {
                         )),
                     };
 
-                    if storage.exists(&response_locator) {
-                        storage.remove(&response_locator)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(response_locator)));
 
                     let response_locator_signature = match is_final_contribution {
                         true => Locator::ContributionFileSignature(ContributionSignatureLocator::new(
@@ -979,9 +972,7 @@ impl Round {
                         )),
                     };
 
-                    if storage.exists(&response_locator_signature) {
-                        storage.remove(&response_locator_signature)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(response_locator_signature)));
                 }
             };
 
@@ -989,9 +980,19 @@ impl Round {
 
             // Remove the lock for each given chunk ID.
             chunk.set_lock_holder_unsafe(None);
-        }
 
-        Ok(())
+            Ok(actions)
+        })
+        // flat map the results so they can be collected into a single Vec
+        .flat_map(|result| {
+            match result {
+                Ok(ok) => ok.into_iter().map(|action| Ok(action)).collect(),
+                Err(err) => vec![Err(err)],
+            }
+        })
+        .collect::<Result<Vec<StorageAction>, CoordinatorError>>()?;
+
+        Ok(actions)
     }
 
     ///
@@ -1009,20 +1010,19 @@ impl Round {
     ///
     #[tracing::instrument(
         level = "error",
-        skip(self, storage, tasks),
+        skip(self, tasks),
         fields(round = self.round_height())
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
-        storage: &mut Disk,
         participant: &Participant,
         tasks: &[Task],
-    ) -> Result<(), CoordinatorError> {
+    ) -> Result<Vec<StorageAction>, CoordinatorError> {
         // Check if the participant is a verifier. As verifications are not dependent
         // on each other, no further update is necessary in the round state.
         if participant.is_verifier() {
             warn!("Skipping removal of contributions as {} is a verifier", participant);
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         // Check that the participant is in the current contributors ID.
@@ -1032,41 +1032,30 @@ impl Round {
         }
 
         // Remove the given contribution from each chunk in the current round.
-        for task in tasks {
+        tasks.iter().map(|task| {
+            let mut actions: Vec<StorageAction> = Vec::new();
             let chunk = self.chunk_mut(task.chunk_id())?;
             if let Ok(contribution) = chunk.get_contribution(task.contribution_id()) {
                 warn!("Removing task {:?}", task.to_tuple());
 
                 // Remove the unverified contribution file, if it exists.
                 if let Some(locator) = contribution.get_contributed_location() {
-                    let path = storage.to_locator(&locator)?;
-                    if storage.exists(&path) {
-                        storage.remove(&path)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(locator.clone())));
                 }
 
                 // Remove the contribution signature file, if it exists.
                 if let Some(locator) = contribution.get_contributed_signature_location() {
-                    let path = storage.to_locator(&locator)?;
-                    if storage.exists(&path) {
-                        storage.remove(&path)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(locator.clone())));
                 }
 
                 // Remove the verified contribution file, if it exists.
                 if let Some(locator) = contribution.get_verified_location() {
-                    let path = storage.to_locator(&locator)?;
-                    if storage.exists(&path) {
-                        storage.remove(&path)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(locator.clone())));
                 }
 
                 // Remove the verified contribution file signature, if it exists.
                 if let Some(locator) = contribution.get_verified_signature_location() {
-                    let path = storage.to_locator(&locator)?;
-                    if storage.exists(&path) {
-                        storage.remove(&path)?;
-                    }
+                    actions.push(StorageAction::RemoveIfExists(RemoveAction::new(locator.clone())));
                 }
 
                 // Remove the given contribution and all subsequent contributions.
@@ -1081,9 +1070,17 @@ impl Round {
                     chunk,
                 );
             }
-        }
 
-        Ok(())
+            Ok(actions)
+        })
+        // flat map the results so they can be collected into a single Vec
+        .flat_map(|result| {
+            match result {
+                Ok(ok) => ok.into_iter().map(|action| Ok(action)).collect(),
+                Err(err) => vec![Err(err)],
+            }
+        })
+        .collect::<Result<Vec<StorageAction>, CoordinatorError>>()
     }
 
     ///
