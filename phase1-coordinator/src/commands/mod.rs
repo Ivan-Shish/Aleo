@@ -18,7 +18,7 @@ pub(crate) use verification::*;
 use crate::{
     authentication::Signature,
     objects::{ContributionFileSignature, ContributionState},
-    storage::{Locator, Storage},
+    storage::{Disk, Locator, StorageLocator, StorageObject},
     CoordinatorError,
 };
 
@@ -47,7 +47,7 @@ pub type SigningKey = String;
 #[cfg(any(test, feature = "operator"))]
 #[inline]
 pub(crate) fn write_contribution_file_signature(
-    storage: &mut impl Storage,
+    storage: &mut Disk,
     signature: Arc<dyn Signature>,
     signing_key: &SigningKey,
     challenge_locator: &Locator,

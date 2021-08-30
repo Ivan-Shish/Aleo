@@ -8,7 +8,6 @@ use crate::{
         Object,
         ObjectReader,
         ObjectWriter,
-        Storage,
         StorageLocator,
         StorageObject,
     },
@@ -16,6 +15,7 @@ use crate::{
     CoordinatorState,
 };
 
+use anyhow::Result;
 use itertools::Itertools;
 use memmap::{MmapMut, MmapOptions};
 use rayon::prelude::*;
@@ -24,8 +24,8 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File, OpenOptions},
-    io::Write,
-    path::Path,
+    io::{self, Error, ErrorKind, Write},
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -41,10 +41,45 @@ pub struct Disk {
     resolver: DiskResolver,
 }
 
-impl Storage for Disk {
+impl Disk {
+    pub fn clear_round_files(&mut self, current_round_height: u64) -> Result<()> {
+        // Let's first fully clear any files in the next round - these will be
+        // verifications and represent the initial challenges.
+        let next_round_dir = self.resolver.round_directory(current_round_height + 1);
+        self.clear_dir_files(next_round_dir.into(), true)?;
+
+        // Now, let's clear all the contributions made on this round.
+        let round_dir = self.resolver.round_directory(current_round_height);
+        self.clear_dir_files(round_dir.into(), false)
+    }
+
+    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) -> Result<()> {
+        Ok(for entry in fs::read_dir(path.as_path())? {
+            let entry = entry?;
+            match entry.path().is_dir() {
+                true => self.clear_dir_files(entry.path(), delete_initial_contribution)?,
+                false => {
+                    let file_path = entry
+                        .path()
+                        .to_str()
+                        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
+                        .to_owned();
+
+                    if !delete_initial_contribution && file_path.contains("contribution_0") {
+                        continue;
+                    }
+
+                    let locator = self.resolver.to_locator(&LocatorPath::new(file_path))?;
+                    self.remove(&locator)?;
+                }
+            };
+        })
+    }
+}
+
+impl Disk {
     /// Loads a new instance of `Disk`.
-    #[inline]
-    fn load(environment: &Environment) -> Result<Self, CoordinatorError>
+    pub fn load(environment: &Environment) -> Result<Self, CoordinatorError>
     where
         Self: Sized,
     {
@@ -94,8 +129,7 @@ impl Storage for Disk {
     }
 
     /// Initializes the location corresponding to the given locator.
-    #[inline]
-    fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError> {
+    pub fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError> {
         let locator_path = self.to_path(&locator)?;
         trace!("Initializing {:?}", locator_path);
 
@@ -128,8 +162,7 @@ impl Storage for Disk {
     }
 
     /// Returns `true` if a given locator exists in storage. Otherwise, returns `false`.
-    #[inline]
-    fn exists(&self, locator: &Locator) -> bool {
+    pub fn exists(&self, locator: &Locator) -> bool {
         let is_in_manifest = self.manifest.read().unwrap().contains(locator);
         #[cfg(test)]
         trace!("Checking if locator exists in storage (manifest = {})", is_in_manifest,);
@@ -137,8 +170,7 @@ impl Storage for Disk {
     }
 
     /// Returns `true` if a given locator is opened in storage. Otherwise, returns `false`.
-    #[inline]
-    fn is_open(&self, locator: &Locator) -> bool {
+    pub fn is_open(&self, locator: &Locator) -> bool {
         let is_in_manifest = self.manifest.read().unwrap().contains(locator);
         let is_in_locators = self.open.contains_key(locator);
         #[cfg(test)]
@@ -151,8 +183,7 @@ impl Storage for Disk {
     }
 
     /// Returns a copy of an object at the given locator in storage, if it exists.
-    #[inline]
-    fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError> {
+    pub fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError> {
         trace!("Fetching {}", self.to_path(locator)?);
 
         // Check that the given locator exists in storage.
@@ -254,8 +285,7 @@ impl Storage for Disk {
     }
 
     /// Inserts a new object at the given locator into storage, if it does not exist.
-    #[inline]
-    fn insert(&mut self, locator: Locator, object: Object) -> Result<(), CoordinatorError> {
+    pub fn insert(&mut self, locator: Locator, object: Object) -> Result<(), CoordinatorError> {
         trace!("Inserting {}", self.to_path(&locator)?);
 
         // Check that the given locator does not exist in storage.
@@ -281,8 +311,7 @@ impl Storage for Disk {
     }
 
     /// Updates an existing object for the given locator in storage, if it exists.
-    #[inline]
-    fn update(&mut self, locator: &Locator, object: Object) -> Result<(), CoordinatorError> {
+    pub fn update(&mut self, locator: &Locator, object: Object) -> Result<(), CoordinatorError> {
         trace!("Updating {}", self.to_path(locator)?);
 
         // Check that the given locator exists in storage.
@@ -325,8 +354,7 @@ impl Storage for Disk {
     }
 
     /// Copies an object from the given source locator to the given destination locator.
-    #[inline]
-    fn copy(&mut self, source_locator: &Locator, destination_locator: &Locator) -> Result<(), CoordinatorError> {
+    pub fn copy(&mut self, source_locator: &Locator, destination_locator: &Locator) -> Result<(), CoordinatorError> {
         trace!(
             "Copying from A to B\n\n\tA: {}\n\tB: {}\n",
             self.to_path(source_locator)?,
@@ -359,8 +387,7 @@ impl Storage for Disk {
     }
 
     /// Removes the object corresponding to the given locator from storage.
-    #[inline]
-    fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
+    pub fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError> {
         trace!("Removing {}", self.to_path(locator)?);
 
         // Check that the locator exists in storage.
@@ -394,8 +421,7 @@ impl Storage for Disk {
     }
 
     /// Returns the size of the object stored at the given locator.
-    #[inline]
-    fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError> {
+    pub fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError> {
         trace!("Fetching size of {}", self.to_path(locator)?);
 
         // Check that the given locator exists in storage.
@@ -414,7 +440,7 @@ impl Storage for Disk {
         Ok(size)
     }
 
-    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
+    pub fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
         match action {
             StorageAction::Remove(remove_action) => {
                 let locator = remove_action.try_into_locator(self)?;
