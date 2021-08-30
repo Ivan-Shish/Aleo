@@ -3,10 +3,10 @@ use setup_utils::Result;
 
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
+use fs_err::OpenOptions;
 use gumdrop::Options;
 use memmap::MmapOptions;
 use rand::{CryptoRng, Rng};
-use std::fs::OpenOptions;
 
 #[derive(Debug, Options, Clone)]
 pub struct ContributeOpts {
@@ -43,7 +43,7 @@ pub fn contribute<R: Rng + CryptoRng>(opts: &ContributeOpts, rng: &mut R) -> Res
     }
     let mut file = unsafe {
         MmapOptions::new()
-            .map_mut(&file)
+            .map_mut(file.file())
             .expect("unable to create a memory map for input")
     };
 

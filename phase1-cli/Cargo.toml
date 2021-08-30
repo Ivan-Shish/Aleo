@@ -13,6 +13,7 @@ phase1 = { path = "../phase1" }
 setup-utils = { path = "../setup-utils" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
+fs-err = "2.6"
 gumdrop = { version = "0.8.0" }
 hex = { version = "0.4.2" }
 memmap = { version = "0.7.0" }

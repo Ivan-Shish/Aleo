@@ -3,9 +3,9 @@ use setup_utils::Result;
 
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
+use fs_err::OpenOptions;
 use gumdrop::Options;
 use memmap::MmapOptions;
-use std::fs::OpenOptions;
 
 // Options for the Contribute command
 #[derive(Debug, Options, Clone)]
@@ -29,7 +29,7 @@ pub fn verify(opts: &VerifyOpts) -> Result<()> {
         .expect("could not read the previous participant's MPC transcript file");
     let mut before = unsafe {
         MmapOptions::new()
-            .map_mut(&before)
+            .map_mut(before.file())
             .expect("unable to create a memory map for input")
     };
     let after = OpenOptions::new()
@@ -39,7 +39,7 @@ pub fn verify(opts: &VerifyOpts) -> Result<()> {
         .expect("could not read the previous participant's MPC transcript file");
     let mut after = unsafe {
         MmapOptions::new()
-            .map_mut(&after)
+            .map_mut(after.file())
             .expect("unable to create a memory map for input")
     };
     if opts.is_inner {

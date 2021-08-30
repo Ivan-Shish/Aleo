@@ -15,6 +15,7 @@ use serial_test::serial;
 use std::{path::Path, sync::Arc};
 use tracing::*;
 
+use fs_err as fs;
 use once_cell::sync::OnceCell;
 
 static INSTANCE: OnceCell<()> = OnceCell::new();
@@ -98,7 +99,7 @@ fn clear_test_storage(environment: &Environment) {
     let path = environment.local_base_directory();
     if Path::new(path).exists() {
         warn!("Coordinator is clearing {:?}", &path);
-        match std::fs::remove_dir_all(&path) {
+        match fs::remove_dir_all(&path) {
             Ok(_) => (),
             Err(error) => error!(
                 "The testing framework tried to clear the test transcript and failed. {}",

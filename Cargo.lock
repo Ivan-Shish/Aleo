@@ -1850,6 +1850,7 @@ dependencies = [
 name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
+ "fs-err",
  "gumdrop",
  "hex",
  "memmap",
@@ -2804,6 +2805,10 @@ name = "setup1-verifier"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "ctrlc",
+ "fs-err",
+ "futures-util",
  "hex",
  "http",
  "phase1",
@@ -2834,6 +2839,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
+ "fs-err",
  "gumdrop",
  "hex",
  "hex-literal",

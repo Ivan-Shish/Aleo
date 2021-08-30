@@ -14,6 +14,7 @@ use crate::{
 use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
+use fs_err as fs;
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
@@ -1342,7 +1343,7 @@ fn check_round_matches_storage_files(storage: &Disk, round: &Round) {
         let path = initial_challenge_location.as_path();
         let chunk_dir = path.parent().unwrap();
 
-        let n_files = std::fs::read_dir(&chunk_dir).unwrap().count();
+        let n_files = fs::read_dir(&chunk_dir).unwrap().count();
 
         let contributions_complete = chunk.only_contributions_complete(round.expected_number_of_contributions());
 

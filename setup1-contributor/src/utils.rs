@@ -10,9 +10,9 @@ use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey,
 use snarkvm_utilities::ToBytes;
 
 use anyhow::Result;
-use rand::{CryptoRng, Rng};
 #[cfg(test)]
-use std::fs::{create_dir_all, write};
+use fs_err::{create_dir_all, write};
+use rand::{CryptoRng, Rng};
 use std::{
     convert::TryFrom,
     fs::{remove_file, File},
