@@ -5,6 +5,7 @@ use crate::{
         ContributionLocator,
         ContributionSignatureLocator,
         Disk,
+        InitializeAction,
         Locator,
         LocatorPath,
         Object,
@@ -551,10 +552,10 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &mut Disk,
+        storage: &Disk,
         chunk_id: u64,
         participant: &Participant,
-    ) -> Result<LockedLocators, CoordinatorError> {
+    ) -> Result<(LockedLocators, Vec<StorageAction>), CoordinatorError> {
         debug!("{} is attempting to lock chunk {}", participant, chunk_id);
 
         // Check that the participant is holding less than the chunk lock limit.
@@ -711,38 +712,44 @@ impl Round {
         self.chunk_mut(chunk_id)?
             .acquire_lock(participant.clone(), expected_num_contributions)?;
 
+        let mut actions: Vec<StorageAction> = Vec::new();
+
         // Initialize the next contribution locator.
         match participant {
             Participant::Contributor(_) => {
                 // Initialize the unverified response file.
-                storage.initialize(
-                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
-                    Object::contribution_file_size(environment, chunk_id, false),
-                )?;
+                actions.push(StorageAction::Initialize(InitializeAction {
+                    locator: Locator::ContributionFile(locked_locators.next_contribution.clone()),
+                    object_size: Object::contribution_file_size(environment, chunk_id, false),
+                }));
 
                 // Initialize the contribution file signature.
-                storage.initialize(
-                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
-                    Object::contribution_file_signature_size(false),
-                )?;
+                actions.push(StorageAction::Initialize(InitializeAction {
+                    locator: Locator::ContributionFileSignature(
+                        locked_locators.next_contribution_file_signature.clone(),
+                    ),
+                    object_size: Object::contribution_file_signature_size(false),
+                }));
             }
             Participant::Verifier(_) => {
                 // Initialize the next challenge file.
-                storage.initialize(
-                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
-                    Object::contribution_file_size(environment, chunk_id, true),
-                )?;
+                actions.push(StorageAction::Initialize(InitializeAction {
+                    locator: Locator::ContributionFile(locked_locators.next_contribution.clone()),
+                    object_size: Object::contribution_file_size(environment, chunk_id, true),
+                }));
 
                 // Initialize the contribution file signature.
-                storage.initialize(
-                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
-                    Object::contribution_file_signature_size(true),
-                )?;
+                actions.push(StorageAction::Initialize(InitializeAction {
+                    locator: Locator::ContributionFileSignature(
+                        locked_locators.next_contribution_file_signature.clone(),
+                    ),
+                    object_size: Object::contribution_file_signature_size(true),
+                }));
             }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
-        Ok(locked_locators)
+        Ok((locked_locators, actions))
     }
 
     ///

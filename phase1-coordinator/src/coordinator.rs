@@ -1505,7 +1505,9 @@ impl Coordinator {
 
         // Attempt to acquire the chunk lock for participant.
         trace!("Preparing to lock chunk {}", chunk_id);
-        let locked_locators = round.try_lock_chunk(&self.environment, &mut self.storage, chunk_id, &participant)?;
+        let (locked_locators, actions) =
+            round.try_lock_chunk(&self.environment, &self.storage, chunk_id, &participant)?;
+        self.storage.perform_actions(actions)?;
         trace!("Participant {} locked chunk {}", participant, chunk_id);
 
         // Add the updated round to storage.

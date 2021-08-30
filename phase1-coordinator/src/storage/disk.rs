@@ -456,6 +456,9 @@ impl Disk {
                     Ok(())
                 }
             }
+            StorageAction::Initialize(initialize_action) => {
+                self.initialize(initialize_action.locator, initialize_action.object_size)
+            }
         }
     }
 
