@@ -11,7 +11,7 @@ use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -202,6 +202,12 @@ pub struct LocatorPath(String);
 impl AsRef<Path> for LocatorPath {
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl Into<PathBuf> for LocatorPath {
+    fn into(self) -> PathBuf {
+        self.as_path().into()
     }
 }
 

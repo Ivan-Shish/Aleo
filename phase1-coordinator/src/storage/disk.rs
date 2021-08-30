@@ -2,29 +2,23 @@ use crate::{
     environment::Environment,
     objects::{ContributionFileSignature, Round},
     storage::{
-        ContributionLocator,
-        ContributionSignatureLocator,
-        Locator,
-        Object,
-        ObjectReader,
-        ObjectWriter,
-        StorageLocator,
+        ContributionLocator, ContributionSignatureLocator, Locator, Object, ObjectReader, ObjectWriter, StorageLocator,
         StorageObject,
     },
-    CoordinatorError,
-    CoordinatorState,
+    CoordinatorError, CoordinatorState,
 };
 
 use anyhow::Result;
+use fs_err::{self as fs, File, OpenOptions};
 use itertools::Itertools;
 use memmap::{MmapMut, MmapOptions};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     convert::TryFrom,
-    fs::{self, File, OpenOptions},
-    io::{Error, ErrorKind, Write},
+    io::{self, Error, ErrorKind, Write},
     path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, RwLock},
@@ -73,7 +67,7 @@ impl Disk {
                 let file = manifest.reopen_file(locator)?;
 
                 // Load the file into memory.
-                let memory = unsafe { MmapOptions::new().map_mut(&file)? };
+                let memory = unsafe { MmapOptions::new().map_mut(file.file())? };
 
                 // Add the object to the set of opened locators.
                 storage.open.insert(locator.clone(), Arc::new(RwLock::new(memory)));
@@ -115,7 +109,7 @@ impl Disk {
         // Add the file to the locators.
         self.open.insert(
             locator.clone(),
-            Arc::new(RwLock::new(unsafe { MmapOptions::new().map_mut(&file)? })),
+            Arc::new(RwLock::new(unsafe { MmapOptions::new().map_mut(file.file())? })),
         );
 
         // Save the manifest update to disk.
@@ -305,7 +299,7 @@ impl Disk {
         let file = manifest.resize_file(&locator, object.size())?;
 
         // Update the writer.
-        *writer = unsafe { MmapOptions::new().map_mut(&file)? };
+        *writer = unsafe { MmapOptions::new().map_mut(file.file())? };
 
         // Write the new object to the file.
         (*writer).as_mut().write_all(&object.to_bytes())?;
@@ -699,7 +693,7 @@ impl DiskManifest {
         let path = self.resolver.to_path(&locator)?;
 
         // Open the file.
-        let file = OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
+        let file = OpenOptions::new().read(true).write(true).create_new(true).open(path)?;
 
         // Set the initial file size.
         file.set_len(size.unwrap_or(1))?;
@@ -734,7 +728,7 @@ impl DiskManifest {
         let path = self.resolver.to_path(&locator)?;
 
         // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
 
         // Add the file to the set of open files.
         self.open.insert(locator.clone());
@@ -762,7 +756,7 @@ impl DiskManifest {
         let path = self.resolver.to_path(&locator)?;
 
         // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
 
         Ok(file)
     }
@@ -784,7 +778,7 @@ impl DiskManifest {
         let path = self.resolver.to_path(&locator)?;
 
         // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
 
         // Resize the file.
         file.set_len(size)?;
@@ -879,7 +873,7 @@ impl DiskManifest {
         let path = self.resolver.to_path(&locator)?;
 
         // Open the file.
-        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
 
         Ok(file.metadata()?.len())
     }
@@ -1131,13 +1125,13 @@ impl DiskResolver {
         // If the round directory does not exist, attempt to initialize the directory path.
         let path = self.round_directory(round_height);
         if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the round directory");
+            fs::create_dir_all(&path).expect("unable to create the round directory");
         }
 
         // If the chunk directory does not exist, attempt to initialize the directory path.
         let path = self.chunk_directory(round_height, chunk_id);
         if !Path::new(&path).exists() {
-            std::fs::create_dir_all(&path).expect("unable to create the chunk directory");
+            fs::create_dir_all(&path).expect("unable to create the chunk directory");
         }
     }
 }
