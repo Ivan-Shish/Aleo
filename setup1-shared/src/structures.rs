@@ -49,6 +49,7 @@ impl PublicSettings {
 /// on a contributor's behalf by the coordinator.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(feature = "twitter")]
 pub struct TwitterInfo {
     pub request_token: egg_mode::KeyPair,
     pub pin: String,

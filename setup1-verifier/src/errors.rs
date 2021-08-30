@@ -12,9 +12,6 @@ pub enum VerifierError {
     #[error("Failed to download a challenge at {}", _0)]
     FailedChallengeDownload(String),
 
-    #[error("Failed to lock a chunk")]
-    FailedLock,
-
     #[error("Request {} sent to {} errored", _0, _1)]
     FailedRequest(String, String),
 
@@ -23,12 +20,6 @@ pub enum VerifierError {
 
     #[error("Failed to upload a new challenge file to {}", _0)]
     FailedChallengeUpload(String),
-
-    #[error("The coordinator failed to verify the uploaded challenge file at chunk {}", _0)]
-    FailedVerification(u64),
-
-    #[error("Failed to join the queue")]
-    FailedToJoinQueue,
 
     #[error("Mismatched response hashes")]
     MismatchedResponseHashes,

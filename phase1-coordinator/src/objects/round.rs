@@ -629,22 +629,107 @@ impl Round {
                 )?;
             }
             Participant::Verifier(_) => {
-                // Initialize the next challenge file.
-                storage.initialize(
-                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
-                    Object::contribution_file_size(environment, chunk_id, true),
-                )?;
-
-                // Initialize the contribution file signature.
-                storage.initialize(
-                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
-                    Object::contribution_file_signature_size(true),
-                )?;
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
         Ok(locked_locators)
+    }
+
+    /// Initialize the files for the next challenge
+    pub fn initialize_verifier_response_files(
+        &self,
+        environment: &Environment,
+        storage: &mut impl Storage,
+        participant: &Participant,
+        chunk_id: u64,
+        locators: &LockedLocators,
+    ) -> Result<(), CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+        // Initialize the next challenge file.
+        storage.initialize(
+            Locator::ContributionFile(locators.next_contribution.clone()),
+            Object::contribution_file_size(environment, chunk_id, true),
+        )?;
+
+        // Initialize the contribution file signature.
+        storage.initialize(
+            Locator::ContributionFileSignature(locators.next_contribution_file_signature.clone()),
+            Object::contribution_file_signature_size(true),
+        )?;
+
+        Ok(())
+    }
+
+    /// Returns previous contribution, current contribution and next contribution paths
+    pub(crate) fn get_chunk_locators_for_verifier(
+        &self,
+        storage: &impl Storage,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<LockedLocators, CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+
+        // Fetch the current round height.
+        let current_round_height = self.round_height();
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = self.chunk(chunk_id)?;
+        // Fetch the current contribution ID.
+        let current_contribution_id = chunk.current_contribution_id();
+
+        if current_contribution_id == 0 {
+            return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
+        }
+
+        if current_contribution_id != contribution_id {
+            tracing::error!(
+                "Error getting locators for chunk {}, current contribution {}, requested contribution {}",
+                chunk_id,
+                current_contribution_id,
+                contribution_id,
+            );
+            return Err(CoordinatorError::ContributionIdMismatch);
+        }
+
+        // Fetch the previous contribution locator.
+        let previous_contribution =
+            ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, true);
+
+        // This call enforces a strict check that the
+        // current contribution locator exist and
+        // has not been verified yet.
+        let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
+
+        tracing::debug!("Obtained response locator for a verifier: {:?}", current_contribution);
+
+        // Fetch whether this is the final contribution of the specified chunk.
+        let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
+        // Fetch the next contribution locator and its contribution file signature locator.
+        let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
+            // This is the final contribution in the chunk.
+            true => (
+                ContributionLocator::new(current_round_height + 1, chunk_id, 0, true),
+                ContributionSignatureLocator::new(current_round_height + 1, chunk_id, 0, true),
+            ),
+            // This is a typical contribution in the chunk.
+            false => (
+                ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true),
+                ContributionSignatureLocator::new(current_round_height, chunk_id, current_contribution_id, true),
+            ),
+        };
+
+        Ok(LockedLocators {
+            previous_contribution,
+            current_contribution,
+            next_contribution,
+            next_contribution_file_signature,
+        })
     }
 
     ///

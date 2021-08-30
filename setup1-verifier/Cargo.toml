@@ -21,9 +21,6 @@ snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c"
 snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 
 anyhow = { version = "1.0.32" }
-chrono = { version = "0.4", features = ["serde"] }
-ctrlc = { version = "3.1.7" }
-futures-util = { version = "0.3.5" }
 hex = { version = "0.4.2" }
 http = "0.2"
 rand = { version = "0.8" }
@@ -32,12 +29,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 structopt = "0.3.21"
 thiserror = { version = "1.0" }
-tokio = { version = "1.9", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1.9", features = ["macros", "rt-multi-thread"] }
 tracing = { version = "0.1.26" }
 tracing-subscriber = { version = "0.2" }
 url = "2.2.2"
 
 [dev-dependencies]
-lazy_static = { version = "1.4.0" }
 rand_xorshift = { version = "0.3" }
-serial_test = { version = "0.5" }

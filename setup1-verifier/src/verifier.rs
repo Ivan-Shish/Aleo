@@ -1,8 +1,7 @@
-use crate::{
-    errors::VerifierError,
-    objects::LockResponse,
-    tasks::Tasks,
-    utils::{authentication::AleoAuthentication, create_parent_directory, remove_file_if_exists, write_to_file},
+use std::{
+    fs,
+    str::FromStr,
+    time::{Duration, Instant},
 };
 
 use phase1::helpers::CurveKind;
@@ -17,28 +16,39 @@ use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
 
-use chrono::Utc;
-use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};
-use tokio::{signal, sync::Mutex};
-use tracing::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info};
 use url::Url;
 
+use crate::{
+    errors::VerifierError,
+    utils::{authentication::AleoAuthentication, create_parent_directory, remove_file_if_exists, write_to_file},
+};
+
+const NO_TASKS_DELAY: Duration = Duration::from_secs(5);
+const UPLOAD_TASK_ERROR_DELAY: Duration = Duration::from_secs(5);
+
 /// Returns a pretty print of the given hash bytes for logging.
-macro_rules! pretty_hash {
-    ($hash:expr) => {{
-        let mut output = format!("\n\n");
-        for line in $hash.chunks(16) {
-            output += "\t";
-            for section in line.chunks(4) {
-                for b in section {
-                    output += &format!("{:02x}", b);
-                }
-                output += " ";
+fn pretty_hash(input: &[u8]) -> String {
+    let mut output = format!("\n\n");
+    for line in input.chunks(16) {
+        output += "\t";
+        for section in line.chunks(4) {
+            for b in section {
+                output += &format!("{:02x}", b);
             }
-            output += "\n";
+            output += " ";
         }
-        output
-    }};
+        output += "\n";
+    }
+    output
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AssignedTask {
+    pub round_id: u64,
+    pub chunk_id: u64,
+    pub contribution_id: u64,
 }
 
 ///
@@ -58,12 +68,6 @@ pub struct Verifier {
 
     /// The coordinator environment
     pub(crate) environment: Environment,
-
-    /// The list of cached tasks.
-    pub(crate) tasks: Arc<Mutex<Tasks>>,
-
-    /// The path where tasks will be stored.
-    pub(crate) tasks_storage_path: String,
 }
 
 // Manual implementation, since ViewKey doesn't implement Clone
@@ -75,8 +79,6 @@ impl Clone for Verifier {
             view_key,
             verifier: self.verifier.clone(),
             environment: self.environment.clone(),
-            tasks: self.tasks.clone(),
-            tasks_storage_path: self.tasks_storage_path.clone(),
         }
     }
 }
@@ -90,7 +92,6 @@ impl Verifier {
         view_key: ViewKey<Testnet2Parameters>,
         address: Address<Testnet2Parameters>,
         environment: Environment,
-        tasks_storage_path: String,
     ) -> Result<Self, VerifierError> {
         let verifier_id = address.to_string();
 
@@ -99,82 +100,7 @@ impl Verifier {
             view_key,
             verifier: Participant::Verifier(verifier_id),
             environment,
-            tasks: Arc::new(Mutex::new(Tasks::load(&tasks_storage_path))),
-            tasks_storage_path,
         })
-    }
-
-    ///
-    /// Initializes a listener to handle the shutdown signal.
-    ///
-    #[inline]
-    pub async fn shutdown_listener(self) -> anyhow::Result<()> {
-        signal::ctrl_c().await.expect("Failed to listen for control+c");
-
-        warn!("\n\nATTENTION - Verifier is shutting down...\n");
-
-        // Acquire the tasks lock.
-        let tasks = self.tasks.lock().await;
-        trace!("Verifier has acquired the tasks lock");
-
-        // Store the verifier tasks to disk.
-        tasks.store(&self.tasks_storage_path)?;
-
-        // Print the verifier tasks
-        let tasks = serde_json::to_string_pretty(&*tasks).unwrap();
-
-        info!("\n\nVerifier tasks at Shutdown\n\n{}\n", tasks);
-        info!("\n\nVerifier has safely shutdown.\n\nGoodbye.\n");
-
-        std::process::exit(0);
-    }
-
-    ///
-    /// The function attempts to fetch a task from the queue. If there are
-    /// no tasks in the queue, then the verifier will request a lock from
-    /// the coordinator.
-    ///
-    #[inline]
-    pub async fn get_task(&self) -> Result<LockResponse, VerifierError> {
-        // Acquire the tasks lock.
-        let mut tasks = self.tasks.lock().await;
-
-        // Attempt to fetch a task or lock a chunk.
-        let lock_response = match tasks.next_task() {
-            Some(lock_response) => lock_response,
-            None => {
-                let task = self.lock_chunk().await?;
-                tasks.add_task(task.clone());
-                task
-            }
-        };
-
-        // Write tasks to disk.
-        tasks.store(&self.tasks_storage_path)?;
-
-        Ok(lock_response)
-    }
-
-    ///
-    /// Clear a task from the queue. If the queue is empty, clear the storage.
-    ///
-    #[inline]
-    pub async fn clear_task(&self, task: &LockResponse) -> Result<(), VerifierError> {
-        // Acquire the tasks lock.
-        let mut tasks = self.tasks.lock().await;
-
-        // Remove the given task from `tasks`.
-        tasks.remove_task(task);
-
-        if tasks.is_empty() {
-            // If there are no tasks, delete the stored tasks file.
-            remove_file_if_exists(&self.tasks_storage_path);
-        } else {
-            // Otherwise, update the stored file
-            tasks.store(&self.tasks_storage_path)?;
-        }
-
-        Ok(())
     }
 
     ///
@@ -200,9 +126,9 @@ impl Verifier {
         );
 
         // Write the challenge file to disk.
-        write_to_file(&challenge_locator, challenge_file);
+        fs::write(&challenge_locator, challenge_file)?;
 
-        debug!("The challenge hash is {}", pretty_hash!(&challenge_hash));
+        debug!("The challenge hash is {}", pretty_hash(&challenge_hash));
 
         Ok(challenge_hash.to_vec())
     }
@@ -232,7 +158,7 @@ impl Verifier {
         // Write the response to a local file
         write_to_file(&response_locator, response_file);
 
-        debug!("The response hash is {}", pretty_hash!(&response_hash));
+        debug!("The response hash is {}", pretty_hash(&response_hash));
 
         Ok(response_hash.to_vec())
     }
@@ -252,7 +178,7 @@ impl Verifier {
         // Compute the next challenge hash using the next challenge file.
         let next_challenge_hash = calculate_hash(&next_challenge_file);
 
-        debug!("The next challenge hash is {}", pretty_hash!(&next_challenge_hash));
+        debug!("The next challenge hash is {}", pretty_hash(&next_challenge_hash));
 
         Ok((next_challenge_file, next_challenge_hash.to_vec()))
     }
@@ -267,7 +193,7 @@ impl Verifier {
         challenge_file_locator: &str,
         response_locator: &str,
         next_challenge_locator: &str,
-    ) -> i64 {
+    ) -> u128 {
         // Create the parent directory for the `next_challenge_locator` if it doesn't already exist.
         create_parent_directory(&next_challenge_locator);
         // Remove the `next_challenge_locator` if it already exists.
@@ -278,9 +204,7 @@ impl Verifier {
         let compressed_challenge = self.environment.compressed_inputs();
         let compressed_response = self.environment.compressed_outputs();
 
-        info!("Running verification on chunk {}", chunk_id);
-
-        let start = Utc::now();
+        let start = Instant::now();
         match settings.curve() {
             CurveKind::Bls12_377 => transform_pok_and_correctness(
                 compressed_challenge,
@@ -301,17 +225,8 @@ impl Verifier {
                 &phase1_chunked_parameters!(BW6_761, settings, chunk_id),
             ),
         };
-        let stop = Utc::now();
 
-        let contribution_duration = stop.timestamp_millis() - start.timestamp_millis();
-
-        info!(
-            "Verification on chunk {} completed in {} seconds",
-            chunk_id,
-            contribution_duration / 1000
-        );
-
-        contribution_duration
+        start.elapsed().as_millis()
     }
 
     ///
@@ -328,8 +243,8 @@ impl Verifier {
         };
 
         // Check that the response hash matches the next challenge hash.
-        debug!("The response hash is {}", pretty_hash!(&response_hash));
-        debug!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
+        debug!("The response hash is {}", pretty_hash(&response_hash));
+        debug!("The saved response hash is {}", pretty_hash(&saved_response_hash));
         if response_hash != saved_response_hash {
             error!("Response hash does not match the saved response hash.");
             return Err(VerifierError::MismatchedResponseHashes);
@@ -405,32 +320,23 @@ impl Verifier {
     /// After completion or error, the loop waits 5 seconds and starts again.
     ///
     pub async fn start_verifier(&self) {
-        // Initialize the shutdown listener
-        let verifier = self.clone();
-        tokio::task::spawn(async move {
-            let _ = verifier.shutdown_listener().await;
-        });
-
         // Initialize the verifier loop.
         loop {
-            // Run the verification operations.
-            if let Err(error) = self.try_verify().await {
-                error!("Error while verifying {}", error);
-
-                // Clearing and obtaining new tasks
-                tracing::warn!("Clearing tasks");
-                let tasks_lock = self.tasks.lock().await;
-                let current_tasks = tasks_lock.get_tasks().clone();
-                drop(tasks_lock); // lock is required to clear the tasks
-                for task in current_tasks {
-                    if let Err(error) = self.clear_task(&task).await {
-                        tracing::error!("Error clearing task: {}", error);
-                    }
+            let task = match self.get_task().await {
+                Some(task) => task,
+                None => {
+                    tokio::time::sleep(NO_TASKS_DELAY).await;
+                    continue;
                 }
-            }
+            };
 
-            // Sleep for 5 seconds in between iterations.
-            sleep(Duration::from_secs(5));
+            info!("Got a task: {:?}", task);
+
+            // Run the verification operations.
+            if let Err(error) = self.try_verify(&task).await {
+                error!("Error while verifying {}", error);
+                tokio::time::sleep(UPLOAD_TASK_ERROR_DELAY).await;
+            }
         }
     }
 
@@ -448,51 +354,33 @@ impl Verifier {
     /// 9. Attempts to apply the verification in the ceremony
     ///     - Request to the coordinator to run `try_verify`
     ///
-    pub async fn try_verify(&self) -> Result<(), VerifierError> {
-        // Attempt to fetch a task from the queue or lock a chunk from the coordinator.
-        let lock_response = match self.get_task().await {
-            Ok(lock_response) => lock_response,
-            Err(err) => {
-                // If there are no tasks, attempt to join the queue for the next round.
-                self.join_queue().await?;
-
-                return Err(err);
-            }
-        };
-
-        info!("Attempting to verify chunk {}", lock_response.chunk_id);
-
-        // Deserialize the lock response.
-        let LockResponse {
-            chunk_id,
-            contribution_id,
-            locked: _,
-            participant_id: _,
-            challenge_locator,
-            challenge_chunk_id,
-            challenge_contribution_id,
-            response_locator,
-            next_challenge_locator,
-            next_challenge_chunk_id,
-            next_challenge_contribution_id,
-        } = &lock_response;
+    pub async fn try_verify(&self, task: &AssignedTask) -> Result<(), VerifierError> {
+        let chunk_id = task.chunk_id;
+        let contribution_id = task.contribution_id;
+        let challenge_locator = "challenge";
+        let response_locator = "response";
+        let next_challenge_locator = "next_challenge";
 
         // Download and process the challenge file.
         let challenge_hash = self
-            .process_challenge_file(*challenge_chunk_id, *challenge_contribution_id, &challenge_locator)
+            .process_challenge_file(chunk_id, contribution_id, &challenge_locator)
             .await?;
 
         // Download and process the response file.
         let response_hash = self
-            .process_response_file(*chunk_id, *contribution_id, &response_locator)
+            .process_response_file(chunk_id, contribution_id, &response_locator)
             .await?;
 
         // Run verification on a chunk with the given locators.
-        let _duration = self.run_verification(
-            *chunk_id,
-            &challenge_locator,
-            &response_locator,
-            &next_challenge_locator,
+        info!(
+            "Running verification on chunk {} contribution {}",
+            chunk_id, contribution_id
+        );
+
+        let duration = self.run_verification(chunk_id, &challenge_locator, &response_locator, &next_challenge_locator);
+        info!(
+            "Verification on chunk {} contribution {} completed in {} ms",
+            chunk_id, contribution_id, duration,
         );
 
         // Fetch the next challenge file from the filesystem.
@@ -509,20 +397,66 @@ impl Verifier {
             next_challenge_file,
         )?;
 
-        // Upload the signature and new challenge file to `next_challenge_locator`.
-        self.upload_next_challenge_locator_file(
-            *next_challenge_chunk_id,
-            *next_challenge_contribution_id,
-            signature_and_next_challenge_bytes,
-        )
-        .await?;
-        // Attempt to perform the verification with the uploaded challenge file at `next_challenge_locator`.
-        self.verify_contribution(*chunk_id).await?;
-
-        // Clear the task from the cache.
-        self.clear_task(&lock_response).await?;
+        // Upload the signature and new challenge file
+        self.upload_next_challenge_locator_file(chunk_id, contribution_id, signature_and_next_challenge_bytes)
+            .await?;
 
         Ok(())
+    }
+
+    ///
+    /// Gets a task from a coordinator. If error happens, logs
+    /// error and returns None
+    ///
+    async fn get_task(&self) -> Option<AssignedTask> {
+        let coordinator_api_url = &self.coordinator_api_url;
+        let method = "post";
+        let path = "/v1/verifier/get_task";
+
+        // It's better to panic here and stop the verifier, because
+        // such an error is unexpected and signals about
+        // logic errors in authentication
+        let authentication = AleoAuthentication::authenticate(&self.view_key, &method, &path).expect(&format!(
+            "Failed to authenticate with method: {}, path: {}",
+            method, path
+        ));
+
+        info!("Asking for a new task");
+
+        match reqwest::Client::new()
+            .post(coordinator_api_url.join(path).expect("Should create a path"))
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_LENGTH, 0)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    error!("Failed to get a new task, status: {}", response.status(),);
+                    return None;
+                }
+
+                // Parse the lock response
+                let bytes = match response.bytes().await {
+                    Ok(bytes) => bytes.to_vec(),
+                    Err(e) => {
+                        error!("Error reading response body: {}", &e);
+                        return None;
+                    }
+                };
+                match serde_json::from_slice(&bytes) {
+                    Ok(maybe_task) => maybe_task,
+                    Err(e) => {
+                        error!("Error deserializing response: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(_) => {
+                error!("Request ({}) to get a task failed", path);
+                None
+            }
+        }
     }
 }
 
@@ -552,7 +486,6 @@ mod tests {
             view_key,
             address,
             environment.into(),
-            "TEST_VERIFIER.tasks".to_string(),
         )
         .unwrap()
     }

@@ -934,6 +934,34 @@ where
         }
     }
 
+    /// Returns previous contribution, current contribution and next contribution paths
+    pub fn get_chunk_locators_for_verifier(
+        &self,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<LockedLocators, CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+        let round = Self::load_current_round(&self.storage)?;
+        round.get_chunk_locators_for_verifier(&self.storage, participant, chunk_id, contribution_id)
+    }
+
+    /// Initialize the files for the next challenge
+    pub fn initialize_verifier_response_files(
+        &mut self,
+        participant: &Participant,
+        chunk_id: u64,
+        locators: &LockedLocators,
+    ) -> Result<(), CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+        let round = Self::load_current_round(&self.storage)?;
+        round.initialize_verifier_response_files(&self.environment, &mut self.storage, participant, chunk_id, locators)
+    }
+
     ///
     /// Attempts to add a contribution for the given chunk ID from the given participant.
     ///
@@ -1154,7 +1182,9 @@ where
                 };
 
                 // Remove the invalid next challenge file from storage.
-                self.storage.remove(&next_challenge)?;
+                if self.storage.exists(&next_challenge) {
+                    self.storage.remove(&next_challenge)?;
+                }
 
                 error!("{}", error);
                 Err(error)
