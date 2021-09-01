@@ -3,14 +3,14 @@
 rm -f challenge* response* new_challenge* processed*
 
 POWER=19
-BATCH=1000
+BATCH=10000
 CURVE="bls12_377"
 SEED=`tr -dc 'A-F0-9' < /dev/urandom | head -c32`
 echo $SEED > seed1
 
 phase1="cargo run --release --bin phase1 --features cli -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode full --power $POWER --seed seed1 --proving-system groth16"
-phase2="cargo run --release --bin prepare_phase2 --features=cli -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
-snark="cargo run --release --bin setup2 --features=cli --"
+phase2="cargo run --release --bin prepare_phase2 --features cli -- --curve-kind $CURVE --batch-size $BATCH --power $POWER --phase2-size $POWER"
+snark="cargo run --release --bin setup2 --features cli --"
 
 ####### Phase 1
 
