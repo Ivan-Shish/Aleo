@@ -6,7 +6,7 @@ use crate::{
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
-use setup_utils::{calculate_hash, CheckForCorrectness, GenericArray, U64};
+use setup_utils::{calculate_hash, CheckForCorrectness};
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as Engine};
 
 use std::{io::Write, sync::Arc, time::Instant};
@@ -240,7 +240,7 @@ impl Verification {
             // Check that the response hash matches the next challenge hash.
             debug!("The response hash is {}", pretty_hash!(&response_hash));
             debug!("The saved response hash is {}", pretty_hash!(&saved_response_hash));
-            if response_hash.as_slice() != saved_response_hash {
+            if response_hash.to_vec() != saved_response_hash {
                 error!("Response hash does not match the saved response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -255,7 +255,7 @@ impl Verification {
         challenge_reader: &[u8],
         response_reader: &[u8],
         parameters: &Phase1Parameters<T>,
-    ) -> Result<GenericArray<u8, U64>, CoordinatorError> {
+    ) -> Result<[u8; 64], CoordinatorError> {
         debug!("Verifying 2^{} powers of tau", parameters.total_size_in_log2);
 
         // Check that the challenge hashes match.
@@ -271,7 +271,7 @@ impl Verification {
             // Check that the challenge hashes match.
             debug!("The challenge hash is {}", pretty_hash!(&challenge_hash));
             debug!("The saved challenge hash is {}", pretty_hash!(&saved_challenge_hash));
-            match challenge_hash.as_slice() == saved_challenge_hash {
+            match challenge_hash == saved_challenge_hash {
                 true => challenge_hash,
                 false => {
                     error!("Challenge hash does not match saved challenge hash.");

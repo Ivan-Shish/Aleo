@@ -220,13 +220,13 @@ impl<W: Write> Write for HashWriter<W> {
 /// used a specially formed writer to write to the file and calculate a hash on the fly, but memory-constrained
 /// implementation now writes without a particular order, so plain recalculation at the end
 /// of the procedure is more efficient
-pub fn calculate_hash(input_map: &[u8]) -> GenericArray<u8, U64> {
+pub fn calculate_hash(input_map: &[u8]) -> [u8; 64] {
     let chunk_size = 1 << 30; // read by 1GB from map
     let mut hasher = Blake2b::default();
     for chunk in input_map.chunks(chunk_size) {
         hasher.update(&chunk);
     }
-    hasher.finalize()
+    hasher.finalize().into()
 }
 
 /// Hashes to G2 using the first 32 bytes of `digest`. Panics if `digest` is less

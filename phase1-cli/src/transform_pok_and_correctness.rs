@@ -9,15 +9,16 @@ use std::{
     io::{Read, Write},
 };
 
+/// Returns new challenge and its hash
 pub fn transform_pok_and_correctness<T: Engine + Sync>(
     challenge_is_compressed: UseCompression,
     challenge_filename: &str,
     contribution_is_compressed: UseCompression,
     response_filename: &str,
     compress_new_challenge: UseCompression,
-    new_challenge_filename: &str,
+    _new_challenge_filename: &str,
     parameters: &Phase1Parameters<T>,
-) {
+) -> (Vec<u8>, [u8; 64]) {
     println!(
         "Will verify and decompress a contribution to accumulator for 2^{} powers of tau",
         parameters.total_size_in_log2
@@ -103,7 +104,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         println!("`response` was based on the hash:");
         print_hash(&response_challenge_hash);
 
-        if &response_challenge_hash[..] != current_accumulator_hash.as_slice() {
+        if response_challenge_hash != current_accumulator_hash {
             panic!("Hash chain failure. This is not the right response.");
         }
     }
@@ -125,7 +126,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         &challenge_readable_map,
         &response_readable_map,
         &public_key,
-        current_accumulator_hash.as_slice(),
+        &current_accumulator_hash,
         challenge_is_compressed,
         contribution_is_compressed,
         CheckForCorrectness::No,
@@ -142,59 +143,62 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
 
     if compress_new_challenge == contribution_is_compressed {
         println!("Don't need to recompress the contribution, copying the file without the public key...");
-        fs::copy(challenge_filename, new_challenge_filename)
-            .expect("Should have been able to copy the new challenge file");
-        let f = fs::File::open(new_challenge_filename).expect("Should have been able to open the new challenge file");
-        f.set_len((parameters.accumulator_size + parameters.public_key_size) as u64)
-            .expect("Should have been able to truncate the new challenge file");
+        let mut new_challenge =
+            fs::read(challenge_filename).expect("Should have been able to copy the new challenge file");
+        // fs::copy(challenge_filename, new_challenge_filename)
+        //     .expect("Should have been able to copy the new challenge file");
+        // let f = fs::File::open(new_challenge_filename).expect("Should have been able to open the new challenge file");
+        new_challenge.truncate(parameters.accumulator_size + parameters.public_key_size);
 
-        let new_challenge_reader = OpenOptions::new()
-            .read(true)
-            .open(new_challenge_filename)
-            .expect("unable open new challenge file in this directory");
+        // let new_challenge_reader = OpenOptions::new()
+        //     .read(true)
+        //     .open(new_challenge_filename)
+        //     .expect("unable open new challenge file in this directory");
 
-        let new_challenge_readable_map = unsafe {
-            MmapOptions::new()
-                .map(&new_challenge_reader)
-                .expect("unable to create a memory map for new input")
-        };
+        // let new_challenge_readable_map = unsafe {
+        //     MmapOptions::new()
+        //         .map(&new_challenge_reader)
+        //         .expect("unable to create a memory map for new input")
+        // };
 
-        let hash = calculate_hash(&new_challenge_readable_map);
+        let hash = calculate_hash(&new_challenge);
 
         println!("Here's the BLAKE2b hash of the decompressed participant's response as new_challenge file:");
         print_hash(&hash);
         println!("Done! new challenge file contains the new challenge file. The other files");
         println!("were left alone.");
+        (new_challenge, hash)
     } else {
         println!("Verification succeeded! Writing to new challenge file...");
 
         // Create new challenge file in this directory
-        let writer = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(new_challenge_filename)
-            .expect("unable to create new challenge file in this directory");
+        // let writer = OpenOptions::new()
+        //     .read(true)
+        //     .write(true)
+        //     .create_new(true)
+        //     .open(new_challenge_filename)
+        //     .expect("unable to create new challenge file in this directory");
 
         // Recomputation strips the public key and uses hashing to link with the previous contribution after decompression
-        writer
-            .set_len(parameters.accumulator_size as u64)
-            .expect("must make output file large enough");
+        // writer
+        //     .set_len(parameters.accumulator_size as u64)
+        //     .expect("must make output file large enough");
 
-        let mut writable_map = unsafe {
-            MmapOptions::new()
-                .map_mut(&writer)
-                .expect("unable to create a memory map for output")
-        };
+        // let mut writable_map = unsafe {
+        //     MmapOptions::new()
+        //         .map_mut(&writer)
+        //         .expect("unable to create a memory map for output")
+        // };
+        let mut writable_map = vec![0; parameters.accumulator_size];
 
         {
             (&mut writable_map[0..])
-                .write_all(response_hash.as_slice())
+                .write_all(&response_hash)
                 .expect("unable to write a default hash to mmap");
 
-            writable_map
-                .flush()
-                .expect("unable to write hash to new challenge file");
+            // writable_map
+            //     .flush()
+            //     .expect("unable to write hash to new challenge file");
         }
 
         Phase1::decompress(
@@ -205,15 +209,16 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         )
         .expect("must decompress a response for a new challenge");
 
-        writable_map.flush().expect("must flush the memory map");
+        // writable_map.flush().expect("must flush the memory map");
 
-        let new_challenge_readable_map = writable_map.make_read_only().expect("must make a map readonly");
+        // let new_challenge_readable_map = writable_map.make_read_only().expect("must make a map readonly");
 
-        let recompressed_hash = calculate_hash(&new_challenge_readable_map);
+        let recompressed_hash = calculate_hash(&writable_map);
 
         println!("Here's the BLAKE2b hash of the decompressed participant's response as new_challenge file:");
         print_hash(&recompressed_hash);
         println!("Done! new challenge file contains the new challenge file. The other files");
         println!("were left alone.");
+        (writable_map, recompressed_hash)
     }
 }

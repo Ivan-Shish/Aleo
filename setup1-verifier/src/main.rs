@@ -40,7 +40,11 @@ fn universal() -> Environment {
 struct Options {
     #[structopt(long, help = "Path to a file containing verifier view key")]
     view_key: PathBuf,
-    #[structopt(long, help = "Coordinator api url, for example http://localhost:9000")]
+    #[structopt(
+        long,
+        help = "Coordinator api url, for example http://localhost:9000",
+        default_value = "http://localhost:9000"
+    )]
     api_url: Url,
 }
 
@@ -64,16 +68,17 @@ async fn main() {
 
     crate::utils::init_logger();
 
-    let public_settings = request_coordinator_public_settings(&options.api_url)
-        .await
-        .expect("Failed to fetch the coordinator public settings");
+    // let public_settings = request_coordinator_public_settings(&options.api_url)
+    //     .await
+    //     .expect("Failed to fetch the coordinator public settings");
 
-    let environment = match public_settings.setup {
-        SetupKind::Development => development(),
-        SetupKind::Inner => inner(),
-        SetupKind::Outer => outer(),
-        SetupKind::Universal => universal(),
-    };
+    // let environment = match public_settings.setup {
+    //     SetupKind::Development => development(),
+    //     SetupKind::Inner => inner(),
+    //     SetupKind::Outer => outer(),
+    //     SetupKind::Universal => universal(),
+    // };
+    let environment = universal();
 
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
     let view_key = ViewKey::<Testnet2Parameters>::from_str(&raw_view_key).expect("Invalid view key");
@@ -84,5 +89,14 @@ async fn main() {
     let verifier =
         Verifier::new(options.api_url.clone(), view_key, address, environment).expect("Failed to initialize verifier");
 
-    verifier.start_verifier().await;
+    // verifier.start_verifier().await;
+
+    info!("Running verification");
+    let task = crate::verifier::AssignedTask {
+        round_id: 1,
+        chunk_id: 4,
+        contribution_id: 1,
+    };
+    verifier.try_verify(&task).await.expect("Should run verification");
+    info!("Verification done");
 }

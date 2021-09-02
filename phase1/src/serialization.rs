@@ -34,7 +34,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             alpha_tau_powers_g1,
             beta_tau_powers_g1,
             beta_g2,
-            hash: blank_hash(),
+            hash: blank_hash().into(),
             parameters,
         })
     }
