@@ -419,11 +419,6 @@ impl Chunk {
             return Err(CoordinatorError::ExpectedVerifier);
         }
 
-        // Check that this chunk is locked by the verifier before attempting to verify contribution.
-        if !self.is_locked_by(&verifier) {
-            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
-        }
-
         // Fetch the contribution to be verified from the chunk.
         let contribution = match self.contributions.get_mut(&contribution_id) {
             Some(contribution) => contribution,

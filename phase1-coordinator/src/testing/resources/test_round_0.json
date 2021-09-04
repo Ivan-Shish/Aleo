@@ -5,9 +5,7 @@
     "startedAt": "1970-01-01T00:01:01Z",
     "finishedAt": null,
     "contributorIds": [],
-    "verifierIds": [
-        "testing-coordinator-verifier.verifier"
-    ],
+    "verifierIds": [],
     "chunks": [
         {
             "chunkId": "0",

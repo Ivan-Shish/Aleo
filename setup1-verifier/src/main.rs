@@ -9,8 +9,6 @@ use url::Url;
 
 mod coordinator_requests;
 mod errors;
-mod objects;
-mod tasks;
 mod utils;
 mod verifier;
 
@@ -77,23 +75,14 @@ async fn main() {
         SetupKind::Universal => universal(),
     };
 
-    let storage_prefix = format!("{:?}", public_settings.setup).to_lowercase();
-    let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
-
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
     let view_key = ViewKey::<Testnet2Parameters>::from_str(&raw_view_key).expect("Invalid view key");
     let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 
     // Initialize the verifier
     info!("Initializing verifier...");
-    let verifier = Verifier::new(
-        options.api_url.clone(),
-        view_key,
-        address,
-        environment,
-        tasks_storage_path,
-    )
-    .expect("Failed to initialize verifier");
+    let verifier =
+        Verifier::new(options.api_url.clone(), view_key, address, environment).expect("Failed to initialize verifier");
 
     verifier.start_verifier().await;
 }
