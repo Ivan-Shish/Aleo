@@ -22,6 +22,7 @@ use crate::{
         Locator,
         LocatorPath,
         Object,
+        StorageAction,
         StorageLocator,
         StorageObject,
     },
@@ -2300,7 +2301,8 @@ impl Coordinator {
         self.storage.process(round.reset(&reset_action.remove_participants))?;
 
         // Clear all files
-        self.storage.clear_round_files(current_round_height)?;
+        self.storage
+            .process(StorageAction::ClearRoundFiles(current_round_height))?;
 
         if reset_action.rollback {
             if current_round_height == 0 {

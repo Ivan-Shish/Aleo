@@ -330,6 +330,7 @@ pub struct UpdateAction {
 pub enum StorageAction {
     Remove(RemoveAction),
     Update(UpdateAction),
+    ClearRoundFiles(u64),
 }
 
 pub trait StorageLocator {

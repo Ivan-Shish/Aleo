@@ -405,18 +405,19 @@ impl Disk {
     }
 
     /// Process a [StorageAction] which mutates the storage.
-    pub fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
+    pub fn process(&mut self, action: StorageAction) -> Result<()> {
         match action {
             StorageAction::Remove(remove_action) => {
                 let locator = remove_action.try_into_locator(self)?;
-                self.remove(&locator)
+                Ok(self.remove(&locator)?)
             }
-            StorageAction::Update(update_action) => self.update(&update_action.locator, update_action.object),
+            StorageAction::Update(update_action) => Ok(self.update(&update_action.locator, update_action.object)?),
+            StorageAction::ClearRoundFiles(round_height) => self.clear_round_files(round_height),
         }
     }
 
     /// Clears all files related to a round - used for round reset purposes.
-    pub fn clear_round_files(&mut self, round_height: u64) -> Result<()> {
+    fn clear_round_files(&mut self, round_height: u64) -> Result<()> {
         // Let's first fully clear any files in the next round - these will be
         // verifications and represent the initial challenges.
         let next_round_dir = self.resolver.round_directory(round_height + 1);
