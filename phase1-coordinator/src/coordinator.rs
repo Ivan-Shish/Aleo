@@ -2637,7 +2637,7 @@ mod tests {
     use rand::RngCore;
     use std::{collections::HashMap, sync::Arc};
 
-    fn initialize_to_round_1(coordinator: &mut Coordinator<Disk>, contributors: &[Participant]) -> anyhow::Result<()> {
+    fn initialize_to_round_1(coordinator: &mut Coordinator, contributors: &[Participant]) -> anyhow::Result<()> {
         // Initialize the ceremony and add the contributors and verifiers to the queue.
         {
             // Run initialization.
