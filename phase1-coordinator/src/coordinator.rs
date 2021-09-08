@@ -6,14 +6,25 @@ use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
     coordinator_state::{
-        CeremonyStorageAction, CoordinatorState, DropParticipant, ParticipantInfo, ResetCurrentRoundStorageAction,
+        CeremonyStorageAction,
+        CoordinatorState,
+        DropParticipant,
+        ParticipantInfo,
+        ResetCurrentRoundStorageAction,
         RoundMetrics,
     },
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
     storage::{
-        ContributionLocator, ContributionSignatureLocator, Disk, Locator, LocatorPath, Object, StorageAction,
-        StorageLocator, StorageObject,
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Disk,
+        Locator,
+        LocatorPath,
+        Object,
+        StorageAction,
+        StorageLocator,
+        StorageObject,
     },
 };
 use setup_utils::calculate_hash;
@@ -2873,16 +2884,18 @@ mod tests {
             // Run the computation
             let mut seed: Seed = [0; SEED_LENGTH];
             rand::thread_rng().fill_bytes(&mut seed[..]);
-            assert!(coordinator
-                .run_computation(
-                    round_height,
-                    chunk_id,
-                    contribution_id,
-                    &contributor,
-                    &contributor_signing_key,
-                    &seed
-                )
-                .is_ok());
+            assert!(
+                coordinator
+                    .run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        &contributor,
+                        &contributor_signing_key,
+                        &seed
+                    )
+                    .is_ok()
+            );
         }
 
         // Add contribution for round 1 chunk 0 contribution 1.
@@ -2927,16 +2940,18 @@ mod tests {
             // Run computation on round 1 chunk 0 contribution 1.
             let mut seed: Seed = [0; SEED_LENGTH];
             rand::thread_rng().fill_bytes(&mut seed[..]);
-            assert!(coordinator
-                .run_computation(
-                    round_height,
-                    chunk_id,
-                    contribution_id,
-                    contributor,
-                    &contributor_signing_key,
-                    &seed
-                )
-                .is_ok());
+            assert!(
+                coordinator
+                    .run_computation(
+                        round_height,
+                        chunk_id,
+                        contribution_id,
+                        contributor,
+                        &contributor_signing_key,
+                        &seed
+                    )
+                    .is_ok()
+            );
 
             // Add round 1 chunk 0 contribution 1.
             assert!(coordinator.add_contribution(chunk_id, &contributor).is_ok());
@@ -3234,11 +3249,13 @@ mod tests {
         let mut seeds = HashMap::new();
         for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
             // Ensure contribution ID 0 is already verified by the coordinator.
-            assert!(coordinator
-                .current_round()?
-                .chunk(chunk_id)?
-                .get_contribution(0)?
-                .is_verified());
+            assert!(
+                coordinator
+                    .current_round()?
+                    .chunk(chunk_id)?
+                    .get_contribution(0)?
+                    .is_verified()
+            );
 
             // As contribution ID 0 is initialized by the coordinator, iterate from
             // contribution ID 1 up to the expected number of contributions.

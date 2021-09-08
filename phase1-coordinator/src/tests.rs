@@ -5,7 +5,11 @@ use crate::{
     objects::Task,
     storage::{Disk, StorageLocator, StorageObject},
     testing::prelude::*,
-    Coordinator, CoordinatorError, MockTimeSource, Participant, Round,
+    Coordinator,
+    CoordinatorError,
+    MockTimeSource,
+    Participant,
+    Round,
 };
 use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
