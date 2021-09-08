@@ -42,42 +42,6 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn clear_round_files(&mut self, current_round_height: u64) -> Result<()> {
-        // Let's first fully clear any files in the next round - these will be
-        // verifications and represent the initial challenges.
-        let next_round_dir = self.resolver.round_directory(current_round_height + 1);
-        self.clear_dir_files(next_round_dir.into(), true)?;
-
-        // Now, let's clear all the contributions made on this round.
-        let round_dir = self.resolver.round_directory(current_round_height);
-        self.clear_dir_files(round_dir.into(), false)
-    }
-
-    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) -> Result<()> {
-        Ok(for entry in fs::read_dir(path.as_path())? {
-            let entry = entry?;
-            match entry.path().is_dir() {
-                true => self.clear_dir_files(entry.path(), delete_initial_contribution)?,
-                false => {
-                    let file_path = entry
-                        .path()
-                        .to_str()
-                        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
-                        .to_owned();
-
-                    if !delete_initial_contribution && file_path.contains("contribution_0") {
-                        continue;
-                    }
-
-                    let locator = self.resolver.to_locator(&LocatorPath::new(file_path))?;
-                    self.remove(&locator)?;
-                }
-            };
-        })
-    }
-}
-
-impl Disk {
     /// Loads a new instance of `Disk`.
     pub fn load(environment: &Environment) -> Result<Self, CoordinatorError>
     where
@@ -440,6 +404,7 @@ impl Disk {
         Ok(size)
     }
 
+    /// Process a [StorageAction] which mutates the storage.
     pub fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
         match action {
             StorageAction::Remove(remove_action) => {
@@ -448,6 +413,41 @@ impl Disk {
             }
             StorageAction::Update(update_action) => self.update(&update_action.locator, update_action.object),
         }
+    }
+
+    /// Clears all files related to a round - used for round reset purposes.
+    pub fn clear_round_files(&mut self, round_height: u64) -> Result<()> {
+        // Let's first fully clear any files in the next round - these will be
+        // verifications and represent the initial challenges.
+        let next_round_dir = self.resolver.round_directory(round_height + 1);
+        self.clear_dir_files(next_round_dir.into(), true)?;
+
+        // Now, let's clear all the contributions made on this round.
+        let round_dir = self.resolver.round_directory(round_height);
+        self.clear_dir_files(round_dir.into(), false)
+    }
+
+    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) -> Result<()> {
+        Ok(for entry in fs::read_dir(path.as_path())? {
+            let entry = entry?;
+            match entry.path().is_dir() {
+                true => self.clear_dir_files(entry.path(), delete_initial_contribution)?,
+                false => {
+                    let file_path = entry
+                        .path()
+                        .to_str()
+                        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
+                        .to_owned();
+
+                    if !delete_initial_contribution && file_path.contains("contribution_0") {
+                        continue;
+                    }
+
+                    let locator = self.resolver.to_locator(&LocatorPath::new(file_path))?;
+                    self.remove(&locator)?;
+                }
+            };
+        })
     }
 }
 
