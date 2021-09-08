@@ -24,7 +24,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File, OpenOptions},
-    io::{self, Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Write},
     path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, RwLock},

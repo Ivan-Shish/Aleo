@@ -22,7 +22,6 @@ use crate::{
         Locator,
         LocatorPath,
         Object,
-        StorageAction,
         StorageLocator,
         StorageObject,
     },

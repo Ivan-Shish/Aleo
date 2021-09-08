@@ -8,7 +8,6 @@ use crate::{
         Locator,
         LocatorPath,
         Object,
-        RemoveAction,
         StorageAction,
         StorageLocator,
         UpdateAction,
@@ -642,7 +641,7 @@ impl Round {
     pub fn initialize_verifier_response_files(
         &self,
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         participant: &Participant,
         chunk_id: u64,
         locators: &LockedLocators,
@@ -668,7 +667,7 @@ impl Round {
     /// Returns previous contribution, current contribution and next contribution paths
     pub(crate) fn get_chunk_locators_for_verifier(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         participant: &Participant,
         chunk_id: u64,
         contribution_id: u64,
