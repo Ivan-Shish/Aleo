@@ -11,7 +11,7 @@ edition = "2018"
 phase1 = { path = "../phase1", features = ["parallel"] }
 phase1-cli = { path = "../phase1-cli", features = ["parallel"] }
 phase1-coordinator = { path = "../phase1-coordinator", features = ["operator", "parallel"]}
-setup1-shared = { version = "0.1", path = "../setup1-shared", features = ["twitter"] }
+setup1-shared = { path = "../setup1-shared", features = ["twitter", "proof-of-work"] }
 setup-utils = { path = "../setup-utils", features = ["parallel"] }
 
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
@@ -21,7 +21,6 @@ snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc99
 age = { version = "0.6", features = [ "cli-common", "armor" ] }
 anyhow = { version = "1.0.33" }
 blake2 = "0.9"
-byteorder = { version = "1.3.4", optional = true }
 clap = { version = "2.33.3" }
 dialoguer = "0.8"
 egg-mode = "0.16"

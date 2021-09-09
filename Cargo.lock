@@ -2742,7 +2742,6 @@ dependencies = [
  "age",
  "anyhow",
  "blake2",
- "byteorder",
  "clap",
  "dialoguer",
  "egg-mode",
@@ -2784,8 +2783,11 @@ name = "setup1-shared"
 version = "0.1.0"
 dependencies = [
  "egg-mode",
+ "phase1",
  "serde",
  "serde_json",
+ "setup-utils",
+ "snarkvm-curves",
  "tokio",
 ]
 
