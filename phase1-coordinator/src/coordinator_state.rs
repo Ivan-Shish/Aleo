@@ -4,7 +4,7 @@ use crate::{
         participant::*,
         task::{initialize_tasks, Task},
     },
-    storage::{Locator, Object, Storage},
+    storage::{Disk, Locator, Object},
     CoordinatorError,
     TimeSource,
 };
@@ -3066,7 +3066,7 @@ impl CoordinatorState {
 
     /// Save the coordinator state in storage.
     #[inline]
-    pub(crate) fn save(&self, storage: &mut impl Storage) -> Result<(), CoordinatorError> {
+    pub(crate) fn save(&self, storage: &mut Disk) -> Result<(), CoordinatorError> {
         storage.update(&Locator::CoordinatorState, Object::CoordinatorState(self.clone()))
     }
 }

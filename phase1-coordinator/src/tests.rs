@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::{Disk, Storage},
+    storage::{Disk, StorageLocator, StorageObject},
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
@@ -53,7 +53,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &mut Coordinator<Disk>) -> Result<(), CoordinatorError> {
+    fn contribute_to(&self, coordinator: &mut Coordinator) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -75,7 +75,7 @@ struct VerifierTestDetails {
 impl VerifierTestDetails {
     /// If there are pending verifications, grab one and verify it.
     /// Otherwise do nothing
-    fn verify_if_available(&self, coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
+    fn verify_if_available(&self, coordinator: &mut Coordinator) -> anyhow::Result<()> {
         verify_task_if_available(coordinator, &self.participant, &self.signing_key)
     }
 }
@@ -189,7 +189,7 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
 /// If there are pending verifications, grab one and verify it.
 /// Otherwise do nothing
 fn verify_task_if_available(
-    coordinator: &mut Coordinator<Disk>,
+    coordinator: &mut Coordinator,
     verifier: &Participant,
     signing_key: &SigningKey,
 ) -> anyhow::Result<()> {
@@ -200,7 +200,7 @@ fn verify_task_if_available(
     Ok(())
 }
 
-fn fetch_task_for_verifier(coordinator: &Coordinator<Disk>) -> Option<Task> {
+fn fetch_task_for_verifier(coordinator: &Coordinator) -> Option<Task> {
     coordinator.get_pending_verifications().keys().next().cloned()
 }
 
@@ -1275,7 +1275,7 @@ fn coordinator_drop_several_contributors() {
     fn contribute_verify_until_no_tasks(
         contributor: &ContributorTestDetails,
         verifier: &VerifierTestDetails,
-        coordinator: &mut Coordinator<Disk>,
+        coordinator: &mut Coordinator,
     ) -> anyhow::Result<bool> {
         match contributor.contribute_to(coordinator) {
             Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
@@ -1323,7 +1323,7 @@ fn coordinator_drop_several_contributors() {
     assert_eq!(0, coordinator.number_of_queue_contributors());
 }
 
-fn check_round_matches_storage_files(storage: &impl Storage, round: &Round) {
+fn check_round_matches_storage_files(storage: &Disk, round: &Round) {
     debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
         debug!("Checking chunk {}", chunk.chunk_id());

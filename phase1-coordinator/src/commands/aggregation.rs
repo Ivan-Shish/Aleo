@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::Round,
-    storage::{ContributionLocator, Locator, Object, ObjectReader, Storage},
+    storage::{ContributionLocator, Disk, Locator, Object, ObjectReader, StorageLocator, StorageObject},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
@@ -15,7 +15,7 @@ pub(crate) struct Aggregation;
 impl Aggregation {
     /// Runs aggregation for a given environment, storage, and round.
     #[inline]
-    pub(crate) fn run(environment: &Environment, storage: &mut impl Storage, round: &Round) -> anyhow::Result<()> {
+    pub(crate) fn run(environment: &Environment, storage: &mut Disk, round: &Round) -> anyhow::Result<()> {
         let start = Instant::now();
 
         // Fetch the round height.
@@ -95,7 +95,7 @@ impl Aggregation {
     #[inline]
     fn readers<'a>(
         environment: &Environment,
-        storage: &'a impl Storage,
+        storage: &'a Disk,
         round: &Round,
     ) -> anyhow::Result<Vec<ObjectReader<'a>>> {
         let mut readers = vec![];
@@ -149,7 +149,7 @@ mod tests {
         authentication::Dummy,
         commands::{Aggregation, Seed, SigningKey, SEED_LENGTH},
         objects::Task,
-        storage::{Locator, Storage},
+        storage::Locator,
         testing::prelude::*,
         Coordinator,
     };

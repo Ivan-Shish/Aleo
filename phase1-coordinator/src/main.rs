@@ -1,7 +1,6 @@
 use phase1_coordinator::{
     authentication::{Dummy, Signature},
     environment::{Development, Environment, Parameters},
-    storage::Disk,
     Coordinator,
 };
 use tracing_subscriber;
@@ -10,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::{sync::RwLock, task, time::sleep};
 use tracing::*;
 
-fn coordinator(environment: &Environment, signature: Arc<dyn Signature>) -> anyhow::Result<Coordinator<Disk>> {
+fn coordinator(environment: &Environment, signature: Arc<dyn Signature>) -> anyhow::Result<Coordinator> {
     Ok(Coordinator::new(environment.clone(), signature)?)
 }
 
@@ -29,8 +28,7 @@ pub async fn main() -> anyhow::Result<()> {
     // let environment: Environment = Production::from(Parameters::AleoInner).into();
 
     // Instantiate the coordinator.
-    let coordinator: Arc<RwLock<Coordinator<Disk>>> =
-        Arc::new(RwLock::new(coordinator(&environment, Arc::new(Dummy))?));
+    let coordinator: Arc<RwLock<Coordinator>> = Arc::new(RwLock::new(coordinator(&environment, Arc::new(Dummy))?));
 
     let ceremony_coordinator = coordinator.clone();
     // Initialize the coordinator.
