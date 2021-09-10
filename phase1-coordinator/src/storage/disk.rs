@@ -769,12 +769,6 @@ impl StorageLocator for DiskResolver {
 }
 
 impl DiskResolver {
-    /// Returns the storage manifest file path.
-    #[inline]
-    fn manifest(&self) -> String {
-        format!("{}/manifest.json", self.base)
-    }
-
     /// Returns the round directory for a given round height from the coordinator.
     #[inline]
     fn round_directory(&self, round_height: u64) -> String {
