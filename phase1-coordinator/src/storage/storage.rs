@@ -12,7 +12,6 @@ use std::{
     convert::TryFrom,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
-    sync::{RwLockReadGuard, RwLockWriteGuard},
 };
 
 use super::Disk;

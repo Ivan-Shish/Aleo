@@ -232,6 +232,7 @@ impl Contribution {
 
     /// Get a list containing all the file locators associated with
     /// this contribution.
+    #[allow(dead_code)]
     pub(crate) fn get_locators(&self) -> Vec<LocatorPath> {
         let mut paths: Vec<LocatorPath> = Vec::new();
 

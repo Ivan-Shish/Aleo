@@ -19,16 +19,13 @@ use anyhow::Result;
 use fs_err::{self as fs, File, OpenOptions};
 use itertools::Itertools;
 use memmap::MmapOptions;
-use rayon::prelude::*;
 
 use std::{
-    collections::{BTreeSet, HashSet},
     convert::TryFrom,
-    io::{self, Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Write},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{Arc, RwLock},
 };
 use tracing::{debug, error, trace};
 
