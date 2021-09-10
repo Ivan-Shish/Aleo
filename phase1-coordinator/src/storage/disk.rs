@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashSet},
     convert::TryFrom,
-    fs::{self, File, OpenOptions},
     io::{self, Error, ErrorKind, Write},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
@@ -230,6 +229,7 @@ impl Disk {
         }
 
         let mut file = OpenOptions::new().write(true).open(path)?;
+        file.set_len(object.size())?;
         file.write_all(&object.to_bytes())?;
         // Sync all in-memory data to disk.
         file.flush()?;
@@ -285,7 +285,7 @@ impl Disk {
         // TODO: if any of the locators are directories, make this
         // detect whether the path is a directory of a file and call
         // the appropriate function.
-        std::fs::remove_file(&path)?;
+        // std::fs::remove_file(&path)?;
 
         // Acquire the manifest file write lock.
         let mut manifest = self.manifest.write().unwrap();
@@ -448,7 +448,7 @@ impl StorageObject for Disk {
         let file = OpenOptions::new().read(true).open(path)?;
 
         // Load the file into memory.
-        let memmap = unsafe { MmapOptions::new().map(&file)? };
+        let memmap = unsafe { MmapOptions::new().map(&file.file())? };
 
         match locator {
             Locator::RoundFile { round_height } => {
@@ -506,7 +506,7 @@ impl StorageObject for Disk {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
 
         // Load the file into memory.
-        let memmap = unsafe { MmapOptions::new().map_mut(&file)? };
+        let memmap = unsafe { MmapOptions::new().map_mut(&file.file())? };
 
         match locator {
             Locator::RoundFile { round_height: _ } => {
