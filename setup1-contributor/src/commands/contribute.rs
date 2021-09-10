@@ -31,6 +31,7 @@ use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey,
 use age::DecryptError;
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input};
+use fs_err::File;
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use panic_control::{spawn_quiet, ThreadResultExt};
@@ -41,10 +42,9 @@ use setup_utils::derive_rng_from_seed;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     convert::TryFrom,
-    fs::File,
     io::{Read, Write},
     ops::Deref,
-    path::Path,
+    path::PathBuf,
     str::FromStr,
     sync::{Arc, RwLock},
     time::Duration,
@@ -1152,12 +1152,12 @@ fn decrypt(passphrase: &SecretString, encrypted: &str) -> Result<Vec<u8>> {
 
 /// Decrypts and reads the private key from the specified `keys_path`,
 /// decrypting using the specified `passphrase`
-fn read_keys<P: AsRef<Path>>(
+fn read_keys<P: Into<PathBuf>>(
     keys_path: P,
     passphrase: &SecretString,
 ) -> Result<(SecretVec<u8>, PrivateKey<Testnet2Parameters>)> {
     let mut contents = String::new();
-    std::fs::File::open(keys_path)?.read_to_string(&mut contents)?;
+    File::open(keys_path)?.read_to_string(&mut contents)?;
     let keys: AleoSetupKeys = serde_json::from_str(&contents)?;
 
     let seed = SecretVec::new(decrypt(passphrase, &keys.encrypted_seed)?);

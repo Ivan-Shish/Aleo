@@ -1,9 +1,10 @@
+use fs_err::File;
 use std::io::Write;
 
 use crate::cli::commands::generate::GenerateOptions;
 
 pub fn generate_keys(opts: GenerateOptions) {
-    let mut file = std::fs::File::create(&opts.keys_path).expect("Should have created keys file");
+    let mut file = File::create(&opts.keys_path).expect("Should have created keys file");
     let passphrase = crate::setup_keys::read_or_generate_passphrase(opts.passphrase);
 
     println!("\nDO NOT FORGET YOUR PASSPHRASE!\n\nYou will need your passphrase to access your keys.\n\n");
