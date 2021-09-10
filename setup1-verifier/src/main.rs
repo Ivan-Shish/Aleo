@@ -9,9 +9,6 @@ use url::Url;
 
 mod coordinator_requests;
 mod errors;
-use fs_err as fs;
-mod objects;
-mod tasks;
 mod utils;
 mod verifier;
 
@@ -78,14 +75,7 @@ async fn main() {
         SetupKind::Universal => universal(),
     };
 
-<<<<<<< HEAD
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
-=======
-    let storage_prefix = format!("{:?}", public_settings.setup).to_lowercase();
-    let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
-
-    let raw_view_key = fs::read_to_string(options.view_key).expect("View key not found");
->>>>>>> c91f4ba (#368 swap remaining usages of std::fs to fs-err)
     let view_key = ViewKey::<Testnet2Parameters>::from_str(&raw_view_key).expect("Invalid view key");
     let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 

@@ -42,7 +42,7 @@ pub fn transform_ratios<T: Engine + Sync>(response_filename: &str, parameters: &
 
     let response_readable_map = unsafe {
         MmapOptions::new()
-            .map(&response_reader)
+            .map(&response_reader.file())
             .expect("unable to create a memory map for input")
     };
 
