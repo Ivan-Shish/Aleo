@@ -2199,17 +2199,16 @@ impl Coordinator {
 
     #[inline]
     fn load_current_round_height(storage: &Disk) -> Result<u64, CoordinatorError> {
-        match storage.exists(&Locator::RoundHeight) {
-            true => {
-                // Fetch the current round height from storage.
-                match storage.get(&Locator::RoundHeight)? {
-                    // Case 1 - This is a typical round of the ceremony.
-                    Object::RoundHeight(current_round_height) => Ok(current_round_height),
-                    // Case 2 - Storage failed to fetch the round height.
-                    _ => Err(CoordinatorError::StorageFailed),
-                }
+        if storage.exists(&Locator::RoundHeight) {
+            // Fetch the current round height from storage.
+            match storage.get(&Locator::RoundHeight)? {
+                // Case 1 - This is a typical round of the ceremony.
+                Object::RoundHeight(current_round_height) => Ok(current_round_height),
+                // Case 2 - Storage failed to fetch the round height.
+                _ => Err(CoordinatorError::StorageFailed),
             }
-            false => Err(CoordinatorError::RoundHeightNotSet),
+        } else {
+            Err(CoordinatorError::RoundHeightNotSet)
         }
     }
 
