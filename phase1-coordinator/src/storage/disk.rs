@@ -153,7 +153,7 @@ impl Disk {
 
         // Check that the given locator exists in storage.
         if !self.exists(locator) {
-            error!("Locator missing in call to get() in storage.");
+            error!("Locator missing in call to get() in storage - {:?}", locator);
             return Err(CoordinatorError::StorageLocatorMissing);
         }
 
