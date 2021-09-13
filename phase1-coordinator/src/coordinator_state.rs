@@ -545,6 +545,9 @@ impl ParticipantInfo {
         // Update the last seen time.
         self.last_seen = time.utc_now();
 
+        // Remove the given chunk ID from the locked chunks.
+        self.locked_chunks.remove(&task.chunk_id());
+
         // Remove the task from the pending tasks.
         self.pending_tasks = self
             .pending_tasks

@@ -2628,10 +2628,10 @@ impl Coordinator {
     /// chunks which become stuck during the ceremony.
     ///
     pub fn rollback_locked_task(&mut self, participant: &Participant, task: Task) -> Result<(), CoordinatorError> {
-        self.state.rollback_locked_task(participant, task, self.time)?;
+        self.state.rollback_locked_task(participant, task, &*self.time)?;
 
         self.current_round()?
-            .remove_locks_unsafe(&mut self.storage, participant, task.chunk_id())
+            .remove_locks_unsafe(&mut self.storage, participant, &[task.chunk_id()])
     }
 }
 

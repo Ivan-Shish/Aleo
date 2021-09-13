@@ -2099,6 +2099,64 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test that a participant who maintains a lock on a chunk for longer
+/// than [Environment::participant_lock_timeout] is dropped from the
+/// round by the coordinator.
+#[test]
+#[serial]
+fn rollback_locked_chunk() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(20))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+
+    let (contributor, contributor_info) = &coordinator.current_contributors()[0];
+    let num_locked = contributor_info.locked_chunks().len();
+    let num_assigned = contributor_info.assigned_tasks().len();
+    let num_pending = contributor_info.pending_tasks().len();
+
+    let (chunk_id, _) = coordinator.try_lock(&contributor1)?;
+    let task = Task::new(chunk_id, 1);
+    coordinator.rollback_locked_task(&contributor1, task)?;
+
+    assert_eq!(num_locked, contributor_info.locked_chunks().len());
+    assert_eq!(num_assigned, contributor_info.assigned_tasks().len());
+    assert_eq!(num_pending, contributor_info.pending_tasks().len());
+    assert!(contributor_info.assigned_tasks().contains(&task));
+
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn round_on_groth16_bls12_377() {
