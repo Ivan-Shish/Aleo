@@ -491,6 +491,77 @@ impl ParticipantInfo {
         Ok(())
     }
 
+    fn rollback_locked_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        trace!("Rolling back locked task on chunk {} for {}", task.chunk_id(), self.id);
+
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that this chunk is currently locked by the participant.
+        if !self.locked_chunks.contains_key(&task.chunk_id()) {
+            return Err(CoordinatorError::ChunkNotLockedOrByWrongParticipant);
+        }
+
+        // Check that if the participant is a contributor, this chunk was popped and already pending.
+        if self.id.is_contributor()
+            && self
+                .pending_tasks
+                .par_iter()
+                .filter(|t| t.contains(task.chunk_id()))
+                .count()
+                == 0
+        {
+            return Err(CoordinatorError::ParticipantUnauthorizedForChunkId {
+                chunk_id: task.chunk_id(),
+            });
+        }
+
+        // Check that if the participant is a contributor, this chunk was not already completed.
+        if self.id.is_contributor()
+            && self
+                .completed_tasks
+                .par_iter()
+                .filter(|t| t.contains(task.chunk_id()))
+                .count()
+                > 0
+        {
+            return Err(CoordinatorError::ParticipantAlreadyFinishedChunk {
+                chunk_id: task.chunk_id(),
+            });
+        }
+
+        // Update the last seen time.
+        self.last_seen = time.utc_now();
+
+        // Remove the given chunk ID from the locked chunks.
+        self.locked_chunks.remove(&task.chunk_id());
+
+        // Remove the task from the pending tasks.
+        self.pending_tasks = self
+            .pending_tasks
+            .clone()
+            .into_par_iter()
+            .filter(|t| *t != task)
+            .collect();
+
+        // Add the task to the front of the assigned tasks.
+        self.push_front_task(task, time)?;
+
+        Ok(())
+    }
+
     ///
     /// Reverts the given (chunk ID, contribution ID) task to the list of assigned tasks
     /// from the list of pending tasks.
@@ -1530,6 +1601,23 @@ impl CoordinatorState {
         match self.current_participant_info_mut(participant) {
             Some(participant) => Ok(participant.rollback_pending_task(task, time)?),
             None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
+        }
+    }
+
+    pub(super) fn rollback_locked_task(
+        &mut self,
+        participant: &Participant,
+        task: Task,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if task.chunk_id() > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        match self.current_participant_info_mut(participant) {
+            Some(participant) => participant.rollback_locked_task(task, time),
+            None => return Err(CoordinatorError::ParticipantNotFound(participant.clone())),
         }
     }
 
