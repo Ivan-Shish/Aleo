@@ -2622,6 +2622,17 @@ impl Coordinator {
     pub fn environment(&self) -> &Environment {
         &self.environment
     }
+
+    ///
+    /// Rollback a task which was locked by a contributor. Should be used to unlock
+    /// chunks which become stuck during the ceremony.
+    ///
+    pub fn rollback_locked_task(&mut self, participant: &Participant, task: Task) -> Result<(), CoordinatorError> {
+        self.state.rollback_locked_task(participant, task, self.time)?;
+
+        self.current_round()?
+            .remove_locks_unsafe(&mut self.storage, participant, task.chunk_id())
+    }
 }
 
 #[cfg(test)]
