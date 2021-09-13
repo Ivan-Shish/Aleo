@@ -22,7 +22,7 @@ use memmap::MmapOptions;
 
 use std::{
     convert::TryFrom,
-    io::{Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Read, Write},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,
@@ -386,21 +386,20 @@ impl StorageLocator for Disk {
 }
 
 pub struct DiskObjectReader {
-    _file: File,
-    memmap: memmap::Mmap,
+    data: Vec<u8>,
 }
 
 impl Deref for DiskObjectReader {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &*self.memmap
+        &*self.data
     }
 }
 
 impl AsRef<[u8]> for DiskObjectReader {
     fn as_ref(&self) -> &[u8] {
-        self.memmap.as_ref()
+        self.data.as_ref()
     }
 }
 
@@ -455,13 +454,16 @@ impl StorageObject for Disk {
         let file = OpenOptions::new().read(true).open(path)?;
 
         // Load the file into memory.
-        let memmap = unsafe { MmapOptions::new().map(&file.file())? };
+        let mut data = vec![];
+        file.file()
+            .read_to_end(&mut data)
+            .map_err(|e| CoordinatorError::IOError(e))?;
 
         match locator {
             Locator::RoundFile { round_height } => {
                 // Check that the round size is correct.
                 let expected_size = Object::round_file_size(&self.environment);
-                let found_size = memmap.len() as u64;
+                let found_size = data.len() as u64;
                 debug!("Round {} filesize is {}", round_height, found_size);
                 if found_size != expected_size {
                     error!(
@@ -478,7 +480,7 @@ impl StorageObject for Disk {
                     contribution_locator.chunk_id(),
                     contribution_locator.is_verified(),
                 );
-                let found_size = memmap.len() as u64;
+                let found_size = data.len() as u64;
                 debug!(
                     "Round {} chunk {} filesize is {}",
                     contribution_locator.round_height(),
@@ -496,7 +498,7 @@ impl StorageObject for Disk {
             _ => {}
         }
 
-        Ok(DiskObjectReader { _file: file, memmap })
+        Ok(DiskObjectReader { data })
     }
 
     /// Returns an object writer for the given locator.
