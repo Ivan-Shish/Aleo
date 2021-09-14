@@ -2642,7 +2642,6 @@ mod tests {
         commands::{Seed, SigningKey, SEED_LENGTH},
         environment::*,
         objects::{Participant, Task},
-        storage::Disk,
         testing::prelude::*,
         Coordinator,
     };

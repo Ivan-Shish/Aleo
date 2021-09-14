@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::Round,
-    storage::{ContributionLocator, Disk, Locator, Object, ObjectReader, StorageLocator, StorageObject},
+    storage::{ContributionLocator, Disk, DiskObjectReader, Locator, Object, StorageLocator, StorageObject},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
@@ -97,7 +97,7 @@ impl Aggregation {
         environment: &Environment,
         storage: &'a Disk,
         round: &Round,
-    ) -> anyhow::Result<Vec<ObjectReader<'a>>> {
+    ) -> anyhow::Result<Vec<DiskObjectReader>> {
         let mut readers = vec![];
 
         // Fetch the round height.

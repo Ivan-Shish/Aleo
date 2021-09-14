@@ -1210,12 +1210,7 @@ mod tests {
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
         assert!(round_1.chunks[14].is_locked());
 
-        let n_contributions = 89;
-        let n_verifications = 30;
-        let n_locked_chunks = 1;
-        let n_files = 2 * n_contributions + 2 * n_verifications + 2 * n_locked_chunks;
-
-        let action = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
+        let _ = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
 
         assert_eq!(64, round_1.chunks().len());
 

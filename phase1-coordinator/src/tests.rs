@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::{Disk, StorageLocator, StorageObject},
+    storage::{Disk, StorageLocator},
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
