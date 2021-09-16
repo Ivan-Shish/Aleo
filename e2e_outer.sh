@@ -25,7 +25,6 @@ $phase2 --response-fname response --phase2-fname processed --phase2-size $POWER
 
 ###### Phase 2
 
-rm initial_ceremony
 $snark new --phase1 processed --output initial_ceremony --phase1-size $POWER
 
 cp initial_ceremony contribution1
