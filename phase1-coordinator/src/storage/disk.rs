@@ -361,7 +361,9 @@ impl Disk {
                         .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
                         .to_owned();
 
-                    if !delete_initial_contribution && file_path.contains("contribution_0") {
+                    if !delete_initial_contribution && file_path.contains("contribution_0")
+                        || file_path.contains("state.json")
+                    {
                         continue;
                     }
 
