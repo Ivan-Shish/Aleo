@@ -583,6 +583,16 @@ impl Development {
         self
     }
 
+    pub fn contributor_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.contributor_seen_timeout = timeout;
+        self
+    }
+
+    pub fn participant_lock_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.participant_lock_timeout = timeout;
+        self
+    }
+
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -678,6 +688,16 @@ impl Production {
 
     pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
         self.environment.maximum_contributors_per_round = maximum;
+        self
+    }
+
+    pub fn contributor_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.contributor_seen_timeout = timeout;
+        self
+    }
+
+    pub fn participant_lock_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.participant_lock_timeout = timeout;
         self
     }
 
