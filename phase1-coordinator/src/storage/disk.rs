@@ -333,33 +333,49 @@ impl Disk {
                 Ok(self.remove(&locator)?)
             }
             StorageAction::Update(update_action) => Ok(self.update(&update_action.locator, update_action.object)?),
-            StorageAction::ClearRoundFiles(round_height) => self.clear_round_files(round_height),
+            StorageAction::ClearRoundFiles(round_height) => Ok(self.clear_round_files(round_height)),
         }
     }
 
     /// Clears all files related to a round - used for round reset purposes.
-    fn clear_round_files(&mut self, round_height: u64) -> Result<()> {
+    fn clear_round_files(&mut self, round_height: u64) {
         // Let's first fully clear any files in the next round - these will be
         // verifications and represent the initial challenges.
         let next_round_dir = self.resolver.round_directory(round_height + 1);
-        self.clear_dir_files(next_round_dir.into(), true)?;
+        self.clear_dir_files(next_round_dir.into(), true);
 
         // Now, let's clear all the contributions made on this round.
         let round_dir = self.resolver.round_directory(round_height);
-        self.clear_dir_files(round_dir.into(), false)
+        self.clear_dir_files(round_dir.into(), false);
     }
 
-    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) -> Result<()> {
-        Ok(for entry in fs::read_dir(path.as_path())? {
-            let entry = entry?;
+    fn clear_dir_files(&mut self, path: PathBuf, delete_initial_contribution: bool) {
+        let entries = match fs::read_dir(path.as_path()) {
+            Ok(entries) => entries,
+            Err(e) => {
+                tracing::warn!("Could not read directory at {:?} - {:?}", path, e);
+                return;
+            }
+        };
+
+        for entry in entries {
+            if let Err(e) = entry {
+                tracing::error!("Found erroneous entry - {:?}", e);
+                continue;
+            }
+
+            let entry = entry.unwrap();
+
             match entry.path().is_dir() {
-                true => self.clear_dir_files(entry.path(), delete_initial_contribution)?,
+                true => self.clear_dir_files(entry.path(), delete_initial_contribution),
                 false => {
-                    let file_path = entry
-                        .path()
-                        .to_str()
-                        .ok_or(Error::new(ErrorKind::Other, "filepath is not UTF-8 encoded"))?
-                        .to_owned();
+                    let file_path = match entry.path().to_str() {
+                        Some(file_path) => file_path.to_owned(),
+                        None => {
+                            tracing::error!("Could not turn fs entry into file path");
+                            continue;
+                        }
+                    };
 
                     if !delete_initial_contribution && file_path.contains("contribution_0")
                         || file_path.contains("state.json")
@@ -367,11 +383,20 @@ impl Disk {
                         continue;
                     }
 
-                    let locator = self.resolver.to_locator(&LocatorPath::new(file_path))?;
-                    self.remove(&locator)?;
+                    let locator = match self.resolver.to_locator(&LocatorPath::new(file_path)) {
+                        Ok(locator) => locator,
+                        Err(e) => {
+                            tracing::error!("Could not turn file path into locator - {:?}", e);
+                            continue;
+                        }
+                    };
+
+                    if let Err(e) = self.remove(&locator) {
+                        tracing::error!("Could not remove locator - {:?}", e);
+                    }
                 }
             };
-        })
+        }
     }
 }
 
