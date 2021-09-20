@@ -22,7 +22,7 @@ use memmap::MmapOptions;
 
 use std::{
     convert::TryFrom,
-    io::{Error, ErrorKind, Read, Write},
+    io::{Read, Write},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,

@@ -1,5 +1,3 @@
-use crate::utils::UploadMode;
-
 use clap::AppSettings;
 use secrecy::SecretString;
 use structopt::StructOpt;
@@ -15,14 +13,6 @@ use std::path::PathBuf;
     setting(AppSettings::DisableVersion)
 )]
 pub struct ContributeOptions {
-    /// Specify how the responses are uploaded.
-    #[structopt(
-        long,
-        possible_values = &UploadMode::variants(),
-        default_value = "auto",
-    )]
-    pub upload_mode: UploadMode,
-
     /// The passphrase to use for decrypting the private key. If
     /// unspecified, the passphrase will be requested via tty or
     /// pinentry dialog.

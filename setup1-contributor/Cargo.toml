@@ -31,7 +31,6 @@ hex = { version = "0.4" }
 http = "0.2"
 i18n-embed = { version = "0.9", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
-lazy_static = { version = "1.4.0" }
 panic-control = {version = "0.1.4" }
 rand = { version = "0.8" }
 regex = "1"
@@ -48,6 +47,3 @@ tracing = { version = "0.1" }
 tracing-appender = { version = "0.1.1" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "2.1.1" }
-
-[dev-dependencies]
-lazy_static = { version = "1.4.0" }
