@@ -2783,7 +2783,6 @@ dependencies = [
  "http",
  "i18n-embed 0.9.4",
  "indicatif",
- "lazy_static",
  "panic-control",
  "phase1",
  "phase1-cli",
