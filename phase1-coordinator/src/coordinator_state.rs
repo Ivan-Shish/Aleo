@@ -938,8 +938,9 @@ pub struct CoordinatorState {
     environment: Environment,
     /// The current status of the coordinator.
     status: CoordinatorStatus,
-    /// The map of queue participants with a reliability score and an assigned future round.
-    queue: HashMap<Participant, (u8, Option<u64>)>,
+    /// The map of queue participants with a reliability score, an assigned future
+    /// round, and a last seen timestamp.
+    queue: HashMap<Participant, (u8, Option<u64>, DateTime<Utc>)>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
     /// The metrics for the current round of the ceremony.
@@ -1078,7 +1079,11 @@ impl CoordinatorState {
             for (participant, participant_info) in current_contributors.iter().chain(self.next.iter()) {
                 queue.insert(
                     participant.clone(),
-                    (participant_info.reliability, Some(participant_info.round_height)),
+                    (
+                        participant_info.reliability,
+                        Some(participant_info.round_height),
+                        time.utc_now(),
+                    ),
                 );
             }
 
@@ -1275,7 +1280,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1433,7 +1438,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
 
         trace!(
@@ -1462,6 +1467,7 @@ impl CoordinatorState {
         &mut self,
         participant: Participant,
         reliability_score: u8,
+        time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is not banned from participating.
         if self.banned.contains(&participant) {
@@ -1498,7 +1504,8 @@ impl CoordinatorState {
         }
 
         // Add the participant to the queue.
-        self.queue.insert(participant, (reliability_score, None));
+        self.queue
+            .insert(participant, (reliability_score, None, time.utc_now()));
 
         Ok(())
     }
@@ -2069,7 +2076,7 @@ impl CoordinatorState {
                 trace!("Removing {} from the precommit for the next round", participant);
                 self.next.remove(participant);
                 // Trigger a rollback as the precommit has changed.
-                self.rollback_next_round();
+                self.rollback_next_round(time);
             }
 
             return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
@@ -2406,15 +2413,20 @@ impl CoordinatorState {
         };
 
         // Sort the participants in the queue by reliability.
-        let mut queue: Vec<_> = self.queue.clone().into_par_iter().map(|(p, (r, _))| (p, r)).collect();
+        let mut queue: Vec<_> = self
+            .queue
+            .clone()
+            .into_par_iter()
+            .map(|(p, (r, _, ls))| (p, r, ls))
+            .collect();
         queue.par_sort_by(|a, b| (b.1).cmp(&a.1));
 
         // Parse the queue participants into contributors and verifiers,
         // and check that they are not banned participants.
-        let contributors: Vec<(_, _)> = queue
+        let contributors: Vec<(_, _, _)> = queue
             .clone()
             .into_par_iter()
-            .filter(|(p, _)| p.is_contributor() && !self.banned.contains(&p))
+            .filter(|(p, _, _)| p.is_contributor() && !self.banned.contains(&p))
             .collect();
 
         // Fetch the permitted number of contributors
@@ -2425,7 +2437,7 @@ impl CoordinatorState {
 
         // Update assigned round height for each contributor.
         for (index, round) in contributors.chunks(maximum_contributors).enumerate() {
-            for (contributor, reliability) in round.into_iter() {
+            for (contributor, reliability, last_seen) in round.into_iter() {
                 let assigned_round = next_round + index as u64;
                 trace!(
                     "Assigning contributor {} with reliability {} in queue to round {}",
@@ -2433,7 +2445,7 @@ impl CoordinatorState {
                     reliability,
                     assigned_round
                 );
-                updated_queue.insert(contributor.clone(), (*reliability, Some(assigned_round)));
+                updated_queue.insert(contributor.clone(), (*reliability, Some(assigned_round), *last_seen));
             }
         }
 
@@ -2512,6 +2524,20 @@ impl CoordinatorState {
             .into_iter()
             .chain(self.update_participant_lock_drops(time)?.into_iter())
             .collect())
+    }
+
+    pub(super) fn update_dropped_queued_participants(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        let queue_seen_timeout = self.environment.queue_seen_timeout();
+
+        let now = time.utc_now();
+
+        for (participant, (_, _, last_seen)) in self.queue.clone() {
+            if now - last_seen > queue_seen_timeout {
+                let _ = self.drop_participant(&participant, time)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// This will drop a participant (verifier or contributor) if it
@@ -2806,12 +2832,12 @@ impl CoordinatorState {
         }
 
         // Parse the queued participants for the next round and split into contributors and verifiers.
-        let mut contributors: Vec<(_, (_, _))> = self
+        let mut contributors: Vec<(_, (_, _, _))> = self
             .queue
             .clone()
             .into_par_iter()
-            .map(|(p, (r, rh))| (p, (r, rh.unwrap_or_default())))
-            .filter(|(p, (_, rh))| p.is_contributor() && *rh == next_round_height)
+            .map(|(p, (r, rh, ls))| (p, (r, rh.unwrap_or_default(), ls)))
+            .filter(|(p, (_, rh, _))| p.is_contributor() && *rh == next_round_height)
             .collect();
 
         // Check that each participant in the next round is authorized.
@@ -2886,7 +2912,7 @@ impl CoordinatorState {
             let number_of_chunks = self.environment.number_of_chunks() as u64;
 
             // Set the chunk ID ordering for each contributor.
-            for (bucket_index, (participant, (reliability, next_round))) in contributors.into_iter().enumerate() {
+            for (bucket_index, (participant, (reliability, next_round, _))) in contributors.into_iter().enumerate() {
                 let bucket_id = bucket_index as u64;
                 let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
 
@@ -3009,7 +3035,7 @@ impl CoordinatorState {
     /// if the rollback was unauthorized.
     ///
     #[inline]
-    pub(super) fn rollback_next_round(&mut self) {
+    pub(super) fn rollback_next_round(&mut self, time: &dyn TimeSource) {
         // Check that the coordinator is authorized to rollback.
         if self.status != CoordinatorStatus::Precommit {
             error!("Coordinator is not in the precommit stage and cannot rollback");
@@ -3023,7 +3049,11 @@ impl CoordinatorState {
         for (participant, participant_info) in &self.next {
             self.queue.insert(
                 participant.clone(),
-                (participant_info.reliability, Some(participant_info.round_height)),
+                (
+                    participant_info.reliability,
+                    Some(participant_info.round_height),
+                    time.utc_now(),
+                ),
             );
         }
 
@@ -3068,7 +3098,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
 
         let number_of_queue_contributors = self.number_of_queue_contributors();
@@ -3118,8 +3148,8 @@ impl CoordinatorState {
         participant: &Participant,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
-        if let Some(_) = self.queue.iter_mut().find(|(p, _score)| *p == participant) {
-            // TODO: update reliability score if contributor is in the queue.
+        if let Some((_, _, last_seen)) = self.queue.get_mut(participant) {
+            *last_seen = time.utc_now();
             return Ok(());
         }
 
@@ -3273,6 +3303,7 @@ mod tests {
 
     #[test]
     fn test_add_to_queue_contributor() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor of the coordinator.
@@ -3284,7 +3315,7 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
@@ -3297,12 +3328,13 @@ mod tests {
         assert_eq!(0, state.banned.len());
 
         // Fetch the contributor from the queue.
-        let participant = state.queue.get(&contributor);
-        assert_eq!(Some(&(10, None)), participant);
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(None, participant.1);
 
         // Attempt to add the contributor again.
         for _ in 0..10 {
-            let result = state.add_to_queue(contributor.clone(), 10);
+            let result = state.add_to_queue(contributor.clone(), 10, &time);
             assert!(result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3310,6 +3342,7 @@ mod tests {
 
     #[test]
     fn test_add_to_queue_verifier() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the verifier of the coordinator.
@@ -3321,7 +3354,7 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the verifier of the coordinator.
-        let result = state.add_to_queue(verifier.clone(), 10);
+        let result = state.add_to_queue(verifier.clone(), 10, &time);
         assert!(result.is_err());
         assert_eq!(0, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3340,7 +3373,7 @@ mod tests {
 
         // Attempt to add the verifier again.
         for _ in 0..10 {
-            let result = state.add_to_queue(verifier.clone(), 10);
+            let result = state.add_to_queue(verifier.clone(), 10, &time);
             assert!(result.is_err());
             assert_eq!(0, state.queue.len());
         }
@@ -3348,6 +3381,7 @@ mod tests {
 
     #[test]
     fn test_update_queue() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor and verifier of the coordinator.
@@ -3365,14 +3399,15 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Fetch the contributor from the queue.
-        let participant = state.queue.get(&contributor);
-        assert_eq!(Some(&(10, None)), participant);
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(None, participant.1);
 
         // Update the state of the queue.
         state.update_queue().unwrap();
@@ -3388,12 +3423,13 @@ mod tests {
         assert_eq!(0, state.banned.len());
 
         // Fetch the contributor from the queue.
-        let participant = state.queue.get(&contributor);
-        assert_eq!(Some(&(10, Some(6))), participant);
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(Some(6), participant.1);
 
         // Attempt to add the contributor and verifier again.
         for _ in 0..10 {
-            let contributor_result = state.add_to_queue(contributor.clone(), 10);
+            let contributor_result = state.add_to_queue(contributor.clone(), 10, &time);
             assert!(contributor_result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3401,6 +3437,7 @@ mod tests {
 
     #[test]
     fn test_update_queue_assignment() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Initialize a new coordinator state.
@@ -3423,14 +3460,15 @@ mod tests {
             // Add a unique contributor.
             let contributor = Participant::Contributor(id.to_string());
             let reliability = 10 - id as u8;
-            state.add_to_queue(contributor.clone(), reliability).unwrap();
+            state.add_to_queue(contributor.clone(), reliability, &time).unwrap();
             assert_eq!(id, state.queue.len());
             assert_eq!(0, state.next.len());
             assert_eq!(Some(current_round_height), state.current_round_height);
 
             // Fetch the contributor from the queue.
-            let participant = state.queue.get(&contributor);
-            assert_eq!(Some(&(reliability, None)), participant);
+            let participant = state.queue.get(&contributor).unwrap();
+            assert_eq!(reliability, participant.0);
+            assert_eq!(None, participant.1);
 
             // Update the state of the queue.
             state.update_queue().unwrap();
@@ -3439,10 +3477,16 @@ mod tests {
             assert_eq!(Some(current_round_height), state.current_round_height);
 
             // Fetch the contributor from the queue.
-            let participant = state.queue.get(&contributor);
+            let participant = state.queue.get(&contributor).unwrap();
             match id <= maximum_contributors_per_round {
-                true => assert_eq!(Some(&(reliability, Some(6))), participant),
-                false => assert_eq!(Some(&(reliability, Some(7))), participant),
+                true => {
+                    assert_eq!(reliability, participant.0);
+                    assert_eq!(Some(6), participant.1);
+                }
+                false => {
+                    assert_eq!(reliability, participant.0);
+                    assert_eq!(Some(7), participant.1);
+                }
             }
         }
 
@@ -3461,6 +3505,7 @@ mod tests {
 
     #[test]
     fn test_remove_from_queue_contributor() {
+        let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
 
         // Fetch the contributor of the coordinator.
@@ -3471,14 +3516,15 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
 
         // Fetch the contributor from the queue.
-        let participant = state.queue.get(&contributor);
-        assert_eq!(Some(&(10, None)), participant);
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(None, participant.1);
 
         // Remove the contributor from the queue.
         state.remove_from_queue(&contributor).unwrap();
@@ -3515,7 +3561,7 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3523,7 +3569,9 @@ mod tests {
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
-        assert_eq!(Some(&(10, Some(6))), state.queue.get(&contributor));
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(Some(6), participant.1);
 
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
@@ -3603,7 +3651,7 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3611,7 +3659,9 @@ mod tests {
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
-        assert_eq!(Some(&(10, Some(6))), state.queue.get(&contributor));
+        let participant = state.queue.get(&contributor).unwrap();
+        assert_eq!(10, participant.0);
+        assert_eq!(Some(6), participant.1);
 
         // TODO (howardwu): Add individual tests and assertions after each of these operations.
         {
@@ -3651,7 +3701,7 @@ mod tests {
         assert!(!state.is_precommit_next_round_ready(&time));
 
         // Rollback the coordinator to the current round.
-        state.rollback_next_round();
+        state.rollback_next_round(&time);
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
@@ -3679,7 +3729,7 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3740,7 +3790,7 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10).unwrap();
+        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3818,8 +3868,8 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3927,8 +3977,8 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4068,8 +4118,8 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4222,8 +4272,8 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4369,7 +4419,7 @@ mod tests {
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();

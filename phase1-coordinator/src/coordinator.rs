@@ -470,6 +470,9 @@ impl Coordinator {
             }
             self.save_state()?;
 
+            self.state.update_dropped_queued_participants(self.time.as_ref())?;
+            self.save_state()?;
+
             // Ban any participants who meet the coordinator criteria.
             self.state.update_banned_participants()?;
             self.save_state()?;
@@ -577,7 +580,7 @@ impl Coordinator {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>))> {
         self.state.queue_contributors()
     }
 
@@ -611,7 +614,8 @@ impl Coordinator {
     #[inline]
     pub fn add_to_queue(&mut self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
         // Attempt to add the participant to the next round.
-        self.state.add_to_queue(participant, reliability_score)?;
+        self.state
+            .add_to_queue(participant, reliability_score, self.time.as_ref())?;
 
         // Save the coordinator state in storage.
         self.save_state()?;
@@ -1328,7 +1332,7 @@ impl Coordinator {
                     Err(error) => {
                         // If failed, rollback coordinator state to the current round.
                         error!("Coordinator failed to advance the next round, performing state rollback");
-                        self.state.rollback_next_round();
+                        self.state.rollback_next_round(self.time.as_ref());
                         error!("{}", error);
                         Err(error)
                     }
@@ -1338,7 +1342,7 @@ impl Coordinator {
             Err(error) => {
                 // If failed, rollback coordinator state to the current round.
                 error!("Precommit for next round has failed, performing state rollback");
-                self.state.rollback_next_round();
+                self.state.rollback_next_round(self.time.as_ref());
                 error!("{}", error);
                 Err(error)
             }
@@ -2668,7 +2672,9 @@ mod tests {
 
             // Add the contributor and verifier of the coordinator to execute round 1.
             for contributor in contributors {
-                coordinator.state.add_to_queue(contributor.clone(), 10)?;
+                coordinator
+                    .state
+                    .add_to_queue(contributor.clone(), 10, coordinator.time.as_ref())?;
             }
 
             // Update the queue.
