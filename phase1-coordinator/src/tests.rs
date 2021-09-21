@@ -2099,6 +2099,139 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test that a participant who stays in the queue for more
+/// than [Environment::queue_seen_timeout] is dropped from the
+/// queue by the coordinator.
+#[test]
+#[serial]
+fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::days(20))
+        .participant_lock_timeout(chrono::Duration::days(20));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, _, _) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    // Add another contributor who we are gonna try to drop
+    let (contributor2, _, _) = create_contributor("2");
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::days(10));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(!coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    Ok(())
+}
+
+/// Test that a participant can remain in the queue by sending heartbeats.
+#[test]
+#[serial]
+fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::days(20))
+        .participant_lock_timeout(chrono::Duration::days(20));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, _, _) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    // Add another contributor who we are gonna try to drop
+    let (contributor2, _, _) = create_contributor("2");
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    // Send heartbeat from contributor2
+    coordinator.heartbeat(&contributor2).unwrap();
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    Ok(())
+}
+
 /// Test that a participant who maintains a lock on a chunk for longer
 /// than [Environment::participant_lock_timeout] is dropped from the
 /// round by the coordinator.
@@ -2140,7 +2273,7 @@ fn rollback_locked_chunk() -> anyhow::Result<()> {
 
     coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
 
-    let (contributor, contributor_info) = &coordinator.current_contributors()[0];
+    let (_, contributor_info) = &coordinator.current_contributors()[0];
     let num_locked = contributor_info.locked_chunks().len();
     let num_assigned = contributor_info.assigned_tasks().len();
     let num_pending = contributor_info.pending_tasks().len();
