@@ -939,8 +939,8 @@ pub struct CoordinatorState {
     /// The current status of the coordinator.
     status: CoordinatorStatus,
     /// The map of queue participants with a reliability score, an assigned future
-    /// round, and a last seen timestamp.
-    queue: HashMap<Participant, (u8, Option<u64>, DateTime<Utc>)>,
+    /// round, a last seen timestamp, and their time of joining.
+    queue: HashMap<Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
     /// The metrics for the current round of the ceremony.
@@ -1082,6 +1082,7 @@ impl CoordinatorState {
                     (
                         participant_info.reliability,
                         Some(participant_info.round_height),
+                        time.utc_now(),
                         time.utc_now(),
                     ),
                 );
@@ -1280,7 +1281,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1438,7 +1439,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh, _, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
 
         trace!(
@@ -1505,7 +1506,7 @@ impl CoordinatorState {
 
         // Add the participant to the queue.
         self.queue
-            .insert(participant, (reliability_score, None, time.utc_now()));
+            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
 
         Ok(())
     }
@@ -2412,21 +2413,21 @@ impl CoordinatorState {
             _ => return Err(CoordinatorError::RoundHeightNotSet),
         };
 
-        // Sort the participants in the queue by reliability.
+        // Sort the participants in the queue by time joined.
         let mut queue: Vec<_> = self
             .queue
             .clone()
             .into_par_iter()
-            .map(|(p, (r, _, ls))| (p, r, ls))
+            .map(|(p, (r, _, ls, j))| (p, r, ls, j))
             .collect();
-        queue.par_sort_by(|a, b| (b.1).cmp(&a.1));
+        queue.par_sort_by(|a, b| (a.3).cmp(&b.3));
 
         // Parse the queue participants into contributors and verifiers,
         // and check that they are not banned participants.
-        let contributors: Vec<(_, _, _)> = queue
+        let contributors: Vec<(_, _, _, _)> = queue
             .clone()
             .into_par_iter()
-            .filter(|(p, _, _)| p.is_contributor() && !self.banned.contains(&p))
+            .filter(|(p, _, _, _)| p.is_contributor() && !self.banned.contains(&p))
             .collect();
 
         // Fetch the permitted number of contributors
@@ -2437,15 +2438,19 @@ impl CoordinatorState {
 
         // Update assigned round height for each contributor.
         for (index, round) in contributors.chunks(maximum_contributors).enumerate() {
-            for (contributor, reliability, last_seen) in round.into_iter() {
+            for (contributor, reliability, last_seen, joined) in round.into_iter() {
                 let assigned_round = next_round + index as u64;
                 trace!(
-                    "Assigning contributor {} with reliability {} in queue to round {}",
+                    "Assigning contributor {} who joined at {} with reliability {} in queue to round {}",
                     contributor,
+                    joined,
                     reliability,
                     assigned_round
                 );
-                updated_queue.insert(contributor.clone(), (*reliability, Some(assigned_round), *last_seen));
+                updated_queue.insert(
+                    contributor.clone(),
+                    (*reliability, Some(assigned_round), *last_seen, *joined),
+                );
             }
         }
 
@@ -2531,7 +2536,7 @@ impl CoordinatorState {
 
         let now = time.utc_now();
 
-        for (participant, (_, _, last_seen)) in self.queue.clone() {
+        for (participant, (_, _, last_seen, _)) in self.queue.clone() {
             if now - last_seen > queue_seen_timeout {
                 let _ = self.drop_participant(&participant, time)?;
             }
@@ -2832,12 +2837,12 @@ impl CoordinatorState {
         }
 
         // Parse the queued participants for the next round and split into contributors and verifiers.
-        let mut contributors: Vec<(_, (_, _, _))> = self
+        let mut contributors: Vec<(_, (_, _, _, _))> = self
             .queue
             .clone()
             .into_par_iter()
-            .map(|(p, (r, rh, ls))| (p, (r, rh.unwrap_or_default(), ls)))
-            .filter(|(p, (_, rh, _))| p.is_contributor() && *rh == next_round_height)
+            .map(|(p, (r, rh, ls, j))| (p, (r, rh.unwrap_or_default(), ls, j)))
+            .filter(|(p, (_, rh, _, _))| p.is_contributor() && *rh == next_round_height)
             .collect();
 
         // Check that each participant in the next round is authorized.
@@ -2912,7 +2917,7 @@ impl CoordinatorState {
             let number_of_chunks = self.environment.number_of_chunks() as u64;
 
             // Set the chunk ID ordering for each contributor.
-            for (bucket_index, (participant, (reliability, next_round, _))) in contributors.into_iter().enumerate() {
+            for (bucket_index, (participant, (reliability, next_round, _, _))) in contributors.into_iter().enumerate() {
                 let bucket_id = bucket_index as u64;
                 let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
 
@@ -3053,6 +3058,7 @@ impl CoordinatorState {
                     participant_info.reliability,
                     Some(participant_info.round_height),
                     time.utc_now(),
+                    time.utc_now(),
                 ),
             );
         }
@@ -3098,7 +3104,7 @@ impl CoordinatorState {
             .queue
             .clone()
             .into_par_iter()
-            .filter(|(p, (_, rh, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
+            .filter(|(p, (_, rh, _, _))| p.is_contributor() && rh.unwrap_or_default() == next_round_height)
             .count();
 
         let number_of_queue_contributors = self.number_of_queue_contributors();
@@ -3148,7 +3154,7 @@ impl CoordinatorState {
         participant: &Participant,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
-        if let Some((_, _, last_seen)) = self.queue.get_mut(participant) {
+        if let Some((_, _, last_seen, _)) = self.queue.get_mut(participant) {
             *last_seen = time.utc_now();
             return Ok(());
         }

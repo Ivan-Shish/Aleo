@@ -580,7 +580,7 @@ impl Coordinator {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>))> {
         self.state.queue_contributors()
     }
 
