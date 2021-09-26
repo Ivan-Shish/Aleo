@@ -106,6 +106,11 @@ impl Contribute {
             }
         }
 
+        // XXX: This *needs* to be ran before the loop, so that heartbeats will
+        // still come in while the contributor is queued or working and waiting for
+        // an available chunk. Otherwise, the contributor will be dropped inadvertently.
+        initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
+
         let progress_bar = initialize_progress_bar();
         // Run contributor loop.
         loop {
@@ -121,11 +126,6 @@ impl Contribute {
                 }
             }
         }
-
-        // NOTE: Attempted to use a task, however this did not work as
-        // epected. It seems likely there is some blocking code in one
-        // of the other tasks.
-        initiate_heartbeat(self.server_url.clone(), self.private_key.clone());
 
         println!("You have completed your contribution! Thank you!");
 
