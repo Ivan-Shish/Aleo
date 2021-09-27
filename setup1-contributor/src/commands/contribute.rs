@@ -273,17 +273,38 @@ impl Contribute {
             .concat();
 
             // Upload the response and contribution file signature to the coordinator.
-            self.upload_response(
-                lock_response.response_chunk_id,
-                lock_response.response_contribution_id,
-                signature_and_response_file_bytes,
-                auth_rng,
-            )
-            .await?;
+            loop {
+                match self
+                    .upload_response(
+                        lock_response.response_chunk_id,
+                        lock_response.response_contribution_id,
+                        signature_and_response_file_bytes.clone(),
+                        auth_rng,
+                    )
+                    .await
+                {
+                    Ok(_) => break,
+                    Err(e) => {
+                        tracing::error!("Could not upload response - {}", e);
+                        sleep(DELAY_POLL_CEREMONY).await;
+                    }
+                };
+            }
 
             // Attempt to perform the contribution with the uploaded response file at the `upload_url`.
-            self.notify_contribution(chunk_id, serde_json::json!({}), auth_rng)
-                .await?;
+            loop {
+                match self
+                    .notify_contribution(chunk_id, serde_json::json!({}), auth_rng)
+                    .await
+                {
+                    Ok(_) => break,
+                    Err(e) => {
+                        tracing::error!("Could not notify the coordinator of contribution - {}", e);
+                        sleep(DELAY_POLL_CEREMONY).await;
+                    }
+                };
+            }
+
             progress_bar.set_message("Waiting for an available chunk...");
         }
     }
