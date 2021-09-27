@@ -1278,6 +1278,16 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns the information of a queued contributor.
+    ///
+    pub fn queue_contributor_info(
+        &self,
+        participant: &Participant,
+    ) -> Option<&(u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)> {
+        self.queue.get(participant)
+    }
+
+    ///
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
