@@ -154,7 +154,9 @@ impl Contribute {
         loop {
             let status = get_contributor_status(&self.server_url, &self.private_key).await?;
             match status {
-                ContributorStatus::Queue => {
+                ContributorStatus::Queue(position, queue_size) => {
+                    progress_bar.set_length(queue_size);
+                    progress_bar.set_position(position);
                     progress_bar.set_message("In the queue...");
                     tokio::time::sleep(DELAY_POLL_CEREMONY).await;
                     continue;
