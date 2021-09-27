@@ -25,6 +25,7 @@ use crate::{
         StorageAction,
         StorageLocator,
         StorageObject,
+        UpdateAction,
     },
 };
 use setup_utils::calculate_hash;
@@ -2635,7 +2636,14 @@ impl Coordinator {
         self.state.rollback_locked_task(participant, task, &*self.time)?;
 
         self.current_round()?
-            .remove_locks_unsafe(&mut self.storage, participant, &[task.chunk_id()])
+            .remove_locks_unsafe(&mut self.storage, participant, &[task.chunk_id()])?;
+
+        Ok(self.storage.process(StorageAction::Update(UpdateAction {
+            locator: Locator::RoundState {
+                round_height: self.current_round_height()?,
+            },
+            object: Object::RoundState(self.current_round()?),
+        }))?)
     }
 }
 
