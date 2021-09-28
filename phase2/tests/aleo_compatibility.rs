@@ -101,9 +101,7 @@ where
     // write the transcript to a file
     let mut writer = vec![];
     groth_params.write(&mut writer, compressed).unwrap();
-
     let _ = circuit_to_qap::<E, C>(c.clone()).unwrap();
-
     let chunk_size = phase2_size / 3;
 
     let (full_mpc_before, queries, mut mpcs) = MPCParameters::<E>::new_from_buffer_chunked(

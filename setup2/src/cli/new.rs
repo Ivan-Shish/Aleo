@@ -1,7 +1,7 @@
-use phase2::parameters::{circuit_to_qap, MPCParameters};
+use phase2::parameters::MPCParameters;
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
 use snarkvm_algorithms::{SNARK, SRS};
-use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use snarkvm_curves::PairingEngine;
 use snarkvm_dpc::{
     parameters::testnet2::{Testnet2DPC, Testnet2Parameters},
     prelude::*,
@@ -17,8 +17,6 @@ use std::fs::OpenOptions;
 
 type AleoInner = <Testnet2Parameters as Parameters>::InnerCurve;
 type AleoOuter = <Testnet2Parameters as Parameters>::OuterCurve;
-type ZexeInner = Bls12_377;
-type ZexeOuter = BW6_761;
 
 const COMPRESSION: UseCompression = UseCompression::No;
 
@@ -64,7 +62,7 @@ pub struct NewOpts {
 pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
     if opt.is_inner {
         let circuit = InnerCircuit::<Testnet2Parameters>::blank();
-        generate_params::<AleoInner, ZexeInner, _>(opt, circuit)
+        generate_params::<AleoInner, _>(opt, circuit)
     } else {
         let mut seed: Seed = [0; SEED_LENGTH];
         rand::thread_rng().fill_bytes(&mut seed[..]);
@@ -92,7 +90,7 @@ pub fn new(opt: &NewOpts) -> anyhow::Result<()> {
 
         let circuit =
             OuterCircuit::<Testnet2Parameters>::blank(inner_snark_vk, inner_snark_proof, private_program_input);
-        generate_params::<AleoOuter, ZexeOuter, _>(opt, circuit)
+        generate_params::<AleoOuter, _>(opt, circuit)
     }
 }
 
@@ -122,10 +120,11 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
     }
 }
 
-pub fn generate_params<Aleo: PairingEngine, Zexe: PairingEngine, C: Clone + ConstraintSynthesizer<Aleo::Fr>>(
-    opt: &NewOpts,
-    circuit: C,
-) -> anyhow::Result<()> {
+pub fn generate_params<E, C>(opt: &NewOpts, circuit: C) -> anyhow::Result<()>
+where
+    E: PairingEngine,
+    C: Clone + ConstraintSynthesizer<E::Fr>,
+{
     let phase1_transcript = OpenOptions::new()
         .read(true)
         .write(true)
@@ -144,11 +143,9 @@ pub fn generate_params<Aleo: PairingEngine, Zexe: PairingEngine, C: Clone + Cons
         .expect("could not open file for writing the MPC parameters ");
 
     let phase2_size = ceremony_size(&circuit);
-    let keypair = circuit_to_qap::<Aleo, Zexe, _>(circuit)?;
-
     // Read `num_constraints` Lagrange coefficients from the Phase1 Powers of Tau which were
     // prepared for this step. This will fail if Phase 1 was too small.
-    let phase1 = Groth16Params::<Zexe>::read(
+    let phase1 = Groth16Params::<E>::read(
         &mut phase1_transcript,
         COMPRESSION,
         CheckForCorrectness::No, // No need to check for correctness, since this has been processed by the coordinator.
@@ -156,21 +153,25 @@ pub fn generate_params<Aleo: PairingEngine, Zexe: PairingEngine, C: Clone + Cons
         phase2_size,
     )?;
 
-    let (full_mpc_parameters, query_parameters, all_mpc_parameters) =
-        MPCParameters::<BW6_761>::new_from_buffer_chunked(
-            m,
-            &mut phase1_readable_map,
-            UseCompression::No,
-            CheckForCorrectness::No,
-            1 << phase1_powers,
-            phase2_size,
-            chunk_size,
-        )
-        .unwrap();
+    let compressed = UseCompression::Yes;
+    let mut writer = vec![];
+    phase1.write(&mut writer, compressed).unwrap();
+    let chunk_size = phase2_size / 3;
+
+    let (full_mpc_parameters, _, _) = MPCParameters::<E>::new_from_buffer_chunked(
+        circuit,
+        writer.as_mut(),
+        UseCompression::No,
+        CheckForCorrectness::No,
+        2usize.pow(opt.phase1_size),
+        phase2_size,
+        chunk_size,
+    )
+    .unwrap();
 
     // Generate the initial transcript
     //let mpc = MPCParameters::new(keypair, phase1)?;
-    //mpc.write(&mut output)?;
+    full_mpc_parameters.write(&mut output)?;
 
     Ok(())
 }
