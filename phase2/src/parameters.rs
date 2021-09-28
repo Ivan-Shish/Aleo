@@ -4,7 +4,6 @@ cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         use super::polynomial::eval;
         use snarkvm_fields::Zero;
-        use snarkvm_algorithms::snark::groth16::VerifyingKey;
         use snarkvm_r1cs::SynthesisError;
     }
 }
@@ -13,13 +12,16 @@ use super::keypair::{hash_cs_pubkeys, Keypair, PublicKey};
 
 use setup_utils::*;
 
-use snarkvm_algorithms::snark::groth16::{KeypairAssembly, ProvingKey};
-use snarkvm_curves::{AffineCurve, PairingEngine, ProjectiveCurve};
+use snarkvm_curves::{AffineCurve, PairingEngine};
 use snarkvm_fields::{Field, One};
 use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, Index, Variable};
 use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize};
 
 use rand::{CryptoRng, Rng};
+use snarkvm_algorithms::{
+    hash_to_curve::hash_to_curve,
+    snark::groth16::{KeypairAssembly, ProvingKey, VerifyingKey},
+};
 use std::{
     fmt,
     io::{self, Read, Write},
@@ -346,7 +348,7 @@ pub fn verify_transcript<E: PairingEngine>(cs_hash: [u8; 64], contributions: &[P
         ensure_unchanged(&pubkey.transcript[..], &hash.as_ref()[..], InvariantKind::Transcript)?;
 
         // generate the G2 point from the hash
-        let r = hash_to_g2::<E>(hash.as_ref()).into_affine();
+        let r = hash_to_curve::<E::G2Affine>(&hex::encode(hash.as_ref())).0;
 
         // Check the signature of knowledge
         check_same_ratio::<E>(

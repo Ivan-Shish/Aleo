@@ -24,6 +24,7 @@ use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use snarkvm_algorithms::hash_to_curve::hash_to_curve;
 
 /// Generate the powers by raising the key's `tau` to all powers
 /// belonging to this chunk
@@ -229,22 +230,6 @@ pub fn calculate_hash(input_map: &[u8]) -> GenericArray<u8, U64> {
     hasher.finalize()
 }
 
-/// Hashes to G2 using the first 32 bytes of `digest`. Panics if `digest` is less
-/// than 32 bytes.
-pub fn hash_to_g2<E: PairingEngine>(digest: &[u8]) -> E::G2Projective {
-    let seed = from_slice(digest);
-    let mut rng = ChaChaRng::from_seed(seed);
-    loop {
-        let bytes: Vec<u8> = (0..E::G2Affine::SERIALIZED_SIZE).map(|_| rng.gen()).collect();
-        if let Some(p) = E::G2Affine::from_random_bytes(&bytes) {
-            let scaled = p.mul_by_cofactor_to_projective();
-            if !scaled.is_zero() {
-                return scaled;
-            }
-        }
-    }
-}
-
 pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
     let mut array = [0; 32];
     let bytes = &bytes[..array.len()]; // panics if not enough data
@@ -256,33 +241,6 @@ pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
 mod tests {
     use super::*;
     use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
-
-    #[test]
-    fn test_hash_to_g2() {
-        test_hash_to_g2_curve::<Bls12_377>();
-    }
-
-    fn test_hash_to_g2_curve<E: PairingEngine>() {
-        assert!(
-            hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                29, 30, 31, 32, 33
-            ]) == hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                29, 30, 31, 32, 34
-            ])
-        );
-
-        assert!(
-            hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                29, 30, 31, 32
-            ]) != hash_to_g2::<E>(&[
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                29, 30, 31, 33
-            ])
-        );
-    }
 
     #[test]
     fn test_same_ratio() {
@@ -391,7 +349,7 @@ pub fn compute_g2_s<E: PairingEngine>(
     g1_s.serialize(&mut &mut data[..size])?;
     g1_s_x.serialize(&mut &mut data[size..])?;
     h.update(&data);
-    Ok(hash_to_g2::<E>(h.finalize().as_ref()).into_affine())
+    Ok(hash_to_curve::<E::G2Affine>(&hex::encode(h.finalize().as_ref())).0)
 }
 
 /// Perform multi-exponentiation. The caller is responsible for ensuring that
