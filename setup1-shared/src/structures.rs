@@ -58,7 +58,7 @@ pub struct TwitterInfo {
 /// The status of the contributor related to the current round
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ContributorStatus {
-    Queue,
+    Queue(u64, u64),
     Round,
     Finished,
     Other,
