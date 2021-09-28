@@ -156,9 +156,21 @@ pub fn generate_params<Aleo: PairingEngine, Zexe: PairingEngine, C: Clone + Cons
         phase2_size,
     )?;
 
+    let (full_mpc_parameters, query_parameters, all_mpc_parameters) =
+        MPCParameters::<BW6_761>::new_from_buffer_chunked(
+            m,
+            &mut phase1_readable_map,
+            UseCompression::No,
+            CheckForCorrectness::No,
+            1 << phase1_powers,
+            phase2_size,
+            chunk_size,
+        )
+        .unwrap();
+
     // Generate the initial transcript
-    let mpc = MPCParameters::new(keypair, phase1)?;
-    mpc.write(&mut output)?;
+    //let mpc = MPCParameters::new(keypair, phase1)?;
+    //mpc.write(&mut output)?;
 
     Ok(())
 }
