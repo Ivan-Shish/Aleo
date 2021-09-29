@@ -86,23 +86,27 @@ impl Contribute {
     }
 
     async fn run_and_catch_errors<E: PairingEngine>(&mut self) -> Result<()> {
-        println!("Getting initial data from the server...");
+        println!("Attempting to join the queue...");
 
-        let join_result = self.join_queue(&mut rand::thread_rng()).await;
-        match join_result {
-            Ok(joined) => {
-                info!("Attempting to join the queue with response: {}", joined);
-                if !joined {
-                    // it means contributor either already contributed,
-                    // or has a low reliability score, or unable to
-                    // join the queue
-                    return Err(anyhow::anyhow!("Queue join returned false"));
+        loop {
+            let join_result = self.join_queue(&mut rand::thread_rng()).await;
+            match join_result {
+                Ok(joined) => {
+                    info!("Attempted to join the queue with response: {}", joined);
+                    if !joined {
+                        // it means contributor either already contributed,
+                        // or has a low reliability score, or unable to
+                        // join the queue
+                        return Err(anyhow::anyhow!("Queue join returned false"));
+                    }
+
+                    break;
                 }
-            }
-            Err(err) => {
-                let text = format!("Failed to join the queue, error: {}", err);
-                error!("{}", text);
-                return Err(anyhow::anyhow!("{}", text));
+                Err(err) => {
+                    let text = format!("Failed to join the queue, error: {}", err);
+                    error!("{}", text);
+                    sleep(DELAY_POLL_CEREMONY).await;
+                }
             }
         }
 
