@@ -718,6 +718,78 @@ impl ParticipantInfo {
     }
 
     ///
+    /// Removes the given [Task] to the list of completed tasks and
+    /// adds it to the assigned tasks, so that the participant can
+    /// redo it.
+    ///
+    fn undo_completed_task(&mut self, task: &Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        trace!("Undoing task for {}", self.id);
+
+        // Check that the participant has started in the round.
+        if self.started_at.is_none() {
+            return Err(CoordinatorError::ParticipantHasNotStarted);
+        }
+
+        // Check that the participant was not dropped from the round.
+        if self.dropped_at.is_some() {
+            return Err(CoordinatorError::ParticipantWasDropped);
+        }
+
+        // Check that the participant has not finished the round.
+        if self.finished_at.is_some() {
+            return Err(CoordinatorError::ParticipantAlreadyFinished);
+        }
+
+        // Check that the participant hasn't locked this chunk.
+        if self.locked_chunks.contains_key(&task.chunk_id()) {
+            return Err(CoordinatorError::ChunkLockAlreadyAcquired);
+        }
+
+        // Check that the participant does not have a assigned task remaining for this.
+        if self.assigned_tasks.contains(task) {
+            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
+        }
+
+        // Check that the participant has a pending task for this.
+        if self.pending_tasks.contains(task) {
+            return Err(CoordinatorError::ParticipantAlreadyStarted);
+        }
+
+        // Check that the participant has not already completed the task.
+        if !self.completed_tasks.contains(task) {
+            return Err(CoordinatorError::ContributionMissing);
+        }
+
+        // Check that if the participant is a contributor, this chunk was already completed.
+        if self.id.is_contributor()
+            && self
+                .completed_tasks
+                .par_iter()
+                .filter(|t| t.contains(task.chunk_id()))
+                .count()
+                == 0
+        {
+            return Err(CoordinatorError::ParticipantDidNotDoWork);
+        }
+
+        // Update the last seen time.
+        self.last_seen = time.utc_now();
+
+        // Remove the task from the comleted tasks.
+        self.completed_tasks = self
+            .completed_tasks
+            .clone()
+            .into_par_iter()
+            .filter(|t| t != task)
+            .collect();
+
+        // Add the task to the completed tasks.
+        self.push_front_task(task.clone(), time)?;
+
+        Ok(())
+    }
+
+    ///
     /// Completes the disposal of a given chunk (chunk ID, contribution ID) task present in the `disposing_tasks` list to the list of disposed tasks
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
@@ -1872,6 +1944,41 @@ impl CoordinatorState {
                 // Remove the task from the pending verification set.
                 self.remove_pending_verification(task)
             }
+        }
+    }
+
+    ///
+    /// Adds the given (chunk ID, contribution ID) task to the assigned tasks of the given participant,
+    /// and removes the chunk ID from the completed tasks.
+    ///
+    #[tracing::instrument(
+        level = "error",
+        skip(self, time, participant),
+        fields(task = %task),
+        err
+    )]
+    pub(super) fn undo_completed_task(
+        &mut self,
+        participant: &Participant,
+        task: &Task,
+        time: &dyn TimeSource,
+    ) -> Result<(), CoordinatorError> {
+        // Check that the chunk ID is valid.
+        if task.chunk_id() > self.environment.number_of_chunks() {
+            return Err(CoordinatorError::ChunkIdInvalid);
+        }
+
+        match participant {
+            Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
+                // Adds the task to the list of completed tasks for the contributor,
+                // and add the task to the pending verification set.
+                Some(participant_info) => {
+                    participant_info.undo_completed_task(task, time)?;
+                    self.remove_pending_verification(task)
+                }
+                None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
+            },
+            Participant::Verifier(_) => Err(CoordinatorError::ExpectedContributor),
         }
     }
 
