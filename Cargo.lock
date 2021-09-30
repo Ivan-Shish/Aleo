@@ -1924,6 +1924,7 @@ version = "0.3.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.3",
+ "http",
  "phase1",
  "rand 0.8.4",
  "rand_chacha 0.3.1",
@@ -1931,6 +1932,7 @@ dependencies = [
  "rustc_version 0.3.3",
  "serde",
  "serde_derive",
+ "serde_json",
  "setup-utils",
  "snarkvm-curves",
  "snarkvm-fields",
