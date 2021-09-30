@@ -2648,6 +2648,19 @@ impl Coordinator {
     }
 
     ///
+    /// Iterate over the completed tasks in order to find
+    /// the contributor who completed the given task
+    ///
+    pub fn get_contributor_by_task(&self, task: &Task) -> Option<Participant> {
+        for (participant, participant_info) in self.current_contributors() {
+            if participant_info.completed_tasks().contains(task) {
+                return Some(participant);
+            }
+        }
+        None
+    }
+
+    ///
     /// Rollback a completed task. This should be used in case a chunk got corrupted
     /// during upload, or the verification somehow fails for any other reason.
     ///

@@ -335,6 +335,7 @@ impl Verifier {
             // Run the verification operations.
             if let Err(error) = self.try_verify(&task).await {
                 error!("Error while verifying {}", error);
+                self.remove_contribution(&task).await;
                 tokio::time::sleep(UPLOAD_TASK_ERROR_DELAY).await;
             }
         }
@@ -343,7 +344,7 @@ impl Verifier {
     ///
     ///  Runs a set of operations to perform verification on a chunk.
     ///
-    /// 1. Attempts to lock a chunk
+    /// 1. Requests the pending verification
     /// 2. Downloads the challenge file from the coordinator
     /// 3. Downloads the response file from the coordinator
     /// 4. Runs the verification on these two files
@@ -352,7 +353,7 @@ impl Verifier {
     /// 7. Construct the signed contribution data
     /// 8. Uploads the signature and new challenge file to the coordinator
     /// 9. Attempts to apply the verification in the ceremony
-    ///     - Request to the coordinator to run `try_verify`
+    ///     - in the upload challenge request
     ///
     pub async fn try_verify(&self, task: &AssignedTask) -> Result<(), VerifierError> {
         let chunk_id = task.chunk_id;
@@ -455,6 +456,62 @@ impl Verifier {
             Err(_) => {
                 error!("Request ({}) to get a task failed", path);
                 None
+            }
+        }
+    }
+
+    ///
+    /// Notify the coordinator about verification failure,
+    /// and the coordinator will remove a corresponding contribution
+    /// to let the contributor redo the work
+    ///
+    async fn remove_contribution(&self, task: &AssignedTask) {
+        let coordinator_api_url = &self.coordinator_api_url;
+        let method = "post";
+        let path = "/v1/verifier/remove_contribution";
+
+        let authentication = AleoAuthentication::authenticate(&self.view_key, &method, &path).expect(&format!(
+            "Failed to authenticate with method: {}, path: {}",
+            method, path
+        ));
+
+        info!(
+            "Removing a contribution which failed verification for round {} chunk {} contribution {}",
+            task.round_id, task.chunk_id, task.contribution_id,
+        );
+
+        let bytes = serde_json::to_vec(&task).expect("Failed to serialize the task");
+
+        match reqwest::Client::new()
+            .post(coordinator_api_url.join(path).expect("Should create a path"))
+            .header(http::header::AUTHORIZATION, authentication.to_string())
+            .header(http::header::CONTENT_LENGTH, bytes.len())
+            .body(bytes)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    error!(
+                        "Failed to remove contribution, round {} chunk {} contribution {}, status: {}",
+                        task.round_id,
+                        task.chunk_id,
+                        task.contribution_id,
+                        response.status(),
+                    );
+                } else {
+                    info!(
+                        "Removed contribution, round {} chunk {} contribution {}",
+                        task.round_id, task.chunk_id, task.contribution_id,
+                    );
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Error calling remove_contribution endpoint for round {} chunk {} \
+                    contribution {}: {:?}",
+                    task.round_id, task.chunk_id, task.contribution_id, e,
+                );
             }
         }
     }
