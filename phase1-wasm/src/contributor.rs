@@ -64,7 +64,27 @@ async fn join_queue<R: Rng + CryptoRng>(server_url: String, rng: &mut R) -> Resu
 }
 
 async fn send_heartbeat<R: Rng + CryptoRng>(server_url: String, rng: &mut R) -> Result<(), JsValue> {
-    unimplemented!();
+    let heartbeat_path = "/v1/contributor/heartbeat";
+    let mut heartbeat_url = server_url.clone();
+    heartbeat_url.push_str(&heartbeat_path);
+    let client = reqwest::Client::new();
+    // TODO: get auth
+
+    let response = client
+        .post(&heartbeat_url)
+        // .header(http::header::AUTHORIZATION, authorization)
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))?
+        .error_for_status()
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+    response
+        .error_for_status()
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+    Ok(())
 }
 
 async fn attempt_contribution<R: Rng + CryptoRng>(server_url: String, rng: &mut R) -> Result<bool, JsValue> {
