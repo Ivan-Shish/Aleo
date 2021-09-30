@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate serde_derive;
 
+mod contributor;
+mod errors;
 mod phase1;
 
 #[cfg(test)]
