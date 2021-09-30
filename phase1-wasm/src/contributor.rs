@@ -1,6 +1,7 @@
 use crate::{errors::ContributeError, phase1::Phase1WASM};
 // use snarkvm_dpc::Address;
 use rand::{CryptoRng, Rng};
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
@@ -9,6 +10,8 @@ const CURVE_KIND: &'static str = "bls12_377";
 const PROVING_SYSTEM: &'static str = "groth16";
 const BATCH_SIZE: usize = 10000;
 const POWER: usize = 19;
+
+const DELAY_FAILED_UPLOAD: Duration = Duration::from_secs(5);
 
 #[wasm_bindgen]
 pub async fn contribute(server_url: String) -> Result<JsValue, JsValue> {
@@ -88,5 +91,47 @@ async fn send_heartbeat<R: Rng + CryptoRng>(server_url: String, rng: &mut R) -> 
 }
 
 async fn attempt_contribution<R: Rng + CryptoRng>(server_url: String, rng: &mut R) -> Result<bool, JsValue> {
-    unimplemented!();
+    if !tasks_left(server_url.clone(), rng).await? {
+        return Ok(true);
+    }
+
+    let response = lock_chunk(server_url.clone(), rng).await?;
+    let chunk_bytes = download_challenge(server_url.clone(), response.chunk_id, response.contribution_id, rng).await?;
+
+    let seed: [u8; 32] = rng.gen();
+
+    let result = Phase1WASM::contribute_chunked(
+        CURVE_KIND,
+        PROVING_SYSTEM,
+        BATCH_SIZE,
+        POWER,
+        response.chunk_id,
+        chunk_bytes.len(),
+        &seed,
+        chunk_bytes,
+    )?
+    .into_serde()?;
+
+    loop {
+        match upload_response(
+            response.chunk_id,
+            response.contribution_id,
+            sig_and_result_bytes.clone(),
+            rng,
+        )
+        .await
+        {
+            Ok(_) => break,
+            Err(_e) => std::thread::sleep(DELAY_FAILED_UPLOAD),
+        }
+    }
+
+    loop {
+        match notify_contribution(response.chunk_id, rng).await {
+            Ok(_) => break,
+            Err(_e) => std::thread::sleep(DELAY_FAILED_UPLOAD),
+        }
+    }
+
+    Ok(false)
 }
