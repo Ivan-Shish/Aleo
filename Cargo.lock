@@ -1934,6 +1934,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "setup-utils",
+ "setup1-shared",
  "snarkvm-curves",
  "snarkvm-fields",
  "tracing",
