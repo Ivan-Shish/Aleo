@@ -56,6 +56,11 @@ const DELAY_AFTER_ERROR: Duration = Duration::from_secs(60);
 const DELAY_POLL_CEREMONY: Duration = Duration::from_secs(5);
 const HEARTBEAT_POLL_DELAY: Duration = Duration::from_secs(30);
 
+// Version constants
+const MAJOR: u8 = 0;
+const MINOR: u8 = 1;
+const PATCH: u8 = 0;
+
 #[derive(Clone)]
 pub struct Contribute {
     pub server_url: Url,
@@ -326,10 +331,10 @@ impl Contribute {
     }
 
     async fn join_queue<R: Rng + CryptoRng>(&self, auth_rng: &mut R) -> Result<bool> {
-        let join_queue_path = "/v1/queue/contributor/join";
-        let join_queue_path_url = self.server_url.join(join_queue_path)?;
+        let join_queue_path = format!("/v1/queue/contributor/join/{}/{}/{}", MAJOR, MINOR, PATCH);
+        let join_queue_path_url = self.server_url.join(&join_queue_path)?;
         let client = reqwest::Client::new();
-        let authorization = get_authorization_value(&self.private_key, "POST", join_queue_path, auth_rng)?;
+        let authorization = get_authorization_value(&self.private_key, "POST", &join_queue_path, auth_rng)?;
 
         let address = self.participant_id.to_string();
         let confirmation_key = ConfirmationKey::for_current_round(address)?;
