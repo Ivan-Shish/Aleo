@@ -16,9 +16,13 @@ http = "0.2"
 phase1 = { path = "../phase1", features = ["wasm"] }
 setup-utils = { path = "../setup-utils", features = ["wasm"] }
 setup1-shared = { path = "../setup1-shared" }
+snarkvm-dpc = { path = "../../snarkVM/dpc", default-features = false, features = [ "wasm" ] }
+snarkvm-utilities = { path = "../../snarkVM/utilities", default-features = false }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 
+blake2 = { version = "0.9", default-features = false } 
+hex = { version = "0.4" }
 getrandom = { version = "0.2", features = ["js", "wasm-bindgen"] }
 rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }

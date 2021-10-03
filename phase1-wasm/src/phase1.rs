@@ -63,10 +63,10 @@ impl Phase1WASM {
         batch_size: usize,
         power: usize,
         challenge: &[u8],
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<ContributionResponse, String> {
         let rng = get_rng(&user_system_randomness());
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
-        let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+        match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(
                 &challenge,
                 &get_parameters_full::<Bls12_377>(proving_system, power, batch_size),
@@ -77,8 +77,7 @@ impl Phase1WASM {
                 &get_parameters_full::<BW6_761>(proving_system, power, batch_size),
                 rng,
             ),
-        };
-        convert_contribution_result_to_wasm(&res)
+        }
     }
 
     #[wasm_bindgen]
@@ -91,10 +90,10 @@ impl Phase1WASM {
         chunk_size: usize,
         seed: &[u8],
         challenge: &[u8],
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<ContributionResponse, String> {
         let rng = derive_rng_from_seed(seed);
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
-        let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+        match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(
                 &challenge,
                 &get_parameters_chunked::<Bls12_377>(proving_system, power, batch_size, chunk_index, chunk_size),
@@ -105,8 +104,7 @@ impl Phase1WASM {
                 &get_parameters_chunked::<BW6_761>(proving_system, power, batch_size, chunk_index, chunk_size),
                 rng,
             ),
-        };
-        convert_contribution_result_to_wasm(&res)
+        }
     }
 }
 
