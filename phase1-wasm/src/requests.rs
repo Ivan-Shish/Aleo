@@ -1,7 +1,7 @@
 use crate::utils::*;
 use rand::{CryptoRng, Rng};
 use setup1_shared::structures::LockResponse;
-use snarkvm_dpc::{testnet2::Testnet2, Address, PrivateKey};
+use snarkvm_dpc::{testnet2::Testnet2, PrivateKey};
 use wasm_bindgen::prelude::*;
 
 pub async fn join_queue<R: Rng + CryptoRng>(
@@ -171,7 +171,7 @@ pub async fn upload_response<R: Rng + CryptoRng>(
     let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "POST", &upload_path, rng)?;
 
-    let response = client
+    let _response = client
         .post(&upload_url)
         .header(http::header::AUTHORIZATION, authorization)
         .header(http::header::CONTENT_TYPE, "application/octet-stream")

@@ -1,5 +1,5 @@
 use crate::structures::*;
-use blake2::{digest::generic_array::GenericArray, Blake2b, Blake2s, Digest};
+use blake2::{Blake2b, Blake2s, Digest};
 use rand::{CryptoRng, Rng};
 use snarkvm_dpc::{testnet2::Testnet2, Address, PrivateKey};
 use snarkvm_utilities::ToBytes;

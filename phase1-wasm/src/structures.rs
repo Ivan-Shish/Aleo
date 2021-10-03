@@ -92,25 +92,4 @@ impl ContributionFileSignature {
     pub fn get_signature(&self) -> &str {
         &self.signature
     }
-
-    /// Returns a reference to the contribution state.
-    pub fn get_state(&self) -> &ContributionState {
-        &self.state
-    }
-
-    /// Returns a reference to the challenge hash.
-    pub fn get_challenge_hash(&self) -> &str {
-        &self.state.challenge_hash
-    }
-
-    /// Returns a reference to the response hash.
-    pub fn get_response_hash(&self) -> &str {
-        &self.state.response_hash
-    }
-
-    /// Returns a reference to the next challenge hash, if it exists.
-    /// Otherwise, returns `None`.
-    pub fn get_next_challenge_hash(&self) -> &Option<String> {
-        &self.state.next_challenge_hash
-    }
 }

@@ -1,5 +1,4 @@
-use crate::{errors::ContributeError, phase1::Phase1WASM, requests::*, utils::*};
-use blake2::{digest::generic_array::GenericArray, Blake2b, Blake2s, Digest};
+use crate::{phase1::Phase1WASM, requests::*, utils::*};
 use rand::{CryptoRng, Rng};
 use snarkvm_dpc::{testnet2::Testnet2, Address, PrivateKey};
 use std::time::Duration;
