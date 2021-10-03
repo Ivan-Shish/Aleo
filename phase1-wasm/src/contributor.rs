@@ -65,16 +65,16 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         chunk_bytes.len(),
         &seed,
         &chunk_bytes,
-    )?
-    .into_serde()
+    )
     .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
 
-    let challenge_hash = calculate_hash(&chunk_bytes).to_vec();
-    let response_hash = calculate_hash(&result.response).to_vec();
+    let challenge_hash = calculate_hash(&chunk_bytes);
+    let response_hash = calculate_hash(&result.response);
 
     let signed_contribution_state = sign_contribution_state(&private_key, &challenge_hash, &response_hash, None, rng)?;
     let verifier_flag = vec![0];
-    let signature_bytes = hex::decode(signed_contribution_state.get_signature())?;
+    let signature_bytes =
+        hex::decode(signed_contribution_state.get_signature()).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
     let sig_and_result_bytes = [
         verifier_flag,
@@ -91,7 +91,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
             server_url.clone(),
             response.chunk_id,
             response.contribution_id,
-            sig_and_result_bytes.clone(),
+            &sig_and_result_bytes.clone(),
             rng,
         )
         .await

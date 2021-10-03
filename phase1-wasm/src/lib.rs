@@ -5,6 +5,7 @@ mod contributor;
 mod errors;
 mod phase1;
 mod requests;
+mod structures;
 mod utils;
 
 #[cfg(test)]

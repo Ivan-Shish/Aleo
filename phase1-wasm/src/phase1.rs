@@ -54,9 +54,7 @@ fn convert_contribution_result_to_wasm(result: &Result<ContributionResponse, Str
     }
 }
 
-#[wasm_bindgen]
 impl Phase1WASM {
-    #[wasm_bindgen]
     pub fn contribute_full(
         curve_kind: &str,
         proving_system: &str,
@@ -80,7 +78,6 @@ impl Phase1WASM {
         }
     }
 
-    #[wasm_bindgen]
     pub fn contribute_chunked(
         curve_kind: &str,
         proving_system: &str,
