@@ -1879,11 +1879,11 @@ impl Coordinator {
             round_height: current_round_height,
         };
         if self.storage.exists(&round_file) {
-            error!(
-                "Round file locator already exists ({})",
+            warn!(
+                "Round file locator already exists ({}), removing...",
                 self.storage.to_path(&round_file)?
             );
-            return Err(CoordinatorError::RoundLocatorAlreadyExists);
+            self.storage.remove(&round_file)?;
         }
 
         // Fetch the current round from storage.
