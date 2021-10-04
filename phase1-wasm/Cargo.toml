@@ -16,8 +16,8 @@ http = "0.2"
 phase1 = { path = "../phase1", features = ["wasm"] }
 setup-utils = { path = "../setup-utils", features = ["wasm"] }
 setup1-shared = { path = "../setup1-shared" }
-snarkvm-dpc = { path = "../../snarkVM/dpc", default-features = false, features = [ "wasm" ] }
-snarkvm-utilities = { path = "../../snarkVM/utilities", default-features = false }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "86d104", default-features = false, features = [ "wasm" ] }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "86d104", default-features = false }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 
