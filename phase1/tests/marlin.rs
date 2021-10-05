@@ -18,9 +18,10 @@ mod test {
 
     use blake2::Blake2s;
     use itertools::Itertools;
+    use memmap::MmapOptions;
     use snarkvm_marlin::FiatShamirChaChaRng;
     use snarkvm_polycommit::sonic_pc::SonicKZG10;
-    use std::{collections::BTreeMap, ops::MulAssign};
+    use std::{collections::BTreeMap, fs::OpenOptions, ops::MulAssign};
 
     #[test]
     fn test_marlin_posw_bls12_377() {
@@ -252,6 +253,115 @@ mod test {
                 b: Some(b),
                 num_constraints: 3000,
                 num_variables: 2000,
+            };
+
+            let (index_pk, index_vk) = MarlinInst::circuit_setup(&universal_params, &circuit).unwrap();
+            println!("Called circuit setup");
+
+            let proof = MarlinInst::prove(&index_pk, &circuit, &mut rng).unwrap();
+            println!("Called prover");
+
+            assert!(MarlinInst::verify(&index_vk, &[c], &proof).unwrap());
+            println!("Called verifier");
+            println!("\nShould not verify (i.e. verifier messages should print below):");
+            assert!(!MarlinInst::verify(&index_vk, &[a], &proof).unwrap());
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_marlin_from_file() {
+        let powers = 28usize;
+        let batch = 64usize;
+        let parameters = Phase1Parameters::<Bls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
+
+        // Try to load challenge file from disk.
+        let reader = OpenOptions::new()
+            .read(true)
+            .open("[PATH_TO_FILE]/round_27.verified")
+            .expect("unable open challenge file");
+        {
+            let metadata = reader
+                .metadata()
+                .expect("unable to get filesystem metadata for challenge file");
+            let expected_challenge_length = parameters.accumulator_size;
+
+            if metadata.len() != (expected_challenge_length as u64) {
+                panic!(
+                    "The size of challenge file should be {}, but it's {}, so something isn't right.",
+                    expected_challenge_length,
+                    metadata.len()
+                );
+            }
+        }
+
+        let readable_map = unsafe {
+            MmapOptions::new()
+                .map(&reader)
+                .expect("unable to create a memory map for input")
+        };
+
+        let mut rng = thread_rng();
+
+        let deserialized =
+            Phase1::deserialize(&readable_map, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
+        let tau_powers_g1 = deserialized.tau_powers_g1;
+        let tau_powers_g2 = deserialized.tau_powers_g2;
+        let alpha_powers_g1 = deserialized.alpha_tau_powers_g1;
+
+        let mut alpha_tau_powers_g1 = BTreeMap::new();
+        for i in 0..3 {
+            alpha_tau_powers_g1.insert(i, alpha_powers_g1[i]);
+        }
+        alpha_powers_g1[3..]
+            .iter()
+            .chunks(3)
+            .into_iter()
+            .enumerate()
+            .for_each(|(i, c)| {
+                let c = c.into_iter().collect::<Vec<_>>();
+                alpha_tau_powers_g1.insert(parameters.powers_length - 1 - (1 << i) + 2, *c[0]);
+                alpha_tau_powers_g1.insert(parameters.powers_length - 1 - (1 << i) + 3, *c[1]);
+                alpha_tau_powers_g1.insert(parameters.powers_length - 1 - (1 << i) + 4, *c[2]);
+            });
+
+        let mut shift_powers_of_g = BTreeMap::new();
+        let mut neg_shift_powers_of_h = BTreeMap::new();
+        let mut degree_bounds = vec![];
+        tau_powers_g2[2..].iter().enumerate().skip(1).for_each(|(i, p)| {
+            degree_bounds.push((1 << i) - 2);
+            neg_shift_powers_of_h.insert((1 << i) - 2, (*p).clone());
+            shift_powers_of_g.insert(
+                (1 << i) - 2,
+                tau_powers_g1[parameters.powers_length - 1 - (1 << i) + 2].clone(),
+            );
+        });
+
+        let h = tau_powers_g2[0].clone();
+        let beta_h = tau_powers_g2[1].clone();
+        let universal_params = UniversalParams::<Bls12_377> {
+            powers_of_g: tau_powers_g1,
+            powers_of_gamma_g: alpha_tau_powers_g1,
+            h: h.clone(),
+            beta_h: beta_h.clone(),
+            supported_degree_bounds: degree_bounds,
+            inverse_powers_of_g: shift_powers_of_g,
+            inverse_neg_powers_of_h: neg_shift_powers_of_h,
+            prepared_h: h.prepare(),
+            prepared_beta_h: beta_h.prepare(),
+        };
+
+        for _ in 0..1 {
+            let a = Fr::rand(&mut rng);
+            let b = Fr::rand(&mut rng);
+            let mut c = a;
+            c.mul_assign(&b);
+
+            let circuit = Circuit {
+                a: Some(a),
+                b: Some(b),
+                num_constraints: 30,
+                num_variables: 20,
             };
 
             let (index_pk, index_vk) = MarlinInst::circuit_setup(&universal_params, &circuit).unwrap();
