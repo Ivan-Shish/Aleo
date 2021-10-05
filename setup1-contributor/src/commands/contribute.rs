@@ -786,8 +786,10 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     let mut contribute = Contribute::new(opts, &environment, private_key, seed);
 
     if public_settings.check_reliability {
+        println!("Checking CPU performance, it may take a few minutes");
         tracing::info!("Checking reliability score before joining the queue");
         crate::reliability::check(&opts.api_url, &contribute.private_key).await?;
+        println!("CPU check complete");
         tracing::info!("Reliability checks completed successfully");
     }
 
