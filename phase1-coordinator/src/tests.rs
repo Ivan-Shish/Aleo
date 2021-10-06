@@ -2290,59 +2290,6 @@ fn rollback_locked_chunk() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Test that a finished chunk can be undone by the coordinator.
-#[test]
-#[serial]
-fn undo_completed_chunk() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
-
-    let parameters = Parameters::Custom(Settings::new(
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        6,  /* power */
-        16, /* batch_size */
-        16, /* chunk_size */
-    ));
-
-    let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(20))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
-
-    let environment = initialize_test_environment(&Environment::from(testing_deployment));
-
-    // Instantiate a coordinator.
-    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
-
-    // Initialize the ceremony to round 0.
-    coordinator.initialize()?;
-
-    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
-
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-
-    // Update the ceremony to round 1.
-    coordinator.update()?;
-
-    assert_eq!(1, coordinator.current_contributors().len());
-    assert!(coordinator.dropped_participants().is_empty());
-
-    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
-
-    let (_, contributor_info) = &coordinator.current_contributors()[0];
-    let finished_task = contributor_info.completed_tasks().front().unwrap();
-    let num_assigned = contributor_info.assigned_tasks().len();
-
-    coordinator.undo_chunk(&contributor1, finished_task.clone())?;
-
-    let (_, contributor_info) = &coordinator.current_contributors()[0];
-    assert_eq!(0, contributor_info.completed_tasks().len());
-    assert_eq!(num_assigned + 1, contributor_info.assigned_tasks().len());
-    assert!(contributor_info.assigned_tasks().contains(finished_task));
-
-    Ok(())
-}
-
 #[test]
 #[serial]
 fn round_on_groth16_bls12_377() {
