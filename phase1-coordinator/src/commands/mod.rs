@@ -59,25 +59,23 @@ pub(crate) fn write_contribution_file_signature(
 
     // Calculate the challenge hash.
     let challenge_reader = storage.reader(challenge_locator)?;
-    let challenge_hash = calculate_hash(challenge_reader.as_ref()).to_vec();
+    let challenge_hash = calculate_hash(challenge_reader.as_ref());
 
     // Calculate the response hash.
     let response_reader = storage.reader(response_locator)?;
-    let response_hash = calculate_hash(response_reader.as_ref()).to_vec();
-
-    // Calculate the next challenge hash.
-    let next_challenge_hash = match next_challenge_locator {
-        Some(next_challenge_locator) => {
-            let next_challenge_reader = storage.reader(next_challenge_locator)?;
-            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref()).to_vec();
-
-            Some(next_challenge_hash)
-        }
-        None => None,
-    };
+    let response_hash = calculate_hash(response_reader.as_ref());
 
     // Construct the contribution state.
-    let contribution_state = ContributionState::new(challenge_hash, response_hash, next_challenge_hash)?;
+    let contribution_state = match next_challenge_locator {
+        Some(next_challenge_locator) => {
+            // Calculate the next challenge hash.
+            let next_challenge_reader = storage.reader(next_challenge_locator)?;
+            let next_challenge_hash = calculate_hash(next_challenge_reader.as_ref());
+
+            ContributionState::new(&challenge_hash, &response_hash, Some(&next_challenge_hash))
+        }
+        None => ContributionState::new(&challenge_hash, &response_hash, None),
+    };
 
     // Generate the contribution signature.
     let contribution_signature = signature.sign(signing_key, &contribution_state.signature_message()?)?;

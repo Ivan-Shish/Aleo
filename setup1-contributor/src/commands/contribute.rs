@@ -257,8 +257,8 @@ impl Contribute {
             let response_file = read_from_file(RESPONSE_FILENAME)?;
 
             // Hash the challenge and response files.
-            let challenge_hash = calculate_hash(&challenge_file).to_vec();
-            let response_hash = calculate_hash(&response_file).to_vec();
+            let challenge_hash = calculate_hash(&challenge_file);
+            let response_hash = calculate_hash(&response_file);
 
             // Sign the contribution state.
             let view_key = ViewKey::try_from(&self.private_key)?;
@@ -271,15 +271,15 @@ impl Contribute {
             file.read_to_end(&mut response_file)?;
 
             // Concatenate the signed contribution data and next challenge file.
-            let verifier_flag = vec![0];
+            let verifier_flag = [0];
             let signature_bytes = hex::decode(signed_contribution_state.get_signature())?;
 
             let signature_and_response_file_bytes = [
-                verifier_flag,
-                signature_bytes,
-                challenge_hash,
-                response_hash,
-                response_file,
+                &verifier_flag[..],
+                &signature_bytes[..],
+                &challenge_hash[..],
+                &response_hash[..],
+                &response_file[..],
             ]
             .concat();
 

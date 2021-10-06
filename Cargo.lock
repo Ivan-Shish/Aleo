@@ -2724,6 +2724,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "criterion",
  "crossbeam",
+ "generic-array",
  "hex",
  "num_cpus",
  "phase1",
@@ -2740,7 +2741,6 @@ dependencies = [
  "snarkvm-utilities",
  "thiserror",
  "tracing",
- "typenum",
 ]
 
 [[package]]

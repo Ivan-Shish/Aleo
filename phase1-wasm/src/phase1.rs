@@ -187,9 +187,9 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
                 let contribution_hash = calculate_hash(&response);
 
                 return Ok(ContributionResponse {
-                    current_accumulator_hash: current_accumulator_hash.as_slice().iter().cloned().collect(),
+                    current_accumulator_hash: current_accumulator_hash.to_vec(),
                     response,
-                    contribution_hash: contribution_hash.as_slice().iter().cloned().collect(),
+                    contribution_hash: contribution_hash.to_vec(),
                 });
             }
             Err(e) => {

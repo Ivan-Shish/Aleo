@@ -112,7 +112,7 @@ impl Verifier {
         chunk_id: u64,
         contribution_id: u64,
         challenge_locator: &str,
-    ) -> Result<Vec<u8>, VerifierError> {
+    ) -> Result<[u8; 64], VerifierError> {
         // Download the challenge file from the coordinator.
         let challenge_file = self.download_challenge_file(chunk_id, contribution_id).await?;
 
@@ -130,7 +130,7 @@ impl Verifier {
 
         debug!("The challenge hash is {}", pretty_hash(&challenge_hash));
 
-        Ok(challenge_hash.to_vec())
+        Ok(challenge_hash)
     }
 
     ///
@@ -142,7 +142,7 @@ impl Verifier {
         chunk_id: u64,
         contribution_id: u64,
         response_locator: &str,
-    ) -> Result<Vec<u8>, VerifierError> {
+    ) -> Result<[u8; 64], VerifierError> {
         // Download the response file from the coordinator.
         let response_file = self.download_response_file(chunk_id, contribution_id).await?;
 
@@ -160,7 +160,7 @@ impl Verifier {
 
         debug!("The response hash is {}", pretty_hash(&response_hash));
 
-        Ok(response_hash.to_vec())
+        Ok(response_hash)
     }
 
     ///
@@ -170,7 +170,7 @@ impl Verifier {
     pub async fn read_next_challenge_file(
         &self,
         next_challenge_locator: &str,
-    ) -> Result<(Vec<u8>, Vec<u8>), VerifierError> {
+    ) -> Result<(Vec<u8>, [u8; 64]), VerifierError> {
         info!("Reading the next challenge locator at {}", &next_challenge_locator);
 
         let next_challenge_file = fs::read(&next_challenge_locator)?;
@@ -180,7 +180,7 @@ impl Verifier {
 
         debug!("The next challenge hash is {}", pretty_hash(&next_challenge_hash));
 
-        Ok((next_challenge_file, next_challenge_hash.to_vec()))
+        Ok((next_challenge_file, next_challenge_hash))
     }
 
     ///
@@ -258,17 +258,13 @@ impl Verifier {
     ///
     pub fn sign_contribution_data(
         &self,
-        challenge_hash: &[u8],
-        response_hash: &[u8],
-        next_challenge_hash: &[u8],
+        challenge_hash: &[u8; 64],
+        response_hash: &[u8; 64],
+        next_challenge_hash: &[u8; 64],
     ) -> Result<ContributionFileSignature, VerifierError> {
         info!("Signing contribution data");
 
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        )?;
+        let contribution_state = ContributionState::new(challenge_hash, response_hash, Some(next_challenge_hash));
         let message = contribution_state.signature_message()?;
 
         let signature = AleoAuthentication::sign(&self.view_key, message)?;
@@ -285,29 +281,26 @@ impl Verifier {
     ///
     pub fn serialize_contribution_and_signature(
         &self,
-        challenge_hash: Vec<u8>,
-        response_hash: Vec<u8>,
-        next_challenge_hash: Vec<u8>,
+        challenge_hash: &[u8; 64],
+        response_hash: &[u8; 64],
+        next_challenge_hash: &[u8; 64],
         next_challenge_file: Vec<u8>,
     ) -> Result<Vec<u8>, VerifierError> {
         // Construct the signed contribution data.
-        let signed_contribution_data = self.sign_contribution_data(
-            challenge_hash.as_slice(),
-            response_hash.as_slice(),
-            next_challenge_hash.as_slice(),
-        )?;
+        let signed_contribution_data =
+            self.sign_contribution_data(challenge_hash, response_hash, next_challenge_hash)?;
 
         // Concatenate the signed contribution data and next challenge file.
-        let verifier_flag = vec![1];
+        let verifier_flag = [1];
         let signature_bytes = hex::decode(signed_contribution_data.get_signature())?;
 
         let signature_and_next_challenge_bytes = [
-            verifier_flag,
-            signature_bytes,
-            challenge_hash,
-            response_hash,
-            next_challenge_hash,
-            next_challenge_file,
+            &verifier_flag[..],
+            &signature_bytes[..],
+            &challenge_hash[..],
+            &response_hash[..],
+            &next_challenge_hash[..],
+            &next_challenge_file[..],
         ]
         .concat();
 
@@ -391,9 +384,9 @@ impl Verifier {
 
         // Construct a signature and serialize the contribution.
         let signature_and_next_challenge_bytes = self.serialize_contribution_and_signature(
-            challenge_hash,
-            response_hash,
-            next_challenge_hash,
+            &challenge_hash,
+            &response_hash,
+            &next_challenge_hash,
             next_challenge_file,
         )?;
 
@@ -526,9 +519,9 @@ mod tests {
         let dummy_next_challenge: [u8; 32] = rng.gen();
 
         // Calculate contribution hashes.
-        let response_hash = calculate_hash(&dummy_response).to_vec();
-        let challenge_hash = calculate_hash(&dummy_challenge).to_vec();
-        let next_challenge_hash = calculate_hash(&dummy_next_challenge).to_vec();
+        let response_hash = calculate_hash(&dummy_response);
+        let challenge_hash = calculate_hash(&dummy_challenge);
+        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
         // Construct the signature data
         let signed_contribution_data = verifier
@@ -538,12 +531,7 @@ mod tests {
         let signature = signed_contribution_data.get_signature();
 
         // Construct the signature message
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        )
-        .unwrap();
+        let contribution_state = ContributionState::new(&challenge_hash, &response_hash, Some(&next_challenge_hash));
         let message = contribution_state.signature_message().unwrap();
 
         // Derive the verifier address
@@ -565,16 +553,16 @@ mod tests {
         let dummy_next_challenge: [u8; 32] = rng.gen();
 
         // Calculate contribution hashes.
-        let response_hash = calculate_hash(&dummy_response).to_vec();
-        let challenge_hash = calculate_hash(&dummy_challenge).to_vec();
-        let next_challenge_hash = calculate_hash(&dummy_next_challenge).to_vec();
+        let response_hash = calculate_hash(&dummy_response);
+        let challenge_hash = calculate_hash(&dummy_challenge);
+        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
         // Construct the serialized contribution
         let mut serialized_contribution = verifier
             .serialize_contribution_and_signature(
-                challenge_hash.to_vec(),
-                response_hash.to_vec(),
-                next_challenge_hash.to_vec(),
+                &challenge_hash,
+                &response_hash,
+                &next_challenge_hash,
                 dummy_next_challenge.to_vec(),
             )
             .unwrap();

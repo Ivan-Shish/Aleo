@@ -136,7 +136,7 @@ impl Computation {
         trace!("Calculating previous contribution hash and writing it to the response");
         let challenge_hash = calculate_hash(challenge_reader);
         debug!("Challenge hash is {}", pretty_hash!(&challenge_hash));
-        (&mut response_writer[0..]).write_all(challenge_hash.as_slice())?;
+        (&mut response_writer[0..]).write_all(&challenge_hash)?;
         response_writer.flush()?;
 
         let previous_hash = &challenge_reader

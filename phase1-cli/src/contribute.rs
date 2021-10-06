@@ -84,7 +84,7 @@ pub fn contribute<T: Engine + Sync>(
         log_hash(&current_accumulator_hash);
 
         (&mut writable_map[0..])
-            .write_all(current_accumulator_hash.as_slice())
+            .write_all(&current_accumulator_hash)
             .expect("unable to write a challenge hash to mmap");
 
         writable_map.flush().expect("unable to write hash to response file");
