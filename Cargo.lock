@@ -1379,15 +1379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "input_buffer"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f97967975f448f1a7ddb12b0bc41069d09ed6a1c161a92687e057325db35d413"
-dependencies = [
- "bytes",
-]
-
-[[package]]
 name = "instant"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1946,6 +1937,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "console_error_panic_hook",
  "crossbeam",
+ "hex",
  "itertools",
  "num_cpus",
  "phase1",
@@ -2732,6 +2724,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "criterion",
  "crossbeam",
+ "hex",
  "num_cpus",
  "phase1",
  "rand 0.8.4",
@@ -3408,14 +3401,15 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e96bb520beab540ab664bd5a9cfeaa1fcd846fa68c830b42e2c8963071251d2"
+version = "0.15.0"
+source = "git+https://github.com/snapview/tokio-tungstenite?rev=2bfd4cd#2bfd4cd0f59e05d65235422d4a24cf133da45797"
 dependencies = [
  "futures-util",
  "log",
+ "native-tls",
  "pin-project",
  "tokio",
+ "tokio-native-tls",
  "tungstenite",
 ]
 
@@ -3542,17 +3536,17 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "tungstenite"
-version = "0.13.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fe8dada8c1a3aeca77d6b51a4f1314e0f4b8e438b7b1b71e3ddaca8080e4093"
+checksum = "983d40747bce878d2fb67d910dcb8bd3eca2b2358540c3cc1b98c027407a3ae3"
 dependencies = [
  "base64",
  "byteorder",
  "bytes",
  "http",
  "httparse",
- "input_buffer",
  "log",
+ "native-tls",
  "rand 0.8.4",
  "sha-1",
  "thiserror",

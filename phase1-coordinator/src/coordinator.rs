@@ -1879,11 +1879,11 @@ impl Coordinator {
             round_height: current_round_height,
         };
         if self.storage.exists(&round_file) {
-            error!(
-                "Round file locator already exists ({})",
+            warn!(
+                "Round file locator already exists ({}), removing...",
                 self.storage.to_path(&round_file)?
             );
-            return Err(CoordinatorError::RoundLocatorAlreadyExists);
+            self.storage.remove(&round_file)?;
         }
 
         // Fetch the current round from storage.
@@ -2636,33 +2636,14 @@ impl Coordinator {
         self.state.rollback_locked_task(participant, task, &*self.time)?;
         self.save_state()?;
 
-        self.current_round()?
-            .remove_locks_unsafe(&mut self.storage, participant, &[task.chunk_id()])?;
+        let mut round = self.current_round()?;
+        round.remove_locks_unsafe(&mut self.storage, participant, &[task.chunk_id()])?;
 
         Ok(self.storage.process(StorageAction::Update(UpdateAction {
             locator: Locator::RoundState {
                 round_height: self.current_round_height()?,
             },
-            object: Object::RoundState(self.current_round()?),
-        }))?)
-    }
-
-    ///
-    /// Rollback a completed task. This should be used in case a chunk got corrupted
-    /// during upload, or the verification somehow fails for any other reason.
-    ///
-    pub fn undo_chunk(&mut self, participant: &Participant, task: Task) -> Result<(), CoordinatorError> {
-        self.state.undo_completed_task(participant, &task, &*self.time)?;
-        self.save_state()?;
-
-        self.current_round()?
-            .remove_chunk_contributions_unsafe(&mut self.storage, participant, &[task])?;
-
-        Ok(self.storage.process(StorageAction::Update(UpdateAction {
-            locator: Locator::RoundState {
-                round_height: self.current_round_height()?,
-            },
-            object: Object::RoundState(self.current_round()?),
+            object: Object::RoundState(round),
         }))?)
     }
 }

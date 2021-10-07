@@ -20,6 +20,7 @@ where
     W: Sink<Message> + Unpin,
     W::Error: Debug,
 {
+    println!("Computing challenge...");
     let mut reader = BufReader::new(&data[..8]);
     let mut total_size_bytes = [0; 4];
     reader.read_exact(&mut total_size_bytes)?;
@@ -29,6 +30,7 @@ where
     let batch_size = u32::from_be_bytes(batch_size_bytes) as usize;
     // Proof of Work takes roughly 20 seconds if TOTAL_SIZE=14
     let calculated = calculate_powers_of_tau::<Bls12_377>(&data[8..], total_size, batch_size);
+    println!("Done");
     let challenge = ContributorMessage {
         name: ContributorMessageName::CpuChallenge,
         data: calculated,
