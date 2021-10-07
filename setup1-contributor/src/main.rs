@@ -7,7 +7,6 @@ mod errors;
 mod objects;
 mod reliability;
 mod setup_keys;
-mod tasks;
 mod utils;
 
 use cli::{Command, Options};

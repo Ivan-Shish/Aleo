@@ -7,9 +7,7 @@
     "contributorIds": [
         "testing-coordinator-contributor.contributor"
     ],
-    "verifierIds": [
-        "testing-coordinator-verifier.verifier"
-    ],
+    "verifierIds": [],
     "chunks": [
         {
             "chunkId": "0",

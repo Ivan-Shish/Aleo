@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{Locator, Storage},
+    storage::{Disk, Locator, StorageLocator, StorageObject},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -30,7 +30,7 @@ impl Computation {
     ///
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         signature: Arc<dyn Signature>,
         contributor_signing_key: &SigningKey,
         challenge_locator: &Locator,
@@ -175,7 +175,7 @@ mod tests {
     use crate::{
         authentication::{Dummy, Signature},
         commands::{Computation, Initialization, Seed, SEED_LENGTH},
-        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage, StorageObject},
+        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageObject},
         testing::prelude::*,
     };
     use setup_utils::calculate_hash;

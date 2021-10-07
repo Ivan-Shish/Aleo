@@ -1,5 +1,5 @@
 use phase1::{Phase1, Phase1Parameters};
-use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompression};
+use setup_utils::{calculate_hash, CheckForCorrectness, UseCompression};
 
 use snarkvm_curves::PairingEngine as Engine;
 
@@ -71,7 +71,7 @@ pub fn contribute<T: Engine + Sync>(
             .expect("unable to create a memory map for output")
     };
 
-    println!("Calculating previous contribution hash...");
+    tracing::info!("Calculating previous contribution hash...");
 
     assert!(
         UseCompression::No == compressed_input,
@@ -80,8 +80,8 @@ pub fn contribute<T: Engine + Sync>(
     let current_accumulator_hash = calculate_hash(&readable_map);
 
     {
-        println!("`challenge` file contains decompressed points and has a hash:");
-        print_hash(&current_accumulator_hash);
+        tracing::info!("`challenge` file contains decompressed points and has a hash:");
+        log_hash(&current_accumulator_hash);
 
         (&mut writable_map[0..])
             .write_all(current_accumulator_hash.as_slice())
@@ -97,10 +97,10 @@ pub fn contribute<T: Engine + Sync>(
             .read_exact(&mut challenge_hash)
             .expect("couldn't read hash of challenge file from response file");
 
-        println!(
+        tracing::info!(
             "`challenge` file claims (!!! Must not be blindly trusted) that it was based on the original contribution with a hash:"
         );
-        print_hash(&challenge_hash);
+        log_hash(&challenge_hash);
     }
 
     // Construct our keypair using the RNG we created above
@@ -108,7 +108,7 @@ pub fn contribute<T: Engine + Sync>(
         Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()).expect("could not generate keypair");
 
     // Perform the transformation
-    println!("Computing and writing your contribution, this could take a while...");
+    tracing::info!("Computing and writing your contribution, this could take a while...");
 
     // this computes a transformation and writes it
     Phase1::computation(
@@ -122,7 +122,7 @@ pub fn contribute<T: Engine + Sync>(
     )
     .expect("must contribute with the key");
 
-    println!("Finishing writing your contribution to response file...");
+    tracing::info!("Finishing writing your contribution to response file...");
 
     // Write the public key
     public_key
@@ -135,11 +135,25 @@ pub fn contribute<T: Engine + Sync>(
     let output_readonly = writable_map.make_read_only().expect("must make a map readonly");
     let contribution_hash = calculate_hash(&output_readonly);
 
-    print!(
+    tracing::info!(
         "Done!\n\n\
               Your contribution has been written to response file\n\n\
               The BLAKE2b hash of response file is:\n"
     );
-    print_hash(&contribution_hash);
-    println!("Thank you for your participation, much appreciated! :)");
+    log_hash(&contribution_hash);
+    tracing::info!("Thank you for your participation, much appreciated! :)");
+}
+
+fn log_hash(hash: &[u8]) {
+    for line in hash.chunks(16) {
+        let mut text = String::new();
+        text.push('\t');
+        for section in line.chunks(4) {
+            for b in section {
+                text.push_str(&format!("{:02x}", b));
+            }
+            text.push(' ');
+        }
+        tracing::info!("{}", text);
+    }
 }

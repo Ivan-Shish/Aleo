@@ -11,7 +11,7 @@ edition = "2018"
 phase1 = { path = "../phase1", features = ["parallel"] }
 phase1-cli = { path = "../phase1-cli", features = ["parallel"] }
 phase1-coordinator = { path = "../phase1-coordinator", features = ["operator", "parallel"]}
-setup1-shared = { version = "0.1", path = "../setup1-shared" }
+setup1-shared = { path = "../setup1-shared", features = ["twitter", "proof-of-work"] }
 setup-utils = { path = "../setup-utils", features = ["parallel"] }
 
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
@@ -21,17 +21,16 @@ snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc99
 age = { version = "0.6", features = [ "cli-common", "armor" ] }
 anyhow = { version = "1.0.33" }
 blake2 = "0.9"
-byteorder = { version = "1.3.4", optional = true }
 clap = { version = "2.33.3" }
 dialoguer = "0.8"
 egg-mode = "0.16"
+fs-err = "2.6"
 futures = { version = "0.3" }
 futures-util = { version = "0.3.15", default-features = false, features = ["async-await", "sink", "std"] }
 hex = { version = "0.4" }
 http = "0.2"
 i18n-embed = { version = "0.9", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
-lazy_static = { version = "1.4.0" }
 panic-control = {version = "0.1.4" }
 rand = { version = "0.8" }
 regex = "1"
@@ -43,11 +42,15 @@ serial_test = { version = "0.5.1" }
 structopt = { version = "0.3" }
 thiserror = { version = "1.0" }
 tokio = { version = "1.7", features = [ "macros", "rt-multi-thread" ] }
-tokio-tungstenite = "0.14"
 tracing = { version = "0.1" }
 tracing-appender = { version = "0.1.1" }
 tracing-subscriber = { version = "0.2" }
 url = { version = "2.1.1" }
 
-[dev-dependencies]
-lazy_static = { version = "1.4.0" }
+[dependencies.tokio-tungstenite]
+version = "0.15.0"
+# remove gh link after the new version is released
+# related issue: https://github.com/snapview/tokio-tungstenite/issues/182
+git = "https://github.com/snapview/tokio-tungstenite"
+rev = "2bfd4cd"
+features = ["native-tls"]

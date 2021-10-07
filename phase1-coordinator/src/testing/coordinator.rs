@@ -2,7 +2,7 @@ use crate::{
     authentication::Dummy,
     environment::{Environment, Parameters, Testing},
     objects::{Participant, Round},
-    storage::{Disk, Storage},
+    storage::Disk,
     Coordinator,
     CoordinatorError,
 };
@@ -15,6 +15,7 @@ use serial_test::serial;
 use std::{path::Path, sync::Arc};
 use tracing::*;
 
+use fs_err as fs;
 use once_cell::sync::OnceCell;
 
 static INSTANCE: OnceCell<()> = OnceCell::new();
@@ -57,7 +58,7 @@ pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy
 /// Verifier IDs for testing purposes only.
 pub static TEST_VERIFIER_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_VERIFIER_ID).clone()]);
 
-pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator<Disk>> {
+pub fn test_coordinator(environment: &Environment) -> anyhow::Result<Coordinator> {
     info!("Starting coordinator");
     let coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
     info!("Coordinator is ready");
@@ -98,7 +99,7 @@ fn clear_test_storage(environment: &Environment) {
     let path = environment.local_base_directory();
     if Path::new(path).exists() {
         warn!("Coordinator is clearing {:?}", &path);
-        match std::fs::remove_dir_all(&path) {
+        match fs::remove_dir_all(&path) {
             Ok(_) => (),
             Err(error) => error!(
                 "The testing framework tried to clear the test transcript and failed. {}",
@@ -110,7 +111,7 @@ fn clear_test_storage(environment: &Environment) {
 }
 
 /// Initializes a test storage object.
-pub fn test_storage(environment: &Environment) -> impl Storage {
+pub fn test_storage(environment: &Environment) -> Disk {
     environment.storage().unwrap()
 }
 
@@ -144,7 +145,6 @@ pub fn test_round_0() -> anyhow::Result<Round> {
         0, /* height */
         *TEST_STARTED_AT,
         vec![],
-        TEST_VERIFIER_IDS.to_vec(),
     )?)
 }
 

@@ -49,7 +49,17 @@ impl PublicSettings {
 /// on a contributor's behalf by the coordinator.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(feature = "twitter")]
 pub struct TwitterInfo {
     pub request_token: egg_mode::KeyPair,
     pub pin: String,
+}
+
+/// The status of the contributor related to the current round
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ContributorStatus {
+    Queue(u64, u64),
+    Round,
+    Finished,
+    Other,
 }

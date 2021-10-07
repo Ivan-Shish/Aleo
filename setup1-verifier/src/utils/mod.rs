@@ -4,7 +4,7 @@ pub use authentication::*;
 pub mod logger;
 pub use logger::*;
 
-use std::{fs, io::Read, path::Path};
+use std::{fs, path::Path};
 use tracing::{error, trace};
 
 ///
@@ -22,16 +22,16 @@ pub fn write_to_file(locator: &str, file_bytes: Vec<u8>) {
     }
 }
 
-///
-/// This function reads the bytes from a file at a given path.
-///
-pub fn read_from_file(locator: &str) -> anyhow::Result<Vec<u8>> {
-    let mut buffer = Vec::new();
-    let mut file = fs::File::open(locator)?;
-    file.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
-}
+// ///
+// /// This function reads the bytes from a file at a given path.
+// ///
+// pub fn read_from_file(locator: &str) -> anyhow::Result<Vec<u8>> {
+//     let mut buffer = Vec::new();
+//     let mut file = fs::File::open(locator)?;
+//     file.read_to_end(&mut buffer)?;
+//
+//     Ok(buffer)
+// }
 
 ///
 /// This function creates the `locator` path's parent directories if it

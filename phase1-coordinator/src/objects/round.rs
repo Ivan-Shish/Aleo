@@ -4,12 +4,12 @@ use crate::{
     storage::{
         ContributionLocator,
         ContributionSignatureLocator,
+        Disk,
         Locator,
         LocatorPath,
         Object,
-        RemoveAction,
-        Storage,
         StorageAction,
+        StorageLocator,
         UpdateAction,
     },
     CoordinatorError,
@@ -87,11 +87,10 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
-        verifier_ids: Vec<Participant>,
     ) -> Result<Self, CoordinatorError> {
         debug!("Starting to create round {}", round_height);
 
@@ -101,7 +100,11 @@ impl Round {
         }
 
         // Fetch the initial verifier.
-        let verifier = verifier_ids.first().ok_or(CoordinatorError::VerifierMissing)?;
+        let verifier = environment
+            .coordinator_verifiers()
+            .first()
+            .ok_or_else(|| CoordinatorError::VerifierMissing)?
+            .clone();
 
         // Check that all contributor IDs are valid.
         {
@@ -122,27 +125,6 @@ impl Round {
             // This check is only enforced if the round height is not 0.
             if round_height != 0 && num_contributors == 0 {
                 return Err(CoordinatorError::RoundContributorsMissing);
-            }
-        }
-
-        // Check that all verifier IDs are valid.
-        {
-            // Check that each verifier ID is unique.
-            if !has_unique_elements(&verifier_ids) {
-                return Err(CoordinatorError::RoundVerifiersNotUnique);
-            }
-            // Check that each verifier ID is a verifier participant type.
-            let num_verifiers = verifier_ids
-                .par_iter()
-                .filter(|id| Participant::is_verifier(id))
-                .count();
-            if num_verifiers != verifier_ids.len() {
-                error!("{} IDs are not verifiers", verifier_ids.len() - num_verifiers);
-                return Err(CoordinatorError::ExpectedVerifier);
-            }
-            // Check that the list of verifier IDs is not empty.
-            if num_verifiers == 0 {
-                return Err(CoordinatorError::RoundVerifiersMissing);
             }
         }
 
@@ -180,7 +162,7 @@ impl Round {
             started_at: Some(started_at),
             finished_at: None,
             contributor_ids,
-            verifier_ids,
+            verifier_ids: vec![],
             chunks,
         })
     }
@@ -235,23 +217,6 @@ impl Round {
             // Check that the participant is a contributor for the given round height.
             Participant::Contributor(_) => self.contributor_ids.contains(participant),
             Participant::Verifier(_) => false,
-        }
-    }
-
-    ///
-    /// Returns `true` if the given participant is authorized as a
-    /// verifier and listed in the verifier IDs for this round.
-    ///
-    /// If the participant is not a verifier, or if there are
-    /// no prior rounds, returns `false`.
-    ///
-    #[inline]
-    pub fn is_verifier(&self, participant: &Participant) -> bool {
-        // Check that the participant is a verifier.
-        match participant {
-            Participant::Contributor(_) => false,
-            // Check that the participant is a verifier for the given round height.
-            Participant::Verifier(_) => self.verifier_ids.contains(participant),
         }
     }
 
@@ -324,12 +289,8 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_verifier(participant) {
-                    error!("{} is not an authorized verifier", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                }
+                // Verifiers don't lock chunks
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -382,7 +343,7 @@ impl Round {
     )]
     pub(crate) fn current_contribution_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
         verified: bool,
     ) -> Result<ContributionLocator, CoordinatorError> {
@@ -443,7 +404,7 @@ impl Round {
     )]
     pub(crate) fn next_contribution_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
     ) -> Result<ContributionLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -499,7 +460,7 @@ impl Round {
     #[inline]
     pub(crate) fn next_contribution_file_signature_locator(
         &self,
-        storage: &impl Storage,
+        storage: &Disk,
         chunk_id: u64,
     ) -> Result<ContributionSignatureLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -550,7 +511,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<LockedLocators, CoordinatorError> {
@@ -566,10 +527,7 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                if number_of_locks_held >= environment.verifier_lock_chunk_limit() {
-                    trace!("{} chunks are locked by {}", &number_of_locks_held, participant);
-                    return Err(CoordinatorError::ChunkLockLimitReached);
-                }
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -631,62 +589,7 @@ impl Round {
                 }
             }
             Participant::Verifier(_) => {
-                // Check that the participant is an authorized verifier
-                // for the current round.
-                if !self.is_verifier(participant) {
-                    error!("{} is not an authorized verifier", participant);
-                    return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                }
-
-                // Fetch the current round height.
-                let current_round_height = self.round_height();
-                // Fetch the chunk corresponding to the given chunk ID.
-                let chunk = self.chunk(chunk_id)?;
-                // Fetch the current contribution ID.
-                let current_contribution_id = chunk.current_contribution_id();
-
-                if current_contribution_id == 0 {
-                    return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
-                }
-
-                // Fetch the previous contribution locator.
-                let previous_contribution =
-                    ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, true);
-
-                // This call enforces a strict check that the
-                // current contribution locator exist and
-                // has not been verified yet.
-                let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
-
-                tracing::debug!("Obtained response locator {:?}", current_contribution);
-
-                // Fetch whether this is the final contribution of the specified chunk.
-                let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
-                // Fetch the next contribution locator and its contribution file signature locator.
-                let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
-                    // This is the final contribution in the chunk.
-                    true => (
-                        ContributionLocator::new(current_round_height + 1, chunk_id, 0, true),
-                        ContributionSignatureLocator::new(current_round_height + 1, chunk_id, 0, true),
-                    ),
-                    // This is a typical contribution in the chunk.
-                    false => (
-                        ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true),
-                        ContributionSignatureLocator::new(
-                            current_round_height,
-                            chunk_id,
-                            current_contribution_id,
-                            true,
-                        ),
-                    ),
-                };
-
-                LockedLocators {
-                    previous_contribution,
-                    current_contribution,
-                    next_contribution,
-                    next_contribution_file_signature,
-                }
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
@@ -726,22 +629,107 @@ impl Round {
                 )?;
             }
             Participant::Verifier(_) => {
-                // Initialize the next challenge file.
-                storage.initialize(
-                    Locator::ContributionFile(locked_locators.next_contribution.clone()),
-                    Object::contribution_file_size(environment, chunk_id, true),
-                )?;
-
-                // Initialize the contribution file signature.
-                storage.initialize(
-                    Locator::ContributionFileSignature(locked_locators.next_contribution_file_signature.clone()),
-                    Object::contribution_file_signature_size(true),
-                )?;
+                return Err(CoordinatorError::ExpectedContributor);
             }
         };
 
         debug!("{} locked chunk {}", participant, chunk_id);
         Ok(locked_locators)
+    }
+
+    /// Initialize the files for the next challenge
+    pub fn initialize_verifier_response_files(
+        &self,
+        environment: &Environment,
+        storage: &mut Disk,
+        participant: &Participant,
+        chunk_id: u64,
+        locators: &LockedLocators,
+    ) -> Result<(), CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+        // Initialize the next challenge file.
+        storage.initialize(
+            Locator::ContributionFile(locators.next_contribution.clone()),
+            Object::contribution_file_size(environment, chunk_id, true),
+        )?;
+
+        // Initialize the contribution file signature.
+        storage.initialize(
+            Locator::ContributionFileSignature(locators.next_contribution_file_signature.clone()),
+            Object::contribution_file_signature_size(true),
+        )?;
+
+        Ok(())
+    }
+
+    /// Returns previous contribution, current contribution and next contribution paths
+    pub(crate) fn get_chunk_locators_for_verifier(
+        &self,
+        storage: &Disk,
+        participant: &Participant,
+        chunk_id: u64,
+        contribution_id: u64,
+    ) -> Result<LockedLocators, CoordinatorError> {
+        if !participant.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+
+        // Fetch the current round height.
+        let current_round_height = self.round_height();
+        // Fetch the chunk corresponding to the given chunk ID.
+        let chunk = self.chunk(chunk_id)?;
+        // Fetch the current contribution ID.
+        let current_contribution_id = chunk.current_contribution_id();
+
+        if current_contribution_id == 0 {
+            return Err(CoordinatorError::ChunkCannotLockZeroContributions { chunk_id });
+        }
+
+        if current_contribution_id != contribution_id {
+            tracing::error!(
+                "Error getting locators for chunk {}, current contribution {}, requested contribution {}",
+                chunk_id,
+                current_contribution_id,
+                contribution_id,
+            );
+            return Err(CoordinatorError::ContributionIdMismatch);
+        }
+
+        // Fetch the previous contribution locator.
+        let previous_contribution =
+            ContributionLocator::new(current_round_height, chunk_id, current_contribution_id - 1, true);
+
+        // This call enforces a strict check that the
+        // current contribution locator exist and
+        // has not been verified yet.
+        let current_contribution = self.current_contribution_locator(storage, chunk_id, false)?;
+
+        tracing::debug!("Obtained response locator for a verifier: {:?}", current_contribution);
+
+        // Fetch whether this is the final contribution of the specified chunk.
+        let is_final_contribution = chunk.only_contributions_complete(self.expected_number_of_contributions());
+        // Fetch the next contribution locator and its contribution file signature locator.
+        let (next_contribution, next_contribution_file_signature) = match is_final_contribution {
+            // This is the final contribution in the chunk.
+            true => (
+                ContributionLocator::new(current_round_height + 1, chunk_id, 0, true),
+                ContributionSignatureLocator::new(current_round_height + 1, chunk_id, 0, true),
+            ),
+            // This is a typical contribution in the chunk.
+            false => (
+                ContributionLocator::new(current_round_height, chunk_id, current_contribution_id, true),
+                ContributionSignatureLocator::new(current_round_height, chunk_id, current_contribution_id, true),
+            ),
+        };
+
+        Ok(LockedLocators {
+            previous_contribution,
+            current_contribution,
+            next_contribution,
+            next_contribution_file_signature,
+        })
     }
 
     ///
@@ -797,7 +785,7 @@ impl Round {
     /// Remove a contributor from the round.
     pub(crate) fn remove_contributor_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         contributor: &Participant,
         locked_chunks: &[u64],
         tasks: &[Task],
@@ -834,7 +822,7 @@ impl Round {
     #[inline]
     pub(crate) fn remove_locks_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         participant: &Participant,
         locked_chunks: &[u64],
     ) -> Result<(), CoordinatorError> {
@@ -864,12 +852,7 @@ impl Round {
                     }
                 }
                 Participant::Verifier(_) => {
-                    // Check that the participant is an *authorized* verifier
-                    // for the current round.
-                    if !self.is_verifier(participant) {
-                        error!("{} is not an authorized verifier", participant);
-                        return Err(CoordinatorError::UnauthorizedChunkVerifier);
-                    }
+                    return Err(CoordinatorError::ExpectedContributor);
                 }
             };
 
@@ -942,9 +925,6 @@ impl Round {
                     }
                 }
                 Participant::Verifier(_) => {
-                    // Get the response locator
-                    let current_contribution_id = chunk.current_contribution_id();
-
                     let is_final_contribution = chunk.only_contributions_complete(expected_number_of_contributions);
 
                     let response_locator = match is_final_contribution {
@@ -1016,7 +996,7 @@ impl Round {
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &mut Disk,
         participant: &Participant,
         tasks: &[Task],
     ) -> Result<(), CoordinatorError> {
@@ -1140,82 +1120,16 @@ impl Round {
     /// the [crate::storage::Storage] to reflect the changes to the
     /// round state. `remove_participants` is a list of participants
     /// to remove from the round.
-    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> Vec<StorageAction> {
-        let expected_number_of_contributions = self.expected_number_of_contributions();
-        let round_height = self.round_height();
+    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> StorageAction {
+        self.chunks.iter_mut().for_each(|chunk| {
+            chunk.set_lock_holder_unsafe(None);
 
-        let mut actions: Vec<StorageAction> =
-            self.chunks
-                .iter_mut()
-                .flat_map(|chunk| {
-                    let chunk_id = chunk.chunk_id();
-
-                    let contributions_remove: Vec<(u64, Vec<RemoveAction>)> = chunk.get_contributions()
-                    .iter()
-                    .filter(|(id, _)| **id != 0) // don't remove initial challenge
-                    .map(|(id, contribution)| {
-                        let actions: Vec<RemoveAction> = contribution.get_locators()
-                            .into_iter()
-                            .map(|path| RemoveAction::new(path))
-                            .collect();
-                        (*id, actions)
-                    })
-                    .collect();
-
-                    // Remove files that were initialized when the lock was taken,
-                    // but have not yet had the contirbution/verification uploaded.
-                    let remove_initialized_files: Vec<RemoveAction> = match chunk.lock_holder() {
-                        Some(participant) => {
-                            let (adjusted_round_height, contribution_id, is_verified) = match participant {
-                                Participant::Contributor(_) => {
-                                    (round_height, chunk.current_contribution_id() + 1, false)
-                                }
-                                Participant::Verifier(_) => {
-                                    let (adjusted_round_height, contribution_id) =
-                                        if chunk.current_contribution_id() == expected_number_of_contributions - 1 {
-                                            // handle the case where the final verification becomes
-                                            // the first verification for the next round.
-                                            (round_height + 1, 0)
-                                        } else {
-                                            (round_height, chunk.current_contribution_id())
-                                        };
-                                    (adjusted_round_height, contribution_id, true)
-                                }
-                            };
-
-                            let contribution_locator = Locator::ContributionFile(ContributionLocator::new(
-                                adjusted_round_height,
-                                chunk_id,
-                                contribution_id,
-                                is_verified,
-                            ));
-                            let signature_locator = Locator::ContributionFileSignature(
-                                ContributionSignatureLocator::new(round_height, chunk_id, contribution_id, is_verified),
-                            );
-
-                            vec![
-                                RemoveAction::new(contribution_locator),
-                                RemoveAction::new(signature_locator),
-                            ]
-                        }
-                        None => Vec::new(),
-                    };
-
-                    chunk.set_lock_holder_unsafe(None);
-
-                    let actions: Vec<StorageAction> = contributions_remove
-                        .into_iter()
-                        .flat_map(|(contribution_id, actions)| {
-                            chunk.remove_contribution_unsafe(contribution_id);
-                            actions.into_iter()
-                        })
-                        .map(StorageAction::Remove)
-                        .chain(remove_initialized_files.into_iter().map(StorageAction::Remove))
-                        .collect();
-
-                    actions.into_iter()
-                })
-                .collect();
+            for (id, _) in chunk.clone().get_contributions() {
+                if *id != 0 {
+                    chunk.remove_contribution_unsafe(*id);
+                }
+            }
+        });
 
         // Remove the requested participants from the set of contributor IDs.
         self.contributor_ids = self
@@ -1233,14 +1147,12 @@ impl Round {
             .filter(|v| remove_participants.iter().find(|p| p == &v).is_none())
             .collect();
 
-        actions.push(StorageAction::Update(UpdateAction {
+        StorageAction::Update(UpdateAction {
             locator: Locator::RoundState {
                 round_height: self.height,
             },
             object: Object::RoundState(self.clone()), // PERFORMANCE: clone here is not great for performance
-        }));
-
-        actions
+        })
     }
 }
 
@@ -1264,7 +1176,6 @@ mod tests {
             0, /* height */
             *TEST_STARTED_AT,
             vec![],
-            TEST_VERIFIER_IDS.to_vec(),
         )
         .unwrap();
 
@@ -1297,18 +1208,9 @@ mod tests {
         let mut round_1: Round = test_round_1_partial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_2));
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
-        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_2));
-        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_3));
         assert!(round_1.chunks[14].is_locked());
 
-        let n_contributions = 89;
-        let n_verifications = 30;
-        let n_locked_chunks = 1;
-        let n_files = 2 * n_contributions + 2 * n_verifications + 2 * n_locked_chunks;
-        let n_actions = n_files + 1; // include action to update round
-
-        let actions = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
-        assert_eq!(n_actions, actions.len());
+        let _ = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
 
         assert_eq!(64, round_1.chunks().len());
 
@@ -1321,26 +1223,12 @@ mod tests {
 
         assert!(!round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_2));
         assert!(round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_3));
-        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_2));
-        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_3));
     }
 
     #[test]
     #[serial]
     fn test_is_authorized_contributor() {
         initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let round_1 = test_round_1_initial_json().unwrap();
-        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
-    }
-
-    #[test]
-    #[serial]
-    fn test_is_authorized_verifier() {
-        initialize_test_environment(&TEST_ENVIRONMENT);
-
-        let round_0 = test_round_0().unwrap();
-        assert!(round_0.is_verifier(&TEST_VERIFIER_ID));
 
         let round_1 = test_round_1_initial_json().unwrap();
         assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID));
@@ -1374,10 +1262,7 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         let candidates = test_round_0().unwrap().verifiers().clone();
-        assert_eq!(TEST_VERIFIER_IDS.len(), candidates.len());
-        for id in TEST_VERIFIER_IDS.iter() {
-            assert!(candidates.contains(id));
-        }
+        assert_eq!(0, candidates.len());
     }
 
     #[test]

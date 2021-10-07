@@ -3,8 +3,8 @@ use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompressio
 
 use snarkvm_curves::PairingEngine as Engine;
 
+use fs_err::OpenOptions;
 use memmap::*;
-use std::fs::OpenOptions;
 
 pub fn transform_ratios<T: Engine + Sync>(response_filename: &str, parameters: &Phase1Parameters<T>) {
     println!(
@@ -42,7 +42,7 @@ pub fn transform_ratios<T: Engine + Sync>(response_filename: &str, parameters: &
 
     let response_readable_map = unsafe {
         MmapOptions::new()
-            .map(&response_reader)
+            .map(&response_reader.file())
             .expect("unable to create a memory map for input")
     };
 

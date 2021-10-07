@@ -1,12 +1,18 @@
+use std::{path::PathBuf, str::FromStr};
+
 use phase1_coordinator::environment::{Development, Environment, Parameters, Production};
 use setup1_shared::structures::{PublicSettings, SetupKind};
-use setup1_verifier::{utils::init_logger, verifier::Verifier};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, ViewKey};
-
-use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use tracing::info;
 use url::Url;
+
+mod coordinator_requests;
+mod errors;
+mod utils;
+mod verifier;
+
+use crate::verifier::Verifier;
 
 fn development() -> Environment {
     Development::from(Parameters::TestCustom {
@@ -56,7 +62,7 @@ async fn request_coordinator_public_settings(coordinator_url: &Url) -> anyhow::R
 async fn main() {
     let options = Options::from_args();
 
-    init_logger();
+    crate::utils::init_logger();
 
     let public_settings = request_coordinator_public_settings(&options.api_url)
         .await
@@ -69,23 +75,14 @@ async fn main() {
         SetupKind::Universal => universal(),
     };
 
-    let storage_prefix = format!("{:?}", public_settings.setup).to_lowercase();
-    let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
-
     let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
     let view_key = ViewKey::<Testnet2Parameters>::from_str(&raw_view_key).expect("Invalid view key");
     let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 
     // Initialize the verifier
     info!("Initializing verifier...");
-    let verifier = Verifier::new(
-        options.api_url.clone(),
-        view_key,
-        address,
-        environment,
-        tasks_storage_path,
-    )
-    .expect("Failed to initialize verifier");
+    let verifier =
+        Verifier::new(options.api_url.clone(), view_key, address, environment).expect("Failed to initialize verifier");
 
     verifier.start_verifier().await;
 }

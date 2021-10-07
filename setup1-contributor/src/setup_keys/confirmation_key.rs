@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use blake2::{Blake2s, Digest};
+use fs_err as fs;
 use serde::{Deserialize, Serialize};
 
 const CONFIRMATION_KEY_FILE: &str = ".confirmation_key";
@@ -51,14 +52,14 @@ impl ConfirmationKey {
     }
 
     fn read_from_disk() -> Result<Self> {
-        let bytes = std::fs::read(CONFIRMATION_KEY_FILE)?;
+        let bytes = fs::read(CONFIRMATION_KEY_FILE)?;
         let key_file = serde_json::from_slice(&bytes)?;
         Ok(key_file)
     }
 
     fn write_to_disk(&self) -> Result<()> {
         let bytes = serde_json::to_vec(self)?;
-        std::fs::write(CONFIRMATION_KEY_FILE, bytes)?;
+        fs::write(CONFIRMATION_KEY_FILE, bytes)?;
         Ok(())
     }
 
@@ -74,12 +75,12 @@ impl ConfirmationKey {
 
 pub fn print_key_and_remove_the_file() -> Result<()> {
     let key_file = ConfirmationKey::read_from_disk()?;
-    println!("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
+    println!("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
     println!("Your address is {}", key_file.address);
     println!("And confirmation key is {}", key_file.private_key);
     println!("Store this information in order to prove your participation in the setup");
     println!("Do not share the confirmation key with others!");
-    println!("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
-    std::fs::remove_file(CONFIRMATION_KEY_FILE)?;
+    println!("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||");
+    fs::remove_file(CONFIRMATION_KEY_FILE)?;
     Ok(())
 }

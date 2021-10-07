@@ -7,13 +7,14 @@ use crate::{
 use phase1::helpers::CurveKind;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
-use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
-    path::Path,
-    sync::{RwLockReadGuard, RwLockWriteGuard},
+    ops::{Deref, DerefMut},
+    path::{Path, PathBuf},
 };
+
+use super::Disk;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionLocator {
@@ -188,47 +189,10 @@ impl Object {
     }
 }
 
-// TODO (howardwu): Genericize this if necessary for remote objects.
-//  Alternatively, usage of temporary memory-backed local files can also work.
-pub type ObjectReader<'a> = RwLockReadGuard<'a, MmapMut>;
-pub type ObjectWriter<'a> = RwLockWriteGuard<'a, MmapMut>;
+pub trait ObjectReader: AsRef<[u8]> + Deref<Target = [u8]> {}
 
-/// A standard model for storage.
-pub trait Storage: Send + Sync + StorageLocator + StorageObject {
-    /// Loads a new instance of `Storage`.
-    fn load(environment: &Environment) -> Result<Self, CoordinatorError>
-    where
-        Self: Sized;
-
-    /// Initializes the location corresponding to the given locator with the given size.
-    fn initialize(&mut self, locator: Locator, size: u64) -> Result<(), CoordinatorError>;
-
-    /// Returns `true` if a given locator exists in storage. Otherwise, returns `false`.
-    fn exists(&self, locator: &Locator) -> bool;
-
-    /// Returns `true` if a given locator is opened in storage. Otherwise, returns `false`.
-    fn is_open(&self, locator: &Locator) -> bool;
-
-    /// Returns a copy of an object at the given locator in storage, if it exists.
-    fn get(&self, locator: &Locator) -> Result<Object, CoordinatorError>;
-
-    /// Inserts a new object at the given locator into storage, if it does not exist.
-    fn insert(&mut self, locator: Locator, object: Object) -> Result<(), CoordinatorError>;
-
-    /// Updates an existing object for the given locator in storage, if it exists.
-    fn update(&mut self, locator: &Locator, object: Object) -> Result<(), CoordinatorError>;
-
-    /// Copies the object in the given source locator to the given destination locator.
-    fn copy(&mut self, source_locator: &Locator, destination_locator: &Locator) -> Result<(), CoordinatorError>;
-
-    /// Removes a object from storage for a given locator.
-    fn remove(&mut self, locator: &Locator) -> Result<(), CoordinatorError>;
-
-    /// Returns the size of the object stored at the given locator.
-    fn size(&self, locator: &Locator) -> Result<u64, CoordinatorError>;
-
-    /// Process a [StorageAction] which mutates the storage.
-    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError>;
+pub trait ObjectWriter: AsMut<[u8]> + DerefMut<Target = [u8]> {
+    fn flush(&self) -> std::io::Result<()>;
 }
 
 /// The path to a resource defined by a [Locator].
@@ -238,6 +202,12 @@ pub struct LocatorPath(String);
 impl AsRef<Path> for LocatorPath {
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl Into<PathBuf> for LocatorPath {
+    fn into(self) -> PathBuf {
+        self.as_path().into()
     }
 }
 
@@ -296,14 +266,14 @@ pub enum LocatorOrPath {
 }
 
 impl LocatorOrPath {
-    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+    pub fn try_into_locator(self, storage: &Disk) -> Result<Locator, CoordinatorError> {
         match self {
             LocatorOrPath::Path(path) => storage.to_locator(&path),
             LocatorOrPath::Locator(locator) => Ok(locator),
         }
     }
 
-    pub fn try_into_path(self, storage: &impl Storage) -> Result<LocatorPath, CoordinatorError> {
+    pub fn try_into_path(self, storage: &Disk) -> Result<LocatorPath, CoordinatorError> {
         match self {
             LocatorOrPath::Path(path) => Ok(path),
             LocatorOrPath::Locator(locator) => storage.to_path(&locator),
@@ -345,11 +315,11 @@ impl RemoveAction {
 
     /// Obtain the location of the item to be removed from [Storage]
     /// as a [Locator].
-    pub fn try_into_locator(self, storage: &impl Storage) -> Result<Locator, CoordinatorError> {
+    pub fn try_into_locator(self, storage: &Disk) -> Result<Locator, CoordinatorError> {
         self.locator_or_path.try_into_locator(storage)
     }
 
-    pub fn try_into_path(self, storage: &impl Storage) -> Result<LocatorPath, CoordinatorError> {
+    pub fn try_into_path(self, storage: &Disk) -> Result<LocatorPath, CoordinatorError> {
         self.locator_or_path.try_into_path(storage)
     }
 }
@@ -366,6 +336,7 @@ pub struct UpdateAction {
 pub enum StorageAction {
     Remove(RemoveAction),
     Update(UpdateAction),
+    ClearRoundFiles(u64),
 }
 
 pub trait StorageLocator {
@@ -377,9 +348,12 @@ pub trait StorageLocator {
 }
 
 pub trait StorageObject {
+    type Reader: ObjectReader;
+    type Writer: ObjectWriter;
+
     /// Returns an object reader for the given locator.
-    fn reader(&self, locator: &Locator) -> Result<ObjectReader, CoordinatorError>;
+    fn reader(&self, locator: &Locator) -> Result<Self::Reader, CoordinatorError>;
 
     /// Returns an object writer for the given locator.
-    fn writer(&self, locator: &Locator) -> Result<ObjectWriter, CoordinatorError>;
+    fn writer(&self, locator: &Locator) -> Result<Self::Writer, CoordinatorError>;
 }

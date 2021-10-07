@@ -4,26 +4,14 @@ use thiserror::Error;
 pub enum ContributeError {
     #[error("Could not read passphrase")]
     CouldNotReadPassphraseError,
-    #[error("Lane {0} did not contain chunk with ID: {1}")]
-    LaneDidNotContainChunkWithIDError(String, String),
-    #[error("Lane {0} already contains chunk with ID: {1}")]
-    LaneAlreadyContainsChunkWithIDError(String, String),
     #[error("Failed running contribute")]
     FailedRunningContributeError,
-    #[error("Lane was null: {0}")]
-    LaneWasNullError(String),
     #[error("Unsupported decryptor")]
     UnsupportedDecryptorError,
 }
 
 #[derive(Debug, Error)]
 pub enum GenerateError {}
-
-#[derive(Debug, Error)]
-pub enum UtilsError {
-    #[error("Unknown upload mode: {0}")]
-    UnknownUploadModeError(String),
-}
 
 #[derive(Debug, Error)]
 pub enum CLIError {

@@ -1,4 +1,3 @@
-use crate::errors::UtilsError;
 use phase1::{ContributionMode, Phase1Parameters};
 use phase1_coordinator::{
     environment::{Development, Environment, Parameters, Production},
@@ -10,9 +9,9 @@ use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey,
 use snarkvm_utilities::ToBytes;
 
 use anyhow::Result;
-use rand::{CryptoRng, Rng};
 #[cfg(test)]
-use std::fs::{create_dir_all, write};
+use fs_err::{create_dir_all, write};
+use rand::{CryptoRng, Rng};
 use std::{
     convert::TryFrom,
     fs::{remove_file, File},
@@ -158,29 +157,5 @@ pub fn environment_by_setup_kind(kind: &SetupKind) -> Environment {
         SetupKind::Inner => inner_environment(),
         SetupKind::Outer => outer_environment(),
         SetupKind::Universal => universal_environment(),
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum UploadMode {
-    Auto,
-    Direct,
-}
-
-impl UploadMode {
-    pub fn variants() -> &'static [&'static str] {
-        &["auto", "direct"]
-    }
-}
-
-impl FromStr for UploadMode {
-    type Err = UtilsError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "auto" => Ok(Self::Auto),
-            "direct" => Ok(Self::Direct),
-            unexpected => Err(UtilsError::UnknownUploadModeError(unexpected.to_string())),
-        }
     }
 }

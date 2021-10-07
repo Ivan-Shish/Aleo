@@ -26,8 +26,13 @@ mod latency;
 /// Builds a request with authorization header to initialize
 /// a WebSocket handshake later
 fn prepare_request(api_url: &Url, api_path: &str, private_key: &PrivateKey<Testnet2Parameters>) -> Result<Request<()>> {
+    let scheme = match api_url.scheme() {
+        "http" => "ws",
+        "https" => "wss",
+        other => return Err(anyhow!("Unexpected url scheme: {}", other)),
+    };
     let mut url = api_url.join(api_path)?;
-    url.set_scheme("ws")
+    url.set_scheme(scheme)
         .map_err(|e| anyhow!("Failed to set url scheme to ws: {:?}", e))?;
 
     let auth_rng = &mut rand::rngs::OsRng;

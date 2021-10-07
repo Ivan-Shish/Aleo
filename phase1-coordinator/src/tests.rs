@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::{Disk, Storage},
+    storage::{Disk, StorageLocator},
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
@@ -14,6 +14,7 @@ use crate::{
 use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
+use fs_err as fs;
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
@@ -53,7 +54,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &mut Coordinator<Disk>) -> Result<(), CoordinatorError> {
+    fn contribute_to(&self, coordinator: &mut Coordinator) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -73,8 +74,10 @@ struct VerifierTestDetails {
 }
 
 impl VerifierTestDetails {
-    fn verify(&self, coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
-        coordinator.verify(&self.participant, &self.signing_key)
+    /// If there are pending verifications, grab one and verify it.
+    /// Otherwise do nothing
+    fn verify_if_available(&self, coordinator: &mut Coordinator) -> anyhow::Result<()> {
+        verify_task_if_available(coordinator, &self.participant, &self.signing_key)
     }
 }
 
@@ -109,20 +112,17 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
     let (contributor, contributor_signing_key, seed) = create_contributor("1");
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Advance the ceremony from round 0 to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Run contribution and verification for round 1.
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor, &contributor_signing_key, &seed)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     //
@@ -135,17 +135,13 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
     // changing the outcome of this test, if necessary.
     //
     let (contributor, _, _) = create_contributor("1");
-    let (verifier, _) = create_verifier("1");
     coordinator.add_to_queue(contributor.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony from round 1 to round 2.
     coordinator.update()?;
     assert_eq!(2, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     Ok(())
 }
@@ -191,10 +187,28 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
 
 */
 
+/// If there are pending verifications, grab one and verify it.
+/// Otherwise do nothing
+fn verify_task_if_available(
+    coordinator: &mut Coordinator,
+    verifier: &Participant,
+    signing_key: &SigningKey,
+) -> anyhow::Result<()> {
+    let pending_tasks = coordinator.get_pending_verifications();
+    if let Some(task) = pending_tasks.keys().next().cloned() {
+        coordinator.verify(&verifier, signing_key, &task)?;
+    }
+    Ok(())
+}
+
+fn fetch_task_for_verifier(coordinator: &Coordinator) -> Option<Task> {
+    coordinator.get_pending_verifications().keys().next().cloned()
+}
+
 #[test]
 #[serial]
 /// Drops a contributor who does not affect other contributors or verifiers.
-fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
+fn coordinator_drop_contributor_basic() {
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
         ProvingSystem::Groth16,
@@ -207,75 +221,64 @@ fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy)).unwrap();
 
     // Initialize the ceremony to round 0.
-    coordinator.initialize()?;
-    assert_eq!(0, coordinator.current_round_height()?);
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor2.clone(), 9).unwrap();
     assert_eq!(2, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
     assert!(coordinator.is_queue_contributor(&contributor1));
     assert!(coordinator.is_queue_contributor(&contributor2));
-    assert!(coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
-    assert!(!coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Update the ceremony to round 1.
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    coordinator.update().unwrap();
+    assert_eq!(1, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Contribute and verify up to the penultimate chunk.
-    for _ in 0..(number_of_chunks - 1) {
-        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
-        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+    for _ in 0..(number_of_chunks - 1) as u64 {
+        coordinator
+            .contribute(&contributor1, &contributor_signing_key1, &seed1)
+            .unwrap();
+        coordinator
+            .contribute(&contributor2, &contributor_signing_key2, &seed2)
+            .unwrap();
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key).unwrap();
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key).unwrap();
     }
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
-    coordinator.drop_participant(&contributor1)?;
+    coordinator.drop_participant(&contributor1).unwrap();
 
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Check that contributor 1 was dropped and coordinator state was updated.
     let contributors = coordinator.current_contributors();
@@ -301,12 +304,13 @@ fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
 
     // Print the coordinator state.
     let state = coordinator.state();
-    debug!("{}", serde_json::to_string_pretty(&state)?);
+    debug!("{}", serde_json::to_string_pretty(&state).unwrap());
     assert_eq!(1, state.current_round_height());
 
-    debug!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
-
-    Ok(())
+    debug!(
+        "{}",
+        serde_json::to_string_pretty(&coordinator.current_round().unwrap()).unwrap()
+    );
 }
 
 #[test]
@@ -339,52 +343,43 @@ fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Contribute and verify up to the penultimate chunk.
     for _ in 0..(number_of_chunks - 1) {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
         coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
     coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -468,24 +463,21 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Contribute and verify up to 2 before the final chunk.
     for _ in 0..(number_of_chunks - 2) {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
         coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     // Lock the next task for contributor 1 and 3.
@@ -534,15 +526,12 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -627,24 +616,21 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Contribute and verify up to 2 before the final chunk.
     for _ in 0..(number_of_chunks - 2) {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
         coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     // Lock the next task for contributor 1 and 3.
@@ -696,15 +682,12 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -790,62 +773,47 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(2, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
     assert!(coordinator.is_queue_contributor(&contributor1));
     assert!(coordinator.is_queue_contributor(&contributor2));
-    assert!(coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
-    assert!(!coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Update the ceremony to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Contribute and verify up to the penultimate chunk.
     for _ in 0..(number_of_chunks - 1) {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
     coordinator.drop_participant(&contributor1)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Check that contributor 1 was dropped and coordinator state was updated.
     let contributors = coordinator.current_contributors();
@@ -906,52 +874,60 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy)).unwrap();
 
     // Initialize the ceremony to round 0.
-    coordinator.initialize()?;
-    assert_eq!(0, coordinator.current_round_height()?);
+    coordinator.initialize().unwrap();
+    assert_eq!(0, coordinator.current_round_height().unwrap());
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(contributor3.clone(), 8)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), 10).unwrap();
+    coordinator.add_to_queue(contributor2.clone(), 9).unwrap();
+    coordinator.add_to_queue(contributor3.clone(), 8).unwrap();
     assert_eq!(3, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony to round 1.
-    coordinator.update()?;
-    assert_eq!(1, coordinator.current_round_height()?);
+    coordinator.update().unwrap();
+    assert_eq!(1, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Contribute and verify up to 2 before the final chunk.
     for _ in 0..(number_of_chunks - 2) {
-        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
-        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-        coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator
+            .contribute(&contributor1, &contributor_signing_key1, &seed1)
+            .unwrap();
+        coordinator
+            .contribute(&contributor2, &contributor_signing_key2, &seed2)
+            .unwrap();
+        coordinator
+            .contribute(&contributor3, &contributor_signing_key3, &seed3)
+            .unwrap();
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key).unwrap();
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key).unwrap();
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key).unwrap();
     }
 
     // Contribute up to the final chunk.
-    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
-    coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-    coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
+    coordinator
+        .contribute(&contributor1, &contributor_signing_key1, &seed1)
+        .unwrap();
+    coordinator
+        .contribute(&contributor2, &contributor_signing_key2, &seed2)
+        .unwrap();
+    coordinator
+        .contribute(&contributor3, &contributor_signing_key3, &seed3)
+        .unwrap();
 
     // Lock the next task for the verifier and contributor 1 and 3.
-    let (contributor1_locked_chunk_id, _) = coordinator.try_lock(&contributor1)?;
-    let (verifier_locked_chunk_id, _) = coordinator.try_lock(&verifier)?;
+    let (contributor1_locked_chunk_id, _) = coordinator.try_lock(&contributor1).unwrap();
 
     // Print the coordinator state.
     let state = coordinator.state();
-    debug!("{}", serde_json::to_string_pretty(&state)?);
+    debug!("{}", serde_json::to_string_pretty(&state).unwrap());
     assert_eq!(1, state.current_round_height());
 
     // Check that coordinator state includes a pending task for contributor 1 and 3.
@@ -1002,30 +978,32 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     }
 
     // Lock the next task for contributor 2.
-    coordinator.try_lock(&contributor2)?;
+    coordinator.try_lock(&contributor2).unwrap();
 
     // Drop the contributor from the current round.
-    coordinator.drop_participant(&contributor2)?;
+    coordinator.drop_participant(&contributor2).unwrap();
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
-    // Run `try_contribute` and `try_verify` to remove disposed tasks.
-    coordinator.try_contribute(&contributor1, contributor1_locked_chunk_id)?;
-    coordinator.try_verify(&verifier, verifier_locked_chunk_id)?;
+    // Run `try_contribute` to remove disposed tasks.
+    coordinator
+        .try_contribute(&contributor1, contributor1_locked_chunk_id)
+        .unwrap();
+    // No more disposed tasks for verifiers, so this call should return Err
+    let task = fetch_task_for_verifier(&coordinator).unwrap();
+    let result = coordinator.try_verify(&verifier, &task);
+    assert!(result.is_err());
 
     // Print the coordinator state.
     let state = coordinator.state();
-    debug!("{}", serde_json::to_string_pretty(&state)?);
+    debug!("{}", serde_json::to_string_pretty(&state).unwrap());
     assert_eq!(1, state.current_round_height());
 
     // Check that contributor 2 was dropped and coordinator state was updated.
@@ -1072,17 +1050,6 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
         }
     }
 
-    let verifiers = coordinator.current_verifiers();
-    assert_eq!(1, verifiers.len());
-    for (_, verifier_info) in verifiers {
-        assert_eq!(0, verifier_info.locked_chunks().len());
-        assert_eq!(2, verifier_info.assigned_tasks().len());
-        assert_eq!(0, verifier_info.pending_tasks().len());
-        assert_eq!(8, verifier_info.completed_tasks().len());
-        assert_eq!(0, verifier_info.disposing_tasks().len());
-        assert_eq!(11, verifier_info.disposed_tasks().len());
-    }
-
     Ok(())
 }
 
@@ -1116,7 +1083,6 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1125,8 +1091,8 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     // Check that all contributors completed expected tasks
@@ -1200,7 +1166,6 @@ fn coordinator_drop_contributor_and_release_locks() {
     let verifier_1 = create_verifier_test_details("1");
     coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
     coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
-    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
@@ -1215,27 +1180,24 @@ fn coordinator_drop_contributor_and_release_locks() {
     for _ in 0..number_of_chunks {
         replacement_contributor.contribute_to(&mut coordinator).unwrap();
         contributor_2.contribute_to(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
     }
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
     let test_contributor_4 = create_contributor_test_details("4");
-    let verifier_2 = create_verifier_test_details("2");
     coordinator
         .add_to_queue(test_contributor_3.participant.clone(), 10)
         .unwrap();
     coordinator
         .add_to_queue(test_contributor_4.participant.clone(), 10)
         .unwrap();
-    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 2.
     coordinator.update().unwrap();
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
 /// Drops a few contributors and see what happens
@@ -1277,7 +1239,6 @@ fn coordinator_drop_several_contributors() {
     coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
     coordinator.add_to_queue(contributor_2.participant.clone(), 10).unwrap();
     coordinator.add_to_queue(contributor_3.participant.clone(), 10).unwrap();
-    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
@@ -1290,9 +1251,9 @@ fn coordinator_drop_several_contributors() {
         contributor_2.contribute_to(&mut coordinator).unwrap();
         contributor_3.contribute_to(&mut coordinator).unwrap();
 
-        verifier_1.verify(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
     }
 
     {
@@ -1315,13 +1276,13 @@ fn coordinator_drop_several_contributors() {
     fn contribute_verify_until_no_tasks(
         contributor: &ContributorTestDetails,
         verifier: &VerifierTestDetails,
-        coordinator: &mut Coordinator<Disk>,
+        coordinator: &mut Coordinator,
     ) -> anyhow::Result<bool> {
         match contributor.contribute_to(coordinator) {
             Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
             Err(CoordinatorError::PreviousContributionMissing { current_task: _ }) => Ok(false),
             Ok(_) => {
-                verifier.verify(coordinator)?;
+                verifier.verify_if_available(coordinator)?;
                 Ok(false)
             }
             Err(error) => return Err(error.into()),
@@ -1349,24 +1310,21 @@ fn coordinator_drop_several_contributors() {
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
     let test_contributor_4 = create_contributor_test_details("4");
-    let verifier_2 = create_verifier_test_details("2");
     coordinator
         .add_to_queue(test_contributor_3.participant.clone(), 10)
         .unwrap();
     coordinator
         .add_to_queue(test_contributor_4.participant.clone(), 10)
         .unwrap();
-    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 2.
     coordinator.update().unwrap();
 
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
-fn check_round_matches_storage_files(storage: &impl Storage, round: &Round) {
+fn check_round_matches_storage_files(storage: &Disk, round: &Round) {
     debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
         debug!("Checking chunk {}", chunk.chunk_id());
@@ -1385,7 +1343,7 @@ fn check_round_matches_storage_files(storage: &impl Storage, round: &Round) {
         let path = initial_challenge_location.as_path();
         let chunk_dir = path.parent().unwrap();
 
-        let n_files = std::fs::read_dir(&chunk_dir).unwrap().count();
+        let n_files = fs::read_dir(&chunk_dir).unwrap().count();
 
         let contributions_complete = chunk.only_contributions_complete(round.expected_number_of_contributions());
 
@@ -1484,14 +1442,13 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     let verifier_1 = create_verifier_test_details("1");
     coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
     coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
-    coordinator.add_to_queue(verifier_1.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
 
     contributor_1.contribute_to(&mut coordinator).unwrap();
 
-    verifier_1.verify(&mut coordinator).unwrap();
+    verifier_1.verify_if_available(&mut coordinator).unwrap();
 
     coordinator.drop_participant(&contributor_1.participant).unwrap();
 
@@ -1499,27 +1456,24 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     for _ in 0..number_of_chunks {
         replacement_contributor.contribute_to(&mut coordinator).unwrap();
         contributor_2.contribute_to(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
-        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
+        verifier_1.verify_if_available(&mut coordinator).unwrap();
     }
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
     let test_contributor_4 = create_contributor_test_details("4");
-    let verifier_2 = create_verifier_test_details("2");
     coordinator
         .add_to_queue(test_contributor_3.participant.clone(), 10)
         .unwrap();
     coordinator
         .add_to_queue(test_contributor_4.participant.clone(), 10)
         .unwrap();
-    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
 
     // Update the ceremony to round 2.
     coordinator.update().unwrap();
     assert_eq!(2, coordinator.current_round_height().unwrap());
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
 #[test]
@@ -1558,24 +1512,21 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
     coordinator.add_to_queue(contributor3.clone(), 8)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Update the ceremony to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Contribute and verify up to 2 before the final chunk.
     for _ in 0..(number_of_chunks - 2) {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
         coordinator.contribute(&contributor3, &contributor_signing_key3, &seed3)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     // Aggregate all of the tasks for each of the contributors into a HashSet.
@@ -1613,45 +1564,36 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor 2 from the current round.
     coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor 3 from the current round.
     coordinator.drop_participant(&contributor3)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
-    assert!(!coordinator.is_queue_verifier(&verifier));
     assert!(!coordinator.is_current_contributor(&contributor1));
     assert!(!coordinator.is_current_contributor(&contributor2));
     assert!(!coordinator.is_current_contributor(&contributor3));
-    assert!(coordinator.is_current_verifier(&verifier));
     assert!(!coordinator.is_finished_contributor(&contributor1));
     assert!(!coordinator.is_finished_contributor(&contributor2));
     assert!(!coordinator.is_finished_contributor(&contributor3));
-    assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Print the coordinator state.
     let state = coordinator.state();
@@ -1715,15 +1657,12 @@ fn try_lock_blocked() -> anyhow::Result<()> {
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
     assert_eq!(2, coordinator.number_of_queue_contributors());
-    assert_eq!(1, coordinator.number_of_queue_verifiers());
 
     // Advance the ceremony from round 0 to round 1.
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     // Fetch the bucket size.
     fn bucket_size(number_of_chunks: u64, number_of_contributors: u64) -> u64 {
@@ -1786,7 +1725,14 @@ fn try_lock_blocked() -> anyhow::Result<()> {
     }
 
     // Clear all pending verifications, so the locked chunk is released as well.
-    while coordinator.verify(&verifier, &verifier_signing_key).is_ok() {}
+    loop {
+        let pending_tasks = coordinator.get_pending_verifications();
+        if let Some(task) = pending_tasks.keys().next().cloned() {
+            coordinator.verify(&verifier, &verifier_signing_key, &task)?;
+        } else {
+            break;
+        }
+    }
 
     // Now try to lock the next chunk as contributor 1 again.
     //
@@ -1835,7 +1781,6 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(test_contributor_1.participant.clone(), 10)?;
     coordinator.add_to_queue(test_contributor_2.participant.clone(), 9)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1867,23 +1812,20 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
     for _ in 0..number_of_chunks {
         replacement_contributor_1.contribute_to(&mut coordinator)?;
         replacement_contributor_2.contribute_to(&mut coordinator)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
     let test_contributor_4 = create_contributor_test_details("4");
-    let (verifier, _verifier_signing_key) = create_verifier("2");
     coordinator.add_to_queue(test_contributor_3.participant.clone(), 10)?;
     coordinator.add_to_queue(test_contributor_4.participant.clone(), 10)?;
-    coordinator.add_to_queue(verifier, 10)?;
 
     // Update the ceremony to round 2.
     coordinator.update()?;
     assert_eq!(2, coordinator.current_round_height()?, "Should proceed to the round 2");
     assert_eq!(0, coordinator.number_of_queue_contributors());
-    assert_eq!(0, coordinator.number_of_queue_verifiers());
 
     Ok(())
 }
@@ -1915,7 +1857,6 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     let (verifier, verifier_signing_key) = create_verifier("1");
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1923,8 +1864,8 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     for _ in 0..number_of_chunks {
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
-        coordinator.verify(&verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
+        verify_task_if_available(&mut coordinator, &verifier, &verifier_signing_key)?;
     }
 
     for (_participant, contributor_info) in coordinator.current_contributors() {
@@ -1938,13 +1879,10 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     coordinator.drop_participant(&contributor1)?;
     assert_eq!(false, coordinator.is_queue_contributor(&contributor1));
     assert_eq!(false, coordinator.is_queue_contributor(&contributor2));
-    assert_eq!(false, coordinator.is_queue_verifier(&verifier));
     assert_eq!(false, coordinator.is_current_contributor(&contributor1));
     assert_eq!(true, coordinator.is_current_contributor(&contributor2));
-    assert_eq!(true, coordinator.is_current_verifier(&verifier));
     assert_eq!(false, coordinator.is_finished_contributor(&contributor1));
     assert_eq!(false, coordinator.is_finished_contributor(&contributor2));
-    assert_eq!(false, coordinator.is_finished_verifier(&verifier));
 
     for (participant, contributor_info) in coordinator.current_contributors() {
         if participant == contributor2 {
@@ -1960,109 +1898,6 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
             assert_eq!(contributor_info.disposed_tasks().len(), 0);
         }
     }
-
-    Ok(())
-}
-
-/// This test assures that, when a verifier is dropped while holding a lock,
-/// the verification can still be safely passed over to another verifier.
-#[test]
-#[serial]
-fn drop_verifier() -> anyhow::Result<()> {
-    let parameters = Parameters::Custom(Settings::new(
-        ContributionMode::Chunked,
-        ProvingSystem::Groth16,
-        CurveKind::Bls12_377,
-        6,  /* power */
-        16, /* batch_size */
-        16, /* chunk_size */
-    ));
-    let environment = initialize_test_environment(&Testing::from(parameters).into());
-    let number_of_chunks = environment.number_of_chunks() as usize;
-
-    // Instantiate a coordinator.
-    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
-
-    // Initialize the ceremony to round 0.
-    coordinator.initialize()?;
-    assert_eq!(0, coordinator.current_round_height()?);
-
-    // Add a contributor and verifier to the queue.
-    let (contributor, contributor_signing_key, seed1) = create_contributor("1");
-    let (verifier1, verifier_signing_key1) = create_verifier("1");
-    let (verifier2, verifier_signing_key2) = create_verifier("2");
-    coordinator.add_to_queue(contributor.clone(), 10)?;
-    coordinator.add_to_queue(verifier1.clone(), 10)?;
-    coordinator.add_to_queue(verifier2.clone(), 9)?;
-
-    // Update the ceremony to round 1.
-    coordinator.update()?;
-
-    for _ in 0..number_of_chunks {
-        coordinator.contribute(&contributor, &contributor_signing_key, &seed1)?;
-    }
-
-    // Assigning verification tasks is random, so we need to see who got them.
-    let (verifier1_assigned_num, verifier2_assigned_num) = {
-        let mut verifier1_assigned_num = 0;
-        let mut verifier2_assigned_num = 0;
-        for (participant, contributor_info) in coordinator.current_verifiers() {
-            match participant == verifier1 {
-                true => verifier1_assigned_num += contributor_info.assigned_tasks().len(),
-                false => verifier2_assigned_num += contributor_info.assigned_tasks().len(),
-            };
-        }
-
-        (verifier1_assigned_num, verifier2_assigned_num)
-    };
-
-    // Drop the contributor from the current round.
-    let (drop_verifier, stay_verifier, stay_verifier_signing_key) =
-        match verifier1_assigned_num >= verifier2_assigned_num {
-            true => (verifier1, verifier2, verifier_signing_key2),
-            false => (verifier2, verifier1, verifier_signing_key1),
-        };
-
-    coordinator.try_lock(&drop_verifier)?;
-
-    coordinator.drop_participant(&drop_verifier)?;
-    assert_eq!(false, coordinator.is_queue_contributor(&contributor));
-    assert_eq!(false, coordinator.is_queue_verifier(&drop_verifier));
-    assert_eq!(false, coordinator.is_queue_verifier(&stay_verifier));
-    assert_eq!(true, coordinator.is_current_contributor(&contributor));
-    assert_eq!(false, coordinator.is_current_verifier(&drop_verifier));
-    assert_eq!(true, coordinator.is_current_verifier(&stay_verifier));
-    assert_eq!(false, coordinator.is_finished_contributor(&contributor));
-    assert_eq!(false, coordinator.is_finished_verifier(&drop_verifier));
-    assert_eq!(false, coordinator.is_finished_verifier(&stay_verifier));
-
-    for (participant, contributor_info) in coordinator.current_verifiers() {
-        if participant == stay_verifier {
-            assert_eq!(contributor_info.completed_tasks().len(), 0);
-            assert_eq!(contributor_info.assigned_tasks().len(), 8);
-            assert_eq!(contributor_info.disposing_tasks().len(), 0);
-            assert_eq!(contributor_info.disposed_tasks().len(), 0);
-        }
-    }
-
-    for _ in 0..number_of_chunks {
-        coordinator.verify(&stay_verifier, &stay_verifier_signing_key)?;
-    }
-
-    // Add some more participants to proceed to the next round
-    let test_contributor_3 = create_contributor_test_details("3");
-    let test_contributor_4 = create_contributor_test_details("4");
-    let verifier_2 = create_verifier_test_details("2");
-    coordinator
-        .add_to_queue(test_contributor_3.participant.clone(), 10)
-        .unwrap();
-    coordinator
-        .add_to_queue(test_contributor_4.participant.clone(), 10)
-        .unwrap();
-    coordinator.add_to_queue(verifier_2.participant.clone(), 10).unwrap();
-
-    // Update the ceremony to round 2.
-    coordinator.update().unwrap();
 
     Ok(())
 }
@@ -2096,10 +1931,8 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, _contributor_signing_key1, _seed1) = create_contributor("1");
-    let (verifier, _verifier_signing_key) = create_verifier("1");
 
     coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -2159,11 +1992,9 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
-    let (verifier, _verifier_signing_key) = create_verifier("1");
 
     coordinator.add_to_queue(contributor1.clone(), 10)?;
     coordinator.add_to_queue(contributor2.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -2233,10 +2064,8 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
-    let (verifier, _verifier_signing_key) = create_verifier("1");
 
     coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(verifier.clone(), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -2246,7 +2075,6 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
 
     coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
 
-    coordinator.try_lock(&verifier)?;
     coordinator.try_lock(&contributor1)?;
 
     // increment the time a little bit (but not enough for the
@@ -2264,10 +2092,204 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     // Check that replacement contributor has been added, and that the
     // contributor1 has been dropped.
     assert_eq!(1, coordinator.current_contributors().len());
-    assert_eq!(2, coordinator.dropped_participants().len());
+    assert_eq!(1, coordinator.dropped_participants().len());
     assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
     assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
-    assert_eq!(&verifier, coordinator.dropped_participants().get(1).unwrap().id());
+
+    Ok(())
+}
+
+/// Test that a participant who stays in the queue for more
+/// than [Environment::queue_seen_timeout] is dropped from the
+/// queue by the coordinator.
+#[test]
+#[serial]
+fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::days(20))
+        .participant_lock_timeout(chrono::Duration::days(20));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, _, _) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    // Add another contributor who we are gonna try to drop
+    let (contributor2, _, _) = create_contributor("2");
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::days(10));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(!coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    Ok(())
+}
+
+/// Test that a participant can remain in the queue by sending heartbeats.
+#[test]
+#[serial]
+fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::days(20))
+        .participant_lock_timeout(chrono::Duration::days(20));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, _, _) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    // Add another contributor who we are gonna try to drop
+    let (contributor2, _, _) = create_contributor("2");
+    coordinator.add_to_queue(contributor2.clone(), 10)?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // increment the time a little bit (but not enough for the
+    // lock to timeout)
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    // Send heartbeat from contributor2
+    coordinator.heartbeat(&contributor2).unwrap();
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::days(5));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.is_queue_contributor(&contributor2));
+    assert!(coordinator.dropped_participants().is_empty());
+
+    Ok(())
+}
+
+/// Test that a participant who maintains a lock on a chunk for longer
+/// than [Environment::participant_lock_timeout] is dropped from the
+/// round by the coordinator.
+#[test]
+#[serial]
+fn rollback_locked_chunk() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(20))
+        .participant_lock_timeout(chrono::Duration::minutes(10));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+
+    let (_, contributor_info) = &coordinator.current_contributors()[0];
+    let num_locked = contributor_info.locked_chunks().len();
+    let num_assigned = contributor_info.assigned_tasks().len();
+    let num_pending = contributor_info.pending_tasks().len();
+
+    let (chunk_id, _) = coordinator.try_lock(&contributor1)?;
+    let task = Task::new(chunk_id, 1);
+    coordinator.rollback_locked_task(&contributor1, task)?;
+
+    assert_eq!(num_locked, contributor_info.locked_chunks().len());
+    assert_eq!(num_assigned, contributor_info.assigned_tasks().len());
+    assert_eq!(num_pending, contributor_info.pending_tasks().len());
+    assert!(contributor_info.assigned_tasks().contains(&task));
+
+    let current_round = coordinator.current_round()?;
+    let chunk = current_round.chunk(task.chunk_id())?;
+    assert_eq!(&None, chunk.lock_holder());
 
     Ok(())
 }

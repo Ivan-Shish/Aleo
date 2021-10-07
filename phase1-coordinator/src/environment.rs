@@ -1,7 +1,4 @@
-use crate::{
-    objects::Participant,
-    storage::{Disk, Storage},
-};
+use crate::{objects::Participant, storage::Disk};
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
@@ -240,6 +237,9 @@ pub struct Environment {
     /// coordinator.
     #[serde_as(as = "DurationSecondsWithFrac<String>")]
     participant_lock_timeout: chrono::Duration,
+    /// The maximum duration a queued contributor can go without a heartbeat.
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    queue_seen_timeout: chrono::Duration,
     /// The number of drops tolerated by a participant before banning them from future rounds.
     participant_ban_threshold: u16,
     /// The setting to allow current contributors to join the queue for the next round.
@@ -317,22 +317,6 @@ impl Environment {
     }
 
     ///
-    /// Returns the minimum number of verifiers permitted to
-    /// participate in a round.
-    ///
-    pub const fn minimum_verifiers_per_round(&self) -> usize {
-        self.minimum_verifiers_per_round
-    }
-
-    ///
-    /// Returns the maximum number of verifiers permitted to
-    /// participate in a round.
-    ///
-    pub const fn maximum_verifiers_per_round(&self) -> usize {
-        self.maximum_verifiers_per_round
-    }
-
-    ///
     /// Returns the number of chunks a contributor is
     /// authorized to lock in tandem at any point during a round.
     ///
@@ -373,6 +357,14 @@ impl Environment {
     ///
     pub const fn participant_lock_timeout(&self) -> chrono::Duration {
         self.participant_lock_timeout
+    }
+
+    ///
+    /// Returns the maximum duration that a queued contributor can go
+    /// without a heartbeat.
+    ///
+    pub const fn queue_seen_timeout(&self) -> chrono::Duration {
+        self.queue_seen_timeout
     }
 
     ///
@@ -498,16 +490,6 @@ impl Testing {
         self
     }
 
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
-        self
-    }
-
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
-        self
-    }
-
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -541,6 +523,12 @@ impl Testing {
     pub fn participant_lock_timeout(&self, participant_lock_timeout: chrono::Duration) -> Self {
         let mut deployment = self.clone();
         deployment.environment.participant_lock_timeout = participant_lock_timeout;
+        deployment
+    }
+
+    pub fn queue_seen_timeout(&self, queue_seen_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.queue_seen_timeout = queue_seen_timeout;
         deployment
     }
 }
@@ -579,6 +567,7 @@ impl std::default::Default for Testing {
                 contributor_seen_timeout: chrono::Duration::minutes(5),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
+                queue_seen_timeout: chrono::Duration::days(10),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -612,13 +601,13 @@ impl Development {
         self
     }
 
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
+    pub fn contributor_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.contributor_seen_timeout = timeout;
         self
     }
 
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
+    pub fn participant_lock_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.participant_lock_timeout = timeout;
         self
     }
 
@@ -687,6 +676,7 @@ impl std::default::Default for Development {
                 contributor_seen_timeout: chrono::Duration::minutes(1),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
+                queue_seen_timeout: chrono::Duration::minutes(10),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -720,13 +710,18 @@ impl Production {
         self
     }
 
-    pub fn minimum_verifiers_per_round(mut self, minimum: usize) -> Self {
-        self.environment.minimum_verifiers_per_round = minimum;
+    pub fn contributor_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.contributor_seen_timeout = timeout;
         self
     }
 
-    pub fn maximum_verifiers_per_round(mut self, maximum: usize) -> Self {
-        self.environment.maximum_verifiers_per_round = maximum;
+    pub fn participant_lock_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.participant_lock_timeout = timeout;
+        self
+    }
+
+    pub fn queue_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
+        self.environment.queue_seen_timeout = timeout;
         self
     }
 
@@ -786,9 +781,10 @@ impl std::default::Default for Production {
                 maximum_verifiers_per_round: 5,
                 contributor_lock_chunk_limit: 5,
                 verifier_lock_chunk_limit: 5,
-                contributor_seen_timeout: chrono::Duration::minutes(1),
-                verifier_seen_timeout: chrono::Duration::minutes(15),
-                participant_lock_timeout: chrono::Duration::minutes(20),
+                contributor_seen_timeout: chrono::Duration::days(7),
+                verifier_seen_timeout: chrono::Duration::days(7),
+                participant_lock_timeout: chrono::Duration::days(7),
+                queue_seen_timeout: chrono::Duration::days(7),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: false,
                 allow_current_verifiers_in_queue: true,
