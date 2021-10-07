@@ -9,12 +9,12 @@ use snarkvm_dpc::{
 use snarkvm_fields::Field;
 use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
 
-use fs_err::OpenOptions;
 use gumdrop::Options;
 use memmap::MmapOptions;
 use phase2::parameters::circuit_to_qap;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
+use std::fs::OpenOptions;
 
 type AleoInner = <Testnet2Parameters as Parameters>::InnerCurve;
 type AleoOuter = <Testnet2Parameters as Parameters>::OuterCurve;
@@ -168,7 +168,7 @@ where
         .expect("could not read phase 1 transcript file");
     let mut phase1_transcript = unsafe {
         MmapOptions::new()
-            .map_mut(phase1_transcript.file())
+            .map_mut(&phase1_transcript)
             .expect("unable to create a memory map for input")
     };
     let mut output = OpenOptions::new()
