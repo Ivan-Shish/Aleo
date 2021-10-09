@@ -99,6 +99,8 @@ impl Contribute {
                 Ok(joined) => {
                     info!("Attempted to join the queue with response: {}", joined);
                     if !joined {
+                        println!("Failed to join the queue - reliability score too low");
+
                         // it means contributor either already contributed,
                         // or has a low reliability score, or unable to
                         // join the queue
@@ -110,7 +112,6 @@ impl Contribute {
                 Err(err) => {
                     let text = format!("Failed to join the queue, error: {}", err);
                     error!("{}", text);
-                    println!("{}", text);
                     sleep(DELAY_POLL_CEREMONY).await;
                 }
             }
