@@ -41,7 +41,7 @@ pub fn new_challenge<T: Engine + Sync>(
     // Write a blank BLAKE2b hash:
     let hash = blank_hash();
     (&mut writable_map[0..])
-        .write_all(hash.as_slice())
+        .write_all(&hash)
         .expect("unable to write a default hash to mmap");
     writable_map
         .flush()

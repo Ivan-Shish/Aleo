@@ -8,7 +8,7 @@ use snarkvm_curves::{AffineCurve, Group, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{Field, One, PrimeField, Zero};
 use snarkvm_utilities::{biginteger::BigInteger, rand::UniformRand, CanonicalSerialize, ConstantSerializedSize};
 
-use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
+use blake2::{Blake2b, Digest};
 use rand::{rngs::OsRng, thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::{
@@ -17,7 +17,6 @@ use std::{
     ops::{AddAssign, Mul},
     sync::Arc,
 };
-use typenum::consts::U64;
 
 #[cfg(not(feature = "wasm"))]
 use crypto::{digest::Digest as CryptoDigest, sha2::Sha256};
@@ -98,7 +97,7 @@ pub fn batch_exp<C: AffineCurve>(
 }
 
 // Create an RNG based on a mixture of system randomness and user provided randomness
-pub fn user_system_randomness() -> Vec<u8> {
+pub fn user_system_randomness() -> [u8; 64] {
     let mut system_rng = OsRng;
     let mut h = Blake2b::default();
 
@@ -117,8 +116,7 @@ pub fn user_system_randomness() -> Vec<u8> {
 
     // Hash it all up to make a seed
     h.update(&user_input.as_bytes());
-    let arr: GenericArray<u8, U64> = h.finalize();
-    arr.to_vec()
+    h.finalize().into()
 }
 
 #[allow(clippy::modulo_one)]
@@ -195,8 +193,8 @@ impl<W: Write> HashWriter<W> {
     }
 
     /// Destroy this writer and return the hash of what was written.
-    pub fn into_hash(self) -> GenericArray<u8, U64> {
-        self.hasher.finalize()
+    pub fn into_hash(self) -> [u8; 64] {
+        self.hasher.finalize().into()
     }
 }
 
@@ -220,13 +218,13 @@ impl<W: Write> Write for HashWriter<W> {
 /// used a specially formed writer to write to the file and calculate a hash on the fly, but memory-constrained
 /// implementation now writes without a particular order, so plain recalculation at the end
 /// of the procedure is more efficient
-pub fn calculate_hash(input_map: &[u8]) -> GenericArray<u8, U64> {
+pub fn calculate_hash(input_map: &[u8]) -> [u8; 64] {
     let chunk_size = 1 << 30; // read by 1GB from map
     let mut hasher = Blake2b::default();
     for chunk in input_map.chunks(chunk_size) {
         hasher.update(&chunk);
     }
-    hasher.finalize()
+    hasher.finalize().into()
 }
 
 pub fn hash_to_g2<E: PairingEngine>(digest: &[u8]) -> E::G2Projective {
@@ -345,14 +343,14 @@ pub fn power_pairs<G: AffineCurve>(v: &[G]) -> (G, G) {
 }
 
 /// Compute BLAKE2b("")
-pub fn blank_hash() -> GenericArray<u8, U64> {
-    Blake2b::new().finalize()
+pub fn blank_hash() -> [u8; 64] {
+    Blake2b::new().finalize().into()
 }
 
-pub fn reduced_hash(old_power: u8, new_power: u8) -> GenericArray<u8, U64> {
+pub fn reduced_hash(old_power: u8, new_power: u8) -> [u8; 64] {
     let mut hasher = Blake2b::new();
     hasher.update(&[old_power, new_power]);
-    hasher.finalize()
+    hasher.finalize().into()
 }
 
 /// Checks if pairs have the same ratio.

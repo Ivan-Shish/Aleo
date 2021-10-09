@@ -58,7 +58,7 @@ pub struct Phase1<'a, E: PairingEngine> {
     /// Marlin: empty
     pub beta_g2: E::G2Affine,
     /// Hash chain hash
-    pub hash: GenericArray<u8, U64>,
+    pub hash: [u8; 64],
     /// The parameters used for the setup of this accumulator
     pub parameters: &'a Phase1Parameters<E>,
 }

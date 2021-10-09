@@ -26,7 +26,7 @@ pub fn setup_verify<E: PairingEngine>(
     check_input_for_correctness: CheckForCorrectness,
     compressed_output: UseCompression,
     parameters: &Phase1Parameters<E>,
-) -> (Vec<u8>, Vec<u8>, PublicKey<E>, GenericArray<u8, U64>) {
+) -> (Vec<u8>, Vec<u8>, PublicKey<E>, [u8; 64]) {
     let (input, _) = generate_input(&parameters, compressed_input, check_input_for_correctness);
     let mut output = generate_output(&parameters, compressed_output);
 

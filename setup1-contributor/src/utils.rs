@@ -108,13 +108,12 @@ pub fn get_authorization_value<R: Rng + CryptoRng>(
 ///
 pub fn sign_contribution_state<R: Rng + CryptoRng>(
     signing_key: &str,
-    challenge_hash: &[u8],
-    response_hash: &[u8],
-    next_challenge_hash: Option<Vec<u8>>,
+    challenge_hash: &[u8; 64],
+    response_hash: &[u8; 64],
+    next_challenge_hash: Option<&[u8; 64]>,
     rng: &mut R,
 ) -> Result<ContributionFileSignature> {
-    let contribution_state =
-        ContributionState::new(challenge_hash.to_vec(), response_hash.to_vec(), next_challenge_hash)?;
+    let contribution_state = ContributionState::new(challenge_hash, response_hash, next_challenge_hash);
     let message = contribution_state.signature_message()?;
 
     let view_key = ViewKey::<Testnet2Parameters>::from_str(signing_key)?;

@@ -43,7 +43,6 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub enum CoordinatorError {
     AggregateContributionFileSizeMismatch,
-    ChallengeHashSizeInvalid,
     ChunkAlreadyComplete,
     ChunkAlreadyVerified,
     ChunkIdAlreadyAdded,
@@ -110,7 +109,6 @@ pub enum CoordinatorError {
     LocatorFileShouldBeOpen,
     LocatorSerializationFailed,
     NextChallengeHashAlreadyExists,
-    NextChallengeHashSizeInvalid,
     NextChallengeHashMissing,
     NextRoundAlreadyInPrecommit,
     NextRoundShouldBeEmpty,
@@ -158,7 +156,6 @@ pub enum CoordinatorError {
     Phase1Setup(setup_utils::Error),
     QueueIsEmpty,
     QueueWaitTimeIncomplete,
-    ResponseHashSizeInvalid,
     RoundAggregationFailed,
     RoundAlreadyInitialized,
     RoundAlreadyAggregated,
@@ -1501,7 +1498,7 @@ impl Coordinator {
                 "Challenge is located in {}",
                 self.storage.to_path(&challenge_file_locator)?
             );
-            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash));
 
             // Compute the response hash.
             let response_reader = self.storage.reader(&Locator::ContributionFile(response_file_locator))?;
@@ -1511,7 +1508,7 @@ impl Coordinator {
                 self.storage
                     .to_path(&Locator::ContributionFile(response_file_locator))?
             );
-            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
+            debug!("Response hash is {}", pretty_hash!(&response_hash));
 
             // Fetch the challenge hash from the response file.
             let challenge_hash_in_response = &response_reader
@@ -1520,9 +1517,9 @@ impl Coordinator {
             let pretty_hash = pretty_hash!(&challenge_hash_in_response);
 
             // Check the starting hash in the response file is based on the challenge.
-            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash));
             info!("The challenge hash in response file is {}", pretty_hash);
-            if challenge_hash_in_response != challenge_hash.as_slice() {
+            if challenge_hash_in_response != challenge_hash {
                 error!("Challenge hash in response file does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -1554,13 +1551,13 @@ impl Coordinator {
             }
 
             // Check that the contribution file signature challenge hash is correct.
-            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash {
                 error!("The signed challenge hash does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
             // Check that the contribution file signature response hash is correct.
-            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash {
                 error!("The signed response hash does not match the expected response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -1698,7 +1695,7 @@ impl Coordinator {
                 "Challenge is located in {}",
                 self.storage.to_path(&challenge_file_locator)?
             );
-            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            debug!("Challenge hash is {}", pretty_hash!(&challenge_hash));
 
             // Compute the response hash.
             let response_reader = self.storage.reader(&response_file_locator)?;
@@ -1707,7 +1704,7 @@ impl Coordinator {
                 "Response is located in {}",
                 self.storage.to_path(&response_file_locator)?
             );
-            debug!("Response hash is {}", pretty_hash!(&response_hash.as_slice()));
+            debug!("Response hash is {}", pretty_hash!(&response_hash));
 
             // Fetch the challenge hash from the response file.
             let challenge_hash_in_response = &response_reader
@@ -1716,9 +1713,9 @@ impl Coordinator {
             let pretty_hash = pretty_hash!(&challenge_hash_in_response);
 
             // Check the starting hash in the response file is based on the challenge.
-            info!("The challenge hash is {}", pretty_hash!(&challenge_hash.as_slice()));
+            info!("The challenge hash is {}", pretty_hash!(&challenge_hash));
             info!("The challenge hash in response file is {}", pretty_hash);
-            if challenge_hash_in_response != challenge_hash.as_slice() {
+            if challenge_hash_in_response != challenge_hash {
                 error!("Challenge hash in response file does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -1735,19 +1732,16 @@ impl Coordinator {
                 "Next challenge is located in {}",
                 self.storage.to_path(&next_challenge_locator)?
             );
-            debug!(
-                "Next challenge hash is {}",
-                pretty_hash!(&next_challenge_hash.as_slice())
-            );
+            debug!("Next challenge hash is {}", pretty_hash!(&next_challenge_hash));
 
             // Fetch the saved response hash in the next challenge file.
-            let saved_response_hash = next_challenge_reader.as_ref().chunks(64).next().unwrap().to_vec();
+            let saved_response_hash = next_challenge_reader.as_ref().chunks(64).next().unwrap();
             let pretty_hash = pretty_hash!(&saved_response_hash);
 
             // Check that the response hash matches the next challenge hash.
             info!("The response hash is {}", pretty_hash!(&response_hash));
             info!("The response hash in next challenge file is {}", pretty_hash);
-            if response_hash.as_slice() != saved_response_hash {
+            if response_hash != saved_response_hash {
                 error!("Response hash does not match the saved response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -1779,13 +1773,13 @@ impl Coordinator {
             }
 
             // Check that the contribution file signature challenge hash is correct.
-            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash.as_slice() {
+            if hex::decode(contribution_file_signature.get_challenge_hash())? != challenge_hash {
                 error!("The signed challenge hash does not match the expected challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
 
             // Check that the contribution file signature response hash is correct.
-            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash.as_slice() {
+            if hex::decode(contribution_file_signature.get_response_hash())? != response_hash {
                 error!("The signed response hash does not match the expected response hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }
@@ -1801,7 +1795,7 @@ impl Coordinator {
                 .get_next_challenge_hash()
                 .as_ref()
                 .ok_or(CoordinatorError::NextChallengeHashMissing)?;
-            if hex::decode(signed_next_challenge_hash)? != next_challenge_hash.as_slice() {
+            if hex::decode(signed_next_challenge_hash)? != next_challenge_hash {
                 error!("The signed next challenge hash does not match the expected next challenge hash.");
                 return Err(CoordinatorError::ContributionHashMismatch);
             }

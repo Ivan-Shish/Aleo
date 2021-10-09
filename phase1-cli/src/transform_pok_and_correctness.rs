@@ -103,7 +103,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         println!("`response` was based on the hash:");
         print_hash(&response_challenge_hash);
 
-        if &response_challenge_hash[..] != current_accumulator_hash.as_slice() {
+        if response_challenge_hash != current_accumulator_hash {
             panic!("Hash chain failure. This is not the right response.");
         }
     }
@@ -125,7 +125,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
         &challenge_readable_map,
         &response_readable_map,
         &public_key,
-        current_accumulator_hash.as_slice(),
+        &current_accumulator_hash,
         challenge_is_compressed,
         contribution_is_compressed,
         CheckForCorrectness::No,
@@ -189,7 +189,7 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
 
         {
             (&mut writable_map[0..])
-                .write_all(response_hash.as_slice())
+                .write_all(&response_hash)
                 .expect("unable to write a default hash to mmap");
 
             writable_map

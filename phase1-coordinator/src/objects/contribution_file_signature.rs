@@ -28,33 +28,12 @@ pub struct ContributionState {
 impl ContributionState {
     /// Creates a new instance of `ContributionFileSignature`.
     #[inline]
-    pub fn new(
-        challenge_hash: Vec<u8>,
-        response_hash: Vec<u8>,
-        next_challenge_hash: Option<Vec<u8>>,
-    ) -> Result<Self, CoordinatorError> {
-        // Check that the challenge hash is 64 bytes.
-        if challenge_hash.len() != 64 {
-            return Err(CoordinatorError::ChallengeHashSizeInvalid);
-        }
-
-        // Check that the response hash is 64 bytes.
-        if response_hash.len() != 64 {
-            return Err(CoordinatorError::ResponseHashSizeInvalid);
-        }
-
-        // Check that the next challenge hash is 64 bytes, if it exists.
-        if let Some(next_challenge_hash) = &next_challenge_hash {
-            if next_challenge_hash.len() != 64 {
-                return Err(CoordinatorError::NextChallengeHashSizeInvalid);
-            }
-        }
-
-        Ok(ContributionState {
+    pub fn new(challenge_hash: &[u8; 64], response_hash: &[u8; 64], next_challenge_hash: Option<&[u8; 64]>) -> Self {
+        ContributionState {
             challenge_hash: hex::encode(challenge_hash),
             response_hash: hex::encode(response_hash),
             next_challenge_hash: next_challenge_hash.map(|h| hex::encode(h)),
-        })
+        }
     }
 
     /// Returns the message that should be signed for the `ContributionFileSignature`.
@@ -140,12 +119,7 @@ mod tests {
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
         // Construct the contribution state
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        )
-        .unwrap();
+        let contribution_state = ContributionState::new(&challenge_hash, &response_hash, Some(&next_challenge_hash));
 
         // Construct a dummy signature.
         let signature = vec![4u8; 64];
@@ -170,12 +144,7 @@ mod tests {
         let next_challenge_hash = calculate_hash(&dummy_next_challenge);
 
         // Construct the contribution state
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        )
-        .unwrap();
+        let contribution_state = ContributionState::new(&challenge_hash, &response_hash, Some(&next_challenge_hash));
 
         // Construct an invalid signature.
         let signature = vec![4u8; 48];
@@ -185,68 +154,5 @@ mod tests {
         let contribution_signature = ContributionFileSignature::new(signature_string.clone(), contribution_state);
 
         assert!(contribution_signature.is_err())
-    }
-
-    #[test]
-    pub fn test_contribution_signature_invalid_challenge_hash_size() {
-        // Construct the dummy response and next_challenge files.
-        let dummy_response = vec![2; 128];
-        let dummy_next_challenge = vec![3; 128];
-
-        // Calculate the contribution hashes.
-        let invalid_challenge_hash = vec![1; 48];
-        let response_hash = calculate_hash(&dummy_response);
-        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
-
-        // Construct the contribution state
-        let contribution_state = ContributionState::new(
-            invalid_challenge_hash,
-            response_hash.to_vec(),
-            Some(next_challenge_hash.to_vec()),
-        );
-
-        assert!(contribution_state.is_err())
-    }
-
-    #[test]
-    pub fn test_contribution_signature_invalid_response_hash_size() {
-        // Construct the dummy challenge and next_challenge files.
-        let dummy_challenge = vec![1; 128];
-        let dummy_next_challenge = vec![3; 128];
-
-        // Calculate the contribution hashes.
-        let challenge_hash = calculate_hash(&dummy_challenge);
-        let invalid_response_hash = vec![2; 48];
-        let next_challenge_hash = calculate_hash(&dummy_next_challenge);
-
-        // Construct the contribution state
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            invalid_response_hash,
-            Some(next_challenge_hash.to_vec()),
-        );
-
-        assert!(contribution_state.is_err())
-    }
-
-    #[test]
-    pub fn test_contribution_signature_invalid_next_challenge_hash_size() {
-        // Construct the dummy challenge and response files.
-        let dummy_challenge = vec![1; 128];
-        let dummy_response = vec![2; 128];
-
-        // Calculate the contribution hashes.
-        let challenge_hash = calculate_hash(&dummy_challenge);
-        let response_hash = calculate_hash(&dummy_response);
-        let invalid_next_challenge_hash = vec![3; 48];
-
-        // Construct the contribution state
-        let contribution_state = ContributionState::new(
-            challenge_hash.to_vec(),
-            response_hash.to_vec(),
-            Some(invalid_next_challenge_hash),
-        );
-
-        assert!(contribution_state.is_err())
     }
 }

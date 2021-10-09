@@ -26,7 +26,7 @@ impl Initialization {
         storage: &mut Disk,
         round_height: u64,
         chunk_id: u64,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<[u8; 64]> {
         info!("Starting initialization on round {} chunk {}", round_height, chunk_id);
         let start = Instant::now();
 
@@ -85,7 +85,7 @@ impl Initialization {
         trace!("In total will generate up to {} powers", parameters.powers_g1_length);
 
         let hash = blank_hash();
-        (&mut writer[0..]).write_all(hash.as_slice())?;
+        (&mut writer[0..]).write_all(&hash)?;
         writer.flush()?;
         debug!("Empty challenge hash is {}", pretty_hash!(&hash));
 
@@ -103,7 +103,7 @@ impl Initialization {
         storage: &Disk,
         contribution_locator: &Locator,
         next_contribution_locator: &Locator,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<[u8; 64]> {
         let current = storage.reader(contribution_locator)?;
         let next = storage.reader(next_contribution_locator)?;
 
@@ -114,7 +114,7 @@ impl Initialization {
             return Err(CoordinatorError::InitializationTranscriptsDiffer.into());
         }
 
-        Ok(contribution_hash_1.to_vec())
+        Ok(contribution_hash_1)
     }
 }
 
@@ -125,7 +125,7 @@ mod tests {
         storage::{ContributionLocator, Locator, StorageObject},
         testing::prelude::*,
     };
-    use setup_utils::{blank_hash, calculate_hash, GenericArray};
+    use setup_utils::{blank_hash, calculate_hash};
 
     use tracing::{debug, trace};
 
@@ -142,8 +142,7 @@ mod tests {
         let mut storage = test_storage(&TEST_ENVIRONMENT);
 
         // Initialize the previous contribution hash with a no-op value.
-        let mut previous_contribution_hash: GenericArray<u8, _> =
-            GenericArray::from_slice(vec![0; 64].as_slice()).clone();
+        let mut previous_contribution_hash = [0u8; 64];
 
         // Generate a new challenge for the given parameters.
         for chunk_id in 0..number_of_chunks {
