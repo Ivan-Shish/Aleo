@@ -75,7 +75,7 @@ pub async fn tasks_left<R: Rng + CryptoRng>(
     let mut task_url = server_url.clone();
     task_url.push_str(&task_path);
     let client = reqwest::Client::new();
-    let authorization = get_authorization_value(private_key, "POST", &task_path, rng)?;
+    let authorization = get_authorization_value(private_key, "GET", &task_path, rng)?;
 
     let response = client
         .post(&task_url)
