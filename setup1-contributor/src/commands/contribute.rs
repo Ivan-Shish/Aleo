@@ -110,6 +110,7 @@ impl Contribute {
                 Err(err) => {
                     let text = format!("Failed to join the queue, error: {}", err);
                     error!("{}", text);
+                    println!("{}", text);
                     sleep(DELAY_POLL_CEREMONY).await;
                 }
             }

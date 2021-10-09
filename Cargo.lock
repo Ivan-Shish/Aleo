@@ -1841,6 +1841,7 @@ dependencies = [
  "criterion",
  "derivative",
  "itertools",
+ "memmap",
  "num-traits",
  "phase1",
  "rand 0.8.4",
