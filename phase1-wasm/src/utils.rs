@@ -1,12 +1,15 @@
 use crate::structures::*;
 use blake2::{Blake2b, Blake2s, Digest};
 use rand::{CryptoRng, Rng};
-use snarkvm_dpc::{testnet2::Testnet2, Address, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
 use snarkvm_utilities::ToBytes;
 use std::convert::TryFrom;
 use wasm_bindgen::prelude::*;
 
-pub fn generate_confirmation_key(address: &Address<Testnet2>, private_key: &PrivateKey<Testnet2>) -> String {
+pub fn generate_confirmation_key(
+    address: &Address<Testnet2Parameters>,
+    private_key: &PrivateKey<Testnet2Parameters>,
+) -> String {
     let concatenated = format!("{}{}", address.to_string(), private_key.to_string());
     let mut hasher = Blake2s::new();
     hasher.update(concatenated.as_bytes());
@@ -15,18 +18,19 @@ pub fn generate_confirmation_key(address: &Address<Testnet2>, private_key: &Priv
 }
 
 pub fn get_authorization_value<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     method: &str,
     path: &str,
     rng: &mut R,
 ) -> Result<String, JsValue> {
+    let view_key = ViewKey::try_from(private_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
     let address = Address::try_from(private_key)
         .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?
         .to_string();
 
     let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());
     let signature = hex::encode(
-        &private_key
+        &view_key
             .sign(message.as_bytes(), rng)
             .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?
             .to_bytes_le()
@@ -38,7 +42,7 @@ pub fn get_authorization_value<R: Rng + CryptoRng>(
 }
 
 pub fn sign_contribution_state<R: Rng + CryptoRng>(
-    signing_key: &PrivateKey<Testnet2>,
+    signing_key: &PrivateKey<Testnet2Parameters>,
     challenge_hash: &[u8],
     response_hash: &[u8],
     next_challenge_hash: Option<Vec<u8>>,
@@ -51,8 +55,9 @@ pub fn sign_contribution_state<R: Rng + CryptoRng>(
         .signature_message()
         .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
+    let view_key = ViewKey::try_from(signing_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
     let signature = hex::encode(
-        &signing_key
+        &view_key
             .sign(message.as_bytes(), rng)
             .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?
             .to_bytes_le()

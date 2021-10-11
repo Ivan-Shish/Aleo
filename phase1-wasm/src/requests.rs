@@ -1,7 +1,7 @@
 use crate::utils::*;
 use rand::{CryptoRng, Rng};
 use setup1_shared::structures::LockResponse;
-use snarkvm_dpc::{testnet2::Testnet2, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 use wasm_bindgen::prelude::*;
 
 const MAJOR: u8 = 0;
@@ -9,7 +9,7 @@ const MINOR: u8 = 1;
 const PATCH: u8 = 0;
 
 pub async fn join_queue<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     confirmation_key: &str,
     server_url: String,
     rng: &mut R,
@@ -43,7 +43,7 @@ pub async fn join_queue<R: Rng + CryptoRng>(
 }
 
 pub async fn send_heartbeat<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     rng: &mut R,
 ) -> Result<(), JsValue> {
@@ -71,7 +71,7 @@ pub async fn send_heartbeat<R: Rng + CryptoRng>(
 }
 
 pub async fn tasks_left<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     rng: &mut R,
 ) -> Result<bool, JsValue> {
@@ -101,7 +101,7 @@ pub async fn tasks_left<R: Rng + CryptoRng>(
 }
 
 pub async fn lock_chunk<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     rng: &mut R,
 ) -> Result<LockResponse, JsValue> {
@@ -132,7 +132,7 @@ pub async fn lock_chunk<R: Rng + CryptoRng>(
 }
 
 pub async fn download_challenge<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     chunk_id: u64,
     contribution_id: u64,
@@ -162,7 +162,7 @@ pub async fn download_challenge<R: Rng + CryptoRng>(
 }
 
 pub async fn upload_response<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     chunk_id: u64,
     contribution_id: u64,
@@ -190,7 +190,7 @@ pub async fn upload_response<R: Rng + CryptoRng>(
 }
 
 pub async fn notify_contribution<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     chunk_id: u64,
     rng: &mut R,

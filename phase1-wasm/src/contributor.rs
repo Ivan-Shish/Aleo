@@ -1,6 +1,6 @@
 use crate::{phase1::Phase1WASM, requests::*, utils::*};
 use rand::{CryptoRng, Rng};
-use snarkvm_dpc::{testnet2::Testnet2, Address, PrivateKey};
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey};
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
@@ -35,7 +35,7 @@ pub async fn contribute(server_url: String) -> Result<JsValue, JsValue> {
 }
 
 async fn attempt_contribution<R: Rng + CryptoRng>(
-    private_key: &PrivateKey<Testnet2>,
+    private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
     rng: &mut R,
 ) -> Result<bool, JsValue> {
