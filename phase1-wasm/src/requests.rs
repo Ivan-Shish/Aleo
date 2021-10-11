@@ -4,13 +4,17 @@ use setup1_shared::structures::LockResponse;
 use snarkvm_dpc::{testnet2::Testnet2, PrivateKey};
 use wasm_bindgen::prelude::*;
 
+const MAJOR: u8 = 0;
+const MINOR: u8 = 1;
+const PATCH: u8 = 0;
+
 pub async fn join_queue<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2>,
     confirmation_key: &str,
     server_url: String,
     rng: &mut R,
 ) -> Result<bool, JsValue> {
-    let join_queue_path = "/v1/queue/contributor/join";
+    let join_queue_path = format!("/v1/queue/contributor/join/{}/{}/{}", MAJOR, MINOR, PATCH);
     let mut join_queue_url = server_url.clone();
     join_queue_url.push_str(&join_queue_path);
     let client = reqwest::Client::new();
