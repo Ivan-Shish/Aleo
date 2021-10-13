@@ -39,7 +39,12 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     server_url: String,
     rng: &mut R,
 ) -> Result<bool, JsValue> {
-    if !tasks_left(private_key, server_url.clone(), rng).await? {
+    let tasks_left = match tasks_left(private_key, server_url.clone(), rng).await {
+        Ok(b) => b,
+        Err(_) => return Ok(false),
+    };
+
+    if !tasks_left {
         return Ok(true);
     }
 
