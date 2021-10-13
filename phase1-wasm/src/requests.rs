@@ -145,7 +145,7 @@ pub async fn download_challenge<R: Rng + CryptoRng>(
     let authorization = get_authorization_value(private_key, "GET", &download_path, rng)?;
 
     let response = client
-        .post(&download_url)
+        .get(&download_url)
         .header(http::header::AUTHORIZATION, authorization)
         .send()
         .await
