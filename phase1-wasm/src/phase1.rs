@@ -72,29 +72,67 @@ impl Phase1WASM {
     }
 
     pub fn contribute_chunked(
-        curve_kind: &str,
+        curve_kind: &'static str,
         proving_system: &str,
         batch_size: usize,
         power: usize,
         chunk_index: usize,
         chunk_size: usize,
         seed: &[u8],
-        challenge: &[u8],
+        challenge: Vec<u8>,
+        worker: &crate::pool::WorkerProcess,
     ) -> Result<ContributionResponse, String> {
+        // Configure a rayon thread pool which will pull web workers from `pool`.
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(8)
+            .spawn_handler(|thread| Ok(worker.run(|| thread.run()).unwrap()))
+            .build()
+            .unwrap();
+
         let rng = derive_rng_from_seed(seed);
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
-        match curve_from_str(curve_kind).expect("invalid curve_kind") {
-            CurveKind::Bls12_377 => contribute_challenge(
-                &challenge,
-                &get_parameters_chunked::<Bls12_377>(proving_system, power, batch_size, chunk_index, chunk_size),
-                rng,
-            ),
-            CurveKind::BW6 => contribute_challenge(
-                &challenge,
-                &get_parameters_chunked::<BW6_761>(proving_system, power, batch_size, chunk_index, chunk_size),
-                rng,
-            ),
-        }
+
+        let mut result: Result<ContributionResponse, String> = Err("uninitialized result".to_string());
+
+        let (tx, rx) = oneshot::channel();
+        worker
+            .run(move || {
+                web_sys::console::log_1(&"worker running".into());
+                thread_pool.install(|| {
+                    web_sys::console::log_1(&"starting".into());
+                    let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+                        CurveKind::Bls12_377 => contribute_challenge(
+                            &challenge,
+                            &get_parameters_chunked::<Bls12_377>(
+                                proving_system,
+                                power,
+                                batch_size,
+                                chunk_index,
+                                chunk_size,
+                            ),
+                            rng,
+                        ),
+                        CurveKind::BW6 => contribute_challenge(
+                            &challenge,
+                            &get_parameters_chunked::<BW6_761>(
+                                proving_system,
+                                power,
+                                batch_size,
+                                chunk_index,
+                                chunk_size,
+                            ),
+                            rng,
+                        ),
+                    };
+
+                    web_sys::console::log_1(&"finished".into());
+                    result = res;
+                });
+                drop(tx.send(result));
+            })
+            .map_err(|e| e.as_string().unwrap())?;
+
+        rx.recv().unwrap()
     }
 }
 

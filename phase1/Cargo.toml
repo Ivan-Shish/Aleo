@@ -47,7 +47,7 @@ rusty-hook = { version = "0.11.2" }
 default = []
 cli = ["parallel", "setup-utils/cli"]
 parallel = ["rayon", "setup-utils/parallel", "snarkvm-algorithms/parallel"]
-wasm = ["setup-utils/wasm"]
+wasm = ["rayon", "setup-utils/wasm", "setup-utils/parallel", "snarkvm-algorithms/parallel"]
 
 benchmark = ["criterion"]
 testing = ["parallel"]

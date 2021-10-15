@@ -166,7 +166,7 @@ pub async fn upload_response<R: Rng + CryptoRng>(
     server_url: String,
     chunk_id: u64,
     contribution_id: u64,
-    sig_and_result_bytes: &[u8],
+    sig_and_result_bytes: Vec<u8>,
     rng: &mut R,
 ) -> Result<(), JsValue> {
     let upload_path = format!("/v1/upload/response/{}/{}", chunk_id, contribution_id);
@@ -180,6 +180,7 @@ pub async fn upload_response<R: Rng + CryptoRng>(
         .header(http::header::AUTHORIZATION, authorization)
         .header(http::header::CONTENT_TYPE, "application/octet-stream")
         .header(http::header::CONTENT_LENGTH, sig_and_result_bytes.len())
+        .body(sig_and_result_bytes)
         .send()
         .await
         .map_err(|e| JsValue::from_str(&format!("{}", e)))?
