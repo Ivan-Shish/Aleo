@@ -13,5 +13,5 @@ set -ex
 #   shared memory, passive segments, etc.
 # Note the usage of `--target no-modules` here which is required for passing
 # the memory import to each wasm module.
-RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
+RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C codegen-units=1' \
 wasm-pack build --release --target no-modules -- --features wasm -Z build-std=std,panic_abort
