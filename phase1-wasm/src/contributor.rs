@@ -19,7 +19,7 @@ pub async fn contribute(server_url: String) -> Result<JsValue, JsValue> {
     let mut rng = rand::thread_rng();
     let private_key = PrivateKey::new(&mut rng);
     let address = Address::from_private_key(&private_key).expect("Should have derived an Aleo address");
-    let confirmation_key = generate_confirmation_key(&address, &private_key);
+    let (confirmation_key, new_private_key) = generate_confirmation_key(&address, &mut rng);
 
     join_queue(&private_key, &confirmation_key, server_url.clone(), &mut rng).await?;
     let worker_pool = WorkerProcess::new(9)?;
@@ -33,7 +33,7 @@ pub async fn contribute(server_url: String) -> Result<JsValue, JsValue> {
         }
     }
 
-    Ok(JsValue::from_serde(&(address.to_string(), confirmation_key))
+    Ok(JsValue::from_serde(&(address.to_string(), new_private_key.to_string()))
         .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?)
 }
 
