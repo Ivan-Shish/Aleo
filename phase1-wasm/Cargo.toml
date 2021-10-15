@@ -59,7 +59,7 @@ default = []
 wasm = ["getrandom/js", "getrandom/wasm-bindgen", "phase1/wasm", "setup-utils/wasm", "snarkvm-dpc", "snarkvm-utilities", "phase1/wasm", "getrandom/js", "getrandom/wasm-bindgen"]
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ['-O3']
+wasm-opt = ['-O4']
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm
