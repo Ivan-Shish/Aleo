@@ -142,6 +142,15 @@ impl Contribute {
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
 
+        // Flush stdin, so that we don't accidentally fly through the ETH prompt.
+        // We use a separate scope here to ensure that the lock to stdin and the
+        // contents read are dropped right away.
+        {
+            let mut handle = std::io::stdin().lock();
+            let mut stdin_contents = vec![];
+            handle.read_to_end(&mut stdin_contents);
+        }
+
         // Let's see if the contributor wants to log an ETH address for their NFT
         if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
             tracing::error!("Error while prompting for ETH address - {}", e);
