@@ -39,7 +39,7 @@ use setup_utils::derive_rng_from_seed;
 use std::{
     collections::HashSet,
     convert::TryFrom,
-    io::{Read, Write},
+    io::{BufRead, Read, Write},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -142,14 +142,12 @@ impl Contribute {
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
 
-        // Flush stdin, so that we don't accidentally fly through the ETH prompt.
-        // We use a separate scope here to ensure that the lock to stdin and the
-        // contents read are dropped right away.
+        // Here, we 'flush' everything that's been pushed into stdin while the
+        // program was running.
         {
             let stdin = std::io::stdin();
-            let mut handle = stdin.lock();
-            let mut stdin_contents = vec![];
-            handle.read_to_end(&mut stdin_contents);
+            println!("To advance to the next stage, please press CTRL-D (or CTRL-Z and then Enter on Windows).");
+            for _ in stdin.lock().lines() {}
         }
 
         // Let's see if the contributor wants to log an ETH address for their NFT
