@@ -146,7 +146,8 @@ impl Contribute {
         // We use a separate scope here to ensure that the lock to stdin and the
         // contents read are dropped right away.
         {
-            let mut handle = std::io::stdin().lock();
+            let stdin = std::io::stdin();
+            let mut handle = stdin.lock();
             let mut stdin_contents = vec![];
             handle.read_to_end(&mut stdin_contents);
         }
