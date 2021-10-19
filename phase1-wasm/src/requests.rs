@@ -20,7 +20,7 @@ pub async fn join_queue<R: Rng + CryptoRng>(
     let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "POST", &join_queue_path, rng)?;
 
-    let bytes = serde_json::to_vec(confirmation_key).map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+    let bytes = String::from(confirmation_key).into_bytes();
 
     let response = client
         .post(&join_queue_url)
