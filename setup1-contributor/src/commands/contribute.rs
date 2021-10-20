@@ -39,7 +39,7 @@ use setup_utils::derive_rng_from_seed;
 use std::{
     collections::HashSet,
     convert::TryFrom,
-    io::{Read, Write},
+    io::{BufRead, Read, Write},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -141,6 +141,14 @@ impl Contribute {
         println!("You have completed your contribution! Thank you!");
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
+
+        // Here, we 'flush' everything that's been pushed into stdin while the
+        // program was running.
+        {
+            let stdin = std::io::stdin();
+            println!("To advance to the next stage, please press CTRL-D (or CTRL-Z and then Enter on Windows).");
+            for _ in stdin.lock().lines() {}
+        }
 
         // Let's see if the contributor wants to log an ETH address for their NFT
         if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
