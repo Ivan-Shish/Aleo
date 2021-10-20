@@ -1,7 +1,7 @@
 use crate::{phase1::Phase1WASM, pool::WorkerProcess, requests::*, utils::*};
 use rand::{CryptoRng, Rng};
-use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey};
-use std::time::Duration;
+use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
+use std::{str::FromStr, time::Duration};
 use wasm_bindgen::prelude::*;
 
 // Inner ceremony parameters.
@@ -15,12 +15,9 @@ const DELAY_FAILED_UPLOAD: Duration = Duration::from_secs(5);
 const DELAY_IN_QUEUE: Duration = Duration::from_secs(30);
 
 #[wasm_bindgen]
-pub async fn contribute(
-    server_url: String,
-    address: String,
-    private_key: String,
-    confirmation_key: String,
-) -> Result<JsValue, JsValue> {
+pub async fn contribute(server_url: String, private_key: String, confirmation_key: String) -> Result<JsValue, JsValue> {
+    let mut rng = rand::thread_rng();
+    let private_key = PrivateKey::from_str(&private_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
     join_queue(&private_key, &confirmation_key, server_url.clone(), &mut rng).await?;
     let worker_pool = WorkerProcess::new(9)?;
 
@@ -33,8 +30,7 @@ pub async fn contribute(
         }
     }
 
-    Ok(JsValue::from_serde(&(address.to_string(), new_private_key.to_string()))
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?)
+    Ok("finished!".into())
 }
 
 async fn attempt_contribution<R: Rng + CryptoRng>(
