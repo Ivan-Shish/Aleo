@@ -1,0 +1,20 @@
+[package]
+name = "phase1-wasm-keys"
+version = "0.1.0"
+authors = ["The Aleo Team <hello@aleo.org>"]
+description = "WASM binary to generate Setup keys"
+homepage = "https://github.com/AleoHQ/aleo-setup"
+repository = "https://github.com/AleoHQ/aleo-setup"
+license = "MIT/Apache-2.0"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "setup_wasm", default-features = false, features = [ "wasm" ] }
+rand = { version = "0.8" }
+wasm-bindgen = { version = "0.2.69", features=["serde-serialize"] }
+getrandom = { version = "0.2", features = ["js", "wasm-bindgen"] }
+blake2 = { version = "0.9", default-features = false } 
+hex = { version = "0.4" }

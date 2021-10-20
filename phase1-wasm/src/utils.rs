@@ -6,18 +6,6 @@ use snarkvm_utilities::ToBytes;
 use std::convert::TryFrom;
 use wasm_bindgen::prelude::*;
 
-pub fn generate_confirmation_key<R: Rng + CryptoRng>(
-    address: &Address<Testnet2Parameters>,
-    rng: &mut R,
-) -> (String, PrivateKey<Testnet2Parameters>) {
-    let new_private_key = PrivateKey::new(rng);
-    let concatenated = format!("{}{}", address.to_string(), new_private_key.to_string());
-    let mut hasher = Blake2s::new();
-    hasher.update(concatenated.as_bytes());
-    let bytes = hasher.finalize().to_vec();
-    (hex::encode(&bytes), new_private_key)
-}
-
 pub fn get_authorization_value<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     method: &str,

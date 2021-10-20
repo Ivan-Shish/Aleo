@@ -1994,6 +1994,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "phase1-wasm-keys"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "getrandom 0.2.3",
+ "hex",
+ "rand 0.8.4",
+ "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?branch=setup_wasm)",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "phase2"
 version = "0.3.0"
 dependencies = [

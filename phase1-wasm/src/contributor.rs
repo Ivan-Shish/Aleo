@@ -15,12 +15,12 @@ const DELAY_FAILED_UPLOAD: Duration = Duration::from_secs(5);
 const DELAY_IN_QUEUE: Duration = Duration::from_secs(30);
 
 #[wasm_bindgen]
-pub async fn contribute(server_url: String) -> Result<JsValue, JsValue> {
-    let mut rng = rand::thread_rng();
-    let private_key = PrivateKey::new(&mut rng);
-    let address = Address::from_private_key(&private_key).expect("Should have derived an Aleo address");
-    let (confirmation_key, new_private_key) = generate_confirmation_key(&address, &mut rng);
-
+pub async fn contribute(
+    server_url: String,
+    address: String,
+    private_key: String,
+    confirmation_key: String,
+) -> Result<JsValue, JsValue> {
     join_queue(&private_key, &confirmation_key, server_url.clone(), &mut rng).await?;
     let worker_pool = WorkerProcess::new(9)?;
 
