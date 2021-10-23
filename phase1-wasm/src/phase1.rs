@@ -97,9 +97,7 @@ impl Phase1WASM {
         let (tx, rx) = oneshot::channel();
         worker
             .run(move || {
-                web_sys::console::log_1(&"worker running".into());
                 thread_pool.install(|| {
-                    web_sys::console::log_1(&"starting".into());
                     let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
                         CurveKind::Bls12_377 => contribute_challenge(
                             &challenge,
@@ -125,7 +123,6 @@ impl Phase1WASM {
                         ),
                     };
 
-                    web_sys::console::log_1(&"finished".into());
                     result = res;
                 });
                 drop(tx.send(result));

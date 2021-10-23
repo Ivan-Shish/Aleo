@@ -169,18 +169,20 @@ pub async fn upload_response<R: Rng + CryptoRng>(
     sig_and_result_bytes: Vec<u8>,
     rng: &mut R,
 ) -> Result<(), JsValue> {
-    let upload_path = format!("/v1/upload/response/{}/{}", chunk_id, contribution_id);
+    let upload_path = format!("/v1/inner/upload_response/{}/{}", chunk_id, contribution_id);
     let mut upload_url = server_url.clone();
     upload_url.push_str(&upload_path);
     let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "POST", &upload_path, rng)?;
 
+    let sig_and_result =
+        reqwest::multipart::Form::new().part("data", reqwest::multipart::Part::bytes(sig_and_result_bytes.clone()));
+
     let _response = client
         .post(&upload_url)
         .header(http::header::AUTHORIZATION, authorization)
-        .header(http::header::CONTENT_TYPE, "application/octet-stream")
         .header(http::header::CONTENT_LENGTH, sig_and_result_bytes.len())
-        .body(sig_and_result_bytes)
+        .multipart(sig_and_result)
         .send()
         .await
         .map_err(|e| JsValue::from_str(&format!("{}", e)))?
