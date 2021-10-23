@@ -19,7 +19,7 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
     let mut rng = rand::thread_rng();
     let private_key = PrivateKey::from_str(&private_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
     join_queue(&private_key, &confirmation_key, server_url.clone(), &mut rng).await?;
-    let worker_pool = WorkerProcess::new(9)?;
+    let worker_pool = WorkerProcess::new(8)?;
 
     loop {
         send_heartbeat(&private_key, server_url.clone(), &mut rng).await?;
