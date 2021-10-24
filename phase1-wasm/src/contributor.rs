@@ -1,8 +1,10 @@
 use crate::{phase1::Phase1WASM, pool::WorkerProcess, requests::*, utils::*};
+use js_sys::{Function, Promise};
 use rand::{CryptoRng, Rng};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 
 // Inner ceremony parameters.
 const CURVE_KIND: &'static str = "bls12_377";
@@ -11,8 +13,14 @@ const BATCH_SIZE: usize = 2097152;
 const POWER: usize = 19;
 const CHALLENGE_SIZE: usize = 32768;
 
-const DELAY_FAILED_UPLOAD: Duration = Duration::from_secs(5);
-const DELAY_IN_QUEUE: Duration = Duration::from_secs(30);
+const DELAY_FAILED_UPLOAD: i32 = 5000;
+const DELAY_IN_QUEUE: i32 = 30000;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = setTimeout)]
+    fn set_timeout(f: &Function, time_ms: i32);
+}
 
 #[wasm_bindgen]
 pub async fn contribute(server_url: String, private_key: String, confirmation_key: String) -> Result<JsValue, JsValue> {
@@ -41,7 +49,10 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
 ) -> Result<bool, JsValue> {
     let tasks_left = match tasks_left(private_key, server_url.clone(), rng).await {
         Ok(b) => b,
-        Err(_) => return Ok(false),
+        Err(_) => {
+            sleep(DELAY_IN_QUEUE).await?;
+            return Ok(false);
+        }
     };
 
     if !tasks_left {
@@ -113,7 +124,10 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         .await
         {
             Ok(_) => break,
-            Err(_e) => {}
+            Err(e) => {
+                web_sys::console::log_1(&format!("{:?}", e).into());
+                sleep(DELAY_FAILED_UPLOAD).await?;
+            }
         }
     }
 
@@ -121,9 +135,20 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     loop {
         match notify_contribution(private_key, server_url.clone(), response.chunk_id, rng).await {
             Ok(_) => break,
-            Err(_e) => {}
+            Err(e) => {
+                web_sys::console::log_1(&format!("{:?}", e).into());
+                sleep(DELAY_FAILED_UPLOAD).await?;
+            }
         }
     }
 
     Ok(false)
+}
+
+async fn sleep(time_ms: i32) -> Result<(), JsValue> {
+    JsFuture::from(Promise::new(&mut |yes, _| {
+        set_timeout(&yes, time_ms);
+    }))
+    .await?;
+    Ok(())
 }
