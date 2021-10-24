@@ -1,12 +1,21 @@
 use crate::utils::*;
+use js_sys::Promise;
 use rand::{CryptoRng, Rng};
 use setup1_shared::structures::LockResponse;
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{Request, RequestInit, RequestMode};
 
 const MAJOR: u8 = 0;
 const MINOR: u8 = 1;
 const PATCH: u8 = 0;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = fetch)]
+    fn fetch_with_request(input: &web_sys::Request) -> Promise;
+}
 
 pub async fn join_queue<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
@@ -169,25 +178,35 @@ pub async fn upload_response<R: Rng + CryptoRng>(
     sig_and_result_bytes: Vec<u8>,
     rng: &mut R,
 ) -> Result<(), JsValue> {
-    let upload_path = format!("/v1/inner/upload_response/{}/{}", chunk_id, contribution_id);
+    let upload_path = format!("/v1/upload/response/{}/{}", chunk_id, contribution_id);
     let mut upload_url = server_url.clone();
     upload_url.push_str(&upload_path);
-    let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "POST", &upload_path, rng)?;
 
-    let sig_and_result =
-        reqwest::multipart::Form::new().part("data", reqwest::multipart::Part::bytes(sig_and_result_bytes.clone()));
+    let mut opts = RequestInit::new();
+    opts.method("POST");
+    opts.mode(RequestMode::Cors);
+    opts.body(Some(&js_sys::Uint8Array::from(sig_and_result_bytes.as_slice()).into()));
 
-    let _response = client
-        .post(&upload_url)
-        .header(http::header::AUTHORIZATION, authorization)
-        .header(http::header::CONTENT_LENGTH, sig_and_result_bytes.len())
-        .multipart(sig_and_result)
-        .send()
+    let request =
+        Request::new_with_str_and_init(&upload_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    request
+        .headers()
+        .set("Authorization", &authorization)
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request
+        .headers()
+        .set("Content-Length", &format!("{}", sig_and_result_bytes.len()))
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request
+        .headers()
+        .set("Content-Type", "application/octet-stream")
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    let _response = JsFuture::from(fetch_with_request(&request))
         .await
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?
-        .error_for_status()
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
     Ok(())
 }
