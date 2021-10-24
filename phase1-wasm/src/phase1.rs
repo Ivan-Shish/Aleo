@@ -1,19 +1,16 @@
-use phase1::{
-    helpers::{curve_from_str, proving_system_from_str, CurveKind},
-    ContributionMode,
-    Phase1,
-    Phase1Parameters,
-    ProvingSystem,
-};
-use setup_utils::{
-    calculate_hash,
-    derive_rng_from_seed,
-    get_rng,
-    user_system_randomness,
-    CheckForCorrectness,
-    UseCompression,
-};
-use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use phase1::{ContributionMode, Phase1, Phase1Parameters, ProvingSystem};
+
+#[cfg(not(test))]
+use phase1::helpers::{curve_from_str, proving_system_from_str, CurveKind};
+
+use setup_utils::{calculate_hash, CheckForCorrectness, UseCompression};
+
+#[cfg(not(test))]
+use setup_utils::{derive_rng_from_seed, get_rng, user_system_randomness};
+use snarkvm_curves::PairingEngine;
+
+#[cfg(not(test))]
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use rand::{CryptoRng, Rng};
 use wasm_bindgen::prelude::*;
@@ -44,9 +41,11 @@ pub fn init_hooks() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 }
 
+#[cfg(not(test))]
 #[wasm_bindgen]
 pub struct Phase1WASM {}
 
+#[cfg(not(test))]
 impl Phase1WASM {
     pub fn contribute_full(
         curve_kind: &str,

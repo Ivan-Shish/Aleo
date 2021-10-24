@@ -45,5 +45,5 @@ rusty-hook = { version = "0.11.2" }
 [features]
 default = []
 cli = ["parallel", "rust-crypto"]
-wasm = ["parallel", "snarkvm-algorithms/wasm"]
+wasm = ["snarkvm-algorithms/wasm"]
 parallel = ["rayon", "snarkvm-algorithms/parallel"]

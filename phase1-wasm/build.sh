@@ -14,4 +14,4 @@ set -ex
 # Note the usage of `--target no-modules` here which is required for passing
 # the memory import to each wasm module.
 RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C codegen-units=1' \
-wasm-pack build --release --target no-modules -- --features wasm -Z build-std=std,panic_abort
+wasm-pack build --release --target no-modules -- --features wasm --features parallel -Z build-std=std,panic_abort
