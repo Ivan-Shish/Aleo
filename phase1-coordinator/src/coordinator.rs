@@ -754,15 +754,9 @@ impl Coordinator {
 
     ///
     /// Returns `true` if the given participant has finished contributing
-    /// in the current round.
     ///
     #[inline]
     pub fn is_finished_contributor(&self, participant: &Participant) -> bool {
-        // Check that the participant is a current contributor.
-        if !self.is_current_contributor(participant) {
-            return false;
-        }
-
         // Fetch the state of the current contributor.
         self.state.is_finished_contributor(&participant)
     }
