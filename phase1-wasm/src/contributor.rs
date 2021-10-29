@@ -28,10 +28,11 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
     let private_key = PrivateKey::from_str(&private_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
     join_queue(&private_key, &confirmation_key, server_url.clone(), &mut rng).await?;
     let worker_pool = WorkerProcess::new(8)?;
+    let seed: [u8; 32] = rng.gen();
 
     loop {
         send_heartbeat(&private_key, server_url.clone(), &mut rng).await?;
-        let is_finished = attempt_contribution(&private_key, server_url.clone(), &mut rng, &worker_pool).await?;
+        let is_finished = attempt_contribution(&private_key, server_url.clone(), &seed, &mut rng, &worker_pool).await?;
 
         if is_finished {
             break;
@@ -44,6 +45,7 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 async fn attempt_contribution<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
+    seed: &[u8],
     rng: &mut R,
     worker_pool: &WorkerProcess,
 ) -> Result<bool, JsValue> {
@@ -75,8 +77,6 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     web_sys::console::log_1(&"challenge downloaded".into());
     web_sys::console::log_1(&format!("{} bytes", chunk_bytes.len()).into());
 
-    let seed: [u8; 32] = rng.gen();
-
     web_sys::console::log_1(&"contributing...".into());
     let result = Phase1WASM::contribute_chunked(
         CURVE_KIND,
@@ -85,7 +85,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         POWER,
         response.chunk_id as usize,
         CHALLENGE_SIZE,
-        &seed,
+        seed,
         chunk_bytes.to_vec(),
         &worker_pool,
     )
