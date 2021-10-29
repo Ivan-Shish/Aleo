@@ -116,8 +116,8 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         match upload_response(
             private_key,
             server_url.clone(),
-            response.chunk_id,
-            response.contribution_id + 1,
+            response.response_chunk_id,
+            response.response_contribution_id,
             sig_and_result_bytes.clone(),
             rng,
         )

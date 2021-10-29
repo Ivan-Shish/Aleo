@@ -1,11 +1,11 @@
 use crate::utils::*;
-use js_sys::Promise;
+use js_sys::{Promise, Uint8Array};
 use rand::{CryptoRng, Rng};
 use setup1_shared::structures::LockResponse;
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode};
+use web_sys::{Request, RequestInit, RequestMode, Response};
 
 const MAJOR: u8 = 0;
 const MINOR: u8 = 1;
@@ -150,23 +150,25 @@ pub async fn download_challenge<R: Rng + CryptoRng>(
     let download_path = format!("/v1/download/challenge/{}/{}", chunk_id, contribution_id);
     let mut download_url = server_url.clone();
     download_url.push_str(&download_path);
-    let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "GET", &download_path, rng)?;
 
-    let response = client
-        .get(&download_url)
-        .header(http::header::AUTHORIZATION, authorization)
-        .send()
-        .await
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?
-        .error_for_status()
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+    let mut opts = RequestInit::new();
+    opts.method("GET");
+    opts.mode(RequestMode::Cors);
 
-    let chunk_bytes = response
-        .bytes()
-        .await
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+    let request =
+        Request::new_with_str_and_init(&download_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
+    request
+        .headers()
+        .set("Authorization", &authorization)
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    let response = JsFuture::from(fetch_with_request(&request)).await?;
+
+    let response: Response = response.dyn_into().unwrap();
+    let chunk_bytes = JsFuture::from(response.array_buffer()?).await?;
+    let chunk_bytes = Uint8Array::new(&chunk_bytes);
     Ok(chunk_bytes.to_vec())
 }
 
