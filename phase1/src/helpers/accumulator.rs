@@ -61,6 +61,12 @@ cfg_if! {
                 compression,
                 check_for_correctness,
             )?;
+            for i in 0..elements.len()-1 {
+              if let Err(e) = check_same_ratio::<E>(&power_pairs(&elements[i..=i+1]), check, "Power pairs") {
+                println!("failed ratio check for element {}", i);
+                return Err(e);
+              }
+            }
             check_same_ratio::<E>(&power_pairs(&elements[..end - start]), check, "Power pairs")?;
             Ok(())
         }
@@ -80,6 +86,12 @@ cfg_if! {
                 compression,
                 check_for_correctness,
             )?;
+            for i in 0..elements.len()-1 {
+              if let Err(e) = check_same_ratio::<E>(check, &power_pairs(&elements[i..=i+1]), "Power pairs") {
+                println!("failed ratio check for element {}", i);
+                return Err(e);
+              }
+            }
             check_same_ratio::<E>(check, &power_pairs(&elements[..end - start]), "Power pairs")?;
             Ok(())
         }
