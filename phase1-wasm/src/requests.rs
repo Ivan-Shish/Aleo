@@ -11,12 +11,15 @@ const MAJOR: u8 = 0;
 const MINOR: u8 = 1;
 const PATCH: u8 = 0;
 
+// A custom binding to the JS `fetch` function, which we use in place of `reqwest`
+// in cases where request payload may be malformed.
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = fetch)]
     fn fetch_with_request(input: &web_sys::Request) -> Promise;
 }
 
+/// Join the ceremony queue.
 pub async fn join_queue<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     confirmation_key: &str,
@@ -51,6 +54,8 @@ pub async fn join_queue<R: Rng + CryptoRng>(
     Ok(joined)
 }
 
+/// Send a heartbeat to the coordinator, signaling that the contributor is still
+/// online.
 pub async fn send_heartbeat<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
@@ -79,6 +84,8 @@ pub async fn send_heartbeat<R: Rng + CryptoRng>(
     Ok(())
 }
 
+/// Inquire the coordinator about the existence of any unfinished tasks. Used to
+/// gauge when the contributor is finished.
 pub async fn tasks_left<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
@@ -109,6 +116,9 @@ pub async fn tasks_left<R: Rng + CryptoRng>(
     Ok(tasks_left)
 }
 
+/// Lock a chunk in the ceremony. This should be the first function called when
+/// attempting to contribute to a chunk. Once the chunk is locked, it is ready
+/// to be downloaded.
 pub async fn lock_chunk<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
@@ -140,6 +150,12 @@ pub async fn lock_chunk<R: Rng + CryptoRng>(
     Ok(lock_response)
 }
 
+/// Download a chunk from the coordinator, which should be contributed to upon
+/// receipt.
+///
+/// NOTE: This function makes use of the custom binding to `fetch`, since reqwest
+/// tends to malform response upload blobs. The custom binding bypasses reqwest's
+/// serialization procedures and allows us to deliver the payload properly.
 pub async fn download_challenge<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
@@ -172,6 +188,11 @@ pub async fn download_challenge<R: Rng + CryptoRng>(
     Ok(chunk_bytes.to_vec())
 }
 
+/// Upload a chunk contribution to the coordinator.
+///
+/// NOTE: This function makes use of the custom binding to `fetch`, since reqwest
+/// tends to malform response upload blobs. The custom binding bypasses reqwest's
+/// serialization procedures and allows us to deliver the payload properly.
 pub async fn upload_response<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,
@@ -213,6 +234,8 @@ pub async fn upload_response<R: Rng + CryptoRng>(
     Ok(())
 }
 
+/// Notify the coordinator of a finished and uploaded contribution. This will
+/// unlock the given chunk and allow the contributor to take on a new task.
 pub async fn notify_contribution<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: String,

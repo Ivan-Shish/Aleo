@@ -6,6 +6,7 @@ use snarkvm_utilities::ToBytes;
 use std::convert::TryFrom;
 use wasm_bindgen::prelude::*;
 
+/// Construct the authentication string for requests made to the coordinator.
 pub fn get_authorization_value<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     method: &str,

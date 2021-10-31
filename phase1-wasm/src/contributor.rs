@@ -16,12 +16,17 @@ const CHALLENGE_SIZE: usize = 32768;
 const DELAY_FAILED_UPLOAD: i32 = 5000;
 const DELAY_IN_QUEUE: i32 = 30000;
 
+// A custom binding to the JS `setTimeout` function, in order to implement a sleep
+// function.
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = setTimeout)]
     fn set_timeout(f: &Function, time_ms: i32);
 }
 
+/// Performs a full ceremony round, and returns only when all chunks have been
+/// contributed to. Takes in a coordinator URL, an Aleo private key and a
+/// hash of the confirmation key.
 #[wasm_bindgen]
 pub async fn contribute(server_url: String, private_key: String, confirmation_key: String) -> Result<JsValue, JsValue> {
     let mut rng = rand::thread_rng();
