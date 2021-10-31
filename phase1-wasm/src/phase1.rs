@@ -80,10 +80,11 @@ impl Phase1WASM {
         seed: &[u8],
         challenge: Vec<u8>,
         worker: &crate::pool::WorkerProcess,
+        thread_pool_size: usize,
     ) -> Result<ContributionResponse, String> {
         // Configure a rayon thread pool which will pull web workers from `pool`.
         let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(8)
+            .num_threads(thread_pool_size)
             .spawn_handler(|thread| Ok(worker.run(|| thread.run()).unwrap()))
             .build()
             .unwrap();
