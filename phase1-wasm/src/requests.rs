@@ -20,6 +20,10 @@ extern "C" {
 }
 
 /// Join the ceremony queue.
+///
+/// NOTE: This function makes use of the custom binding to `fetch`, since reqwest
+/// tends to malform payload blobs. The custom binding bypasses reqwest's
+/// serialization procedures and allows us to deliver the payload properly.
 pub async fn join_queue<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     confirmation_key: &str,
@@ -29,28 +33,34 @@ pub async fn join_queue<R: Rng + CryptoRng>(
     let join_queue_path = format!("/v1/queue/contributor/join/{}/{}/{}", MAJOR, MINOR, PATCH);
     let mut join_queue_url = server_url.clone();
     join_queue_url.push_str(&join_queue_path);
-    let client = reqwest::Client::new();
     let authorization = get_authorization_value(private_key, "POST", &join_queue_path, rng)?;
 
-    let bytes = String::from(confirmation_key).into_bytes();
+    let bytes = serde_json::to_vec(confirmation_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
-    let response = client
-        .post(&join_queue_url)
-        .header(http::header::AUTHORIZATION, authorization)
-        .header(http::header::CONTENT_LENGTH, bytes.len())
-        .body(bytes)
-        .send()
+    let mut opts = RequestInit::new();
+    opts.method("POST");
+    opts.mode(RequestMode::Cors);
+    opts.body(Some(&js_sys::Uint8Array::from(bytes.as_slice()).into()));
+
+    let request =
+        Request::new_with_str_and_init(&join_queue_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    request
+        .headers()
+        .set("Authorization", &authorization)
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request
+        .headers()
+        .set("Content-Length", &format!("{}", bytes.len()))
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    let response = JsFuture::from(fetch_with_request(&request))
         .await
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?
-        .error_for_status()
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
-    let data = response
-        .bytes()
-        .await
-        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
-    let joined = serde_json::from_slice::<bool>(&*data).map_err(|e| JsValue::from_str(&format!("{}", e)))?;
-
+    let response: Response = response.dyn_into().unwrap();
+    let data = JsFuture::from(response.json()?).await?;
+    let joined: bool = data.into_serde().unwrap();
     Ok(joined)
 }
 
@@ -154,7 +164,7 @@ pub async fn lock_chunk<R: Rng + CryptoRng>(
 /// receipt.
 ///
 /// NOTE: This function makes use of the custom binding to `fetch`, since reqwest
-/// tends to malform response upload blobs. The custom binding bypasses reqwest's
+/// tends to malform response data. The custom binding bypasses reqwest's
 /// serialization procedures and allows us to deliver the payload properly.
 pub async fn download_challenge<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
