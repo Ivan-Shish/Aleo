@@ -53,6 +53,10 @@ pub async fn post_join_queue<R: Rng + CryptoRng>(
         .headers()
         .set("Content-Length", &format!("{}", bytes.len()))
         .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
 
     let response = JsFuture::from(fetch_with_request(&request))
         .await
