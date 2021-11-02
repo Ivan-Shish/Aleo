@@ -146,8 +146,12 @@ impl Contribute {
         // program was running.
         {
             let stdin = std::io::stdin();
-            println!("To advance to the next stage, please press CTRL-D (or CTRL-Z and then Enter on Windows).");
-            for _ in stdin.lock().lines() {}
+            println!("To advance to the next stage, please type 'advance' and press Enter.");
+            for l in stdin.lock().lines() {
+                if l.unwrap() == "advance" {
+                    break;
+                }
+            }
         }
 
         // Let's see if the contributor wants to log an ETH address for their NFT
