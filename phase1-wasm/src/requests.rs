@@ -42,25 +42,13 @@ pub async fn post_join_queue<R: Rng + CryptoRng>(
     opts.mode(RequestMode::Cors);
     opts.body(Some(&js_sys::Uint8Array::from(bytes.as_slice()).into()));
 
-    let request =
-        Request::new_with_str_and_init(&join_queue_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let request = Request::new_with_str_and_init(&join_queue_url, &opts)?;
 
-    request
-        .headers()
-        .set("Authorization", &authorization)
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
-    request
-        .headers()
-        .set("Content-Length", &format!("{}", bytes.len()))
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
-    request
-        .headers()
-        .set("Content-Type", "application/json")
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request.headers().set("Authorization", &authorization)?;
+    request.headers().set("Content-Length", &format!("{}", bytes.len()))?;
+    request.headers().set("Content-Type", "application/json")?;
 
-    let response = JsFuture::from(fetch_with_request(&request))
-        .await
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let response = JsFuture::from(fetch_with_request(&request)).await?;
 
     let response: Response = response.dyn_into().unwrap();
     let data = JsFuture::from(response.json()?).await?;
@@ -186,13 +174,9 @@ pub async fn get_challenge<R: Rng + CryptoRng>(
     opts.method("GET");
     opts.mode(RequestMode::Cors);
 
-    let request =
-        Request::new_with_str_and_init(&download_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let request = Request::new_with_str_and_init(&download_url, &opts)?;
 
-    request
-        .headers()
-        .set("Authorization", &authorization)
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    request.headers().set("Authorization", &authorization)?;
 
     let response = JsFuture::from(fetch_with_request(&request)).await?;
 
@@ -225,25 +209,15 @@ pub async fn post_response<R: Rng + CryptoRng>(
     opts.mode(RequestMode::Cors);
     opts.body(Some(&js_sys::Uint8Array::from(sig_and_result_bytes.as_slice()).into()));
 
-    let request =
-        Request::new_with_str_and_init(&upload_url, &opts).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let request = Request::new_with_str_and_init(&upload_url, &opts)?;
 
+    request.headers().set("Authorization", &authorization)?;
     request
         .headers()
-        .set("Authorization", &authorization)
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
-    request
-        .headers()
-        .set("Content-Length", &format!("{}", sig_and_result_bytes.len()))
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
-    request
-        .headers()
-        .set("Content-Type", "application/octet-stream")
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+        .set("Content-Length", &format!("{}", sig_and_result_bytes.len()))?;
+    request.headers().set("Content-Type", "application/octet-stream")?;
 
-    let _response = JsFuture::from(fetch_with_request(&request))
-        .await
-        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let _response = JsFuture::from(fetch_with_request(&request)).await?;
 
     Ok(())
 }
