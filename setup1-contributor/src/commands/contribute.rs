@@ -1,7 +1,6 @@
 use crate::{
     cli::commands::contribute::ContributeOptions,
     errors::ContributeError,
-    objects::LockResponse,
     setup_keys::{
         confirmation_key::{print_key_and_remove_the_file, ConfirmationKey},
         AleoSetupKeys,
@@ -21,7 +20,7 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Round},
 };
-use setup1_shared::structures::{ContributorStatus, PublicSettings, TwitterInfo};
+use setup1_shared::structures::{ContributorStatus, LockResponse, PublicSettings, TwitterInfo};
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};

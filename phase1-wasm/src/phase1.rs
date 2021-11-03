@@ -1,19 +1,16 @@
-use phase1::{
-    helpers::{curve_from_str, proving_system_from_str, CurveKind},
-    ContributionMode,
-    Phase1,
-    Phase1Parameters,
-    ProvingSystem,
-};
-use setup_utils::{
-    calculate_hash,
-    derive_rng_from_seed,
-    get_rng,
-    user_system_randomness,
-    CheckForCorrectness,
-    UseCompression,
-};
-use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
+use phase1::{ContributionMode, Phase1, Phase1Parameters, ProvingSystem};
+
+#[cfg(not(test))]
+use phase1::helpers::{curve_from_str, proving_system_from_str, CurveKind};
+
+use setup_utils::{calculate_hash, CheckForCorrectness, UseCompression};
+
+#[cfg(not(test))]
+use setup_utils::{derive_rng_from_seed, get_rng, user_system_randomness};
+use snarkvm_curves::PairingEngine;
+
+#[cfg(not(test))]
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use rand::{CryptoRng, Rng};
 use wasm_bindgen::prelude::*;
@@ -44,29 +41,22 @@ pub fn init_hooks() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 }
 
+#[cfg(not(test))]
 #[wasm_bindgen]
 pub struct Phase1WASM {}
 
-fn convert_contribution_result_to_wasm(result: &Result<ContributionResponse, String>) -> Result<JsValue, JsValue> {
-    match result {
-        Ok(response) => JsValue::from_serde(&response).map_err(|e| JsValue::from_str(&e.to_string())),
-        Err(e) => Err(JsValue::from_str(&e)),
-    }
-}
-
-#[wasm_bindgen]
+#[cfg(not(test))]
 impl Phase1WASM {
-    #[wasm_bindgen]
     pub fn contribute_full(
         curve_kind: &str,
         proving_system: &str,
         batch_size: usize,
         power: usize,
         challenge: &[u8],
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<ContributionResponse, String> {
         let rng = get_rng(&user_system_randomness());
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
-        let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+        match curve_from_str(curve_kind).expect("invalid curve_kind") {
             CurveKind::Bls12_377 => contribute_challenge(
                 &challenge,
                 &get_parameters_full::<Bls12_377>(proving_system, power, batch_size),
@@ -77,36 +67,49 @@ impl Phase1WASM {
                 &get_parameters_full::<BW6_761>(proving_system, power, batch_size),
                 rng,
             ),
-        };
-        convert_contribution_result_to_wasm(&res)
+        }
     }
 
-    #[wasm_bindgen]
     pub fn contribute_chunked(
-        curve_kind: &str,
+        curve_kind: &'static str,
         proving_system: &str,
         batch_size: usize,
         power: usize,
         chunk_index: usize,
         chunk_size: usize,
         seed: &[u8],
-        challenge: &[u8],
-    ) -> Result<JsValue, JsValue> {
+        challenge: Vec<u8>,
+        worker: &crate::pool::WorkerProcess,
+        thread_pool_size: usize,
+    ) -> Result<ContributionResponse, String> {
+        // Configure a rayon thread pool which will pull web workers from `pool`.
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(thread_pool_size)
+            .spawn_handler(|thread| Ok(worker.run(|| thread.run()).unwrap()))
+            .build()
+            .unwrap();
+
         let rng = derive_rng_from_seed(seed);
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
-        let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
-            CurveKind::Bls12_377 => contribute_challenge(
-                &challenge,
-                &get_parameters_chunked::<Bls12_377>(proving_system, power, batch_size, chunk_index, chunk_size),
-                rng,
-            ),
-            CurveKind::BW6 => contribute_challenge(
-                &challenge,
-                &get_parameters_chunked::<BW6_761>(proving_system, power, batch_size, chunk_index, chunk_size),
-                rng,
-            ),
-        };
-        convert_contribution_result_to_wasm(&res)
+
+        let (tx, rx) = oneshot::channel();
+        thread_pool.install(|| {
+            let res = match curve_from_str(curve_kind).expect("invalid curve_kind") {
+                CurveKind::Bls12_377 => contribute_challenge(
+                    &challenge,
+                    &get_parameters_chunked::<Bls12_377>(proving_system, power, batch_size, chunk_index, chunk_size),
+                    rng,
+                ),
+                CurveKind::BW6 => contribute_challenge(
+                    &challenge,
+                    &get_parameters_chunked::<BW6_761>(proving_system, power, batch_size, chunk_index, chunk_size),
+                    rng,
+                ),
+            };
+            drop(tx.send(res));
+        });
+
+        rx.recv().unwrap()
     }
 }
 
