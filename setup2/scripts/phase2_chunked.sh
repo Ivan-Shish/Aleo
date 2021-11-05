@@ -20,6 +20,7 @@ function check_hash() {
 
 cargo $CARGO_VER build --release --bin setup2
 
+phase2_new="cargo run --release --features cli  -- new --curve-type $CURVE --chunk-size $CHUNK_SIZE --batch-size $BATCH --contribution-mode full"
 phase2_chunked="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --chunk-size $CHUNK_SIZE --batch-size $BATCH --contribution-mode full --proving-system $PROVING_SYSTEM"
 phase2_1="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed1 --proving-system $PROVING_SYSTEM"
 phase2_2="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed2 --proving-system $PROVING_SYSTEM"
@@ -27,7 +28,7 @@ phase2_2="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURV
 
 MAX_CHUNK_INDEX=1
 
-$phase2_chunked new --challenge-fname challenge --challenge-hash-fname challenge.verified.hash --phase1-fname ../../phase1-tests/phase1 --phase1-powers $POWER --num-validators 1 --num-epochs 1
+$phase2_new --challenge-fname challenge --challenge-hash-fname challenge.verified.hash --phase1-fname ../../phase1-tests/phase1 --phase1-powers $POWER --num-validators 1 --num-epochs 1
 for i in $(seq 0 $(($MAX_CHUNK_INDEX/2))); do
   echo "Contributing and verifying chunk $i..."
   $phase2_1 --chunk-index $i contribute --challenge-fname challenge.$i --challenge-hash-fname challenge.$i.hash --response-fname response_$i --response-hash-fname response_$i.hash

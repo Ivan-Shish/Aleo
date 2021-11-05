@@ -14,6 +14,7 @@ use memmap::MmapOptions;
 use phase2::parameters::circuit_to_qap;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
+use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 
 type AleoInner = <Testnet2Parameters as Parameters>::InnerCurve;
@@ -39,6 +40,21 @@ pub fn curve_from_str(src: &str) -> std::result::Result<CurveKind, String> {
     Ok(curve)
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Copy, Serialize, Deserialize)]
+pub enum ContributionMode {
+    Full,
+    Chunked,
+}
+
+pub fn contribution_mode_from_str(src: &str) -> Result<ContributionMode, String> {
+    let mode = match src.to_lowercase().as_str() {
+        "full" => ContributionMode::Full,
+        "chunked" => ContributionMode::Chunked,
+        _ => return Err("unsupported contribution mode. Currently supported: full, chunked".to_string()),
+    };
+    Ok(mode)
+}
+
 #[derive(Debug, Options, Clone)]
 pub struct NewOpts {
     help: bool,
@@ -55,6 +71,19 @@ pub struct NewOpts {
         parse(try_from_str = "curve_from_str")
     )]
     pub curve_type: CurveKind,
+
+    #[options(
+        help = "the contribution mode",
+        default = "chunked",
+        parse(try_from_str = "contribution_mode_from_str")
+    )]
+    pub contribution_mode: ContributionMode,
+
+    #[options(help = "the chunk size")]
+    pub chunk_size: usize,
+
+    #[options(help = "the size of batches to process", default = "256")]
+    pub batch_size: usize,
 
     #[options(help = "setup the inner or the outer circuit?")]
     pub is_inner: bool,
