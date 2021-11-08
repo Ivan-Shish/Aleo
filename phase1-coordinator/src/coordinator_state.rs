@@ -5,8 +5,7 @@ use crate::{
         task::{initialize_tasks, Task},
     },
     storage::{Disk, Locator, Object},
-    CoordinatorError,
-    TimeSource,
+    CoordinatorError, TimeSource,
 };
 use phase1::ProvingSystem;
 
@@ -1514,9 +1513,14 @@ impl CoordinatorState {
             }
         }
 
+        let join_timestamp = match reliability_score {
+            255 => time.utc_now() - chrono::Duration::weeks(52),
+            _ => time.utc_now(),
+        };
+
         // Add the participant to the queue.
         self.queue
-            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
+            .insert(participant, (reliability_score, None, time.utc_now(), join_timestamp));
 
         Ok(())
     }
@@ -3280,9 +3284,7 @@ mod tests {
         coordinator_state::*,
         environment::{Parameters, Testing},
         testing::prelude::*,
-        CoordinatorState,
-        MockTimeSource,
-        SystemTimeSource,
+        CoordinatorState, MockTimeSource, SystemTimeSource,
     };
 
     fn fetch_task_for_verifier(state: &CoordinatorState) -> Option<Task> {
