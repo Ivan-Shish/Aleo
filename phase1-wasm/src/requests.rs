@@ -9,7 +9,8 @@ use web_sys::{Request, RequestInit, RequestMode, Response};
 
 const MAJOR: u8 = 0;
 const MINOR: u8 = 1;
-const PATCH: u8 = 0;
+// Hacky marker which lets the coordinator know we're a WASM contributor.
+const PATCH: u8 = 255;
 
 // A custom binding to the JS `fetch` function, which we use in place of `reqwest`
 // in cases where request payload may be malformed.
