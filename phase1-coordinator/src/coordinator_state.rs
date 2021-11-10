@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     iter::FromIterator,
+    net::IpAddr,
 };
 use tracing::*;
 
@@ -949,6 +950,8 @@ pub struct CoordinatorState {
     current_round_height: Option<u64>,
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
+    /// The map of unique contributor IPs to participants.
+    contributor_ips: HashMap<IpAddr, Participant>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
     /// The map of tasks pending verification in the current round.
@@ -979,6 +982,7 @@ impl CoordinatorState {
             current_metrics: None,
             current_round_height: None,
             current_contributors: HashMap::default(),
+            contributor_ips: HashMap::default(),
             current_verifiers: HashMap::default(),
             pending_verification: HashMap::default(),
             finished_contributors: HashMap::default(),
@@ -1179,6 +1183,13 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns `true` if a contributor has already entered the queue with this IP.
+    ///
+    pub fn is_duplicate_ip(&self, ip: &IpAddr) -> bool {
+        self.contributor_ips.contains_key(ip)
+    }
+
+    ///
     /// Returns `true` if the given participant is a contributor in the queue.
     ///
     #[inline]
@@ -1271,7 +1282,7 @@ impl CoordinatorState {
 
     ///
     /// Returns the total number of contributors currently in the queue.
-    ///  
+    ///
     #[inline]
     pub fn number_of_queue_contributors(&self) -> usize {
         self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count()
@@ -3195,6 +3206,21 @@ impl CoordinatorState {
             Ok(())
         } else {
             Err(CoordinatorError::ParticipantNotFound(participant.clone()))
+        }
+    }
+
+    ///
+    /// Updates the coordinator's state by zeroing the reliability score for participants using
+    /// the same IP.
+    ///
+    pub fn zero_duplicate_ips(&mut self, ip: &IpAddr) {
+        for participant in self.contributor_ips.get(ip) {
+            if let Some((reliability_score, _, _, _)) = self.queue.get_mut(participant) {
+                *reliability_score = 0;
+            }
+
+            // TODO: update other maps
+            // if let Some(participant_info)
         }
     }
 
