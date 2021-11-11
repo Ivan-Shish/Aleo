@@ -1488,6 +1488,7 @@ impl CoordinatorState {
     pub(super) fn add_to_queue(
         &mut self,
         participant: Participant,
+        participant_ip: IpAddr,
         reliability_score: u8,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
@@ -1526,8 +1527,13 @@ impl CoordinatorState {
         }
 
         // Add the participant to the queue.
-        self.queue
-            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
+        self.queue.insert(
+            participant.clone(),
+            (reliability_score, None, time.utc_now(), time.utc_now()),
+        );
+
+        // Keep track of the IP.
+        self.contributor_ips.insert(participant_ip, participant);
 
         Ok(())
     }
@@ -3302,6 +3308,8 @@ pub(crate) enum DropParticipant {
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+
     use crate::{
         coordinator_state::*,
         environment::{Parameters, Testing},
@@ -3350,6 +3358,7 @@ mod tests {
 
         // Fetch the contributor of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         assert!(contributor.is_contributor());
 
         // Initialize a new coordinator state.
@@ -3357,7 +3366,9 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
@@ -3376,7 +3387,7 @@ mod tests {
 
         // Attempt to add the contributor again.
         for _ in 0..10 {
-            let result = state.add_to_queue(contributor.clone(), 10, &time);
+            let result = state.add_to_queue(contributor.clone(), contributor_ip, 10, &time);
             assert!(result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3389,6 +3400,7 @@ mod tests {
 
         // Fetch the verifier of the coordinator.
         let verifier = test_coordinator_verifier(&environment).unwrap();
+        let verifier_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         assert!(verifier.is_verifier());
 
         // Initialize a new coordinator state.
@@ -3396,7 +3408,7 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the verifier of the coordinator.
-        let result = state.add_to_queue(verifier.clone(), 10, &time);
+        let result = state.add_to_queue(verifier.clone(), verifier_ip, 10, &time);
         assert!(result.is_err());
         assert_eq!(0, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3415,7 +3427,7 @@ mod tests {
 
         // Attempt to add the verifier again.
         for _ in 0..10 {
-            let result = state.add_to_queue(verifier.clone(), 10, &time);
+            let result = state.add_to_queue(verifier.clone(), verifier_ip, 10, &time);
             assert!(result.is_err());
             assert_eq!(0, state.queue.len());
         }
@@ -3428,6 +3440,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3441,7 +3454,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
@@ -3471,7 +3486,7 @@ mod tests {
 
         // Attempt to add the contributor and verifier again.
         for _ in 0..10 {
-            let contributor_result = state.add_to_queue(contributor.clone(), 10, &time);
+            let contributor_result = state.add_to_queue(contributor.clone(), contributor_ip, 10, &time);
             assert!(contributor_result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3501,8 +3516,12 @@ mod tests {
 
             // Add a unique contributor.
             let contributor = Participant::Contributor(id.to_string());
+            let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+
             let reliability = 10 - id as u8;
-            state.add_to_queue(contributor.clone(), reliability, &time).unwrap();
+            state
+                .add_to_queue(contributor.clone(), contributor_ip, reliability, &time)
+                .unwrap();
             assert_eq!(id, state.queue.len());
             assert_eq!(0, state.next.len());
             assert_eq!(Some(current_round_height), state.current_round_height);
@@ -3552,13 +3571,16 @@ mod tests {
 
         // Fetch the contributor of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
@@ -3590,6 +3612,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3603,7 +3626,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3680,6 +3705,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3693,7 +3719,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3766,12 +3794,15 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3826,13 +3857,16 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3903,15 +3937,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4012,15 +4052,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4153,15 +4199,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4307,15 +4359,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4455,13 +4513,16 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();

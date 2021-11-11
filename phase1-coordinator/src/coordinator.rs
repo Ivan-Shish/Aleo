@@ -622,10 +622,15 @@ impl Coordinator {
     /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
-    pub fn add_to_queue(&mut self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
+    pub fn add_to_queue(
+        &mut self,
+        participant: Participant,
+        participant_ip: IpAddr,
+        reliability_score: u8,
+    ) -> Result<(), CoordinatorError> {
         // Attempt to add the participant to the next round.
         self.state
-            .add_to_queue(participant, reliability_score, self.time.as_ref())?;
+            .add_to_queue(participant, participant_ip, reliability_score, self.time.as_ref())?;
 
         // Save the coordinator state in storage.
         self.save_state()?;
@@ -2674,9 +2679,16 @@ mod tests {
     use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
-    use std::{collections::HashMap, sync::Arc};
+    use std::{
+        collections::HashMap,
+        net::{IpAddr, Ipv4Addr},
+        sync::Arc,
+    };
 
-    fn initialize_to_round_1(coordinator: &mut Coordinator, contributors: &[Participant]) -> anyhow::Result<()> {
+    fn initialize_to_round_1(
+        coordinator: &mut Coordinator,
+        contributors: &[(Participant, IpAddr)],
+    ) -> anyhow::Result<()> {
         // Initialize the ceremony and add the contributors and verifiers to the queue.
         {
             // Run initialization.
@@ -2692,10 +2704,10 @@ mod tests {
             coordinator.state.save(&mut coordinator.storage)?;
 
             // Add the contributor and verifier of the coordinator to execute round 1.
-            for contributor in contributors {
+            for (contributor, contributor_ip) in contributors {
                 coordinator
                     .state
-                    .add_to_queue(contributor.clone(), 10, coordinator.time.as_ref())?;
+                    .add_to_queue(contributor.clone(), *contributor_ip, 10, coordinator.time.as_ref())?;
             }
 
             // Update the queue.
@@ -2731,12 +2743,22 @@ mod tests {
             Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
         ];
 
+        let contributor_ips = vec![
+            IpAddr::V4("0.0.0.1".parse().unwrap()),
+            IpAddr::V4("0.0.0.2".parse().unwrap()),
+        ];
+
+        let contributors: Vec<(Participant, IpAddr)> = contributors.into_iter().zip(contributor_ips).collect();
+
         initialize_to_round_1(coordinator, &contributors)
     }
 
     fn initialize_coordinator_single_contributor(coordinator: &mut Coordinator) -> anyhow::Result<()> {
         // Load the contributors and verifiers.
-        let contributors = vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()];
+        let contributors = vec![(
+            Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        )];
 
         initialize_to_round_1(coordinator, &contributors)
     }
