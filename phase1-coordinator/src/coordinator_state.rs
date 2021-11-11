@@ -3396,6 +3396,37 @@ mod tests {
     }
 
     #[test]
+    fn test_add_duplicate_ip_to_queue_contributor() {
+        let time = SystemTimeSource::new();
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch the contributor of the coordinator.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = contributor_1_ip;
+        assert!(contributor_1.is_contributor());
+
+        // Initialize a new coordinator state.
+        let mut state = CoordinatorState::new(environment.clone());
+        assert_eq!(0, state.queue.len());
+
+        // Add the contributors to the coordinator queue.
+        state
+            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .unwrap();
+        assert_eq!(1, state.queue.len());
+
+        // Add the second contributor with the same ip and a zeroed reliability score.
+        state
+            .add_to_queue(contributor_2.clone(), contributor_2_ip, 0, &time)
+            .unwrap();
+        assert_eq!(2, state.queue.len());
+
+        // TODO: verify IP is tracked.
+    }
+
+    #[test]
     fn test_add_to_queue_verifier() {
         let time = SystemTimeSource::new();
         let environment = TEST_ENVIRONMENT.clone();
