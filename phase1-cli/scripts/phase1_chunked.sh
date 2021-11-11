@@ -3,9 +3,9 @@
 rm -f challenge* response* new_challenge* new_response* new_new_challenge_* processed* initial_ceremony* response_list* combined* seed*
 
 PROVING_SYSTEM=$1
-POWER=10
-BATCH=64
-CHUNK_SIZE=512
+POWER=18
+BATCH=131072
+CHUNK_SIZE=131072
 if [ "$PROVING_SYSTEM" == "groth16" ]; then
   MAX_CHUNK_INDEX=3 # we have 4 chunks, since we have a total of 2^11-1 powers
 else
