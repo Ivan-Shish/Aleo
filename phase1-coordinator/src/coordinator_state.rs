@@ -951,7 +951,7 @@ pub struct CoordinatorState {
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
     /// The map of unique contributor IPs to participants.
-    contributor_ips: HashMap<IpAddr, Participant>,
+    contributor_ips: HashMap<IpAddr, Vec<Participant>>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
     /// The map of tasks pending verification in the current round.
@@ -1533,7 +1533,8 @@ impl CoordinatorState {
         );
 
         // Keep track of the IP.
-        self.contributor_ips.insert(participant_ip, participant);
+        let participants = self.contributor_ips.entry(participant_ip).or_insert(Vec::new());
+        participants.push(participant);
 
         Ok(())
     }
@@ -3220,13 +3221,14 @@ impl CoordinatorState {
     /// the same IP.
     ///
     pub fn zero_duplicate_ips(&mut self, ip: &IpAddr) {
-        for participant in self.contributor_ips.get(ip) {
-            if let Some((reliability_score, _, _, _)) = self.queue.get_mut(participant) {
-                *reliability_score = 0;
-            }
+        for participants in self.contributor_ips.get(ip) {
+            for participant in participants {
+                if let Some((reliability_score, _, _, _)) = self.queue.get_mut(participant) {
+                    *reliability_score = 0;
+                }
 
-            // TODO: update other maps
-            // if let Some(participant_info)
+                // TODO: update other maps with ParticipantInfo?
+            }
         }
     }
 
