@@ -563,14 +563,6 @@ impl Coordinator {
     }
 
     ///
-    /// Returns `true` if a contributor has already entered the queue with this IP.
-    ///
-    #[inline]
-    pub fn is_duplicate_ip(&self, ip: &IpAddr) -> bool {
-        self.state.is_duplicate_ip(ip)
-    }
-
-    ///
     /// Returns `true` if the given participant is a contributor in the queue.
     ///
     #[inline]
@@ -864,15 +856,6 @@ impl Coordinator {
     /// and participating (or waiting to participate) in the ceremony.
     pub fn heartbeat(&mut self, participant: &Participant) -> Result<(), CoordinatorError> {
         self.state.heartbeat(participant, self.time.as_ref())
-    }
-
-    ///
-    /// Updates the coordinator's state by zeroing the reliability score for participants using
-    /// the same IP.
-    ///
-    #[inline]
-    pub fn zero_duplicate_ips(&mut self, ip: &IpAddr) {
-        self.state.zero_duplicate_ips(ip)
     }
 
     ///
