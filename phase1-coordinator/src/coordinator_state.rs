@@ -3591,7 +3591,7 @@ mod tests {
 
             // Add a unique contributor.
             let contributor = Participant::Contributor(id.to_string());
-            let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+            let contributor_ip = IpAddr::V4(format!("0.0.0.{}", id).parse().unwrap());
 
             let reliability = 10 - id as u8;
             state
