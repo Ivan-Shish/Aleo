@@ -625,7 +625,7 @@ impl Coordinator {
     pub fn add_to_queue(
         &mut self,
         participant: Participant,
-        participant_ip: IpAddr,
+        participant_ip: Option<IpAddr>,
         reliability_score: u8,
     ) -> Result<(), CoordinatorError> {
         // Attempt to add the participant to the next round.
@@ -2705,9 +2705,12 @@ mod tests {
 
             // Add the contributor and verifier of the coordinator to execute round 1.
             for (contributor, contributor_ip) in contributors {
-                coordinator
-                    .state
-                    .add_to_queue(contributor.clone(), *contributor_ip, 10, coordinator.time.as_ref())?;
+                coordinator.state.add_to_queue(
+                    contributor.clone(),
+                    Some(*contributor_ip),
+                    10,
+                    coordinator.time.as_ref(),
+                )?;
             }
 
             // Update the queue.

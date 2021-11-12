@@ -1488,7 +1488,7 @@ impl CoordinatorState {
     pub(super) fn add_to_queue(
         &mut self,
         participant: Participant,
-        participant_ip: IpAddr,
+        participant_ip: Option<IpAddr>,
         reliability_score: u8,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
@@ -1533,8 +1533,10 @@ impl CoordinatorState {
         );
 
         // Keep track of the IP.
-        let participants = self.contributor_ips.entry(participant_ip).or_insert(Vec::new());
-        participants.push(participant);
+        if let Some(ip) = participant_ip {
+            let participants = self.contributor_ips.entry(ip).or_insert(Vec::new());
+            participants.push(participant);
+        }
 
         Ok(())
     }
@@ -3369,7 +3371,7 @@ mod tests {
 
         // Add the contributor of the coordinator.
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3389,7 +3391,7 @@ mod tests {
 
         // Attempt to add the contributor again.
         for _ in 0..10 {
-            let result = state.add_to_queue(contributor.clone(), contributor_ip, 10, &time);
+            let result = state.add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time);
             assert!(result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3413,13 +3415,13 @@ mod tests {
 
         // Add the contributors to the coordinator queue.
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
 
         // Add the second contributor with the same ip and a zeroed reliability score.
         state
-            .add_to_queue(contributor_2.clone(), contributor_2_ip, 0, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 0, &time)
             .unwrap();
         assert_eq!(2, state.queue.len());
 
@@ -3433,7 +3435,6 @@ mod tests {
 
         // Fetch the verifier of the coordinator.
         let verifier = test_coordinator_verifier(&environment).unwrap();
-        let verifier_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         assert!(verifier.is_verifier());
 
         // Initialize a new coordinator state.
@@ -3441,7 +3442,7 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the verifier of the coordinator.
-        let result = state.add_to_queue(verifier.clone(), verifier_ip, 10, &time);
+        let result = state.add_to_queue(verifier.clone(), None, 10, &time);
         assert!(result.is_err());
         assert_eq!(0, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3460,7 +3461,7 @@ mod tests {
 
         // Attempt to add the verifier again.
         for _ in 0..10 {
-            let result = state.add_to_queue(verifier.clone(), verifier_ip, 10, &time);
+            let result = state.add_to_queue(verifier.clone(), None, 10, &time);
             assert!(result.is_err());
             assert_eq!(0, state.queue.len());
         }
@@ -3488,7 +3489,7 @@ mod tests {
 
         // Add the contributor and verifier of the coordinator.
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3519,7 +3520,7 @@ mod tests {
 
         // Attempt to add the contributor and verifier again.
         for _ in 0..10 {
-            let contributor_result = state.add_to_queue(contributor.clone(), contributor_ip, 10, &time);
+            let contributor_result = state.add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time);
             assert!(contributor_result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3553,7 +3554,7 @@ mod tests {
 
             let reliability = 10 - id as u8;
             state
-                .add_to_queue(contributor.clone(), contributor_ip, reliability, &time)
+                .add_to_queue(contributor.clone(), Some(contributor_ip), reliability, &time)
                 .unwrap();
             assert_eq!(id, state.queue.len());
             assert_eq!(0, state.next.len());
@@ -3612,7 +3613,7 @@ mod tests {
 
         // Add the contributor of the coordinator.
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3660,7 +3661,7 @@ mod tests {
 
         // Add the contributor and verifier of the coordinator.
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
 
@@ -3753,7 +3754,7 @@ mod tests {
 
         // Add the contributor and verifier of the coordinator.
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
 
@@ -3834,7 +3835,7 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -3898,7 +3899,7 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor.clone(), contributor_ip, 10, &time)
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -3980,10 +3981,10 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         state
-            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -4095,10 +4096,10 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         state
-            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -4242,10 +4243,10 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         state
-            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -4402,10 +4403,10 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         state
-            .add_to_queue(contributor_2.clone(), contributor_2_ip, 9, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
@@ -4554,7 +4555,7 @@ mod tests {
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
         state
-            .add_to_queue(contributor_1.clone(), contributor_1_ip, 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
             .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
