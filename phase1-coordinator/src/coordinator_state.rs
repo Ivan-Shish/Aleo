@@ -951,7 +951,7 @@ pub struct CoordinatorState {
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
     /// The map of unique contributor IPs to participants.
-    contributor_ips: HashMap<IpAddr, Vec<Participant>>,
+    contributor_ips: HashMap<IpAddr, HashSet<Participant>>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
     /// The map of tasks pending verification in the current round.
@@ -1536,8 +1536,8 @@ impl CoordinatorState {
                 self.zero_duplicate_ips(&ip);
             }
             // Map the new IP to the address.
-            let participants = self.contributor_ips.entry(ip).or_insert(Vec::new());
-            participants.push(participant.clone());
+            let participants = self.contributor_ips.entry(ip).or_insert(HashSet::new());
+            participants.insert(participant.clone());
         }
 
         // Add the participant to the queue.
@@ -2133,11 +2133,9 @@ impl CoordinatorState {
             if participants.len() == 1 {
                 // Remove the IP address entirely.
                 self.contributor_ips.remove(&ip);
-            } else {
+            } else if let Some(participants) = self.contributor_ips.get_mut(&ip) {
                 // Remove only the associated participant, leaving the others and the IP in place.
-                if let Some(participants) = self.contributor_ips.get_mut(&ip) {
-                    participants.retain(|p| p != participant)
-                }
+                participants.remove(&participant);
             }
         }
 
