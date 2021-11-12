@@ -1489,7 +1489,7 @@ impl CoordinatorState {
         &mut self,
         participant: Participant,
         participant_ip: Option<IpAddr>,
-        reliability_score: u8,
+        mut reliability_score: u8,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is not banned from participating.
@@ -1526,17 +1526,23 @@ impl CoordinatorState {
             }
         }
 
-        // Add the participant to the queue.
-        self.queue.insert(
-            participant.clone(),
-            (reliability_score, None, time.utc_now(), time.utc_now()),
-        );
-
-        // Keep track of the IP.
+        // Zero the reliability score if the participant is joining with a known IP.
         if let Some(ip) = participant_ip {
+            if self.is_duplicate_ip(&ip) {
+                reliability_score = 0;
+
+                // Also zero the reliability scores of existing participants in the queue with the
+                // same IP.
+                self.zero_duplicate_ips(&ip);
+            }
+            // Map the new IP to the address.
             let participants = self.contributor_ips.entry(ip).or_insert(Vec::new());
-            participants.push(participant);
+            participants.push(participant.clone());
         }
+
+        // Add the participant to the queue.
+        self.queue
+            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
 
         Ok(())
     }
@@ -2113,6 +2119,26 @@ impl CoordinatorState {
             return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
                 participant: participant.clone(),
             }));
+        }
+
+        // Update the IP map.
+        let ips: Vec<_> = self
+            .contributor_ips
+            .iter()
+            .filter(|(_ip, participants)| participants.contains(&participant))
+            .map(|(&ip, participants)| (ip, participants.clone()))
+            .collect();
+
+        for (ip, participants) in ips {
+            if participants.len() == 1 {
+                // Remove the IP address entirely.
+                self.contributor_ips.remove(&ip);
+            } else {
+                // Remove only the associated participant, leaving the others and the IP in place.
+                if let Some(participants) = self.contributor_ips.get_mut(&ip) {
+                    participants.retain(|p| p != participant)
+                }
+            }
         }
 
         // Fetch the current participant information.
