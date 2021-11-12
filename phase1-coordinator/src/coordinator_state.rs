@@ -3430,9 +3430,9 @@ mod tests {
 
         // Fetch the contributor of the coordinator.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
-        let contributor_1_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
-        let contributor_2_ip = contributor_1_ip;
+        // To be used by both contributors.
+        let contributor_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         assert!(contributor_1.is_contributor());
 
         // Initialize a new coordinator state.
@@ -3441,17 +3441,32 @@ mod tests {
 
         // Add the contributors to the coordinator queue.
         state
-            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .add_to_queue(contributor_1.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(1, state.queue.len());
 
-        // Add the second contributor with the same ip and a zeroed reliability score.
+        // Add the second contributor with the same ip.
         state
-            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 0, &time)
+            .add_to_queue(contributor_2.clone(), Some(contributor_ip), 10, &time)
             .unwrap();
         assert_eq!(2, state.queue.len());
 
-        // TODO: verify IP is tracked.
+        // Check the reliability score has been zeroed for both participants.
+        assert_eq!(0, state.queue.get(&contributor_1).unwrap().0);
+        assert_eq!(0, state.queue.get(&contributor_2).unwrap().0);
+
+        // TODO: work out coordinator state requirements to test this.
+        // Drop one of the participants.
+        // state.drop_participant(&contributor_1, &time).unwrap();
+
+        // Verify the IP still exists as one participant associated with it is left in the queue.
+        // assert!(state.contributor_ips.contains_key(&contributor_ip));
+
+        // Drop the second participant.
+        // state.drop_participant(&contributor_2, &time).unwrap();
+
+        // Verify the IP has been deleted.
+        // assert!(!state.contributor_ips.contains_key(&contributor_ip));
     }
 
     #[test]
