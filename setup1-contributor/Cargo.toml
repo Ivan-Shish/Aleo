@@ -41,16 +41,10 @@ serde_json = { version = "1.0" }
 serial_test = { version = "0.5.1" }
 structopt = { version = "0.3" }
 thiserror = { version = "1.0" }
-tokio = { version = "1.7", features = [ "macros", "rt-multi-thread" ] }
+tokio = { version = "1.13", features = [ "macros", "rt-multi-thread" ] }
+tokio-tungstenite = { version = "0.15.0", features = ["native-tls"] }
 tracing = { version = "0.1" }
 tracing-appender = { version = "0.2" }
 tracing-subscriber = { version = "0.3" }
-url = { version = "2.1.1" }
+url = { version = "2.2" }
 
-[dependencies.tokio-tungstenite]
-version = "0.15.0"
-# remove gh link after the new version is released
-# related issue: https://github.com/snapview/tokio-tungstenite/issues/182
-git = "https://github.com/snapview/tokio-tungstenite"
-rev = "2bfd4cd"
-features = ["native-tls"]
