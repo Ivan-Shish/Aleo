@@ -1526,18 +1526,20 @@ impl CoordinatorState {
             }
         }
 
-        // Zero the reliability score if the participant is joining with a known IP.
-        if let Some(ip) = participant_ip {
-            if self.is_duplicate_ip(&ip) {
-                reliability_score = 0;
+        if !self.environment.disable_reliability_zeroing() {
+            // Zero the reliability score if the participant is joining with a known IP.
+            if let Some(ip) = participant_ip {
+                if self.is_duplicate_ip(&ip) {
+                    reliability_score = 0;
 
-                // Also zero the reliability scores of existing participants in the queue with the
-                // same IP.
-                self.zero_duplicate_ips(&ip);
+                    // Also zero the reliability scores of existing participants in the queue with the
+                    // same IP.
+                    self.zero_duplicate_ips(&ip);
+                }
+                // Map the new IP to the address.
+                let participants = self.contributor_ips.entry(ip).or_insert(HashSet::new());
+                participants.insert(participant.clone());
             }
-            // Map the new IP to the address.
-            let participants = self.contributor_ips.entry(ip).or_insert(HashSet::new());
-            participants.insert(participant.clone());
         }
 
         // Add the participant to the queue.
