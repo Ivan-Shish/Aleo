@@ -18,7 +18,7 @@ snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
-age = { version = "0.6", features = [ "cli-common", "armor" ] }
+age = { version = "0.7", features = [ "cli-common", "armor", "plugin" ] }
 anyhow = { version = "1.0.33" }
 blake2 = "0.9"
 clap = { version = "2.33.3" }
@@ -35,7 +35,7 @@ panic-control = {version = "0.1.4" }
 rand = { version = "0.8" }
 regex = "1"
 reqwest = "0.11"
-secrecy = { version = "0.7" }
+secrecy = { version = "0.8" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 serial_test = { version = "0.5.1" }
