@@ -50,7 +50,7 @@ phase2 = { path = "./", features = ["testing"] }
 wasm-bindgen-test = { version = "0.3.18" }
 
 rusty-hook = { version = "0.11.2" }
-tracing-subscriber = { version = "0.2.3" }
+tracing-subscriber = { version = "0.3" }
 
 [features]
 default = []
