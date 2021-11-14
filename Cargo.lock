@@ -21,11 +21,11 @@ dependencies = [
  "base64",
  "bech32",
  "chacha20poly1305",
- "console 0.15.0",
+ "console",
  "cookie-factory",
  "hkdf",
  "hmac",
- "i18n-embed 0.13.0",
+ "i18n-embed",
  "i18n-embed-fl",
  "lazy_static",
  "nom",
@@ -34,7 +34,7 @@ dependencies = [
  "rand 0.7.3",
  "rand 0.8.4",
  "rpassword",
- "rust-embed 6.2.0",
+ "rust-embed",
  "scrypt",
  "sha2",
  "subtle",
@@ -340,21 +340,6 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
-]
-
-[[package]]
-name = "console"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3993e6445baa160675931ec041a5e03ca84b9c6e32a056150d3aa2bdda0a1f45"
-dependencies = [
- "encode_unicode",
- "lazy_static",
- "libc",
- "regex",
- "terminal_size",
- "unicode-width",
- "winapi",
 ]
 
 [[package]]
@@ -730,11 +715,11 @@ dependencies = [
 
 [[package]]
 name = "dialoguer"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9dd058f8b65922819fabb4a41e7d1964e56344042c26efbccd465202c23fa0c"
+checksum = "61579ada4ec0c6031cfac3f86fdba0d195a7ebeb5e36693bd53cb5999a25beeb"
 dependencies = [
- "console 0.14.1",
+ "console",
  "lazy_static",
  "tempfile",
  "zeroize",
@@ -1265,21 +1250,6 @@ dependencies = [
 
 [[package]]
 name = "i18n-embed"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d31ac705e9fe3e7d3fcb3fe23882118f858383c65a7ddba2cfe80f6fa5cd760"
-dependencies = [
- "fluent-langneg",
- "lazy_static",
- "locale_config",
- "log",
- "rust-embed 5.9.0",
- "thiserror",
- "unic-langid",
-]
-
-[[package]]
-name = "i18n-embed"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8be76966dc82fc0c1fe50bac057170294594ab2a78a0e5d82f85227248a19a1"
@@ -1290,9 +1260,10 @@ dependencies = [
  "i18n-embed-impl",
  "intl-memoizer",
  "lazy_static",
+ "locale_config",
  "log",
  "parking_lot",
- "rust-embed 6.2.0",
+ "rust-embed",
  "thiserror",
  "unic-langid",
  "walkdir",
@@ -1309,7 +1280,7 @@ dependencies = [
  "fluent",
  "fluent-syntax",
  "i18n-config",
- "i18n-embed 0.13.0",
+ "i18n-embed",
  "lazy_static",
  "proc-macro-error",
  "proc-macro2",
@@ -1365,7 +1336,7 @@ version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7baab56125e25686df467fe470785512329883aab42696d661247aca2a2896e4"
 dependencies = [
- "console 0.15.0",
+ "console",
  "lazy_static",
  "number_prefix",
  "regex",
@@ -2410,36 +2381,12 @@ dependencies = [
 
 [[package]]
 name = "rust-embed"
-version = "5.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fe1fe6aac5d6bb9e1ffd81002340363272a7648234ec7bdfac5ee202cb65523"
-dependencies = [
- "rust-embed-impl 5.9.0",
- "rust-embed-utils 5.1.0",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed"
 version = "6.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1be44a6694859b7cfc955699935944a6844aa9fe416aeda5d40829e3e38dfee6"
 dependencies = [
- "rust-embed-impl 6.1.0",
- "rust-embed-utils 7.0.0",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-impl"
-version = "5.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ed91c41c42ef7bf687384439c312e75e0da9c149b0390889b94de3c7d9d9e66"
-dependencies = [
- "proc-macro2",
- "quote",
- "rust-embed-utils 5.1.0",
- "syn",
+ "rust-embed-impl",
+ "rust-embed-utils",
  "walkdir",
 ]
 
@@ -2451,17 +2398,8 @@ checksum = "f567ca01565c50c67b29e535f5f67b8ea8aeadaeed16a88f10792ab57438b957"
 dependencies = [
  "proc-macro2",
  "quote",
- "rust-embed-utils 7.0.0",
+ "rust-embed-utils",
  "syn",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-utils"
-version = "5.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a512219132473ab0a77b52077059f1c47ce4af7fbdc94503e9862a34422876d"
-dependencies = [
  "walkdir",
 ]
 
@@ -2836,7 +2774,7 @@ dependencies = [
  "futures-util",
  "hex",
  "http",
- "i18n-embed 0.9.4",
+ "i18n-embed",
  "indicatif",
  "panic-control",
  "phase1",

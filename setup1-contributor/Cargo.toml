@@ -22,14 +22,14 @@ age = { version = "0.7", features = [ "cli-common", "armor", "plugin" ] }
 anyhow = { version = "1.0.33" }
 blake2 = "0.9"
 clap = { version = "2.33.3" }
-dialoguer = "0.8"
+dialoguer = "0.9"
 egg-mode = "0.16"
 fs-err = "2.6"
 futures = { version = "0.3" }
 futures-util = { version = "0.3.15", default-features = false, features = ["async-await", "sink", "std"] }
 hex = { version = "0.4" }
 http = "0.2"
-i18n-embed = { version = "0.9", features = ["desktop-requester"] }
+i18n-embed = { version = "0.13", features = ["desktop-requester"] }
 indicatif = { version = "0.15.0" }
 panic-control = {version = "0.1.4" }
 rand = { version = "0.8" }
