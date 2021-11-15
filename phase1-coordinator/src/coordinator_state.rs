@@ -3258,7 +3258,15 @@ impl CoordinatorState {
                     *reliability_score = 0;
                 }
 
-                // TODO: update other maps with ParticipantInfo?
+                // Update the current contributors.
+                if let Some(participant_info) = self.current_contributors.get_mut(participant) {
+                    participant_info.reliability = 0;
+                }
+
+                // Update the next contributors.
+                if let Some(participant_info) = self.next.get_mut(participant) {
+                    participant_info.reliability = 0;
+                }
             }
         }
     }
