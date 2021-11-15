@@ -2123,7 +2123,10 @@ impl CoordinatorState {
             }));
         }
 
-        // Update the IP map.
+        // Update the IP map, there are two cases:
+        // 1. The IP is associated only with the dropped participant, remove it.
+        // 2. The IP associated with the dropped participant is also associated with other participants, in
+        //    which case only remove the first relevant mapping.
         let ips: Vec<_> = self
             .contributor_ips
             .iter()
