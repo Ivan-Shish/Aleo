@@ -2118,30 +2118,30 @@ impl CoordinatorState {
                 self.rollback_next_round(time);
             }
 
+            // Update the IP map, there are two cases:
+            // 1. The IP is associated only with the dropped participant, remove it.
+            // 2. The IP associated with the dropped participant is also associated with other participants, in
+            //    which case only remove the first relevant mapping.
+            let ips: Vec<_> = self
+                .contributor_ips
+                .iter()
+                .filter(|(_ip, participants)| participants.contains(&participant))
+                .map(|(&ip, participants)| (ip, participants.clone()))
+                .collect();
+
+            for (ip, participants) in ips {
+                if participants.len() == 1 {
+                    // Remove the IP address entirely.
+                    self.contributor_ips.remove(&ip);
+                } else if let Some(participants) = self.contributor_ips.get_mut(&ip) {
+                    // Remove only the associated participant, leaving the others and the IP in place.
+                    participants.remove(&participant);
+                }
+            }
+
             return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
                 participant: participant.clone(),
             }));
-        }
-
-        // Update the IP map, there are two cases:
-        // 1. The IP is associated only with the dropped participant, remove it.
-        // 2. The IP associated with the dropped participant is also associated with other participants, in
-        //    which case only remove the first relevant mapping.
-        let ips: Vec<_> = self
-            .contributor_ips
-            .iter()
-            .filter(|(_ip, participants)| participants.contains(&participant))
-            .map(|(&ip, participants)| (ip, participants.clone()))
-            .collect();
-
-        for (ip, participants) in ips {
-            if participants.len() == 1 {
-                // Remove the IP address entirely.
-                self.contributor_ips.remove(&ip);
-            } else if let Some(participants) = self.contributor_ips.get_mut(&ip) {
-                // Remove only the associated participant, leaving the others and the IP in place.
-                participants.remove(&participant);
-            }
         }
 
         // Fetch the current participant information.
@@ -3448,7 +3448,10 @@ mod tests {
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
-        assert_eq!(0, state.queue.len());
+        let current_round_height = 5;
+        state.initialize(current_round_height);
+        assert!(state.queue.is_empty());
+        assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributors to the coordinator queue.
         state
@@ -3466,18 +3469,19 @@ mod tests {
         assert_eq!(0, state.queue.get(&contributor_1).unwrap().0);
         assert_eq!(0, state.queue.get(&contributor_2).unwrap().0);
 
-        // TODO: work out coordinator state requirements to test this.
+        state.update_queue().unwrap();
+
         // Drop one of the participants.
-        // state.drop_participant(&contributor_1, &time).unwrap();
+        state.drop_participant(&contributor_1, &time).unwrap();
 
         // Verify the IP still exists as one participant associated with it is left in the queue.
-        // assert!(state.contributor_ips.contains_key(&contributor_ip));
+        assert!(state.contributor_ips.contains_key(&contributor_ip));
 
         // Drop the second participant.
-        // state.drop_participant(&contributor_2, &time).unwrap();
+        state.drop_participant(&contributor_2, &time).unwrap();
 
         // Verify the IP has been deleted.
-        // assert!(!state.contributor_ips.contains_key(&contributor_ip));
+        assert!(!state.contributor_ips.contains_key(&contributor_ip));
     }
 
     #[test]
