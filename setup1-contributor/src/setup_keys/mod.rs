@@ -3,7 +3,6 @@ use std::io::Write;
 use age::{
     armor::{ArmoredWriter, Format},
     cli_common::Passphrase,
-    EncryptError,
     Encryptor,
 };
 use anyhow::Result;
@@ -32,11 +31,7 @@ struct UnencryptedKeys {
 fn encrypt(passphrase: SecretString, secret: &[u8]) -> Result<String> {
     let encryptor = Encryptor::with_user_passphrase(passphrase);
     let mut encrypted_output = vec![];
-    let mut writer = encryptor
-        .wrap_output(ArmoredWriter::wrap_output(&mut encrypted_output, Format::Binary)?)
-        .map_err(|e| match e {
-            EncryptError::Io(e) => e,
-        })?;
+    let mut writer = encryptor.wrap_output(ArmoredWriter::wrap_output(&mut encrypted_output, Format::Binary)?)?;
     writer.write_all(secret)?;
     writer.finish()?;
     let encrypted_secret = hex::encode(&encrypted_output);

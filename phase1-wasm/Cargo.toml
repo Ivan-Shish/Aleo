@@ -21,7 +21,7 @@ snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "s
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 
-blake2 = { version = "0.9", default-features = false } 
+blake2 = { version = "0.9", default-features = false }
 bytes = "1.1"
 cfg-if = "1.0"
 hex = { version = "0.4" }
@@ -38,7 +38,7 @@ serde_derive = { version = "1.0.114" }
 serde_json = "1.0"
 serde-diff = { version = "0.4" }
 tracing = { version = "0.1.21" }
-tracing-subscriber = { version = "0.2.3" }
+tracing-subscriber = { version = "0.3" }
 wasm-bindgen = { version = "0.2.78", features=["serde-serialize"] }
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["console", "ErrorEvent", "Event", "Navigator", "Window", "Worker", "DedicatedWorkerGlobalScope", "MessageEvent", "Response"] }
@@ -54,7 +54,7 @@ rand_chacha = { version = "0.3" }
 wasm-bindgen-test = { version = "0.3.18" }
 
 [build-dependencies]
-rustc_version = { version = "0.3" }
+rustc_version = { version = "0.4" }
 
 [features]
 default = []

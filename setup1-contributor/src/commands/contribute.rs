@@ -226,7 +226,7 @@ impl Contribute {
 
             let chunk_id = lock_response.chunk_id;
 
-            progress_bar.set_message(&format!("Contributing to chunk {}...", chunk_id));
+            progress_bar.set_message(format!("Contributing to chunk {}...", chunk_id));
 
             self.download_challenge(chunk_id, lock_response.contribution_id, CHALLENGE_FILENAME, auth_rng)
                 .await?;
