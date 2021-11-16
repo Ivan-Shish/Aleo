@@ -10,7 +10,6 @@ use crate::{
 };
 use phase1::ProvingSystem;
 
-use chrono::{DateTime, Duration, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -18,6 +17,7 @@ use std::{
     iter::FromIterator,
     net::IpAddr,
 };
+use time::{Duration, OffsetDateTime};
 use tracing::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,7 +37,7 @@ pub struct ChunkLock {
     /// The id of the chunk which is locked.
     chunk_id: u64,
     /// The time that the chunk was locked.
-    lock_time: DateTime<Utc>,
+    lock_time: OffsetDateTime,
 }
 
 impl ChunkLock {
@@ -46,7 +46,7 @@ impl ChunkLock {
     pub fn new(chunk_id: u64, time: &dyn TimeSource) -> Self {
         Self {
             chunk_id,
-            lock_time: time.utc_now(),
+            lock_time: time.now_utc(),
         }
     }
 
@@ -56,7 +56,7 @@ impl ChunkLock {
     }
 
     /// The time that the chunk was locked.
-    pub fn lock_time(&self) -> &DateTime<Utc> {
+    pub fn lock_time(&self) -> &OffsetDateTime {
         &self.lock_time
     }
 }
@@ -72,15 +72,15 @@ pub struct ParticipantInfo {
     /// The bucket ID that this participant starts contributing from.
     bucket_id: u64,
     /// The timestamp of the first seen instance of this participant.
-    first_seen: DateTime<Utc>,
+    first_seen: OffsetDateTime,
     /// The timestamp of the last seen instance of this participant.
-    last_seen: DateTime<Utc>,
+    last_seen: OffsetDateTime,
     /// The timestamp when this participant started the round.
-    started_at: Option<DateTime<Utc>>,
+    started_at: Option<OffsetDateTime>,
     /// The timestamp when this participant finished the round.
-    finished_at: Option<DateTime<Utc>>,
+    finished_at: Option<OffsetDateTime>,
     /// The timestamp when this participant was dropped from the round.
-    dropped_at: Option<DateTime<Utc>>,
+    dropped_at: Option<OffsetDateTime>,
     /// A map of chunk IDs to locks on chunks that this participant currently holds.
     locked_chunks: HashMap<u64, ChunkLock>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
@@ -111,7 +111,7 @@ impl ParticipantInfo {
         time: &dyn TimeSource,
     ) -> Self {
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
         Self {
             id: participant,
             round_height,
@@ -317,7 +317,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -380,7 +380,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Add the task to the front of the pending tasks.
         self.assigned_tasks.push_front(task);
@@ -417,7 +417,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Fetch the next task in order as stored.
         match self.assigned_tasks.pop_front() {
@@ -483,7 +483,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         let chunk_lock = ChunkLock::new(chunk_id, time);
 
@@ -544,7 +544,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&task.chunk_id());
@@ -623,7 +623,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the task from the pending tasks.
         self.pending_tasks = self
@@ -699,7 +699,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&task.chunk_id());
@@ -767,7 +767,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
@@ -804,7 +804,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Set the participant info to reflect them dropping now.
         self.dropped_at = Some(now);
@@ -860,7 +860,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -900,9 +900,9 @@ pub struct RoundMetrics {
     /// The average seconds per task calculated from all current verifiers.
     verifier_average_per_task: Option<u64>,
     /// The timestamp when the coordinator started aggregation of the current round.
-    started_aggregation_at: Option<DateTime<Utc>>,
+    started_aggregation_at: Option<OffsetDateTime>,
     /// The timestamp when the coordinator finished aggregation of the current round.
-    finished_aggregation_at: Option<DateTime<Utc>>,
+    finished_aggregation_at: Option<OffsetDateTime>,
     /// The estimated number of seconds remaining for the current round to finish.
     estimated_finish_time: Option<u64>,
     /// The estimated number of seconds remaining for the current round to aggregate.
@@ -910,7 +910,7 @@ pub struct RoundMetrics {
     /// The estimated number of seconds remaining until the queue is closed for the next round.
     estimated_wait_time: Option<u64>,
     /// The timestamp of the earliest start time for the next round.
-    next_round_after: Option<DateTime<Utc>>,
+    next_round_after: Option<OffsetDateTime>,
 }
 
 impl Default for RoundMetrics {
@@ -941,7 +941,7 @@ pub struct CoordinatorState {
     status: CoordinatorStatus,
     /// The map of queue participants with a reliability score, an assigned future
     /// round, a last seen timestamp, and their time of joining.
-    queue: HashMap<Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)>,
+    queue: HashMap<Participant, (u8, Option<u64>, OffsetDateTime, OffsetDateTime)>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
     /// The metrics for the current round of the ceremony.
@@ -1072,8 +1072,8 @@ impl CoordinatorState {
 
             let current_metrics = Some(RoundMetrics {
                 is_round_aggregated: true,
-                started_aggregation_at: Some(time.utc_now()),
-                finished_aggregation_at: Some(time.utc_now()),
+                started_aggregation_at: Some(time.now_utc()),
+                finished_aggregation_at: Some(time.now_utc()),
                 ..Default::default()
             });
 
@@ -1086,8 +1086,8 @@ impl CoordinatorState {
                     (
                         participant_info.reliability,
                         Some(participant_info.round_height),
-                        time.utc_now(),
-                        time.utc_now(),
+                        time.now_utc(),
+                        time.now_utc(),
                     ),
                 );
             }
@@ -1294,7 +1294,7 @@ impl CoordinatorState {
     pub fn queue_contributor_info(
         &self,
         participant: &Participant,
-    ) -> Option<&(u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)> {
+    ) -> Option<&(u8, Option<u64>, OffsetDateTime, OffsetDateTime)> {
         self.queue.get(participant)
     }
 
@@ -1302,7 +1302,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, OffsetDateTime, OffsetDateTime))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1440,7 +1440,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if time.utc_now() < next_round_after {
+                if time.now_utc() < next_round_after {
                     trace!("Required queue wait time has not been reached yet");
                     return false;
                 }
@@ -1544,7 +1544,7 @@ impl CoordinatorState {
 
         // Add the participant to the queue.
         self.queue
-            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
+            .insert(participant, (reliability_score, None, time.now_utc(), time.now_utc()));
 
         Ok(())
     }
@@ -1922,7 +1922,7 @@ impl CoordinatorState {
             };
 
             // Add the given task with a new start timer.
-            updated_tasks.insert(*task, (time.utc_now().timestamp(), None));
+            updated_tasks.insert(*task, (time.now_utc().unix_timestamp(), None));
 
             // Set the current task timer for the given participant to the updated task timer.
             metrics.task_timer.insert(participant.clone(), updated_tasks);
@@ -1954,7 +1954,7 @@ impl CoordinatorState {
             match updated_tasks.get_mut(task) {
                 Some((_, end)) => {
                     if end.is_none() {
-                        *end = Some(time.utc_now().timestamp());
+                        *end = Some(time.now_utc().unix_timestamp());
                     }
                 }
                 None => {
@@ -1992,7 +1992,7 @@ impl CoordinatorState {
         }
 
         // Set the start aggregation timestamp to now.
-        metrics.started_aggregation_at = Some(time.utc_now());
+        metrics.started_aggregation_at = Some(time.now_utc());
 
         Ok(())
     }
@@ -2024,7 +2024,7 @@ impl CoordinatorState {
         metrics.is_round_aggregated = true;
 
         // Set the finish aggregation timestamp to now.
-        metrics.finished_aggregation_at = Some(time.utc_now());
+        metrics.finished_aggregation_at = Some(time.now_utc());
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
@@ -2039,7 +2039,7 @@ impl CoordinatorState {
     fn update_next_round_after(&mut self, time: &dyn TimeSource) {
         if let Some(metrics) = &mut self.current_metrics {
             metrics.next_round_after =
-                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+                Some(time.now_utc() + Duration::seconds(self.environment.queue_wait_time() as i64));
         }
     }
 
@@ -2593,7 +2593,7 @@ impl CoordinatorState {
     pub(super) fn update_dropped_queued_participants(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         let queue_seen_timeout = self.environment.queue_seen_timeout();
 
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         for (participant, (_, _, last_seen, _)) in self.queue.clone() {
             if now - last_seen > queue_seen_timeout {
@@ -2616,7 +2616,7 @@ impl CoordinatorState {
         let participant_lock_timeout = self.environment.participant_lock_timeout();
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         self.current_contributors
             .clone()
@@ -2637,10 +2637,11 @@ impl CoordinatorState {
                     let exceeded_chunks_string: String = exceeded_chunk_names.join(", ");
 
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
+                        "Dropping participant {} because it has exceeded the maximum ({:?}) allowed time \
                         it is allowed to hold a lock (on chunks {}).",
                         participant,
-                        chrono_humanize::HumanTime::from(participant_lock_timeout),
+                        participant_lock_timeout,
+                        // chrono_humanize::HumanTime::from(participant_lock_timeout),
                         exceeded_chunks_string,
                     );
                     Some(self.drop_participant(participant, time))
@@ -2662,7 +2663,7 @@ impl CoordinatorState {
         let contributor_seen_timeout = self.environment.contributor_seen_timeout();
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         self.current_contributors
             .clone()
@@ -2674,11 +2675,12 @@ impl CoordinatorState {
                 // Check if the participant is still live and not a coordinator contributor.
                 if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
-                        since it was last seen by the coordinator (last seen {} ago).",
+                        "Dropping participant {} because it has exceeded the maximum ({:?}) allowed time \
+                        since it was last seen by the coordinator (last seen {:?} ago).",
                         participant,
-                        chrono_humanize::HumanTime::from(contributor_seen_timeout),
-                        chrono_humanize::HumanTime::from(elapsed)
+                        contributor_seen_timeout,
+                        elapsed // chrono_humanize::HumanTime::from(contributor_seen_timeout),
+                                // chrono_humanize::HumanTime::from(elapsed)
                     );
                     // Drop the participant.
                     Some(self.drop_participant(participant, time))
@@ -2889,7 +2891,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached, if it is set.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if time.utc_now() < next_round_after {
+                if time.now_utc() < next_round_after {
                     return Err(CoordinatorError::QueueWaitTimeIncomplete);
                 }
             }
@@ -3116,8 +3118,8 @@ impl CoordinatorState {
                 (
                     participant_info.reliability,
                     Some(participant_info.round_height),
-                    time.utc_now(),
-                    time.utc_now(),
+                    time.now_utc(),
+                    time.now_utc(),
                 ),
             );
         }
@@ -3214,7 +3216,7 @@ impl CoordinatorState {
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         if let Some((_, _, last_seen, _)) = self.queue.get_mut(participant) {
-            *last_seen = time.utc_now();
+            *last_seen = time.now_utc();
             return Ok(());
         }
 
@@ -3240,7 +3242,7 @@ impl CoordinatorState {
         };
 
         if let Some(info) = info {
-            info.last_seen = time.utc_now();
+            info.last_seen = time.now_utc();
             Ok(())
         } else {
             Err(CoordinatorError::ParticipantNotFound(participant.clone()))
@@ -4372,7 +4374,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         let action = state.reset_current_round(false, &time).unwrap();
         assert!(!action.rollback);
@@ -4532,7 +4534,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         dbg!(&state.current_contributors());
 
@@ -4655,7 +4657,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         let drop = state.drop_participant(&contributor_1, &time).unwrap();
 
