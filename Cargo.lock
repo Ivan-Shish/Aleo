@@ -1870,6 +1870,7 @@ dependencies = [
  "setup-utils",
  "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=fc997c)",
  "thiserror",
+ "time 0.3.5",
  "tokio",
  "tracing",
  "tracing-subscriber",
