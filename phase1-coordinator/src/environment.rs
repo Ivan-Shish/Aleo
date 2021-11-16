@@ -496,6 +496,11 @@ impl Testing {
         self
     }
 
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
+        self
+    }
+
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -619,6 +624,11 @@ impl Development {
         self
     }
 
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
+        self
+    }
+
     #[inline]
     pub fn coordinator_contributors(&self, contributors: &[Participant]) -> Self {
         // Check that all participants are contributors.
@@ -732,6 +742,11 @@ impl Production {
 
     pub fn queue_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
         self.environment.queue_seen_timeout = timeout;
+        self
+    }
+
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
         self
     }
 
