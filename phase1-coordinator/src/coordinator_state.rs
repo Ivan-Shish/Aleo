@@ -2637,11 +2637,10 @@ impl CoordinatorState {
                     let exceeded_chunks_string: String = exceeded_chunk_names.join(", ");
 
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({:?}) allowed time \
+                        "Dropping participant {} because it has exceeded the maximum ({:?}s) allowed time \
                         it is allowed to hold a lock (on chunks {}).",
                         participant,
-                        participant_lock_timeout,
-                        // chrono_humanize::HumanTime::from(participant_lock_timeout),
+                        participant_lock_timeout.whole_seconds(),
                         exceeded_chunks_string,
                     );
                     Some(self.drop_participant(participant, time))
@@ -2675,12 +2674,11 @@ impl CoordinatorState {
                 // Check if the participant is still live and not a coordinator contributor.
                 if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({:?}) allowed time \
-                        since it was last seen by the coordinator (last seen {:?} ago).",
+                        "Dropping participant {} because it has exceeded the maximum ({:?}s) allowed time \
+                        since it was last seen by the coordinator (last seen {:?}s ago).",
                         participant,
-                        contributor_seen_timeout,
-                        elapsed // chrono_humanize::HumanTime::from(contributor_seen_timeout),
-                                // chrono_humanize::HumanTime::from(elapsed)
+                        contributor_seen_timeout.whole_seconds(),
+                        elapsed.whole_seconds()
                     );
                     // Drop the participant.
                     Some(self.drop_participant(participant, time))
