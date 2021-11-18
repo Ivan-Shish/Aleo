@@ -11,12 +11,12 @@ cfg_if! {
         use std::{process, time::Instant};
         use tracing_subscriber::{
             filter::EnvFilter,
-            fmt::{time::ChronoUtc, Subscriber},
+            fmt::{time, Subscriber},
         };
 
         fn main() {
             Subscriber::builder()
-                .with_timer(ChronoUtc::rfc3339())
+                .with_timer(time::UtcTime::rfc_3339())
                 .with_env_filter(EnvFilter::from_default_env())
                 .init();
             let opts = SNARKOpts::parse_args_default_or_exit();

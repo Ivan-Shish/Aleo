@@ -15,42 +15,6 @@ pub struct SignedVerifiedData {
     pub signature: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Hash, Clone, PartialEq, Eq)]
-pub struct LockResponse {
-    /// The chunk id
-    #[serde(alias = "chunkId")]
-    pub chunk_id: u64,
-
-    /// The contribution id
-    #[serde(alias = "contributionId")]
-    pub contribution_id: u64,
-
-    /// Indicator if the chunk was locked
-    pub locked: bool,
-
-    /// The participant id related to the lock
-    #[serde(alias = "participantId")]
-    pub participant_id: String,
-
-    /// The locator of the previous response
-    #[serde(alias = "previousResponseLocator")]
-    pub previous_response_locator: String,
-
-    /// The locator of the challenge file that the participant will download
-    #[serde(alias = "challengeLocator")]
-    pub challenge_locator: String,
-
-    /// The locator where the participant will upload their completed contribution.
-    #[serde(alias = "responseLocator")]
-    pub response_locator: String,
-
-    #[serde(alias = "responseChunkId")]
-    pub response_chunk_id: u64,
-
-    #[serde(alias = "responseContributionId")]
-    pub response_contribution_id: u64,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ContributedData {

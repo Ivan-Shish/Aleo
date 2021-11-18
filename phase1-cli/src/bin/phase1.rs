@@ -16,7 +16,7 @@ use gumdrop::Options;
 use std::{fs::read_to_string, process, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
-    fmt::{time::ChronoUtc, Subscriber},
+    fmt::{time, Subscriber},
 };
 
 const CHALLENGE_IS_COMPRESSED: UseCompression = UseCompression::No;
@@ -104,7 +104,7 @@ fn execute_cmd<E: Engine>(opts: Phase1Opts) {
 fn main() {
     Subscriber::builder()
         .with_target(false)
-        .with_timer(ChronoUtc::rfc3339())
+        .with_timer(time::UtcTime::rfc_3339())
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 

@@ -18,39 +18,33 @@ snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 
-age = { version = "0.6", features = [ "cli-common", "armor" ] }
+age = { version = "0.7", features = [ "cli-common", "armor", "plugin" ] }
 anyhow = { version = "1.0.33" }
 blake2 = "0.9"
 clap = { version = "2.33.3" }
-dialoguer = "0.8"
+dialoguer = "0.9"
 egg-mode = "0.16"
 fs-err = "2.6"
 futures = { version = "0.3" }
 futures-util = { version = "0.3.15", default-features = false, features = ["async-await", "sink", "std"] }
 hex = { version = "0.4" }
 http = "0.2"
-i18n-embed = { version = "0.9", features = ["desktop-requester"] }
-indicatif = { version = "0.15.0" }
+i18n-embed = { version = "0.13", features = ["desktop-requester"] }
+indicatif = { version = "0.16" }
 panic-control = {version = "0.1.4" }
 rand = { version = "0.8" }
 regex = "1"
 reqwest = "0.11"
-secrecy = { version = "0.7" }
+secrecy = { version = "0.8" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 serial_test = { version = "0.5.1" }
 structopt = { version = "0.3" }
 thiserror = { version = "1.0" }
-tokio = { version = "1.7", features = [ "macros", "rt-multi-thread" ] }
+tokio = { version = "1.13", features = [ "macros", "rt-multi-thread" ] }
+tokio-tungstenite = { version = "0.15.0", features = ["native-tls"] }
 tracing = { version = "0.1" }
-tracing-appender = { version = "0.1.1" }
-tracing-subscriber = { version = "0.2" }
-url = { version = "2.1.1" }
+tracing-appender = { version = "0.2" }
+tracing-subscriber = { version = "0.3" }
+url = { version = "2.2" }
 
-[dependencies.tokio-tungstenite]
-version = "0.15.0"
-# remove gh link after the new version is released
-# related issue: https://github.com/snapview/tokio-tungstenite/issues/182
-git = "https://github.com/snapview/tokio-tungstenite"
-rev = "2bfd4cd"
-features = ["native-tls"]

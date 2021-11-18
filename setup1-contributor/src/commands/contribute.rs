@@ -1,7 +1,6 @@
 use crate::{
     cli::commands::contribute::ContributeOptions,
     errors::ContributeError,
-    objects::LockResponse,
     setup_keys::{
         confirmation_key::{print_key_and_remove_the_file, ConfirmationKey},
         AleoSetupKeys,
@@ -21,7 +20,7 @@ use phase1_coordinator::{
     environment::Environment,
     objects::{Chunk, Round},
 };
-use setup1_shared::structures::{ContributorStatus, PublicSettings, TwitterInfo};
+use setup1_shared::structures::{ContributorStatus, LockResponse, PublicSettings, TwitterInfo};
 use setup_utils::calculate_hash;
 use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, Address, PrivateKey, ViewKey};
@@ -39,7 +38,7 @@ use setup_utils::derive_rng_from_seed;
 use std::{
     collections::HashSet,
     convert::TryFrom,
-    io::{Read, Write},
+    io::{BufRead, Read, Write},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -99,6 +98,8 @@ impl Contribute {
                 Ok(joined) => {
                     info!("Attempted to join the queue with response: {}", joined);
                     if !joined {
+                        println!("Failed to join the queue - reliability score too low");
+
                         // it means contributor either already contributed,
                         // or has a low reliability score, or unable to
                         // join the queue
@@ -139,6 +140,18 @@ impl Contribute {
         println!("You have completed your contribution! Thank you!");
 
         print_key_and_remove_the_file().expect("Error finalizing the participation");
+
+        // Here, we 'flush' everything that's been pushed into stdin while the
+        // program was running.
+        {
+            let stdin = std::io::stdin();
+            println!("To advance to the next stage, please type 'advance' and press Enter.");
+            for l in stdin.lock().lines() {
+                if l.unwrap() == "advance" {
+                    break;
+                }
+            }
+        }
 
         // Let's see if the contributor wants to log an ETH address for their NFT
         if let Err(e) = self.prompt_eth_address(&mut rand::rngs::OsRng).await {
@@ -213,7 +226,7 @@ impl Contribute {
 
             let chunk_id = lock_response.chunk_id;
 
-            progress_bar.set_message(&format!("Contributing to chunk {}...", chunk_id));
+            progress_bar.set_message(format!("Contributing to chunk {}...", chunk_id));
 
             self.download_challenge(chunk_id, lock_response.contribution_id, CHALLENGE_FILENAME, auth_rng)
                 .await?;

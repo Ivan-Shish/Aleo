@@ -260,6 +260,8 @@ pub struct Environment {
     deployment: Deployment,
     /// The base directory for disk storage of this coordinator.
     local_base_directory: String,
+
+    disable_reliability_zeroing: bool,
 }
 
 impl Environment {
@@ -453,6 +455,10 @@ impl Environment {
     pub(crate) fn storage(&self) -> anyhow::Result<Disk> {
         Ok(Disk::load(self)?)
     }
+
+    pub(crate) fn disable_reliability_zeroing(&self) -> bool {
+        self.disable_reliability_zeroing
+    }
 }
 
 impl From<Testing> for Environment {
@@ -487,6 +493,11 @@ impl Testing {
 
     pub fn maximum_contributors_per_round(mut self, maximum: usize) -> Self {
         self.environment.maximum_contributors_per_round = maximum;
+        self
+    }
+
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
         self
     }
 
@@ -579,6 +590,8 @@ impl std::default::Default for Testing {
                 software_version: 1,
                 deployment: Deployment::Testing,
                 local_base_directory: "./transcript/testing".to_string(),
+
+                disable_reliability_zeroing: false,
             },
         }
     }
@@ -608,6 +621,11 @@ impl Development {
 
     pub fn participant_lock_timeout(mut self, timeout: chrono::Duration) -> Self {
         self.environment.participant_lock_timeout = timeout;
+        self
+    }
+
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
         self
     }
 
@@ -688,6 +706,8 @@ impl std::default::Default for Development {
                 software_version: 1,
                 deployment: Deployment::Development,
                 local_base_directory: "./transcript/development".to_string(),
+
+                disable_reliability_zeroing: false,
             },
         }
     }
@@ -722,6 +742,11 @@ impl Production {
 
     pub fn queue_seen_timeout(mut self, timeout: chrono::Duration) -> Self {
         self.environment.queue_seen_timeout = timeout;
+        self
+    }
+
+    pub fn disable_reliability_zeroing(mut self, disable_zeroing: bool) -> Self {
+        self.environment.disable_reliability_zeroing = disable_zeroing;
         self
     }
 
@@ -796,6 +821,8 @@ impl std::default::Default for Production {
                 software_version: 1,
                 deployment: Deployment::Production,
                 local_base_directory: "./transcript".to_string(),
+
+                disable_reliability_zeroing: false,
             },
         }
     }

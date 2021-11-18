@@ -1,6 +1,5 @@
 // Documentation
-#![cfg_attr(nightly, feature(doc_cfg, external_doc))]
-#![cfg_attr(nightly, doc(include = "../README.md"))]
+#![doc = include_str!("../README.md")]
 
 mod combine;
 pub use combine::combine;
