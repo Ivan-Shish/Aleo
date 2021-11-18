@@ -74,8 +74,10 @@ pub struct Round {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     height: u64,
     #[serde_diff(opaque)]
+    #[serde(with = "time::serde::timestamp::option")]
     started_at: Option<OffsetDateTime>,
     #[serde_diff(opaque)]
+    #[serde(with = "time::serde::timestamp::option")]
     finished_at: Option<OffsetDateTime>,
     contributor_ids: Vec<Participant>,
     verifier_ids: Vec<Participant>,
