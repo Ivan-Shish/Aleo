@@ -30,8 +30,8 @@ num_cpus = { version = "1.12.0" }
 rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }
 rayon = { version = "1.4.1", optional = true }
-rust-crypto = { version = "0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.9.8"
 thiserror = { version = "1.0.22" }
 tracing = { version = "0.1.21" }
 typenum = { version = "1.11.2" }
@@ -44,6 +44,6 @@ rusty-hook = { version = "0.11.2" }
 
 [features]
 default = []
-cli = ["parallel", "rust-crypto"]
+cli = ["parallel"]
 wasm = ["snarkvm-algorithms/wasm"]
 parallel = ["rayon", "snarkvm-algorithms/parallel"]
