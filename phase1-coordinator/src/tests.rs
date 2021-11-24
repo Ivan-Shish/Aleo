@@ -11,8 +11,8 @@ use crate::{
     Participant,
     Round,
 };
-use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
+use time::OffsetDateTime;
 
 use fs_err as fs;
 use rand::RngCore;
@@ -1975,7 +1975,7 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn contributor_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -1987,8 +1987,8 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(5))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(5))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2011,14 +2011,14 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // contributor to timeout)
-    time.update(|prev| prev + chrono::Duration::minutes(1));
+    time.update(|prev| prev + time::Duration::minutes(1));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::minutes(5));
+    time.update(|prev| prev + time::Duration::minutes(5));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2036,7 +2036,7 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn contributor_wait_verifier_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2047,8 +2047,8 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
         16, /* chunk_size */
     ));
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(5))
-        .participant_lock_timeout(chrono::Duration::minutes(8));
+        .contributor_seen_timeout(time::Duration::minutes(5))
+        .participant_lock_timeout(time::Duration::minutes(8));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
     let number_of_chunks = environment.number_of_chunks() as usize;
@@ -2071,7 +2071,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     coordinator.update()?;
 
     for _ in 0..(number_of_chunks / 2) {
-        time.update(|prev| prev + chrono::Duration::minutes(1));
+        time.update(|prev| prev + time::Duration::minutes(1));
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
     }
@@ -2085,7 +2085,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 
     // contributors are stuck waiting for 10 minutes, longer than the
     // contributor timeout duration.
-    time.update(|prev| prev + chrono::Duration::minutes(10));
+    time.update(|prev| prev + time::Duration::minutes(10));
 
     // Emulate contributor querying the current round via the
     // `/v1/round/current` endpoint.
@@ -2111,7 +2111,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2123,8 +2123,8 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(20))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(20))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2151,14 +2151,14 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::minutes(1));
+    time.update(|prev| prev + time::Duration::minutes(1));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::minutes(10));
+    time.update(|prev| prev + time::Duration::minutes(10));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2177,7 +2177,7 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2189,8 +2189,8 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::days(20))
-        .participant_lock_timeout(chrono::Duration::days(20));
+        .contributor_seen_timeout(time::Duration::days(20))
+        .participant_lock_timeout(time::Duration::days(20));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2219,7 +2219,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
@@ -2227,7 +2227,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::days(10));
+    time.update(|prev| prev + time::Duration::days(10));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2243,7 +2243,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2255,8 +2255,8 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::days(20))
-        .participant_lock_timeout(chrono::Duration::days(20));
+        .contributor_seen_timeout(time::Duration::days(20))
+        .participant_lock_timeout(time::Duration::days(20));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2286,7 +2286,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     // Send heartbeat from contributor2
@@ -2297,7 +2297,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2315,7 +2315,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn rollback_locked_chunk() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2327,8 +2327,8 @@ fn rollback_locked_chunk() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(20))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(20))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
