@@ -22,9 +22,9 @@ function check_hash() {
 cargo $CARGO_VER build --release --bin setup2
 
 phase2_new="cargo run --release --features cli  -- new --curve-type $CURVE --chunk-size $CHUNK_SIZE --batch-size $BATCH --contribution-mode full"
-phase2_chunked="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --chunk-size $CHUNK_SIZE --batch-size $BATCH --contribution-mode full --proving-system $PROVING_SYSTEM"
-phase2_1="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed1 --proving-system $PROVING_SYSTEM"
-phase2_2="cargo run --release --bin setup2 --features cli  -- --curve-kind $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed2 --proving-system $PROVING_SYSTEM"
+phase2_chunked="cargo run --release --bin setup2 --features cli  -- --curve-type $CURVE --chunk-size $CHUNK_SIZE --batch-size $BATCH --contribution-mode full --proving-system $PROVING_SYSTEM"
+phase2_1="cargo run --release --bin setup2 --features cli  -- --curve-type $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed1 --proving-system $PROVING_SYSTEM"
+phase2_2="cargo run --release --bin setup2 --features cli  -- --curve-type $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed2 --proving-system $PROVING_SYSTEM"
 ####### Phase 2
 
 MAX_CHUNK_INDEX=1
