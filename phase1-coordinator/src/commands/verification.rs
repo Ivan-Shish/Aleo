@@ -354,9 +354,9 @@ mod tests {
         Coordinator,
     };
 
+    use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
-    use time::OffsetDateTime;
 
     #[test]
     #[serial]
@@ -374,7 +374,7 @@ mod tests {
         {
             // Run initialization.
             info!("Initializing ceremony");
-            let round_height = coordinator.run_initialization(OffsetDateTime::now_utc()).unwrap();
+            let round_height = coordinator.run_initialization(Utc::now()).unwrap();
             info!("Initialized ceremony");
 
             // Check current round height is now 0.
