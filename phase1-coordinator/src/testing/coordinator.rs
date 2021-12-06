@@ -7,12 +7,12 @@ use crate::{
     CoordinatorError,
 };
 
+use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use serde_diff::{Diff, SerdeDiff};
 #[cfg(test)]
 use serial_test::serial;
 use std::{path::Path, sync::Arc};
-use time::{macros::datetime, OffsetDateTime};
 use tracing::*;
 
 use fs_err as fs;
@@ -27,7 +27,7 @@ pub static TEST_ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Testing::from(Para
 pub static TEST_ENVIRONMENT_3: Lazy<Environment> = Lazy::new(|| Testing::from(Parameters::Test3Chunks).into());
 
 /// Round start datetime for testing purposes only.
-pub static TEST_STARTED_AT: Lazy<OffsetDateTime> = Lazy::new(|| datetime!(1970-01-01 00:01:01 UTC));
+pub static TEST_STARTED_AT: Lazy<DateTime<Utc>> = Lazy::new(|| Utc.ymd(1970, 1, 1).and_hms(0, 1, 1));
 
 /// Contributor ID for testing purposes only.
 pub static TEST_CONTRIBUTOR_ID: Lazy<Participant> =

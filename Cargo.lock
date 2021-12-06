@@ -295,6 +295,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-humanize"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eddc119501d583fd930cb92144e605f44e0252c38dd89d9247fffa1993375cb"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "ci_info"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1820,6 +1829,8 @@ name = "phase1-coordinator"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "chrono-humanize",
  "fs-err",
  "futures",
  "hex",
@@ -1838,7 +1849,6 @@ dependencies = [
  "setup-utils",
  "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=fc997c)",
  "thiserror",
- "time 0.3.5",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2564,6 +2574,7 @@ version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad6056b4cb69b6e43e3a0f055def223380baecc99da683884f205bf347f7c4b3"
 dependencies = [
+ "chrono",
  "rustversion",
  "serde",
  "serde_with_macros",
@@ -3415,15 +3426,7 @@ checksum = "41effe7cfa8af36f439fac33861b66b049edc6f9a32331e2312660529c1c24ad"
 dependencies = [
  "itoa",
  "libc",
- "serde",
- "time-macros",
 ]
-
-[[package]]
-name = "time-macros"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25eb0ca3468fc0acc11828786797f6ef9aa1555e4a211a60d64cc8e4d1be47d6"
 
 [[package]]
 name = "tinystr"
