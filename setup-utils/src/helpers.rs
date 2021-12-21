@@ -6,7 +6,13 @@ use crate::{
 use snarkvm_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut};
 use snarkvm_curves::{AffineCurve, Group, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{Field, One, PrimeField, Zero};
-use snarkvm_utilities::{biginteger::BigInteger, rand::UniformRand, CanonicalSerialize, ConstantSerializedSize};
+use snarkvm_utilities::{
+    biginteger::BigInteger,
+    rand::UniformRand,
+    BitIteratorBE,
+    CanonicalSerialize,
+    ConstantSerializedSize,
+};
 
 use blake2::{Blake2b, Digest};
 use rand::{rngs::OsRng, thread_rng, CryptoRng, Rng, SeedableRng};
@@ -48,8 +54,9 @@ pub fn print_hash(hash: &[u8]) {
 
 /// Multiply a large number of points by a scalar
 pub fn batch_mul<C: AffineCurve>(bases: &mut [C], coeff: &C::ScalarField) -> Result<()> {
+    let coeff = coeff.to_repr();
     let mut points: Vec<_> = cfg_iter!(bases)
-        .map(|base| base.into_projective().mul(*coeff))
+        .map(|base| base.mul_bits(BitIteratorBE::new(coeff)))
         .collect();
     C::Projective::batch_normalization(points.as_mut_slice());
     cfg_iter_mut!(bases)
@@ -83,7 +90,7 @@ pub fn batch_exp<C: AffineCurve>(
 
             // Raise the base to the exponent (additive notation so it is executed
             // via a multiplication)
-            base.mul(exp).into_projective()
+            base.mul_bits(BitIteratorBE::new(exp.to_repr()))
         })
         .collect();
     // we do not use batch_normalization_into_affine because it allocates
