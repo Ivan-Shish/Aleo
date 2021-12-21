@@ -40,6 +40,7 @@ pub fn contribute<T: Engine + Sync>(
                 metadata.len()
             );
         }
+        dbg!(metadata.len());
     }
 
     let readable_map = unsafe {
