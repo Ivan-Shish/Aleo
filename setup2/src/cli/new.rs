@@ -191,7 +191,7 @@ where
     let (full_mpc_parameters, query_parameters, all_mpc_parameters) = MPCParameters::<E>::new_from_buffer_chunked(
         circuit,
         &mut phase1_transcript,
-        UseCompression::No,
+        UseCompression::Yes,
         CheckForCorrectness::No,
         1 << opt.phase1_powers,
         phase2_size,

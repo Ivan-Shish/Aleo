@@ -2,14 +2,14 @@
 
 rm -f challenge* response* new_challenge* new_response* new_new_challenge_* processed* initial_ceremony* response_list* combined* seed* chunk*
 
-export RUSTFLAGS="-C target-feature=+bmi2,+adx"
+# export RUSTFLAGS="-C target-feature=+bmi2,+adx"
 CARGO_VER=""
 PROVING_SYSTEM=groth16
-POWER=18
-BATCH=131072
-CHUNK_SIZE=131072
+POWER=19
+BATCH=524288
+CHUNK_SIZE=524288
 CURVE="bw6"
-PATH_PHASE1="../../phase1-cli/scripts/combined" 
+PATH_PHASE1="../../phase1-cli/scripts/phase1" 
 SEED1=$(tr -dc 'A-F0-9' < /dev/urandom | head -c32)
 echo $SEED1 > seed1
 SEED2=$(tr -dc 'A-F0-9' < /dev/urandom | head -c32)
@@ -27,13 +27,14 @@ phase2_1="cargo run --release --bin setup2 --features cli  -- --curve-type $CURV
 phase2_2="cargo run --release --bin setup2 --features cli  -- --curve-type $CURVE --batch-size $BATCH --contribution-mode chunked --chunk-size $CHUNK_SIZE --seed seed2 --proving-system $PROVING_SYSTEM"
 ####### Phase 2
 
-MAX_CHUNK_INDEX=1
+# todo
+MAX_CHUNK_INDEX=3
 
 pwd
 
 ls $PATH_PHASE1
 
-$phase2_new --challenge-fname challenge --challenge-hash-fname challenge.verified.hash --phase1-fname $PATH_PHASE1 --phase1-powers $POWER --num-validators 1 --num-epochs 1
+env RUST_LOG=trace $phase2_new --challenge-fname challenge --challenge-hash-fname challenge.verified.hash --phase1-fname $PATH_PHASE1 --phase1-powers $POWER --num-validators 1 --num-epochs 1 --is-inner false
 for i in $(seq 0 $(($MAX_CHUNK_INDEX/2))); do
   echo "Contributing and verifying chunk $i..."
   $phase2_1 --chunk-index $i contribute --challenge-fname challenge.$i --challenge-hash-fname challenge.$i.hash --response-fname response_$i --response-hash-fname response_$i.hash

@@ -12,6 +12,15 @@ edition = "2018"
 phase2 = { path = "../phase2" }
 setup-utils = { path = "../setup-utils" }
 
+# snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-parameters = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+# snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+
+
 snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
 snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }

@@ -2862,6 +2862,7 @@ dependencies = [
  "phase2",
  "rand 0.8.4",
  "rand_chacha 0.3.1",
+ "serde",
  "setup-utils",
  "snarkvm-algorithms",
  "snarkvm-curves",
