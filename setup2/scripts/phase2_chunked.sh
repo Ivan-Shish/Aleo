@@ -9,7 +9,7 @@ POWER=19
 BATCH=524288
 CHUNK_SIZE=524288
 CURVE="bw6"
-PATH_PHASE1="../../phase1-cli/scripts/phase1" 
+PATH_PHASE1="../../phase1-cli/scripts/phase1_final" 
 SEED1=$(tr -dc 'A-F0-9' < /dev/urandom | head -c32)
 echo $SEED1 > seed1
 SEED2=$(tr -dc 'A-F0-9' < /dev/urandom | head -c32)

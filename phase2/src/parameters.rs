@@ -27,6 +27,7 @@ use std::{
     io::{self, Read, Write},
     ops::Mul,
 };
+use tracing::info;
 
 /// MPC parameters are just like snarkVM's `ProvingKey` except, when serialized,
 /// they contain a transcript of contributions at the end, which can be verified.
@@ -158,7 +159,9 @@ impl<E: PairingEngine> MPCParameters<E> {
             phase1_size,
             phase2_size,
         )?;
+        info!("Read Groth16 parameters");
         let assembly = circuit_to_qap::<E, _>(circuit)?;
+        info!("Constructed QAP");
         Self::new_chunked(assembly, params, chunk_size)
     }
 
@@ -168,6 +171,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         params: Groth16Params<E>,
         chunk_size: usize,
     ) -> Result<(MPCParameters<E>, ProvingKey<E>, Vec<MPCParameters<E>>)> {
+        info!("Evaluating over Lagrange coefficients");
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
             // Lagrange coeffs for Tau, read in from Phase 1
             &params.coeffs_g1,
@@ -181,6 +185,7 @@ impl<E: PairingEngine> MPCParameters<E> {
             // Helper
             cs.num_public_variables,
         );
+        info!("Finished evaluating over Lagrange coefficients");
 
         // Reject unconstrained elements, so that
         // the L query is always fully dense.
@@ -221,6 +226,7 @@ impl<E: PairingEngine> MPCParameters<E> {
             l_query: vec![],
         };
         let cs_hash = hash_params(&params)?;
+        info!("Hashed parameters");
         let full_mpc = MPCParameters {
             params: params.clone(),
             cs_hash,
@@ -258,7 +264,9 @@ impl<E: PairingEngine> MPCParameters<E> {
                 contributions: vec![],
             };
             chunks.push(chunk_params);
+            info!("Constructed chunk {}", i);
         }
+        info!("Finished constructing parameters");
         Ok((full_mpc, query_parameters, chunks))
     }
 
