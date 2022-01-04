@@ -14,8 +14,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 phase1 = { path = "../phase1" }
 setup-utils = { path = "../setup-utils" }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
 
 getrandom = { version = "0.2" }
 rand = { version = "0.8" }

@@ -12,22 +12,13 @@ edition = "2018"
 phase2 = { path = "../phase2" }
 setup-utils = { path = "../setup-utils" }
 
-# snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-parameters = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-# snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
-
-
-snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-parameters = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+snarkvm-algorithms = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-parameters = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-r1cs = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "092dfd2" }
 
 anyhow = { version = "1.0.37" }
 cfg-if = "1.0"
@@ -40,6 +31,7 @@ rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = { version = "1.0.22" }
+tracing = { version = "0.1.21" }
 tracing-subscriber = { version = "0.2.3" }
 
 [features]
