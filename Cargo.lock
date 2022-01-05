@@ -199,12 +199,6 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "base58"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5024ee8015f02155eee35c711107ddd9a9bf3cb689cf2a9089c97e79b6e1ae83"
-
-[[package]]
-name = "base58"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6107fe1be6682a68940da878d9e9f5e90ca5745b3dec9fd1bb393c8777d4f581"
@@ -1990,13 +1984,13 @@ dependencies = [
  "rusty-hook",
  "serde",
  "setup-utils",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-marlin 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-polycommit 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-marlin",
+ "snarkvm-polycommit",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "tracing",
 ]
 
@@ -2012,7 +2006,7 @@ dependencies = [
  "rand 0.8.4",
  "rustc_version 0.4.0",
  "setup-utils",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-curves",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
@@ -2041,7 +2035,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-curves",
  "thiserror",
  "tokio",
  "tracing",
@@ -2061,8 +2055,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "setup-utils",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-curves",
+ "snarkvm-fields",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2086,11 +2080,11 @@ dependencies = [
  "rayon",
  "rusty-hook",
  "setup-utils",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -2902,11 +2896,11 @@ dependencies = [
  "rust-crypto",
  "rusty-hook",
  "serde",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
  "tracing",
 ]
@@ -2922,7 +2916,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-dpc",
  "structopt",
  "unic-langid",
 ]
@@ -2957,9 +2951,9 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-utilities",
  "structopt",
  "thiserror",
  "tokio",
@@ -2979,7 +2973,7 @@ dependencies = [
  "serde",
  "serde_json",
  "setup-utils",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-curves",
  "tokio",
 ]
 
@@ -3004,10 +2998,10 @@ dependencies = [
  "serde_json",
  "setup-utils",
  "setup1-shared",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-utilities",
  "structopt",
  "thiserror",
  "tokio",
@@ -3032,13 +3026,13 @@ dependencies = [
  "rand_chacha 0.3.1",
  "serde",
  "setup-utils",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-parameters 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-dpc",
+ "snarkvm-fields",
+ "snarkvm-parameters",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -3114,7 +3108,7 @@ checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 [[package]]
 name = "snarkvm-algorithms"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
  "blake2",
@@ -3133,86 +3127,32 @@ dependencies = [
  "serde",
  "sha2 0.10.0",
  "smallvec",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-algorithms"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "anyhow",
- "blake2",
- "blake2s_simd 0.5.11",
- "crossbeam-channel",
- "derivative",
- "digest 0.9.0",
- "itertools",
- "lazy_static",
- "once_cell",
- "rand 0.8.4",
- "rand_chacha 0.3.1",
- "rayon",
- "sha2 0.9.8",
- "smallvec",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-curves"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "derivative",
  "rand 0.8.4",
  "rustc_version 0.4.0",
  "serde",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-curves"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "derivative",
- "rand 0.8.4",
- "rand_xorshift",
- "rustc_version 0.4.0",
- "serde",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-fields",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-derives"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
-dependencies = [
- "proc-macro-crate",
- "proc-macro-error",
- "proc-macro2 1.0.29",
- "quote 1.0.9",
- "syn 1.0.77",
-]
-
-[[package]]
-name = "snarkvm-derives"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
@@ -3224,10 +3164,10 @@ dependencies = [
 [[package]]
 name = "snarkvm-dpc"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
- "base58 0.2.0",
+ "base58",
  "bech32",
  "bincode",
  "blake2",
@@ -3240,81 +3180,36 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-marlin 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-parameters 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-polycommit 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-dpc"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "anyhow",
- "base58 0.1.0",
- "bech32",
- "bincode",
- "blake2",
- "derivative",
- "hex",
- "itertools",
- "once_cell",
- "rand 0.8.4",
- "serde",
- "sha2 0.9.8",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-marlin 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-parameters 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-polycommit 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-marlin",
+ "snarkvm-parameters",
+ "snarkvm-polycommit",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-fields"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
  "derivative",
  "rand 0.8.4",
  "serde",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-fields"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "anyhow",
- "bincode",
- "derivative",
- "rand 0.8.4",
- "rand_xorshift",
- "serde",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-gadgets"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
  "derivative",
@@ -3323,37 +3218,18 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-gadgets"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "derivative",
- "digest 0.9.0",
- "itertools",
- "num-bigint",
- "num-integer",
- "num-traits",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-marlin"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "bincode",
  "blake2",
@@ -3366,43 +3242,20 @@ dependencies = [
  "rayon",
  "serde",
  "smallvec",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-polycommit 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
-]
-
-[[package]]
-name = "snarkvm-marlin"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "blake2",
- "derivative",
- "digest 0.9.0",
- "hashbrown",
- "rand 0.8.4",
- "rand_chacha 0.3.1",
- "rand_core 0.6.3",
- "rayon",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-polycommit 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-polycommit",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
 ]
 
 [[package]]
 name = "snarkvm-parameters"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -3411,125 +3264,61 @@ dependencies = [
  "hex",
  "paste",
  "serde_json",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-parameters"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "curl",
- "hex",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-algorithms",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-polycommit"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "derivative",
  "digest 0.9.0",
  "hashbrown",
  "rand_core 0.6.3",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
-]
-
-[[package]]
-name = "snarkvm-polycommit"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "derivative",
- "digest 0.9.0",
- "hashbrown",
- "rand_core 0.6.3",
- "snarkvm-algorithms 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-gadgets 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-profiler 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-r1cs 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-algorithms",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-gadgets",
+ "snarkvm-profiler",
+ "snarkvm-r1cs",
+ "snarkvm-utilities",
 ]
 
 [[package]]
 name = "snarkvm-profiler"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
-
-[[package]]
-name = "snarkvm-profiler"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 
 [[package]]
 name = "snarkvm-r1cs"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
  "fxhash",
  "indexmap",
  "itertools",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-r1cs"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "anyhow",
- "cfg-if 1.0.0",
- "fxhash",
- "indexmap",
- "itertools",
- "snarkvm-curves 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
- "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-curves",
+ "snarkvm-fields",
+ "snarkvm-utilities",
  "thiserror",
 ]
 
 [[package]]
 name = "snarkvm-utilities"
 version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
+source = "git+https://github.com/AleoHQ/snarkVM?rev=092dfd2#092dfd2ae726339e1404ae3e3ce82a18d52f3114"
 dependencies = [
  "anyhow",
  "bincode",
  "num-bigint",
  "rand 0.8.4",
  "serde",
- "snarkvm-derives 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=092dfd2)",
- "thiserror",
-]
-
-[[package]]
-name = "snarkvm-utilities"
-version = "0.7.5"
-source = "git+https://github.com/AleoHQ/snarkVM?rev=fc997c#fc997c3e99ecc42d30e31302b4550001ccf86f5a"
-dependencies = [
- "anyhow",
- "bincode",
- "num-bigint",
- "rand 0.8.4",
- "snarkvm-derives 0.7.5 (git+https://github.com/AleoHQ/snarkVM?rev=fc997c)",
+ "snarkvm-derives",
  "thiserror",
 ]
 
