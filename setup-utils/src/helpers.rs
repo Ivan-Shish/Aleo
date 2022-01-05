@@ -20,7 +20,7 @@ use rand_chacha::ChaChaRng;
 use std::{
     convert::TryInto,
     io::{self, Write},
-    ops::{AddAssign, Mul},
+    ops::AddAssign,
     sync::Arc,
 };
 
@@ -260,6 +260,7 @@ pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::ops::Mul;
     use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
 
     #[test]
@@ -425,6 +426,8 @@ fn dense_multiexp_inner<G: AffineCurve>(
     c: u32,
     handle_trivial: bool,
 ) -> <G as AffineCurve>::Projective {
+    let zero = G::ScalarField::zero().to_repr();
+    let one = G::ScalarField::one().to_repr();
     use std::sync::Mutex;
     // Perform this region of the multiexp. We use a different strategy - go over region in parallel,
     // then over another region, etc. No Arc required
@@ -441,8 +444,6 @@ fn dense_multiexp_inner<G: AffineCurve>(
                     let mut buckets = vec![<G as AffineCurve>::Projective::zero(); (1 << c) - 1];
                     // Accumulate the result
                     let mut acc = G::Projective::zero();
-                    let zero = G::ScalarField::zero().to_repr();
-                    let one = G::ScalarField::one().to_repr();
 
                     for (base, &exp) in base.iter().zip(exp.iter()) {
                         // let index = (exp.as_ref()[0] & mask) as usize;
@@ -472,13 +473,13 @@ fn dense_multiexp_inner<G: AffineCurve>(
                     // buckets are filled with the corresponding accumulated value, now sum
                     let mut running_sum = G::Projective::zero();
                     for exp in buckets.into_iter().rev() {
-                        running_sum.add_assign(&exp);
-                        acc.add_assign(&running_sum);
+                        running_sum += &exp;
+                        acc += &running_sum;
                     }
 
                     let mut guard = this_region_rwlock.lock().expect("poisoned");
 
-                    (*guard).add_assign(&acc);
+                    *guard += &acc;
                 });
             }
         })

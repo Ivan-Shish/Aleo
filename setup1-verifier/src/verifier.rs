@@ -473,7 +473,7 @@ mod tests {
         });
 
         let private_key = PrivateKey::from_str(TEST_VIEW_KEY).expect("Invalid view key");
-        let address = Address::from_private_key(&private_key).expect("Address not derived correctly");
+        let address = Address::from_private_key(&private_key);
 
         Verifier::new(
             Url::from_str("http://test_coordinator_url").unwrap(),
@@ -536,7 +536,7 @@ mod tests {
         let message = contribution_state.signature_message().unwrap();
 
         // Derive the verifier address
-        let address = Address::from_private_key(&verifier.private_key).unwrap();
+        let address = Address::from_private_key(&verifier.private_key);
 
         // Check that the signature verifies
         assert!(AleoAuthentication::verify(&address, signature, message).unwrap())

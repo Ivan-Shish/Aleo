@@ -136,7 +136,7 @@ mod authentication_tests {
     fn test_aleo_account_signature_sanity_check() {
         // Start by confirming the account derivation in snarkVM has not changed.
         let private_key = PrivateKey::<Testnet2>::from_str(&TEST_PRIVATE_KEY).unwrap();
-        let address = Address::from_private_key(&private_key).unwrap();
+        let address = Address::from_private_key(&private_key);
         assert_eq!(TEST_ADDRESS, address.to_string());
 
         let message = "hello world".to_string();
