@@ -86,8 +86,10 @@ pub fn batch_exp<C: AffineCurve>(
         .map(|(base, exp)| {
             // If a coefficient was provided, multiply the exponent
             // by that coefficient
-            let exp = if let Some(coeff) = coeff { exp.mul(coeff) } else { *exp };
-
+            let mut exp = *exp;
+            if let Some(coeff) = coeff {
+                exp *= coeff;
+            }
             // Raise the base to the exponent (additive notation so it is executed
             // via a multiplication)
             base.mul_bits(BitIteratorBE::new(exp.to_repr()))
