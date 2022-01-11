@@ -30,11 +30,12 @@ use crate::{
 };
 use setup_utils::calculate_hash;
 
-use chrono::{DateTime, Utc};
 use std::{
     fmt,
+    net::IpAddr,
     sync::{Arc, RwLock},
 };
+use time::OffsetDateTime;
 use tracing::*;
 
 #[cfg(any(test, feature = "operator"))]
@@ -277,7 +278,7 @@ impl From<CoordinatorError> for anyhow::Error {
 /// for mocking system time during testing.
 pub trait TimeSource: Send + Sync {
     /// Provide the current time now in the UTC timezone
-    fn utc_now(&self) -> DateTime<Utc>;
+    fn now_utc(&self) -> OffsetDateTime;
 }
 
 // Private tuple field to force use of constructor.
@@ -292,39 +293,39 @@ impl SystemTimeSource {
 }
 
 impl TimeSource for SystemTimeSource {
-    fn utc_now(&self) -> DateTime<Utc> {
-        Utc::now()
+    fn now_utc(&self) -> OffsetDateTime {
+        OffsetDateTime::now_utc()
     }
 }
 
 /// A time source to use for testing, allows the current time to be
 /// set manually.
 pub struct MockTimeSource {
-    time: RwLock<DateTime<Utc>>,
+    time: RwLock<OffsetDateTime>,
 }
 
 impl MockTimeSource {
-    pub fn new(time: DateTime<Utc>) -> Self {
+    pub fn new(time: OffsetDateTime) -> Self {
         Self {
             time: RwLock::new(time),
         }
     }
 
-    pub fn set_time(&self, time: DateTime<Utc>) {
+    pub fn set_time(&self, time: OffsetDateTime) {
         *self.time.write().expect("Unable to lock to write time") = time;
     }
 
-    pub fn time(&self) -> DateTime<Utc> {
+    pub fn time(&self) -> OffsetDateTime {
         *self.time.read().expect("Unable to obtain lock to read time")
     }
 
-    pub fn update<F: Fn(DateTime<Utc>) -> DateTime<Utc>>(&self, f: F) {
+    pub fn update<F: Fn(OffsetDateTime) -> OffsetDateTime>(&self, f: F) {
         self.set_time(f(self.time()))
     }
 }
 
 impl TimeSource for MockTimeSource {
-    fn utc_now(&self) -> DateTime<Utc> {
+    fn now_utc(&self) -> OffsetDateTime {
         *self.time.read().expect("Unable to obtain lock to read time")
     }
 }
@@ -414,7 +415,7 @@ impl Coordinator {
             // Check if the ceremony has been initialized yet.
             if Self::load_current_round_height(&self.storage).is_err() {
                 info!("Initializing ceremony");
-                let round_height = self.run_initialization(self.time.utc_now())?;
+                let round_height = self.run_initialization(self.time.now_utc())?;
                 info!("Initialized ceremony");
 
                 // Initialize the coordinator state to round 0.
@@ -528,7 +529,7 @@ impl Coordinator {
             // Backup a copy of the current coordinator.
 
             // Fetch the current time.
-            let started_at = self.time.utc_now();
+            let started_at = self.time.now_utc();
 
             // Attempt to advance to the next round.
             let next_round_height = self.try_advance(started_at)?;
@@ -568,7 +569,7 @@ impl Coordinator {
 
     ///
     /// Returns the total number of contributors currently in the queue.
-    ///  
+    ///
     #[inline]
     pub fn number_of_queue_contributors(&self) -> usize {
         self.state.number_of_queue_contributors()
@@ -578,7 +579,7 @@ impl Coordinator {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, OffsetDateTime, OffsetDateTime))> {
         self.state.queue_contributors()
     }
 
@@ -610,10 +611,15 @@ impl Coordinator {
     /// Adds the given participant to the queue if they are permitted to participate.
     ///
     #[inline]
-    pub fn add_to_queue(&mut self, participant: Participant, reliability_score: u8) -> Result<(), CoordinatorError> {
+    pub fn add_to_queue(
+        &mut self,
+        participant: Participant,
+        participant_ip: Option<IpAddr>,
+        reliability_score: u8,
+    ) -> Result<(), CoordinatorError> {
         // Attempt to add the participant to the next round.
         self.state
-            .add_to_queue(participant, reliability_score, self.time.as_ref())?;
+            .add_to_queue(participant, participant_ip, reliability_score, self.time.as_ref())?;
 
         // Save the coordinator state in storage.
         self.save_state()?;
@@ -751,15 +757,9 @@ impl Coordinator {
 
     ///
     /// Returns `true` if the given participant has finished contributing
-    /// in the current round.
     ///
     #[inline]
     pub fn is_finished_contributor(&self, participant: &Participant) -> bool {
-        // Check that the participant is a current contributor.
-        if !self.is_current_contributor(participant) {
-            return false;
-        }
-
         // Fetch the state of the current contributor.
         self.state.is_finished_contributor(&participant)
     }
@@ -1272,7 +1272,7 @@ impl Coordinator {
     /// Attempts to advance the ceremony to the next round.
     ///
     #[tracing::instrument(skip(self, started_at))]
-    pub fn try_advance(&mut self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+    pub fn try_advance(&mut self, started_at: OffsetDateTime) -> Result<u64, CoordinatorError> {
         tracing::debug!("Trying to advance to the next round.");
 
         // Check that the current round height matches in storage and self.
@@ -1948,7 +1948,7 @@ impl Coordinator {
     #[inline]
     pub(crate) fn next_round(
         &mut self,
-        started_at: DateTime<Utc>,
+        started_at: OffsetDateTime,
         contributors: Vec<Participant>,
     ) -> Result<u64, CoordinatorError> {
         // Check that the next round has at least one authorized contributor.
@@ -2041,7 +2041,7 @@ impl Coordinator {
     /// and run `Initialization` to start the ceremony.
     ///
     #[inline]
-    pub(super) fn run_initialization(&mut self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+    pub(super) fn run_initialization(&mut self, started_at: OffsetDateTime) -> Result<u64, CoordinatorError> {
         // Check that the ceremony has not begun yet.
         if Self::load_current_round_height(&self.storage).is_ok() {
             return Err(CoordinatorError::RoundAlreadyInitialized);
@@ -2122,7 +2122,7 @@ impl Coordinator {
         }
 
         // Set the finished time for round 0.
-        round.try_finish(self.time.utc_now());
+        round.try_finish(self.time.now_utc());
 
         // Add the new round to storage.
         self.storage
@@ -2653,12 +2653,19 @@ mod tests {
         Coordinator,
     };
 
-    use chrono::Utc;
     use once_cell::sync::Lazy;
     use rand::RngCore;
-    use std::{collections::HashMap, sync::Arc};
+    use std::{
+        collections::HashMap,
+        net::{IpAddr, Ipv4Addr},
+        sync::Arc,
+    };
+    use time::OffsetDateTime;
 
-    fn initialize_to_round_1(coordinator: &mut Coordinator, contributors: &[Participant]) -> anyhow::Result<()> {
+    fn initialize_to_round_1(
+        coordinator: &mut Coordinator,
+        contributors: &[(Participant, IpAddr)],
+    ) -> anyhow::Result<()> {
         // Initialize the ceremony and add the contributors and verifiers to the queue.
         {
             // Run initialization.
@@ -2674,10 +2681,13 @@ mod tests {
             coordinator.state.save(&mut coordinator.storage)?;
 
             // Add the contributor and verifier of the coordinator to execute round 1.
-            for contributor in contributors {
-                coordinator
-                    .state
-                    .add_to_queue(contributor.clone(), 10, coordinator.time.as_ref())?;
+            for (contributor, contributor_ip) in contributors {
+                coordinator.state.add_to_queue(
+                    contributor.clone(),
+                    Some(*contributor_ip),
+                    10,
+                    coordinator.time.as_ref(),
+                )?;
             }
 
             // Update the queue.
@@ -2713,12 +2723,22 @@ mod tests {
             Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
         ];
 
+        let contributor_ips = vec![
+            IpAddr::V4("0.0.0.1".parse().unwrap()),
+            IpAddr::V4("0.0.0.2".parse().unwrap()),
+        ];
+
+        let contributors: Vec<(Participant, IpAddr)> = contributors.into_iter().zip(contributor_ips).collect();
+
         initialize_to_round_1(coordinator, &contributors)
     }
 
     fn initialize_coordinator_single_contributor(coordinator: &mut Coordinator) -> anyhow::Result<()> {
         // Load the contributors and verifiers.
-        let contributors = vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()];
+        let contributors = vec![(
+            Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        )];
 
         initialize_to_round_1(coordinator, &contributors)
     }
@@ -2733,7 +2753,7 @@ mod tests {
 
         // Check that round 0 matches the round 0 JSON specification.
         {
-            let now = Utc::now();
+            let now = OffsetDateTime::now_utc();
 
             // Fetch round 0 from coordinator.
             let mut expected = test_round_0_json()?;
@@ -3372,7 +3392,7 @@ mod tests {
             coordinator.aggregate_contributions()?;
 
             // Run aggregation and transition from round 1 to round 2.
-            coordinator.next_round(Utc::now(), vec![contributor.clone()])?;
+            coordinator.next_round(OffsetDateTime::now_utc(), vec![contributor.clone()])?;
         }
 
         // Check that the ceremony has advanced to round 2.

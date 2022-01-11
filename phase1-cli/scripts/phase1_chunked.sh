@@ -11,7 +11,7 @@ if [ "$PROVING_SYSTEM" == "groth16" ]; then
 else
   MAX_CHUNK_INDEX=1 # we have 2 chunks, since we have a total of 2^11-1 powers
 fi
-CURVE="bw6"
+CURVE="bls12_377"
 SEED1=`tr -dc 'A-F0-9' < /dev/random | head -c32`
 echo $SEED1 > seed1
 SEED2=`tr -dc 'A-F0-9' < /dev/random | head -c32`

@@ -12,36 +12,57 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-phase1 = { path = "../phase1" }
-setup-utils = { path = "../setup-utils" }
-snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
-snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c" }
+http = "0.2"
+phase1 = { path = "../phase1", default-features = false }
+setup-utils = { path = "../setup-utils", default-features = false }
+setup1-shared = { path = "../setup1-shared" }
+snarkvm-dpc = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "setup_wasm", default-features = false, features = [ "wasm" ], optional = true }
+snarkvm-utilities = { git = "https://github.com/AleoHQ/snarkVM.git", branch = "setup_wasm", default-features = false, optional = true }
+snarkvm-curves = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
+snarkvm-fields = { git = "https://github.com/AleoHQ/snarkVM.git", rev = "fc997c", default-features = false }
 
+blake2 = { version = "0.9", default-features = false }
+bytes = "1.1"
+cfg-if = "1.0"
+hex = { version = "0.4" }
 getrandom = { version = "0.2" }
+oneshot = "0.1"
 rand = { version = "0.8" }
+js-sys = "0.3.45"
 rand_chacha = { version = "0.3" }
+rayon = "1.1.0"
+rayon-core = "1.5.0"
+reqwest = "0.11"
 serde = { version = "1.0.114" }
 serde_derive = { version = "1.0.114" }
+serde_json = "1.0"
+serde-diff = { version = "0.4" }
 tracing = { version = "0.1.21" }
-tracing-subscriber = { version = "0.2.3" }
-wasm-bindgen = { version = "0.2.69", features=["serde-serialize"] }
+tracing-subscriber = { version = "0.3" }
+wasm-bindgen = { version = "0.2.78", features=["serde-serialize"] }
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["console", "ErrorEvent", "Event", "Navigator", "Window", "Worker", "DedicatedWorkerGlobalScope", "MessageEvent", "Response"] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
-console_error_panic_hook = { version = "0.1.6", optional = true }
+console_error_panic_hook = { version = "0.1.6" }
 
 [dev-dependencies]
 rand_chacha = { version = "0.3" }
 wasm-bindgen-test = { version = "0.3.18" }
 
 [build-dependencies]
-rustc_version = { version = "0.3" }
+rustc_version = { version = "0.4" }
 
 [features]
 default = []
-wasm = ["console_error_panic_hook", "getrandom/js", "getrandom/wasm-bindgen", "phase1/wasm", "setup-utils/wasm"]
+wasm = ["getrandom/js", "getrandom/wasm-bindgen", "phase1/wasm", "setup-utils/wasm", "snarkvm-dpc", "snarkvm-utilities"]
+parallel = ["phase1/parallel", "setup-utils/parallel"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O4']
 
 # cargo test --target wasm32-unknown-unknown --no-default-features --features wasm
 # cargo build --tests --target wasm32-unknown-unknown --no-default-features --features wasm
