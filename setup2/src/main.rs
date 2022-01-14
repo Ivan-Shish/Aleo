@@ -5,14 +5,80 @@ cfg_if! {
         mod cli;
         use cli::*;
 
-        use setup_utils::{beacon_randomness, from_slice, get_rng, user_system_randomness};
-
         use gumdrop::Options;
         use std::{process, time::Instant};
         use tracing_subscriber::{
             filter::EnvFilter,
             fmt::{time::ChronoUtc, Subscriber},
         };
+        use tracing::{error, info};
+
+        fn execute_cmd(opts: Phase2Opts) {
+            let command = opts.clone().command.unwrap_or_else(|| {
+                error!("No command was provided.");
+                error!("{}", Phase2Opts::usage());
+                process::exit(2)
+            });
+
+            let now = Instant::now();
+
+            match command {
+                Command::New(opt) => {
+                    new(
+                        &opt.challenge_fname,
+                        &opt.challenge_hash_fname,
+                        &opt.challenge_list_fname,
+                        opts.chunk_size,
+                        &opt.phase1_fname,
+                        opt.phase1_powers,
+                        &opt.circuit_fname,
+                        opts.is_inner,
+                    );
+                }
+                Command::Contribute(opt) => {
+                    let seed = hex::decode(&std::fs::read_to_string(&opts.seed).expect("should have read seed").trim())
+                    .expect("seed should be a hex string");
+                    let rng = setup_utils::derive_rng_from_seed(&seed);
+                    contribute(
+                        &opt.challenge_fname,
+                        &opt.challenge_hash_fname,
+                        &opt.response_fname,
+                        &opt.response_hash_fname,
+                        upgrade_correctness_check_config(
+                            DEFAULT_CONTRIBUTE_CHECK_INPUT_CORRECTNESS,
+                            opts.force_correctness_checks,
+                        ),
+                        opts.is_inner,
+                        rng,
+                    );
+                }
+                Command::Verify(opt) => {
+                    verify(
+                        &opt.challenge_fname,
+                        &opt.challenge_hash_fname,
+                        DEFAULT_VERIFY_CHECK_INPUT_CORRECTNESS,
+                        &opt.response_fname,
+                        &opt.response_hash_fname,
+                        CheckForCorrectness::OnlyNonZero,
+                        &opt.new_challenge_fname,
+                        &opt.new_challenge_hash_fname,
+                        opts.is_inner,
+                    );
+                }
+                Command::Combine(opt) => {
+                    combine(
+                        &opt.initial_query_fname,
+                        &opt.initial_full_fname,
+                        &opt.response_list_fname,
+                        &opt.combined_fname,
+                        opts.is_inner,
+                    );
+                }
+            };
+
+            let new_now = Instant::now();
+            info!("Executing {:?} took: {:?}", opts, new_now.duration_since(now));
+        }
 
         fn main() {
             Subscriber::builder()
@@ -21,36 +87,12 @@ cfg_if! {
                 .init();
             let opts = SNARKOpts::parse_args_default_or_exit();
 
-            let command = opts.clone().command.unwrap_or_else(|| {
-                eprintln!("No command was provided.");
-                eprintln!("{}", SNARKOpts::usage());
-                process::exit(2)
-            });
+            let opts: Phase2Opts = Phase2Opts::parse_args_default_or_exit();
 
-            let now = Instant::now();
-            let res = match command {
-                Command::New(ref opt) => new(&opt).unwrap(),
-                Command::Contribute(ref opt) => {
-                    // contribute to the randomness
-                    let mut rng = get_rng(&user_system_randomness());
-                    contribute(&opt, &mut rng).unwrap()
-                }
-                Command::Beacon(ref opt) => {
-                    // use the beacon's randomness
-                    let beacon_hash = hex::decode(&opt.beacon_hash).expect("could not hex decode beacon hash");
-                    let mut rng = get_rng(&beacon_randomness(from_slice(&beacon_hash)));
-                    contribute(&opt, &mut rng).unwrap()
-                }
-                Command::Verify(ref opt) => verify(&opt).unwrap(),
+            match opts.curve_kind {
+                CurveKind::Bls12_377 => execute_cmd(opts),
+                CurveKind::BW6 => execute_cmd(opts),
             };
-
-            let new_now = Instant::now();
-            println!(
-                "Executing {:?} took: {:?}. Result {:?}",
-                opts,
-                new_now.duration_since(now),
-                res,
-            );
         }
     }
 }
