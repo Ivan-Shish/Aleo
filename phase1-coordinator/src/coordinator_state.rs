@@ -10,13 +10,14 @@ use crate::{
 };
 use phase1::ProvingSystem;
 
-use chrono::{DateTime, Duration, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     iter::FromIterator,
+    net::IpAddr,
 };
+use time::{Duration, OffsetDateTime};
 use tracing::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,7 +37,7 @@ pub struct ChunkLock {
     /// The id of the chunk which is locked.
     chunk_id: u64,
     /// The time that the chunk was locked.
-    lock_time: DateTime<Utc>,
+    lock_time: OffsetDateTime,
 }
 
 impl ChunkLock {
@@ -45,7 +46,7 @@ impl ChunkLock {
     pub fn new(chunk_id: u64, time: &dyn TimeSource) -> Self {
         Self {
             chunk_id,
-            lock_time: time.utc_now(),
+            lock_time: time.now_utc(),
         }
     }
 
@@ -55,7 +56,7 @@ impl ChunkLock {
     }
 
     /// The time that the chunk was locked.
-    pub fn lock_time(&self) -> &DateTime<Utc> {
+    pub fn lock_time(&self) -> &OffsetDateTime {
         &self.lock_time
     }
 }
@@ -71,15 +72,15 @@ pub struct ParticipantInfo {
     /// The bucket ID that this participant starts contributing from.
     bucket_id: u64,
     /// The timestamp of the first seen instance of this participant.
-    first_seen: DateTime<Utc>,
+    first_seen: OffsetDateTime,
     /// The timestamp of the last seen instance of this participant.
-    last_seen: DateTime<Utc>,
+    last_seen: OffsetDateTime,
     /// The timestamp when this participant started the round.
-    started_at: Option<DateTime<Utc>>,
+    started_at: Option<OffsetDateTime>,
     /// The timestamp when this participant finished the round.
-    finished_at: Option<DateTime<Utc>>,
+    finished_at: Option<OffsetDateTime>,
     /// The timestamp when this participant was dropped from the round.
-    dropped_at: Option<DateTime<Utc>>,
+    dropped_at: Option<OffsetDateTime>,
     /// A map of chunk IDs to locks on chunks that this participant currently holds.
     locked_chunks: HashMap<u64, ChunkLock>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
@@ -110,7 +111,7 @@ impl ParticipantInfo {
         time: &dyn TimeSource,
     ) -> Self {
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
         Self {
             id: participant,
             round_height,
@@ -316,7 +317,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -379,7 +380,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Add the task to the front of the pending tasks.
         self.assigned_tasks.push_front(task);
@@ -416,7 +417,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Fetch the next task in order as stored.
         match self.assigned_tasks.pop_front() {
@@ -482,7 +483,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         let chunk_lock = ChunkLock::new(chunk_id, time);
 
@@ -543,7 +544,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&task.chunk_id());
@@ -622,7 +623,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the task from the pending tasks.
         self.pending_tasks = self
@@ -698,7 +699,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&task.chunk_id());
@@ -766,7 +767,7 @@ impl ParticipantInfo {
         }
 
         // Update the last seen time.
-        self.last_seen = time.utc_now();
+        self.last_seen = time.now_utc();
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
@@ -803,7 +804,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Set the participant info to reflect them dropping now.
         self.dropped_at = Some(now);
@@ -859,7 +860,7 @@ impl ParticipantInfo {
         }
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         // Update the last seen time.
         self.last_seen = now;
@@ -899,9 +900,9 @@ pub struct RoundMetrics {
     /// The average seconds per task calculated from all current verifiers.
     verifier_average_per_task: Option<u64>,
     /// The timestamp when the coordinator started aggregation of the current round.
-    started_aggregation_at: Option<DateTime<Utc>>,
+    started_aggregation_at: Option<OffsetDateTime>,
     /// The timestamp when the coordinator finished aggregation of the current round.
-    finished_aggregation_at: Option<DateTime<Utc>>,
+    finished_aggregation_at: Option<OffsetDateTime>,
     /// The estimated number of seconds remaining for the current round to finish.
     estimated_finish_time: Option<u64>,
     /// The estimated number of seconds remaining for the current round to aggregate.
@@ -909,7 +910,7 @@ pub struct RoundMetrics {
     /// The estimated number of seconds remaining until the queue is closed for the next round.
     estimated_wait_time: Option<u64>,
     /// The timestamp of the earliest start time for the next round.
-    next_round_after: Option<DateTime<Utc>>,
+    next_round_after: Option<OffsetDateTime>,
 }
 
 impl Default for RoundMetrics {
@@ -940,7 +941,7 @@ pub struct CoordinatorState {
     status: CoordinatorStatus,
     /// The map of queue participants with a reliability score, an assigned future
     /// round, a last seen timestamp, and their time of joining.
-    queue: HashMap<Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)>,
+    queue: HashMap<Participant, (u8, Option<u64>, OffsetDateTime, OffsetDateTime)>,
     /// The map of unique participants for the next round.
     next: HashMap<Participant, ParticipantInfo>,
     /// The metrics for the current round of the ceremony.
@@ -949,6 +950,8 @@ pub struct CoordinatorState {
     current_round_height: Option<u64>,
     /// The map of unique contributors for the current round.
     current_contributors: HashMap<Participant, ParticipantInfo>,
+    /// The map of unique contributor IPs to participants.
+    contributor_ips: HashMap<IpAddr, HashSet<Participant>>,
     /// The map of unique verifiers for the current round.
     current_verifiers: HashMap<Participant, ParticipantInfo>,
     /// The map of tasks pending verification in the current round.
@@ -979,6 +982,7 @@ impl CoordinatorState {
             current_metrics: None,
             current_round_height: None,
             current_contributors: HashMap::default(),
+            contributor_ips: HashMap::default(),
             current_verifiers: HashMap::default(),
             pending_verification: HashMap::default(),
             finished_contributors: HashMap::default(),
@@ -1068,8 +1072,8 @@ impl CoordinatorState {
 
             let current_metrics = Some(RoundMetrics {
                 is_round_aggregated: true,
-                started_aggregation_at: Some(time.utc_now()),
-                finished_aggregation_at: Some(time.utc_now()),
+                started_aggregation_at: Some(time.now_utc()),
+                finished_aggregation_at: Some(time.now_utc()),
                 ..Default::default()
             });
 
@@ -1082,8 +1086,8 @@ impl CoordinatorState {
                     (
                         participant_info.reliability,
                         Some(participant_info.round_height),
-                        time.utc_now(),
-                        time.utc_now(),
+                        time.now_utc(),
+                        time.now_utc(),
                     ),
                 );
             }
@@ -1179,6 +1183,13 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns `true` if a contributor has already entered the queue with this IP.
+    ///
+    pub fn is_duplicate_ip(&self, ip: &IpAddr) -> bool {
+        self.contributor_ips.contains_key(ip)
+    }
+
+    ///
     /// Returns `true` if the given participant is a contributor in the queue.
     ///
     #[inline]
@@ -1271,7 +1282,7 @@ impl CoordinatorState {
 
     ///
     /// Returns the total number of contributors currently in the queue.
-    ///  
+    ///
     #[inline]
     pub fn number_of_queue_contributors(&self) -> usize {
         self.queue.par_iter().filter(|(p, _)| p.is_contributor()).count()
@@ -1283,7 +1294,7 @@ impl CoordinatorState {
     pub fn queue_contributor_info(
         &self,
         participant: &Participant,
-    ) -> Option<&(u8, Option<u64>, DateTime<Utc>, DateTime<Utc>)> {
+    ) -> Option<&(u8, Option<u64>, OffsetDateTime, OffsetDateTime)> {
         self.queue.get(participant)
     }
 
@@ -1291,7 +1302,7 @@ impl CoordinatorState {
     /// Returns a list of the contributors currently in the queue.
     ///
     #[inline]
-    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, DateTime<Utc>, DateTime<Utc>))> {
+    pub fn queue_contributors(&self) -> Vec<(Participant, (u8, Option<u64>, OffsetDateTime, OffsetDateTime))> {
         self.queue
             .clone()
             .into_par_iter()
@@ -1429,7 +1440,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if time.utc_now() < next_round_after {
+                if time.now_utc() < next_round_after {
                     trace!("Required queue wait time has not been reached yet");
                     return false;
                 }
@@ -1477,7 +1488,8 @@ impl CoordinatorState {
     pub(super) fn add_to_queue(
         &mut self,
         participant: Participant,
-        reliability_score: u8,
+        participant_ip: Option<IpAddr>,
+        mut reliability_score: u8,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         // Check that the participant is not banned from participating.
@@ -1514,9 +1526,25 @@ impl CoordinatorState {
             }
         }
 
+        if !self.environment.disable_reliability_zeroing() {
+            // Zero the reliability score if the participant is joining with a known IP.
+            if let Some(ip) = participant_ip {
+                if self.is_duplicate_ip(&ip) {
+                    reliability_score = 0;
+
+                    // Also zero the reliability scores of existing participants in the queue with the
+                    // same IP.
+                    self.zero_duplicate_ips(&ip);
+                }
+                // Map the new IP to the address.
+                let participants = self.contributor_ips.entry(ip).or_insert(HashSet::new());
+                participants.insert(participant.clone());
+            }
+        }
+
         // Add the participant to the queue.
         self.queue
-            .insert(participant, (reliability_score, None, time.utc_now(), time.utc_now()));
+            .insert(participant, (reliability_score, None, time.now_utc(), time.now_utc()));
 
         Ok(())
     }
@@ -1894,7 +1922,7 @@ impl CoordinatorState {
             };
 
             // Add the given task with a new start timer.
-            updated_tasks.insert(*task, (time.utc_now().timestamp(), None));
+            updated_tasks.insert(*task, (time.now_utc().unix_timestamp(), None));
 
             // Set the current task timer for the given participant to the updated task timer.
             metrics.task_timer.insert(participant.clone(), updated_tasks);
@@ -1926,7 +1954,7 @@ impl CoordinatorState {
             match updated_tasks.get_mut(task) {
                 Some((_, end)) => {
                     if end.is_none() {
-                        *end = Some(time.utc_now().timestamp());
+                        *end = Some(time.now_utc().unix_timestamp());
                     }
                 }
                 None => {
@@ -1964,7 +1992,7 @@ impl CoordinatorState {
         }
 
         // Set the start aggregation timestamp to now.
-        metrics.started_aggregation_at = Some(time.utc_now());
+        metrics.started_aggregation_at = Some(time.now_utc());
 
         Ok(())
     }
@@ -1996,7 +2024,7 @@ impl CoordinatorState {
         metrics.is_round_aggregated = true;
 
         // Set the finish aggregation timestamp to now.
-        metrics.finished_aggregation_at = Some(time.utc_now());
+        metrics.finished_aggregation_at = Some(time.now_utc());
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
@@ -2011,7 +2039,7 @@ impl CoordinatorState {
     fn update_next_round_after(&mut self, time: &dyn TimeSource) {
         if let Some(metrics) = &mut self.current_metrics {
             metrics.next_round_after =
-                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+                Some(time.now_utc() + Duration::seconds(self.environment.queue_wait_time() as i64));
         }
     }
 
@@ -2088,6 +2116,27 @@ impl CoordinatorState {
                 self.next.remove(participant);
                 // Trigger a rollback as the precommit has changed.
                 self.rollback_next_round(time);
+            }
+
+            // Update the IP map, there are two cases:
+            // 1. The IP is associated only with the dropped participant, remove it.
+            // 2. The IP associated with the dropped participant is also associated with other participants, in
+            //    which case only remove the first relevant mapping.
+            let ips: Vec<_> = self
+                .contributor_ips
+                .iter()
+                .filter(|(_ip, participants)| participants.contains(&participant))
+                .map(|(&ip, participants)| (ip, participants.clone()))
+                .collect();
+
+            for (ip, participants) in ips {
+                if participants.len() == 1 {
+                    // Remove the IP address entirely.
+                    self.contributor_ips.remove(&ip);
+                } else if let Some(participants) = self.contributor_ips.get_mut(&ip) {
+                    // Remove only the associated participant, leaving the others and the IP in place.
+                    participants.remove(&participant);
+                }
             }
 
             return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
@@ -2544,7 +2593,7 @@ impl CoordinatorState {
     pub(super) fn update_dropped_queued_participants(&mut self, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         let queue_seen_timeout = self.environment.queue_seen_timeout();
 
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         for (participant, (_, _, last_seen, _)) in self.queue.clone() {
             if now - last_seen > queue_seen_timeout {
@@ -2567,7 +2616,7 @@ impl CoordinatorState {
         let participant_lock_timeout = self.environment.participant_lock_timeout();
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         self.current_contributors
             .clone()
@@ -2588,10 +2637,10 @@ impl CoordinatorState {
                     let exceeded_chunks_string: String = exceeded_chunk_names.join(", ");
 
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
+                        "Dropping participant {} because it has exceeded the maximum ({:?}s) allowed time \
                         it is allowed to hold a lock (on chunks {}).",
                         participant,
-                        chrono_humanize::HumanTime::from(participant_lock_timeout),
+                        participant_lock_timeout.whole_seconds(),
                         exceeded_chunks_string,
                     );
                     Some(self.drop_participant(participant, time))
@@ -2613,7 +2662,7 @@ impl CoordinatorState {
         let contributor_seen_timeout = self.environment.contributor_seen_timeout();
 
         // Fetch the current time.
-        let now = time.utc_now();
+        let now = time.now_utc();
 
         self.current_contributors
             .clone()
@@ -2625,11 +2674,11 @@ impl CoordinatorState {
                 // Check if the participant is still live and not a coordinator contributor.
                 if elapsed > contributor_seen_timeout && !self.is_coordinator_contributor(&participant) {
                     tracing::warn!(
-                        "Dropping participant {} because it has exceeded the maximum ({}) allowed time \
-                        since it was last seen by the coordinator (last seen {} ago).",
+                        "Dropping participant {} because it has exceeded the maximum ({:?}s) allowed time \
+                        since it was last seen by the coordinator (last seen {:?}s ago).",
                         participant,
-                        chrono_humanize::HumanTime::from(contributor_seen_timeout),
-                        chrono_humanize::HumanTime::from(elapsed)
+                        contributor_seen_timeout.whole_seconds(),
+                        elapsed.whole_seconds()
                     );
                     // Drop the participant.
                     Some(self.drop_participant(participant, time))
@@ -2840,7 +2889,7 @@ impl CoordinatorState {
         // Check that the time to trigger the next round has been reached, if it is set.
         if let Some(metrics) = &self.current_metrics {
             if let Some(next_round_after) = metrics.next_round_after {
-                if time.utc_now() < next_round_after {
+                if time.now_utc() < next_round_after {
                     return Err(CoordinatorError::QueueWaitTimeIncomplete);
                 }
             }
@@ -3067,8 +3116,8 @@ impl CoordinatorState {
                 (
                     participant_info.reliability,
                     Some(participant_info.round_height),
-                    time.utc_now(),
-                    time.utc_now(),
+                    time.now_utc(),
+                    time.now_utc(),
                 ),
             );
         }
@@ -3165,7 +3214,7 @@ impl CoordinatorState {
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
         if let Some((_, _, last_seen, _)) = self.queue.get_mut(participant) {
-            *last_seen = time.utc_now();
+            *last_seen = time.now_utc();
             return Ok(());
         }
 
@@ -3191,10 +3240,34 @@ impl CoordinatorState {
         };
 
         if let Some(info) = info {
-            info.last_seen = time.utc_now();
+            info.last_seen = time.now_utc();
             Ok(())
         } else {
             Err(CoordinatorError::ParticipantNotFound(participant.clone()))
+        }
+    }
+
+    ///
+    /// Updates the coordinator's state by zeroing the reliability score for participants using
+    /// the same IP.
+    ///
+    pub fn zero_duplicate_ips(&mut self, ip: &IpAddr) {
+        for participants in self.contributor_ips.get(ip) {
+            for participant in participants {
+                if let Some((reliability_score, _, _, _)) = self.queue.get_mut(participant) {
+                    *reliability_score = 0;
+                }
+
+                // Update the current contributors.
+                if let Some(participant_info) = self.current_contributors.get_mut(participant) {
+                    participant_info.reliability = 0;
+                }
+
+                // Update the next contributors.
+                if let Some(participant_info) = self.next.get_mut(participant) {
+                    participant_info.reliability = 0;
+                }
+            }
         }
     }
 
@@ -3276,6 +3349,8 @@ pub(crate) enum DropParticipant {
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+
     use crate::{
         coordinator_state::*,
         environment::{Parameters, Testing},
@@ -3324,6 +3399,7 @@ mod tests {
 
         // Fetch the contributor of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         assert!(contributor.is_contributor());
 
         // Initialize a new coordinator state.
@@ -3331,7 +3407,9 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
@@ -3350,10 +3428,60 @@ mod tests {
 
         // Attempt to add the contributor again.
         for _ in 0..10 {
-            let result = state.add_to_queue(contributor.clone(), 10, &time);
+            let result = state.add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time);
             assert!(result.is_err());
             assert_eq!(1, state.queue.len());
         }
+    }
+
+    #[test]
+    fn test_add_duplicate_ip_to_queue_contributor() {
+        let time = SystemTimeSource::new();
+        let environment = TEST_ENVIRONMENT.clone();
+
+        // Fetch the contributor of the coordinator.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        // To be used by both contributors.
+        let contributor_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        assert!(contributor_1.is_contributor());
+
+        // Initialize a new coordinator state.
+        let mut state = CoordinatorState::new(environment.clone());
+        let current_round_height = 5;
+        state.initialize(current_round_height);
+        assert!(state.queue.is_empty());
+        assert_eq!(Some(current_round_height), state.current_round_height);
+
+        // Add the contributors to the coordinator queue.
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
+        assert_eq!(1, state.queue.len());
+
+        // Add the second contributor with the same ip.
+        state
+            .add_to_queue(contributor_2.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
+        assert_eq!(2, state.queue.len());
+
+        // Check the reliability score has been zeroed for both participants.
+        assert_eq!(0, state.queue.get(&contributor_1).unwrap().0);
+        assert_eq!(0, state.queue.get(&contributor_2).unwrap().0);
+
+        state.update_queue().unwrap();
+
+        // Drop one of the participants.
+        state.drop_participant(&contributor_1, &time).unwrap();
+
+        // Verify the IP still exists as one participant associated with it is left in the queue.
+        assert!(state.contributor_ips.contains_key(&contributor_ip));
+
+        // Drop the second participant.
+        state.drop_participant(&contributor_2, &time).unwrap();
+
+        // Verify the IP has been deleted.
+        assert!(!state.contributor_ips.contains_key(&contributor_ip));
     }
 
     #[test]
@@ -3370,7 +3498,7 @@ mod tests {
         assert_eq!(0, state.queue.len());
 
         // Add the verifier of the coordinator.
-        let result = state.add_to_queue(verifier.clone(), 10, &time);
+        let result = state.add_to_queue(verifier.clone(), None, 10, &time);
         assert!(result.is_err());
         assert_eq!(0, state.queue.len());
         assert_eq!(0, state.next.len());
@@ -3389,7 +3517,7 @@ mod tests {
 
         // Attempt to add the verifier again.
         for _ in 0..10 {
-            let result = state.add_to_queue(verifier.clone(), 10, &time);
+            let result = state.add_to_queue(verifier.clone(), None, 10, &time);
             assert!(result.is_err());
             assert_eq!(0, state.queue.len());
         }
@@ -3402,6 +3530,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3415,7 +3544,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(Some(current_round_height), state.current_round_height);
@@ -3445,7 +3576,7 @@ mod tests {
 
         // Attempt to add the contributor and verifier again.
         for _ in 0..10 {
-            let contributor_result = state.add_to_queue(contributor.clone(), 10, &time);
+            let contributor_result = state.add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time);
             assert!(contributor_result.is_err());
             assert_eq!(1, state.queue.len());
         }
@@ -3475,8 +3606,12 @@ mod tests {
 
             // Add a unique contributor.
             let contributor = Participant::Contributor(id.to_string());
+            let contributor_ip = IpAddr::V4(format!("0.0.0.{}", id).parse().unwrap());
+
             let reliability = 10 - id as u8;
-            state.add_to_queue(contributor.clone(), reliability, &time).unwrap();
+            state
+                .add_to_queue(contributor.clone(), Some(contributor_ip), reliability, &time)
+                .unwrap();
             assert_eq!(id, state.queue.len());
             assert_eq!(0, state.next.len());
             assert_eq!(Some(current_round_height), state.current_round_height);
@@ -3526,13 +3661,16 @@ mod tests {
 
         // Fetch the contributor of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
         assert_eq!(0, state.queue.len());
 
         // Add the contributor of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
         assert_eq!(0, state.next.len());
         assert_eq!(None, state.current_round_height);
@@ -3564,6 +3702,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3577,7 +3716,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3654,6 +3795,7 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let mut state = CoordinatorState::new(environment.clone());
@@ -3667,7 +3809,9 @@ mod tests {
         assert_eq!(Some(current_round_height), state.current_round_height);
 
         // Add the contributor and verifier of the coordinator.
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         assert_eq!(1, state.queue.len());
 
         // Update the state of the queue.
@@ -3740,12 +3884,15 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3800,13 +3947,16 @@ mod tests {
 
         // Fetch the contributor and verifier of the coordinator.
         let contributor = test_coordinator_contributor(&environment).unwrap();
+        let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let verifier = test_coordinator_verifier(&environment).unwrap();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor.clone(), Some(contributor_ip), 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3877,15 +4027,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -3986,15 +4142,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4127,15 +4289,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4204,7 +4372,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         let action = state.reset_current_round(false, &time).unwrap();
         assert!(!action.rollback);
@@ -4281,15 +4449,21 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
         let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
-        state.add_to_queue(contributor_2.clone(), 9, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .unwrap();
+        state
+            .add_to_queue(contributor_2.clone(), Some(contributor_2_ip), 9, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4358,7 +4532,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         dbg!(&state.current_contributors());
 
@@ -4429,13 +4603,16 @@ mod tests {
 
         // Fetch two contributors and two verifiers.
         let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_1_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let verifier_1 = TEST_VERIFIER_ID.clone();
 
         // Initialize a new coordinator state.
         let current_round_height = 5;
         let mut state = CoordinatorState::new(environment.clone());
         state.initialize(current_round_height);
-        state.add_to_queue(contributor_1.clone(), 10, &time).unwrap();
+        state
+            .add_to_queue(contributor_1.clone(), Some(contributor_1_ip), 10, &time)
+            .unwrap();
         state.update_queue().unwrap();
         state.aggregating_current_round(&time).unwrap();
         state.aggregated_current_round(&time).unwrap();
@@ -4478,7 +4655,7 @@ mod tests {
 
         assert!(!state.is_current_round_finished());
 
-        let time = MockTimeSource::new(Utc::now());
+        let time = MockTimeSource::new(OffsetDateTime::now_utc());
 
         let drop = state.drop_participant(&contributor_1, &time).unwrap();
 

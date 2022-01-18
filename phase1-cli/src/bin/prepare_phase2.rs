@@ -12,7 +12,7 @@ use memmap::*;
 use std::{fs::OpenOptions, time::Instant};
 use tracing_subscriber::{
     filter::EnvFilter,
-    fmt::{time::ChronoUtc, Subscriber},
+    fmt::{time, Subscriber},
 };
 
 #[derive(Debug, Options, Clone)]
@@ -94,7 +94,7 @@ fn prepare_phase2<E: Engine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
 
 fn main() -> Result<()> {
     Subscriber::builder()
-        .with_timer(ChronoUtc::rfc3339())
+        .with_timer(time::UtcTime::rfc_3339())
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 

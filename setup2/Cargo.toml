@@ -32,7 +32,7 @@ rand_chacha = { version = "0.3" }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = { version = "1.0.22" }
 tracing = { version = "0.1.21" }
-tracing-subscriber = { version = "0.2.3" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 
 [features]
 default = ["cli"]

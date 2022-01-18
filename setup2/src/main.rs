@@ -9,7 +9,7 @@ cfg_if! {
         use std::{process, time::Instant};
         use tracing_subscriber::{
             filter::EnvFilter,
-            fmt::{time::ChronoUtc, Subscriber},
+            fmt::{time, Subscriber},
         };
         use tracing::{error, info};
 

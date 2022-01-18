@@ -11,8 +11,8 @@ use crate::{
     Participant,
     Round,
 };
-use chrono::Utc;
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
+use time::OffsetDateTime;
 
 use fs_err as fs;
 use rand::RngCore;
@@ -20,6 +20,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashSet, LinkedList},
     iter::FromIterator,
+    net::{IpAddr, Ipv4Addr},
     sync::Arc,
 };
 
@@ -110,8 +111,9 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
 
     // Meanwhile, add a contributor and verifier to the queue.
     let (contributor, contributor_signing_key, seed) = create_contributor("1");
+    let contributor_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor.clone(), 10)?;
+    coordinator.add_to_queue(contributor.clone(), Some(contributor_ip), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
 
     // Advance the ceremony from round 0 to round 1.
@@ -135,7 +137,7 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
     // changing the outcome of this test, if necessary.
     //
     let (contributor, _, _) = create_contributor("1");
-    coordinator.add_to_queue(contributor.clone(), 10)?;
+    coordinator.add_to_queue(contributor.clone(), Some(contributor_ip), 10)?;
     assert_eq!(1, coordinator.number_of_queue_contributors());
 
     // Update the ceremony from round 1 to round 2.
@@ -229,10 +231,16 @@ fn coordinator_drop_contributor_basic() {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor2.clone(), 9).unwrap();
+    coordinator
+        .add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)
+        .unwrap();
     assert_eq!(2, coordinator.number_of_queue_contributors());
     assert!(coordinator.is_queue_contributor(&contributor1));
     assert!(coordinator.is_queue_contributor(&contributor2));
@@ -337,12 +345,15 @@ fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(contributor3.clone(), 8)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
+    coordinator.add_to_queue(contributor3.clone(), Some(contributor_3_ip), 8)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
 
     // Update the ceremony to round 1.
@@ -457,12 +468,15 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(contributor3.clone(), 8)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
+    coordinator.add_to_queue(contributor3.clone(), Some(contributor_3_ip), 8)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
 
     // Update the ceremony to round 1.
@@ -610,12 +624,15 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(contributor3.clone(), 8)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
+    coordinator.add_to_queue(contributor3.clone(), Some(contributor_3_ip), 8)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
 
     // Update the ceremony to round 1.
@@ -769,10 +786,12 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
     assert_eq!(2, coordinator.number_of_queue_contributors());
     assert!(coordinator.is_queue_contributor(&contributor1));
     assert!(coordinator.is_queue_contributor(&contributor2));
@@ -882,12 +901,21 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor2.clone(), 9).unwrap();
-    coordinator.add_to_queue(contributor3.clone(), 8).unwrap();
+    coordinator
+        .add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor3.clone(), Some(contributor_3_ip), 8)
+        .unwrap();
     assert_eq!(3, coordinator.number_of_queue_contributors());
 
     // Update the ceremony to round 1.
@@ -1079,10 +1107,12 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1162,10 +1192,16 @@ fn coordinator_drop_contributor_and_release_locks() {
 
     // Add a contributor and verifier to the queue.
     let contributor_1 = create_contributor_test_details("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let contributor_2 = create_contributor_test_details("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let verifier_1 = create_verifier_test_details("1");
-    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator
+        .add_to_queue(contributor_1.participant.clone(), Some(contributor_1_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor_2.participant.clone(), Some(contributor_2_ip), 9)
+        .unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
@@ -1186,12 +1222,14 @@ fn coordinator_drop_contributor_and_release_locks() {
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let test_contributor_4 = create_contributor_test_details("4");
+    let contributor_4_ip = IpAddr::V4("0.0.0.4".parse().unwrap());
     coordinator
-        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .add_to_queue(test_contributor_3.participant.clone(), Some(contributor_3_ip), 10)
         .unwrap();
     coordinator
-        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .add_to_queue(test_contributor_4.participant.clone(), Some(contributor_4_ip), 10)
         .unwrap();
 
     // Update the ceremony to round 2.
@@ -1233,12 +1271,21 @@ fn coordinator_drop_several_contributors() {
 
     // Add some contributors and one verifier to the queue.
     let contributor_1 = create_contributor_test_details("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let contributor_2 = create_contributor_test_details("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let contributor_3 = create_contributor_test_details("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let verifier_1 = create_verifier_test_details("1");
-    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor_2.participant.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor_3.participant.clone(), 10).unwrap();
+    coordinator
+        .add_to_queue(contributor_1.participant.clone(), Some(contributor_1_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor_2.participant.clone(), Some(contributor_2_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor_3.participant.clone(), Some(contributor_3_ip), 10)
+        .unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
@@ -1309,12 +1356,14 @@ fn coordinator_drop_several_contributors() {
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let test_contributor_4 = create_contributor_test_details("4");
+    let contributor_4_ip = IpAddr::V4("0.0.0.4".parse().unwrap());
     coordinator
-        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .add_to_queue(test_contributor_3.participant.clone(), Some(contributor_3_ip), 10)
         .unwrap();
     coordinator
-        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .add_to_queue(test_contributor_4.participant.clone(), Some(contributor_4_ip), 10)
         .unwrap();
 
     // Update the ceremony to round 2.
@@ -1438,10 +1487,16 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
 
     // Add a contributor and verifier to the queue.
     let contributor_1 = create_contributor_test_details("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let contributor_2 = create_contributor_test_details("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let verifier_1 = create_verifier_test_details("1");
-    coordinator.add_to_queue(contributor_1.participant.clone(), 10).unwrap();
-    coordinator.add_to_queue(contributor_2.participant.clone(), 9).unwrap();
+    coordinator
+        .add_to_queue(contributor_1.participant.clone(), Some(contributor_1_ip), 10)
+        .unwrap();
+    coordinator
+        .add_to_queue(contributor_2.participant.clone(), Some(contributor_2_ip), 9)
+        .unwrap();
 
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
@@ -1462,12 +1517,14 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let test_contributor_4 = create_contributor_test_details("4");
+    let contributor_4_ip = IpAddr::V4("0.0.0.4".parse().unwrap());
     coordinator
-        .add_to_queue(test_contributor_3.participant.clone(), 10)
+        .add_to_queue(test_contributor_3.participant.clone(), Some(contributor_3_ip), 10)
         .unwrap();
     coordinator
-        .add_to_queue(test_contributor_4.participant.clone(), 10)
+        .add_to_queue(test_contributor_4.participant.clone(), Some(contributor_4_ip), 10)
         .unwrap();
 
     // Update the ceremony to round 2.
@@ -1506,12 +1563,15 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (contributor3, contributor_signing_key3, seed3) = create_contributor("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
-    coordinator.add_to_queue(contributor3.clone(), 8)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
+    coordinator.add_to_queue(contributor3.clone(), Some(contributor_3_ip), 8)?;
     assert_eq!(3, coordinator.number_of_queue_contributors());
 
     // Update the ceremony to round 1.
@@ -1653,10 +1713,12 @@ fn try_lock_blocked() -> anyhow::Result<()> {
 
     // Meanwhile, add 2 contributors and 1 verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 10)?;
     assert_eq!(2, coordinator.number_of_queue_contributors());
 
     // Advance the ceremony from round 0 to round 1.
@@ -1777,10 +1839,12 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let test_contributor_1 = create_contributor_test_details("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let test_contributor_2 = create_contributor_test_details("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(test_contributor_1.participant.clone(), 10)?;
-    coordinator.add_to_queue(test_contributor_2.participant.clone(), 9)?;
+    coordinator.add_to_queue(test_contributor_1.participant.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(test_contributor_2.participant.clone(), Some(contributor_2_ip), 9)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1818,9 +1882,11 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
 
     // Add some more participants to proceed to the next round
     let test_contributor_3 = create_contributor_test_details("3");
+    let contributor_3_ip = IpAddr::V4("0.0.0.3".parse().unwrap());
     let test_contributor_4 = create_contributor_test_details("4");
-    coordinator.add_to_queue(test_contributor_3.participant.clone(), 10)?;
-    coordinator.add_to_queue(test_contributor_4.participant.clone(), 10)?;
+    let contributor_4_ip = IpAddr::V4("0.0.0.4".parse().unwrap());
+    coordinator.add_to_queue(test_contributor_3.participant.clone(), Some(contributor_3_ip), 10)?;
+    coordinator.add_to_queue(test_contributor_4.participant.clone(), Some(contributor_4_ip), 10)?;
 
     // Update the ceremony to round 2.
     coordinator.update()?;
@@ -1853,10 +1919,12 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
 
     // Add a contributor and verifier to the queue.
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
     let (verifier, verifier_signing_key) = create_verifier("1");
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 9)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1907,7 +1975,7 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn contributor_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -1919,8 +1987,8 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(5))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(5))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -1931,8 +1999,9 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, _contributor_signing_key1, _seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -1942,14 +2011,14 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // contributor to timeout)
-    time.update(|prev| prev + chrono::Duration::minutes(1));
+    time.update(|prev| prev + time::Duration::minutes(1));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::minutes(5));
+    time.update(|prev| prev + time::Duration::minutes(5));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -1967,7 +2036,7 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn contributor_wait_verifier_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -1978,8 +2047,8 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
         16, /* chunk_size */
     ));
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(5))
-        .participant_lock_timeout(chrono::Duration::minutes(8));
+        .contributor_seen_timeout(time::Duration::minutes(5))
+        .participant_lock_timeout(time::Duration::minutes(8));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
     let number_of_chunks = environment.number_of_chunks() as usize;
@@ -1991,16 +2060,18 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
     let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
-    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
 
     for _ in 0..(number_of_chunks / 2) {
-        time.update(|prev| prev + chrono::Duration::minutes(1));
+        time.update(|prev| prev + time::Duration::minutes(1));
         coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
         coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
     }
@@ -2014,7 +2085,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 
     // contributors are stuck waiting for 10 minutes, longer than the
     // contributor timeout duration.
-    time.update(|prev| prev + chrono::Duration::minutes(10));
+    time.update(|prev| prev + time::Duration::minutes(10));
 
     // Emulate contributor querying the current round via the
     // `/v1/round/current` endpoint.
@@ -2040,7 +2111,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2052,8 +2123,8 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(20))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(20))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2064,8 +2135,9 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
@@ -2079,14 +2151,14 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::minutes(1));
+    time.update(|prev| prev + time::Duration::minutes(1));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::minutes(10));
+    time.update(|prev| prev + time::Duration::minutes(10));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2105,7 +2177,7 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2117,8 +2189,8 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::days(20))
-        .participant_lock_timeout(chrono::Duration::days(20));
+        .contributor_seen_timeout(time::Duration::days(20))
+        .participant_lock_timeout(time::Duration::days(20));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2129,15 +2201,17 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, _, _) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
 
     // Add another contributor who we are gonna try to drop
     let (contributor2, _, _) = create_contributor("2");
-    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 10)?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.is_queue_contributor(&contributor2));
@@ -2145,7 +2219,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     assert_eq!(1, coordinator.current_contributors().len());
@@ -2153,7 +2227,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::days(10));
+    time.update(|prev| prev + time::Duration::days(10));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2169,7 +2243,7 @@ fn queue_seen_timeout_drop_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2181,8 +2255,8 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::days(20))
-        .participant_lock_timeout(chrono::Duration::days(20));
+        .contributor_seen_timeout(time::Duration::days(20))
+        .participant_lock_timeout(time::Duration::days(20));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2193,15 +2267,18 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, _, _) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
 
     // Add another contributor who we are gonna try to drop
     let (contributor2, _, _) = create_contributor("2");
-    coordinator.add_to_queue(contributor2.clone(), 10)?;
+    let contributor_2_ip = IpAddr::V4("0.0.0.2".parse().unwrap());
+
+    coordinator.add_to_queue(contributor2.clone(), Some(contributor_2_ip), 10)?;
 
     assert_eq!(1, coordinator.current_contributors().len());
     assert!(coordinator.is_queue_contributor(&contributor2));
@@ -2209,7 +2286,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
 
     // increment the time a little bit (but not enough for the
     // lock to timeout)
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     // Send heartbeat from contributor2
@@ -2220,7 +2297,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
     assert!(coordinator.dropped_participants().is_empty());
 
     // push the time past the timout
-    time.update(|prev| prev + chrono::Duration::days(5));
+    time.update(|prev| prev + time::Duration::days(5));
     coordinator.update()?;
 
     // Check that replacement contributor has been added, and that the
@@ -2238,7 +2315,7 @@ fn queue_seen_timeout_heartbeat_test() -> anyhow::Result<()> {
 #[test]
 #[serial]
 fn rollback_locked_chunk() -> anyhow::Result<()> {
-    let time = Arc::new(MockTimeSource::new(Utc::now()));
+    let time = Arc::new(MockTimeSource::new(OffsetDateTime::now_utc()));
 
     let parameters = Parameters::Custom(Settings::new(
         ContributionMode::Chunked,
@@ -2250,8 +2327,8 @@ fn rollback_locked_chunk() -> anyhow::Result<()> {
     ));
 
     let testing_deployment: Testing = Testing::from(parameters)
-        .contributor_seen_timeout(chrono::Duration::minutes(20))
-        .participant_lock_timeout(chrono::Duration::minutes(10));
+        .contributor_seen_timeout(time::Duration::minutes(20))
+        .participant_lock_timeout(time::Duration::minutes(10));
 
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
@@ -2262,8 +2339,9 @@ fn rollback_locked_chunk() -> anyhow::Result<()> {
     coordinator.initialize()?;
 
     let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let contributor_1_ip = IpAddr::V4("0.0.0.1".parse().unwrap());
 
-    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor1.clone(), Some(contributor_1_ip), 10)?;
 
     // Update the ceremony to round 1.
     coordinator.update()?;
