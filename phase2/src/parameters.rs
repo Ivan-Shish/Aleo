@@ -27,7 +27,6 @@ use std::{
     io::{self, Read, Write},
     ops::Mul,
 };
-use tracing::info;
 
 /// MPC parameters are just like snarkVM's `ProvingKey` except, when serialized,
 /// they contain a transcript of contributions at the end, which can be verified.
@@ -159,9 +158,9 @@ impl<E: PairingEngine> MPCParameters<E> {
             phase1_size,
             phase2_size,
         )?;
-        info!("Read Groth16 parameters");
+        tracing::info!("Read Groth16 parameters");
         let assembly = circuit_to_qap::<E, _>(circuit)?;
-        info!("Constructed QAP");
+        tracing::info!("Constructed QAP");
         Self::new_chunked(assembly, params, chunk_size)
     }
 
@@ -171,7 +170,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         params: Groth16Params<E>,
         chunk_size: usize,
     ) -> Result<(MPCParameters<E>, ProvingKey<E>, Vec<MPCParameters<E>>)> {
-        info!("Evaluating over Lagrange coefficients");
+        tracing::info!("Evaluating over Lagrange coefficients");
         let (a_g1, b_g1, b_g2, gamma_abc_g1, l) = eval::<E>(
             // Lagrange coeffs for Tau, read in from Phase 1
             &params.coeffs_g1,
@@ -185,7 +184,7 @@ impl<E: PairingEngine> MPCParameters<E> {
             // Helper
             cs.num_public_variables,
         );
-        info!("Finished evaluating over Lagrange coefficients");
+        tracing::info!("Finished evaluating over Lagrange coefficients");
 
         // Reject unconstrained elements, so that
         // the L query is always fully dense.
@@ -226,7 +225,7 @@ impl<E: PairingEngine> MPCParameters<E> {
             l_query: vec![],
         };
         let cs_hash = hash_params(&params)?;
-        info!("Hashed parameters");
+        tracing::info!("Hashed parameters");
         let full_mpc = MPCParameters {
             params: params.clone(),
             cs_hash,
@@ -264,9 +263,9 @@ impl<E: PairingEngine> MPCParameters<E> {
                 contributions: vec![],
             };
             chunks.push(chunk_params);
-            info!("Constructed chunk {}", i);
+            tracing::info!("Constructed chunk {}", i);
         }
-        info!("Finished constructing parameters");
+        tracing::info!("Finished constructing parameters");
         Ok((full_mpc, query_parameters, chunks))
     }
 
@@ -302,7 +301,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         compressed: UseCompression,
         check_correctness: CheckForCorrectness,
         check_subgroup_membership: bool,
-    ) -> Result<Parameters<E>> {
+    ) -> Result<ProvingKey<E>> {
         // vk
         let alpha_g1: E::G1Affine = reader.read_element(compressed, check_correctness)?;
         let beta_g2: E::G2Affine = reader.read_element(compressed, check_correctness)?;
@@ -326,7 +325,7 @@ impl<E: PairingEngine> MPCParameters<E> {
         let h_query: Vec<E::G1Affine> = read_vec(&mut reader, compressed, check_correctness)?;
         let l_query: Vec<E::G1Affine> = read_vec(&mut reader, compressed, check_correctness)?;
 
-        let params = Parameters::<E> {
+        let params = ProvingKey::<E> {
             vk: VerifyingKey::<E> {
                 alpha_g1,
                 beta_g2,
@@ -345,20 +344,14 @@ impl<E: PairingEngine> MPCParameters<E> {
 
         // In the Full mode, this is already checked
         if check_subgroup_membership && check_correctness != CheckForCorrectness::Full {
-            check_subgroup(&params.a_query, subgroup_check_mode)?;
-            check_subgroup(&params.b_g1_query, subgroup_check_mode)?;
-            check_subgroup(&params.b_g2_query, subgroup_check_mode)?;
-            check_subgroup(&params.h_query, subgroup_check_mode)?;
-            check_subgroup(&params.l_query, subgroup_check_mode)?;
-            check_subgroup(&params.vk.gamma_abc_g1, subgroup_check_mode)?;
-            check_subgroup(
-                &vec![params.beta_g1, params.delta_g1, params.vk.alpha_g1],
-                subgroup_check_mode,
-            )?;
-            check_subgroup(
-                &vec![params.vk.beta_g2, params.vk.delta_g2, params.vk.gamma_g2],
-                subgroup_check_mode,
-            )?;
+            check_subgroup(&params.a_query)?;
+            check_subgroup(&params.b_g1_query)?;
+            check_subgroup(&params.b_g2_query)?;
+            check_subgroup(&params.h_query)?;
+            check_subgroup(&params.l_query)?;
+            check_subgroup(&params.vk.gamma_abc_g1)?;
+            check_subgroup(&[params.beta_g1, params.delta_g1, params.vk.alpha_g1])?;
+            check_subgroup(&[params.vk.beta_g2, params.vk.delta_g2, params.vk.gamma_g2])?;
         }
 
         Ok(params)
@@ -670,7 +663,7 @@ pub fn circuit_to_qap<E: PairingEngine, C: ConstraintSynthesizer<E::Fr>>(circuit
     Ok(assembly)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "wasm")))]
 mod tests {
     use super::*;
     use crate::{

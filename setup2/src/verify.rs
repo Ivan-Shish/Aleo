@@ -1,4 +1,4 @@
-use crate::cli::VerifyOpts;
+use crate::{Phase2Opts, VerifyOpts};
 use phase2::chunked_groth16::verify as chunked_verify;
 use setup_utils::Result;
 
@@ -7,7 +7,7 @@ use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 use fs_err::OpenOptions;
 use memmap::MmapOptions;
 
-pub fn verify(opts: &VerifyOpts) -> Result<()> {
+pub fn verify(phase2_opts: &Phase2Opts, opts: &VerifyOpts) -> Result<()> {
     let before = OpenOptions::new()
         .read(true)
         .write(true)
@@ -28,10 +28,10 @@ pub fn verify(opts: &VerifyOpts) -> Result<()> {
             .map_mut(after.file())
             .expect("unable to create a memory map for input")
     };
-    if opts.is_inner {
-        chunked_verify::<Bls12_377>(&mut before, &mut after, opts.batch)?;
+    if phase2_opts.is_inner {
+        chunked_verify::<Bls12_377>(&mut before, &mut after, phase2_opts.batch_size)?;
     } else {
-        chunked_verify::<BW6_761>(&mut before, &mut after, opts.batch)?;
+        chunked_verify::<BW6_761>(&mut before, &mut after, phase2_opts.batch_size)?;
     }
     Ok(())
 }

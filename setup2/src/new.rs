@@ -27,6 +27,8 @@ use rand_chacha::ChaChaRng;
 use setup_utils::calculate_hash;
 use std::{fs::OpenOptions, io::Write};
 
+use crate::{NewOpts, Phase2Opts};
+
 type AleoInner = <Testnet2 as Network>::InnerCurve;
 type AleoOuter = <Testnet2 as Network>::OuterCurve;
 
@@ -35,29 +37,10 @@ const COMPRESSION: UseCompression = UseCompression::No;
 pub const SEED_LENGTH: usize = 32;
 pub type Seed = [u8; SEED_LENGTH];
 
-pub fn new(
-    is_inner: bool,
-    challenge_filename: &str,
-    challenge_hash_filename: &str,
-    challenge_list_filename: &str,
-    chunk_size: usize,
-    phase1_filename: &str,
-    phase1_powers: usize,
-    circuit_filename: &str,
-) -> anyhow::Result<()> {
-    if is_inner {
+pub fn new(phase2_opts: &Phase2Opts, new_opts: &NewOpts) -> anyhow::Result<()> {
+    if phase2_opts.is_inner {
         let circuit = InnerCircuit::<Testnet2>::blank();
-        generate_params_chunked::<AleoInner, _>(
-            is_inner,
-            challenge_filename,
-            challenge_hash_filename,
-            challenge_list_filename,
-            chunk_size,
-            phase1_filename,
-            phase1_powers,
-            circuit_filename,
-            circuit,
-        )
+        generate_params_chunked::<AleoInner, _>(phase2_opts, new_opts, circuit)
     } else {
         let mut seed: Seed = [0; SEED_LENGTH];
         rand::thread_rng().fill_bytes(&mut seed[..]);
@@ -86,17 +69,7 @@ pub fn new(
         };
         let outer_circuit = OuterCircuit::<Testnet2>::blank(inner_verifying_key, inner_proof, noop_execution);
 
-        generate_params_chunked::<AleoOuter, _>(
-            is_inner,
-            challenge_filename,
-            challenge_hash_filename,
-            challenge_list_filename,
-            chunk_size,
-            phase1_filename,
-            phase1_powers,
-            circuit_filename,
-            outer_circuit,
-        )
+        generate_params_chunked::<AleoOuter, _>(phase2_opts, new_opts, outer_circuit)
     }
 }
 
@@ -127,17 +100,7 @@ fn ceremony_size<F: Field, C: Clone + ConstraintSynthesizer<F>>(circuit: &C) -> 
     }
 }
 
-pub fn generate_params_chunked<E, C>(
-    is_inner: bool,
-    challenge_filename: &str,
-    challenge_hash_filename: &str,
-    challenge_list_filename: &str,
-    chunk_size: usize,
-    phase1_filename: &str,
-    phase1_powers: usize,
-    circuit_filename: &str,
-    circuit: C,
-) -> anyhow::Result<()>
+pub fn generate_params_chunked<E, C>(phase2_opts: &Phase2Opts, new_opts: &NewOpts, circuit: C) -> anyhow::Result<()>
 where
     E: PairingEngine,
     C: Clone + ConstraintSynthesizer<E::Fr>,
@@ -145,7 +108,7 @@ where
     let phase1_transcript = OpenOptions::new()
         .read(true)
         .write(true)
-        .open(&phase1_filename)
+        .open(&new_opts.phase1_fname)
         .expect("could not read phase 1 transcript file");
     let mut phase1_transcript = unsafe {
         MmapOptions::new()
@@ -162,9 +125,9 @@ where
         &mut phase1_transcript,
         UseCompression::No,
         CheckForCorrectness::No,
-        1 << phase1_powers,
+        1 << new_opts.phase1_powers,
         phase2_size,
-        chunk_size,
+        phase2_opts.chunk_size,
     )
     .unwrap();
     info!("Finished constructing MPC parameters");
@@ -182,7 +145,7 @@ where
     info!("Serialized `query_parameters`");
 
     let contribution_hash = {
-        std::fs::File::create(format!("{}.full", challenge_filename))
+        std::fs::File::create(format!("{}.full", new_opts.challenge_fname))
             .expect("unable to open new challenge hash file")
             .write_all(&serialized_mpc_parameters)
             .expect("unable to write serialized mpc parameters");
@@ -191,31 +154,31 @@ where
     };
     info!("Hashed `full_mpc_parameters`");
 
-    std::fs::File::create(format!("{}.query", challenge_filename))
+    std::fs::File::create(format!("{}.query", new_opts.challenge_fname))
         .expect("unable to open new challenge hash file")
         .write_all(&serialized_query_parameters)
         .expect("unable to write serialized mpc parameters");
-    info!("Wrote `query_parameters` to file {}.query", challenge_filename);
+    info!("Wrote `query_parameters` to file {}.query", new_opts.challenge_fname);
 
     let mut challenge_list_file = std::fs::File::create("phase1").expect("unable to open new challenge list file");
 
     for (i, chunk) in all_mpc_parameters.iter().enumerate() {
         let mut serialized_chunk = vec![];
         chunk.write(&mut serialized_chunk).expect("unable to write chunk");
-        std::fs::File::create(format!("{}.{}", challenge_filename, i))
+        std::fs::File::create(format!("{}.{}", new_opts.challenge_fname, i))
             .expect("unable to open new challenge hash file")
             .write_all(&serialized_chunk)
             .expect("unable to write serialized mpc parameters");
         info!(
             "Output `mpc_parameter` chunk {} to file {}.{}",
-            i, challenge_filename, i
+            i, new_opts.challenge_fname, i
         );
         challenge_list_file
-            .write(format!("{}.{}\n", challenge_filename, i).as_bytes())
+            .write(format!("{}.{}\n", new_opts.challenge_fname, i).as_bytes())
             .expect("unable to write challenge list");
     }
 
-    std::fs::File::create(format!("{}.{}\n", challenge_hash_filename, "query"))
+    std::fs::File::create(format!("{}.{}\n", new_opts.challenge_hash_fname, "query"))
         .expect("unable to open new challenge hash file")
         .write_all(&contribution_hash)
         .expect("unable to write new challenge hash");
