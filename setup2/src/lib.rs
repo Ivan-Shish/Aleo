@@ -2,6 +2,9 @@ pub use new::new;
 use setup_utils::UseCompression;
 mod new;
 
+mod combine;
+pub use combine::combine;
+
 mod contribute;
 pub use contribute::contribute;
 

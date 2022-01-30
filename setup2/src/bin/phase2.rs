@@ -1,6 +1,7 @@
 use setup2::*;
 
 use gumdrop::Options;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 use std::{process, time::Instant};
 use tracing::{error, info};
 use tracing_subscriber::{
@@ -19,7 +20,7 @@ fn execute_cmd(opts: Phase2Opts) {
 
     match command {
         Command::New(opt) => {
-            new(&opts, &opt);
+            new(&opts, &opt).unwrap();
         }
         Command::Contribute(opt) => {
             let seed = hex::decode(
@@ -29,19 +30,17 @@ fn execute_cmd(opts: Phase2Opts) {
             )
             .expect("seed should be a hex string");
             let mut rng = setup_utils::derive_rng_from_seed(&seed);
-            contribute(&opts, &opt, &mut rng);
+            contribute(&opts, &opt, &mut rng).unwrap();
         }
         Command::Verify(opt) => {
-            verify(&opts, &opt);
+            verify(&opts, &opt).unwrap();
         }
         Command::Combine(opt) => {
-            combine(
-                &opt.initial_query_fname,
-                &opt.initial_full_fname,
-                &opt.response_list_fname,
-                &opt.combined_fname,
-                opts.is_inner,
-            );
+            if opts.is_inner {
+                combine::<Bls12_377>(&opt);
+            } else {
+                combine::<BW6_761>(&opt);
+            }
         }
     };
 
@@ -51,7 +50,7 @@ fn execute_cmd(opts: Phase2Opts) {
 
 fn main() {
     Subscriber::builder()
-        .with_timer(ChronoUtc::rfc3339())
+        .with_timer(time::UtcTime::rfc_3339())
         .with_env_filter(EnvFilter::from_default_env())
         .init();
     let opts = SNARKOpts::parse_args_default_or_exit();
