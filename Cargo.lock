@@ -1848,6 +1848,7 @@ dependencies = [
 name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "blake2",
  "bytes",
  "cfg-if",
@@ -1874,8 +1875,10 @@ dependencies = [
  "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?branch=setup_wasm)",
  "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=fc997c)",
  "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?branch=setup_wasm)",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

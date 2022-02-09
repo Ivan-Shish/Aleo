@@ -1,9 +1,10 @@
 use crate::{phase1::Phase1WASM, pool::WorkerProcess, requests::*, utils::*};
 use js_sys::{Function, Promise};
 use rand::{CryptoRng, Rng};
-use setup1_shared::structures::LockResponse;
+use setup1_shared::structures::{LockResponse, PublicSettings};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 use std::str::FromStr;
+use url::Url;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
@@ -31,17 +32,22 @@ extern "C" {
 /// hash of the confirmation key.
 #[wasm_bindgen]
 pub async fn contribute(server_url: String, private_key: String, confirmation_key: String) -> Result<JsValue, JsValue> {
+    let server_url = Url::parse(&server_url).map_err(map_js_err)?;
     let mut rng = rand::thread_rng();
-    let private_key = PrivateKey::from_str(&private_key).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let private_key = PrivateKey::from_str(&private_key).map_err(map_js_err_dbg)?;
 
-    join_queue(&private_key, confirmation_key, server_url.clone(), &mut rng).await?;
+    join_queue(&private_key, confirmation_key, &server_url, &mut rng)
+        .await
+        .map_err(map_js_err)?;
     let worker_pool = WorkerProcess::new(DEFAULT_THREAD_COUNT)?;
     let seed: [u8; 32] = rng.gen();
 
     loop {
-        send_heartbeat(&private_key, server_url.clone(), &mut rng).await?;
+        send_heartbeat(&private_key, &server_url, &mut rng).await?;
 
-        let is_finished = attempt_contribution(&private_key, server_url.clone(), &seed, &mut rng, &worker_pool).await?;
+        let is_finished = attempt_contribution(&private_key, &server_url, &seed, &mut rng, &worker_pool)
+            .await
+            .map_err(map_js_err)?;
 
         if is_finished {
             break;
@@ -53,15 +59,17 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 
 async fn attempt_contribution<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     seed: &[u8],
     rng: &mut R,
     worker_pool: &WorkerProcess,
-) -> Result<bool, JsValue> {
-    let tasks_left = match get_tasks_left(private_key, server_url.clone(), rng).await {
+) -> anyhow::Result<bool> {
+    let tasks_left = match get_tasks_left(private_key, server_url, rng).await {
         Ok(b) => b,
         Err(_) => {
-            sleep(DELAY_THIRTY_SECONDS).await?;
+            sleep(DELAY_THIRTY_SECONDS)
+                .await
+                .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             return Ok(false);
         }
     };
@@ -71,13 +79,13 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     }
 
     web_sys::console::log_1(&"locking chunk".into());
-    let response = lock_chunk(private_key, server_url.clone(), rng).await?;
+    let response = lock_chunk(private_key, server_url, rng).await?;
     web_sys::console::log_1(&"chunk locked".into());
 
     web_sys::console::log_1(&"downloading challenge".into());
     let chunk_bytes = download_challenge(
         private_key,
-        server_url.clone(),
+        server_url,
         response.chunk_id,
         response.contribution_id,
         rng,
@@ -98,8 +106,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         chunk_bytes.to_vec(),
         &worker_pool,
         DEFAULT_THREAD_COUNT,
-    )
-    .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+    )?;
     web_sys::console::log_1(&"finished!".into());
 
     web_sys::console::log_1(&"calculating hashes".into());
@@ -109,8 +116,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     web_sys::console::log_1(&"signing contribution".into());
     let signed_contribution_state = sign_contribution_state(&private_key, &challenge_hash, &response_hash, None, rng)?;
     let verifier_flag = vec![0];
-    let signature_bytes =
-        hex::decode(signed_contribution_state.get_signature()).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+    let signature_bytes = hex::decode(signed_contribution_state.get_signature())?;
 
     let sig_and_result_bytes = [
         verifier_flag,
@@ -124,7 +130,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     web_sys::console::log_1(&"uploading".into());
     upload_response(
         private_key,
-        server_url.clone(),
+        server_url,
         response.response_chunk_id,
         response.response_contribution_id,
         sig_and_result_bytes.clone(),
@@ -133,7 +139,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     .await?;
 
     web_sys::console::log_1(&"notifying".into());
-    notify_contribution(private_key, server_url.clone(), response.chunk_id, rng).await?;
+    notify_contribution(private_key, server_url, response.chunk_id, rng).await?;
 
     Ok(false)
 }
@@ -150,13 +156,15 @@ async fn sleep(time_ms: i32) -> Result<(), JsValue> {
 /// Fault-tolerant wrappers for coordinator requests ///
 ////////////////////////////////////////////////////////
 
+async fn request_coordinator_public_settings_retry(server_url: &Url) {}
+
 async fn send_heartbeat<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     rng: &mut R,
 ) -> Result<(), JsValue> {
     loop {
-        match post_heartbeat(private_key, server_url.clone(), rng).await {
+        match post_heartbeat(private_key, server_url, rng).await {
             Ok(_) => break,
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
@@ -171,15 +179,17 @@ async fn send_heartbeat<R: Rng + CryptoRng>(
 async fn join_queue<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
     confirmation_key: String,
-    server_url: String,
+    server_url: &Url,
     rng: &mut R,
-) -> Result<(), JsValue> {
+) -> anyhow::Result<()> {
     loop {
-        match post_join_queue(&private_key, &confirmation_key, server_url.clone(), rng).await {
+        match post_join_queue(&private_key, &confirmation_key, server_url, rng).await {
             Ok(_) => break,
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
-                sleep(DELAY_THIRTY_SECONDS).await?;
+                sleep(DELAY_THIRTY_SECONDS)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             }
         };
     }
@@ -189,20 +199,22 @@ async fn join_queue<R: Rng + CryptoRng>(
 
 async fn lock_chunk<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     rng: &mut R,
-) -> Result<LockResponse, JsValue> {
+) -> anyhow::Result<LockResponse> {
     let response;
 
     loop {
-        match post_lock_chunk(private_key, server_url.clone(), rng).await {
+        match post_lock_chunk(private_key, server_url, rng).await {
             Ok(r) => {
                 response = r;
                 break;
             }
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
-                sleep(DELAY_FIVE_SECONDS).await?;
+                sleep(DELAY_FIVE_SECONDS)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             }
         };
     }
@@ -212,22 +224,24 @@ async fn lock_chunk<R: Rng + CryptoRng>(
 
 async fn download_challenge<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     chunk_id: u64,
     contribution_id: u64,
     rng: &mut R,
-) -> Result<Vec<u8>, JsValue> {
+) -> anyhow::Result<Vec<u8>> {
     let chunk_bytes;
 
     loop {
-        match get_challenge(private_key, server_url.clone(), chunk_id, contribution_id, rng).await {
+        match get_challenge(private_key, server_url, chunk_id, contribution_id, rng).await {
             Ok(c) => {
                 chunk_bytes = c;
                 break;
             }
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
-                sleep(DELAY_FIVE_SECONDS).await?;
+                sleep(DELAY_FIVE_SECONDS)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             }
         }
     }
@@ -237,16 +251,16 @@ async fn download_challenge<R: Rng + CryptoRng>(
 
 async fn upload_response<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     chunk_id: u64,
     contribution_id: u64,
     sig_and_result_bytes: Vec<u8>,
     rng: &mut R,
-) -> Result<(), JsValue> {
+) -> anyhow::Result<()> {
     loop {
         match post_response(
             private_key,
-            server_url.clone(),
+            server_url,
             chunk_id,
             contribution_id,
             sig_and_result_bytes.clone(),
@@ -257,7 +271,9 @@ async fn upload_response<R: Rng + CryptoRng>(
             Ok(_) => break,
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
-                sleep(DELAY_FIVE_SECONDS).await?;
+                sleep(DELAY_FIVE_SECONDS)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             }
         }
     }
@@ -267,16 +283,18 @@ async fn upload_response<R: Rng + CryptoRng>(
 
 async fn notify_contribution<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,
-    server_url: String,
+    server_url: &Url,
     chunk_id: u64,
     rng: &mut R,
-) -> Result<(), JsValue> {
+) -> anyhow::Result<()> {
     loop {
-        match post_contribution(private_key, server_url.clone(), chunk_id, rng).await {
+        match post_contribution(private_key, server_url, chunk_id, rng).await {
             Ok(_) => break,
             Err(e) => {
                 web_sys::console::log_1(&format!("{:?}", e).into());
-                sleep(DELAY_FIVE_SECONDS).await?;
+                sleep(DELAY_FIVE_SECONDS)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
             }
         }
     }

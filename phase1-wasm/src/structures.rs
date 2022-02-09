@@ -56,8 +56,8 @@ impl ContributionState {
     }
 
     /// Returns the message that should be signed for the `ContributionFileSignature`.
-    pub fn signature_message(&self) -> Result<String, JsValue> {
-        Ok(serde_json::to_string(&self).map_err(|e| JsValue::from_str(&format!("{}", e)))?)
+    pub fn signature_message(&self) -> anyhow::Result<String> {
+        Ok(serde_json::to_string(&self)?)
     }
 }
 
@@ -74,14 +74,10 @@ pub struct ContributionFileSignature {
 
 impl ContributionFileSignature {
     /// Creates a new instance of `ContributionFileSignature`.
-    pub fn new(signature: String, state: ContributionState) -> Result<Self, JsValue> {
+    pub fn new(signature: String, state: ContributionState) -> anyhow::Result<Self> {
         tracing::debug!("Starting to create contribution signature");
         // Check that the signature is 64 bytes.
-        if hex::decode(&signature)
-            .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?
-            .len()
-            != 64
-        {
+        if hex::decode(&signature)?.len() != 64 {
             return Err(ContributeError::ContributionSignatureSizeMismatch.into());
         }
         tracing::debug!("Completed creating contribution signature");
