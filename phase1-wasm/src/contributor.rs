@@ -1,19 +1,26 @@
-use crate::{phase1::Phase1WASM, pool::WorkerProcess, requests::*, utils::*};
+use crate::{
+    phase1::{Phase1WASM, Settings},
+    pool::WorkerProcess,
+    requests::*,
+    utils::*,
+};
 use js_sys::{Function, Promise};
 use rand::{CryptoRng, Rng};
-use setup1_shared::structures::{LockResponse, PublicSettings};
+use setup1_shared::structures::{LockResponse, PublicSettings, SetupKind};
 use snarkvm_dpc::{parameters::testnet2::Testnet2Parameters, PrivateKey};
 use std::str::FromStr;
 use url::Url;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
-// Inner ceremony parameters.
-const CURVE_KIND: &'static str = "bls12_377";
-const PROVING_SYSTEM: &'static str = "groth16";
-const BATCH_SIZE: usize = 2097152;
-const POWER: usize = 19;
-const CHALLENGE_SIZE: usize = 32768;
+// Inner ceremony parameters
+const INNER_SETTINGS: Settings = Settings {
+    curve_kind: "bls12_377",
+    proving_system: "groth16",
+    batch_size: 2097152,
+    power: 19,
+    chunk_size: 32768,
+};
 
 const DELAY_FIVE_SECONDS: i32 = 5000;
 const DELAY_THIRTY_SECONDS: i32 = 30000;
@@ -36,16 +43,35 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
     let mut rng = rand::thread_rng();
     let private_key = PrivateKey::from_str(&private_key).map_err(map_js_err_dbg)?;
 
+    let public_settings = request_coordinator_public_settings_retry(&server_url).await?;
+
+    if public_settings.check_reliability {
+        return Err(map_js_err(anyhow::anyhow!(
+            "Reliability checks are unsupported for wasm client"
+        )));
+    }
+
+    let settings = match public_settings.setup {
+        SetupKind::Inner => &INNER_SETTINGS,
+        _ => {
+            return Err(map_js_err(anyhow::anyhow!(
+                "Unsupported setup kind: {:?}",
+                public_settings.setup
+            )));
+        }
+    };
+
     join_queue(&private_key, confirmation_key, &server_url, &mut rng)
         .await
         .map_err(map_js_err)?;
+
     let worker_pool = WorkerProcess::new(DEFAULT_THREAD_COUNT)?;
     let seed: [u8; 32] = rng.gen();
 
     loop {
         send_heartbeat(&private_key, &server_url, &mut rng).await?;
 
-        let is_finished = attempt_contribution(&private_key, &server_url, &seed, &mut rng, &worker_pool)
+        let is_finished = attempt_contribution(settings, &private_key, &server_url, &seed, &mut rng, &worker_pool)
             .await
             .map_err(map_js_err)?;
 
@@ -58,6 +84,7 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 }
 
 async fn attempt_contribution<R: Rng + CryptoRng>(
+    settings: &Settings,
     private_key: &PrivateKey<Testnet2Parameters>,
     server_url: &Url,
     seed: &[u8],
@@ -96,12 +123,8 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
 
     web_sys::console::log_1(&"contributing...".into());
     let result = Phase1WASM::contribute_chunked(
-        CURVE_KIND,
-        PROVING_SYSTEM,
-        BATCH_SIZE,
-        POWER,
+        &INNER_SETTINGS,
         response.chunk_id as usize,
-        CHALLENGE_SIZE,
         seed,
         chunk_bytes.to_vec(),
         &worker_pool,
@@ -156,7 +179,17 @@ async fn sleep(time_ms: i32) -> Result<(), JsValue> {
 /// Fault-tolerant wrappers for coordinator requests ///
 ////////////////////////////////////////////////////////
 
-async fn request_coordinator_public_settings_retry(server_url: &Url) {}
+async fn request_coordinator_public_settings_retry(server_url: &Url) -> Result<PublicSettings, JsValue> {
+    loop {
+        match request_coordinator_public_settings(server_url).await {
+            Ok(settings) => return Ok(settings),
+            Err(e) => {
+                web_sys::console::log_1(&format!("Error requesting public settings: {:?}", e).into());
+                sleep(DELAY_FIVE_SECONDS).await?;
+            }
+        }
+    }
+}
 
 async fn send_heartbeat<R: Rng + CryptoRng>(
     private_key: &PrivateKey<Testnet2Parameters>,

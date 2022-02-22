@@ -46,6 +46,15 @@ pub fn init_hooks() {
 pub struct Phase1WASM {}
 
 #[cfg(not(test))]
+pub struct Settings {
+    pub curve_kind: &'static str,
+    pub proving_system: &'static str,
+    pub batch_size: usize,
+    pub power: usize,
+    pub chunk_size: usize,
+}
+
+#[cfg(not(test))]
 impl Phase1WASM {
     pub fn contribute_full(
         curve_kind: &str,
@@ -71,17 +80,20 @@ impl Phase1WASM {
     }
 
     pub fn contribute_chunked(
-        curve_kind: &'static str,
-        proving_system: &str,
-        batch_size: usize,
-        power: usize,
+        settings: &Settings,
         chunk_index: usize,
-        chunk_size: usize,
         seed: &[u8],
         challenge: Vec<u8>,
         worker: &crate::pool::WorkerProcess,
         thread_pool_size: usize,
     ) -> anyhow::Result<ContributionResponse> {
+        let Settings {
+            curve_kind,
+            proving_system,
+            batch_size,
+            power,
+            chunk_size,
+        } = *settings;
         // Configure a rayon thread pool which will pull web workers from `pool`.
         let thread_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(thread_pool_size)

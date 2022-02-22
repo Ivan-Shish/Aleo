@@ -69,15 +69,14 @@ pub async fn post_join_queue<R: Rng + CryptoRng>(
             .map_err(|e| anyhow::anyhow!("Error converting response to json: {:?}", e))?,
     )
     .await
-    .map_err(|e| anyhow::anyhow!("Error creating JsFuture from response {:?}", e))?;
+    .map_err(|e| anyhow::anyhow!("{:?}", e))?;
     let joined: bool = data.into_serde().unwrap();
     Ok(joined)
 }
 
-pub async fn request_coordinator_public_settings(server_url: String) -> Result<PublicSettings, JsValue> {
+pub async fn request_coordinator_public_settings(server_url: &Url) -> anyhow::Result<PublicSettings> {
     let settings_path = "/v1/coordinator/settings";
-    let mut settings_url = server_url.clone();
-    settings_url.push_str(&settings_path);
+    let settings_url = server_url.join(settings_path)?;
 
     let client = reqwest::Client::new();
     let bytes = client
@@ -87,7 +86,7 @@ pub async fn request_coordinator_public_settings(server_url: String) -> Result<P
         .await?
         .bytes()
         .await?;
-    PublicSettings::decode(&bytes.to_vec()).map_err(|e| JsValue::from_str(&e.to_string()))
+    Ok(PublicSettings::decode(&bytes.to_vec())?)
 }
 
 /// Send a heartbeat to the coordinator, signaling that the contributor is still
