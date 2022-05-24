@@ -53,6 +53,7 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 
     let settings = match public_settings.setup {
         SetupKind::Inner => &INNER_SETTINGS,
+        SetupKind::Development => &INNER_SETTINGS,
         _ => {
             return Err(map_js_err(anyhow::anyhow!(
                 "Unsupported setup kind: {:?}",
@@ -123,7 +124,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
 
     web_sys::console::log_1(&"contributing...".into());
     let result = Phase1WASM::contribute_chunked(
-        &INNER_SETTINGS,
+        settings,
         response.chunk_id as usize,
         seed,
         chunk_bytes.to_vec(),
