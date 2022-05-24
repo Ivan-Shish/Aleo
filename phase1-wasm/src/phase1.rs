@@ -46,6 +46,15 @@ pub fn init_hooks() {
 pub struct Phase1WASM {}
 
 #[cfg(not(test))]
+pub struct Settings {
+    pub curve_kind: &'static str,
+    pub proving_system: &'static str,
+    pub batch_size: usize,
+    pub power: usize,
+    pub chunk_size: usize,
+}
+
+#[cfg(not(test))]
 impl Phase1WASM {
     pub fn contribute_full(
         curve_kind: &str,
@@ -53,7 +62,7 @@ impl Phase1WASM {
         batch_size: usize,
         power: usize,
         challenge: &[u8],
-    ) -> Result<ContributionResponse, String> {
+    ) -> anyhow::Result<ContributionResponse> {
         let rng = get_rng(&user_system_randomness());
         let proving_system = proving_system_from_str(proving_system).expect("invalid proving system");
         match curve_from_str(curve_kind).expect("invalid curve_kind") {
@@ -71,17 +80,20 @@ impl Phase1WASM {
     }
 
     pub fn contribute_chunked(
-        curve_kind: &'static str,
-        proving_system: &str,
-        batch_size: usize,
-        power: usize,
+        settings: &Settings,
         chunk_index: usize,
-        chunk_size: usize,
         seed: &[u8],
         challenge: Vec<u8>,
         worker: &crate::pool::WorkerProcess,
         thread_pool_size: usize,
-    ) -> Result<ContributionResponse, String> {
+    ) -> anyhow::Result<ContributionResponse> {
+        let Settings {
+            curve_kind,
+            proving_system,
+            batch_size,
+            power,
+            chunk_size,
+        } = *settings;
         // Configure a rayon thread pool which will pull web workers from `pool`.
         let thread_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(thread_pool_size)
@@ -142,14 +154,14 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
     challenge: &[u8],
     parameters: &Phase1Parameters<E>,
     mut rng: impl Rng + CryptoRng,
-) -> Result<ContributionResponse, String> {
+) -> anyhow::Result<ContributionResponse> {
     let expected_challenge_length = match COMPRESSED_INPUT {
         UseCompression::Yes => parameters.contribution_size,
         UseCompression::No => parameters.accumulator_size,
     };
 
     if challenge.len() != expected_challenge_length {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "The size of challenge file should be {}, but it's {}, so something isn't right.",
             expected_challenge_length,
             challenge.len()
@@ -172,7 +184,7 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
     let (public_key, private_key): (phase1::PublicKey<E>, phase1::PrivateKey<E>) =
         match Phase1::key_generation(&mut rng, current_accumulator_hash.as_ref()) {
             Ok(pair) => pair,
-            Err(_) => return Err("could not generate keypair".to_string()),
+            Err(_) => return Err(anyhow::anyhow!("could not generate keypair")),
         };
 
     // This computes a transformation and writes it
@@ -196,11 +208,11 @@ pub fn contribute_challenge<E: PairingEngine + Sync>(
                 });
             }
             Err(e) => {
-                return Err(e.to_string());
+                return Err(e.into());
             }
         },
         Err(_) => {
-            return Err("must contribute with the key".to_string());
+            return Err(anyhow::anyhow!("must contribute with the key"));
         }
     }
 }

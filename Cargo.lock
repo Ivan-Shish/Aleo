@@ -353,6 +353,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "501a375961cef1a0d44767200e66e4a559283097e91d0730b1d75dfb2f8a1494"
+dependencies = [
+ "log",
+ "web-sys",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1848,14 +1858,17 @@ dependencies = [
 name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "blake2",
  "bytes",
  "cfg-if",
  "console_error_panic_hook",
+ "console_log",
  "getrandom 0.2.3",
  "hex",
  "http",
  "js-sys",
+ "log",
  "oneshot",
  "phase1",
  "rand 0.8.4",
@@ -1874,8 +1887,10 @@ dependencies = [
  "snarkvm-dpc 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?branch=setup_wasm)",
  "snarkvm-fields 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?rev=fc997c)",
  "snarkvm-utilities 0.7.5 (git+https://github.com/AleoHQ/snarkVM.git?branch=setup_wasm)",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
