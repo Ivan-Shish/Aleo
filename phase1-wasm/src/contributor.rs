@@ -4,6 +4,7 @@ use crate::{
     requests::*,
     utils::*,
 };
+use anyhow::Context;
 use js_sys::{Function, Promise};
 use rand::{CryptoRng, Rng};
 use setup1_shared::structures::{LockResponse, PublicSettings, SetupKind};
@@ -39,6 +40,7 @@ extern "C" {
 /// hash of the confirmation key.
 #[wasm_bindgen]
 pub async fn contribute(server_url: String, private_key: String, confirmation_key: String) -> Result<JsValue, JsValue> {
+    console_log::init_with_level(log::Level::Debug).map_err(map_js_err)?;
     let server_url = Url::parse(&server_url).map_err(map_js_err)?;
     let mut rng = rand::thread_rng();
     let private_key = PrivateKey::from_str(&private_key).map_err(map_js_err_dbg)?;
@@ -53,7 +55,6 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 
     let settings = match public_settings.setup {
         SetupKind::Inner => &INNER_SETTINGS,
-        SetupKind::Development => &INNER_SETTINGS,
         _ => {
             return Err(map_js_err(anyhow::anyhow!(
                 "Unsupported setup kind: {:?}",
@@ -94,7 +95,8 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
 ) -> anyhow::Result<bool> {
     let tasks_left = match get_tasks_left(private_key, server_url, rng).await {
         Ok(b) => b,
-        Err(_) => {
+        Err(error) => {
+            log::error!("Error obtaining tasks: {:?}", error);
             sleep(DELAY_THIRTY_SECONDS)
                 .await
                 .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
@@ -106,11 +108,13 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         return Ok(true);
     }
 
-    web_sys::console::log_1(&"locking chunk".into());
-    let response = lock_chunk(private_key, server_url, rng).await?;
-    web_sys::console::log_1(&"chunk locked".into());
+    log::info!("Locking chunk...");
+    let response = lock_chunk(private_key, server_url, rng)
+        .await
+        .context("Error while attempting to lock chunk")?;
+    log::info!("Chunk locked.");
 
-    web_sys::console::log_1(&"downloading challenge".into());
+    log::info!("Downloading challenge...");
     let chunk_bytes = download_challenge(
         private_key,
         server_url,
@@ -118,11 +122,11 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         response.contribution_id,
         rng,
     )
-    .await?;
-    web_sys::console::log_1(&"challenge downloaded".into());
-    web_sys::console::log_1(&format!("{} bytes", chunk_bytes.len()).into());
+    .await
+    .context("Error while downloading challenge")?;
+    log::info!("Challenge downloaded ({} bytes).", chunk_bytes.len());
 
-    web_sys::console::log_1(&"contributing...".into());
+    log::info!("Performing contribution calculations...");
     let result = Phase1WASM::contribute_chunked(
         settings,
         response.chunk_id as usize,
@@ -130,14 +134,15 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         chunk_bytes.to_vec(),
         &worker_pool,
         DEFAULT_THREAD_COUNT,
-    )?;
-    web_sys::console::log_1(&"finished!".into());
+    )
+    .context("Error while performing contribution calculations")?;
+    log::info!("Finished contribution calculations!");
 
-    web_sys::console::log_1(&"calculating hashes".into());
+    log::info!("Calculating hashes...");
     let challenge_hash = calculate_hash(&chunk_bytes);
     let response_hash = calculate_hash(&result.response);
 
-    web_sys::console::log_1(&"signing contribution".into());
+    log::info!("Signing contribution.");
     let signed_contribution_state = sign_contribution_state(&private_key, &challenge_hash, &response_hash, None, rng)?;
     let verifier_flag = vec![0];
     let signature_bytes = hex::decode(signed_contribution_state.get_signature())?;
@@ -151,7 +156,7 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
     ]
     .concat();
 
-    web_sys::console::log_1(&"uploading".into());
+    log::info!("Uploading contribution...");
     upload_response(
         private_key,
         server_url,
@@ -160,10 +165,15 @@ async fn attempt_contribution<R: Rng + CryptoRng>(
         sig_and_result_bytes.clone(),
         rng,
     )
-    .await?;
+    .await
+    .context("Error while uploading response")?;
+    log::info!("Finished uploading contribution!");
 
-    web_sys::console::log_1(&"notifying".into());
-    notify_contribution(private_key, server_url, response.chunk_id, rng).await?;
+    log::info!("Notifing contribution...");
+    notify_contribution(private_key, server_url, response.chunk_id, rng)
+        .await
+        .context("Error while notifying contribution")?;
+    log::info!("Finished notifying contribution.");
 
     Ok(false)
 }
@@ -185,8 +195,9 @@ async fn request_coordinator_public_settings_retry(server_url: &Url) -> Result<P
         match request_coordinator_public_settings(server_url).await {
             Ok(settings) => return Ok(settings),
             Err(e) => {
-                web_sys::console::log_1(&format!("Error requesting public settings: {:?}", e).into());
+                log::error!("Error requesting public settings: {:?}", e);
                 sleep(DELAY_FIVE_SECONDS).await?;
+                log::warn!("Retrying requesting public settings.");
             }
         }
     }
@@ -201,8 +212,9 @@ async fn send_heartbeat<R: Rng + CryptoRng>(
         match post_heartbeat(private_key, server_url, rng).await {
             Ok(_) => break,
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error posting heartbeat: {:?}", e);
                 sleep(DELAY_THIRTY_SECONDS).await?;
+                log::warn!("Retrying posting heartbeat.");
             }
         };
     }
@@ -220,10 +232,11 @@ async fn join_queue<R: Rng + CryptoRng>(
         match post_join_queue(&private_key, &confirmation_key, server_url, rng).await {
             Ok(_) => break,
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error posting to join queue: {:?}", e);
                 sleep(DELAY_THIRTY_SECONDS)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
+                log::warn!("Retrying posting join queue.")
             }
         };
     }
@@ -245,10 +258,11 @@ async fn lock_chunk<R: Rng + CryptoRng>(
                 break;
             }
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error posting to lock chunk: {:?}", e);
                 sleep(DELAY_FIVE_SECONDS)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
+                log::warn!("Retrying posting lock chunk.");
             }
         };
     }
@@ -272,10 +286,11 @@ async fn download_challenge<R: Rng + CryptoRng>(
                 break;
             }
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error getting challenge: {:?}", e);
                 sleep(DELAY_FIVE_SECONDS)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
+                log::warn!("Retrying getting challenge.");
             }
         }
     }
@@ -304,10 +319,11 @@ async fn upload_response<R: Rng + CryptoRng>(
         {
             Ok(_) => break,
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error posting response: {:?}", e);
                 sleep(DELAY_FIVE_SECONDS)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
+                log::warn!("Retrying posting response.");
             }
         }
     }
@@ -325,10 +341,11 @@ async fn notify_contribution<R: Rng + CryptoRng>(
         match post_contribution(private_key, server_url, chunk_id, rng).await {
             Ok(_) => break,
             Err(e) => {
-                web_sys::console::log_1(&format!("{:?}", e).into());
+                log::error!("Error posting contribution: {:?}", e);
                 sleep(DELAY_FIVE_SECONDS)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error performing sleep: {:?}", e))?;
+                log::warn!("Retrying posting contribution.");
             }
         }
     }

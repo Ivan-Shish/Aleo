@@ -181,7 +181,7 @@ pub async fn get_challenge<R: Rng + CryptoRng>(
     rng: &mut R,
 ) -> Result<Vec<u8>, JsValue> {
     let download_path = format!("/v1/download/challenge/{}/{}", chunk_id, contribution_id);
-    let download_url = server_url.clone();
+    let download_url = server_url.join(&download_path).map_err(map_js_err)?;
     let authorization = get_authorization_value(private_key, "GET", &download_path, rng).map_err(map_js_err)?;
 
     let mut opts = RequestInit::new();
