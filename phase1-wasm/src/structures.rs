@@ -2,8 +2,6 @@ use crate::errors::ContributeError;
 use serde::{Deserialize, Serialize};
 use serde_diff::SerdeDiff;
 
-use wasm_bindgen::prelude::*;
-
 ///
 /// The contribution state for a given chunk ID that is signed by the participant.
 ///
