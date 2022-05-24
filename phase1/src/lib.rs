@@ -1,4 +1,5 @@
 pub mod helpers;
+pub mod macros;
 
 pub mod objects;
 pub use objects::*;

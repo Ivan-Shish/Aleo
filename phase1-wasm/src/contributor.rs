@@ -23,6 +23,15 @@ const INNER_SETTINGS: Settings = Settings {
     chunk_size: 32768,
 };
 
+// Development ceremony parameters
+const DEVELOPMENT_SETTINGS: Settings = Settings {
+    curve_kind: "bls12_377",
+    proving_system: "groth16",
+    batch_size: 512,
+    power: 16,
+    chunk_size: 2048,
+};
+
 const DELAY_FIVE_SECONDS: i32 = 5000;
 const DELAY_THIRTY_SECONDS: i32 = 30000;
 const DEFAULT_THREAD_COUNT: usize = 8;
@@ -45,7 +54,9 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
     let mut rng = rand::thread_rng();
     let private_key = PrivateKey::from_str(&private_key).map_err(map_js_err_dbg)?;
 
+    log::info!("Requesting coordinator settings...");
     let public_settings = request_coordinator_public_settings_retry(&server_url).await?;
+    log::info!("Coordinator settinngs: {:#?}", public_settings);
 
     if public_settings.check_reliability {
         return Err(map_js_err(anyhow::anyhow!(
@@ -55,6 +66,7 @@ pub async fn contribute(server_url: String, private_key: String, confirmation_ke
 
     let settings = match public_settings.setup {
         SetupKind::Inner => &INNER_SETTINGS,
+        SetupKind::Development => &DEVELOPMENT_SETTINGS,
         _ => {
             return Err(map_js_err(anyhow::anyhow!(
                 "Unsupported setup kind: {:?}",
